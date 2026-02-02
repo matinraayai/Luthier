@@ -26,7 +26,7 @@
 #include "luthier/Tooling/SVStorageAndLoadLocations.h"
 #include "luthier/Tooling/StateValueArraySpecs.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
-#include "luthier/consts.h"
+
 #include <GCNSubtarget.h>
 #include <llvm/CodeGen/MachineDominators.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>

@@ -28,7 +28,6 @@
 #include <llvm/CodeGen/MachinePassManager.h>
 
 namespace llvm {
-class MachineBasicBlock;
 class MachineInstr;
 } // namespace llvm
 
@@ -156,7 +155,7 @@ private:
   const int ReachingDefDefaultVal = -(1 << 21);
 
   using InstSet = llvm::SmallPtrSetImpl<const llvm::MachineInstr *>;
-  using BlockSet = llvm::SmallPtrSetImpl<const llvm::MachineBasicBlock *>;
+  using BlockSet = llvm::SmallPtrSetImpl<const VectorMBB *>;
 
 public:
   ReachingDefInfo();
@@ -183,12 +182,11 @@ public:
   /// Provides the instruction id of the closest reaching def instruction of
   /// Reg that reaches MI, relative to the begining of MI's basic block.
   /// Note that Reg may represent a stack slot.
-  int getReachingDef(const llvm::MachineInstr *MI, llvm::Register Reg) const;
+  int getReachingDef(const VectorMachineInstr &MI, llvm::Register Reg) const;
 
   /// Return whether A and B use the same def of Reg.
-  bool hasSameReachingDef(const llvm::MachineInstr *A,
-                          const llvm::MachineInstr *B,
-                          llvm::Register Reg) const;
+  bool hasSameReachingDef(const VectorMachineInstr A,
+                          const VectorMachineInstr B, llvm::Register Reg) const;
 
   /// Return whether the reaching def for MI also is live out of its parent
   /// block.
@@ -197,9 +195,8 @@ public:
 
   /// Return the local MI that produces the live out value for Reg, or
   /// nullptr for a non-live out or non-local def.
-  const llvm::MachineInstr *
-  getLocalLiveOutMIDef(const llvm::MachineBasicBlock *MBB,
-                       llvm::Register Reg) const;
+  const llvm::MachineInstr *getLocalLiveOutMIDef(const VectorMBB *MBB,
+                                                 llvm::Register Reg) const;
 
   /// If a single MachineInstr creates the reaching definition, then return it.
   /// Otherwise return null.
@@ -218,7 +215,7 @@ public:
 
   /// Provide whether the register has been defined in the same basic block as,
   /// and before, MI.
-  bool hasLocalDefBefore(const llvm::MachineInstr *MI,
+  bool hasLocalDefBefore(const VectorMachineInstr &MI,
                          llvm::Register Reg) const;
 
   /// Return whether the given register is used after MI, whether it's a local
@@ -231,24 +228,24 @@ public:
 
   /// Provides the clearance - the number of instructions since the closest
   /// reaching def instuction of Reg that reaches MI.
-  int getClearance(const llvm::MachineInstr *MI, llvm::Register Reg) const;
+  int getClearance(const VectorMachineInstr &MI, llvm::Register Reg) const;
 
   /// Provides the uses, in the same block as MI, of register that MI defines.
   /// This does not consider live-outs.
-  void getReachingLocalUses(const llvm::MachineInstr *MI, llvm::Register Reg,
+  void getReachingLocalUses(const VectorMachineInstr &MI, llvm::Register Reg,
                             InstSet &Uses) const;
 
   /// Search MBB for a definition of Reg and insert it into Defs. If no
   /// definition is found, recursively search the predecessor blocks for them.
-  void getLiveOuts(const llvm::MachineBasicBlock *MBB, llvm::Register Reg,
-                   InstSet &Defs, BlockSet &VisitedBBs) const;
-  void getLiveOuts(const llvm::MachineBasicBlock *MBB, llvm::Register Reg,
+  void getLiveOuts(const VectorMBB *MBB, llvm::Register Reg, InstSet &Defs,
+                   BlockSet &VisitedBBs) const;
+  void getLiveOuts(const VectorMBB *MBB, llvm::Register Reg,
                    InstSet &Defs) const;
 
   /// For the given block, collect the instructions that use the live-in
   /// value of the provided register. Return whether the value is still
   /// live on exit.
-  bool getLiveInUses(const llvm::MachineBasicBlock *MBB, llvm::Register Reg,
+  bool getLiveInUses(const VectorMBB &MBB, llvm::Register Reg,
                      InstSet &Uses) const;
 
   /// Collect the users of the value stored in Reg, which is defined
@@ -327,14 +324,14 @@ private:
 
   /// Provides the MI, from the given block, corresponding to the Id or a
   /// nullptr if the id does not refer to the block.
-  const llvm::MachineInstr *getInstFromId(const llvm::MachineBasicBlock *MBB,
-                                          int InstId) const;
+  std::optional<const VectorMachineInstr> getInstFromId(const VectorMBB &MBB,
+                                                        int InstId) const;
 
   /// Provides the instruction of the closest reaching def instruction of
   /// Reg that reaches MI, relative to the begining of MI's basic block.
   /// Note that Reg may represent a stack slot.
-  const llvm::MachineInstr *getReachingLocalMIDef(const llvm::MachineInstr *MI,
-                                                  llvm::Register Reg) const;
+  std::optional<const VectorMachineInstr>
+  getReachingLocalMIDef(const VectorMachineInstr &MI, llvm::Register Reg) const;
 };
 
 class ReachingDefAnalysis

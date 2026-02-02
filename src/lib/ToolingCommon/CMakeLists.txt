@@ -12,7 +12,7 @@ tablegen(LuthierToolingCommon LuthierRealToPseudoRegEnumMap.hpp -gen-si-real-to-
 add_public_tablegen_target(LuthierRealToPseudoRegEnumMap)
 
 add_library(LuthierToolingCommon OBJECT
-        AnnotatedMachineInstr.cpp
+        TargetMachineInstrMDNode.cpp
         CodeDiscoveryPass.cpp
         MachineFunctionEntryPoint.cpp
         MachineToTraceInstrAnalysis.cpp
@@ -20,23 +20,24 @@ add_library(LuthierToolingCommon OBJECT
         MemoryAllocationAccessor.cpp
         InstructionModel.cpp
         LiftedRepresentation.cpp
-        PhysicalRegAccessVirtualizationPass.cpp
-        SVStorageAndLoadLocations.cpp
-        LRCallGraph.cpp
-        IntrinsicMIRLoweringPass.cpp
-        InjectedPayloadPEIPass.cpp
-        PrePostAmbleEmitter.cpp
-        StateValueArraySpecs.cpp
-        IPVectorCFG.cpp
-        StateValueArrayStorage.cpp
-        IModuleIRGeneratorPass.cpp
-        RunIRPassesOnIModulePass.cpp
-        MMISlotIndexesAnalysis.cpp
-        ProcessIntrinsicsAtIRLevelPass.cpp
-        PhysRegsNotInLiveInsAnalysis.cpp
+        #        PhysicalRegAccessVirtualizationPass.cpp
+        #        SVStorageAndLoadLocations.cpp
+        #        LRCallGraph.cpp
+        #        IPVectorRegLiveness.cpp
+        #        IntrinsicMIRLoweringPass.cpp
+        #        InjectedPayloadPEIPass.cpp
+        #        PrePostAmbleEmitter.cpp
+        #        StateValueArraySpecs.cpp
+        IPPredicatedCFG.cpp
+        #        StateValueArrayStorage.cpp
+        #        IModuleIRGeneratorPass.cpp
+        #        RunIRPassesOnIModulePass.cpp
+        #        MMISlotIndexesAnalysis.cpp
+        #        ProcessIntrinsicsAtIRLevelPass.cpp
+        #        PhysRegsNotInLiveInsAnalysis.cpp
         WrapperAnalysisPasses.cpp
-        RunMIRPassesOnIModulePass.cpp
-        PatchLiftedRepresentationPass.cpp
+        #        RunMIRPassesOnIModulePass.cpp
+        #        PatchLiftedRepresentationPass.cpp
         MIRConvenience.cpp
         MockAMDGPULoader.cpp
         MetadataParserAnalysis.cpp
@@ -44,7 +45,7 @@ add_library(LuthierToolingCommon OBJECT
         BranchRelaxationPass.cpp
         IntrinsicProcessorRegistry.cpp
         IntrinsicProcessorsAnalysis.cpp
-        InstrumentationPMDriver.cpp
+        #        InstrumentationPMDriver.cpp
         MockLoadAMDGPUCodeObjects.cpp
         CodeObjectManagerAnalysis.cpp
         InitialEntryPointAnalysis.cpp
@@ -53,6 +54,14 @@ add_library(LuthierToolingCommon OBJECT
         MockLoaderMemoryAccessor.cpp
         Metadata.cpp
         NewPMAsmPrinter.cpp
+        FunctionAnnotations.cpp
+        #        IPReachingRefAnalysis.cpp
+        #        IPLoopTraversal.cpp
+        #        IPRegScavenger.cpp
+                IndirectBranchResolverAnalysis.cpp
+        PredicatedMachineBasicBlock.cpp
+        LinearMachineBasicBlock.cpp
+        PredicatedMachineFunction.cpp
 
 )
 

@@ -25,12 +25,12 @@
 #include "luthier/HSA/LoadedCodeObject.h"
 #include "luthier/HSA/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/HSA/LoadedCodeObjectKernel.h"
-#include "luthier/Tooling/AMDGPURegisterLiveness.h"
 #include "luthier/Tooling/IModuleIRGeneratorPass.h"
 #include "luthier/Tooling/LiftedRepresentation.h"
 #include "luthier/Tooling/MMISlotIndexesAnalysis.h"
 #include "luthier/Tooling/PrePostAmbleEmitter.h"
 #include "luthier/Tooling/StateValueArrayStorage.h"
+#include "luthier/Tooling/VectorRegLiveness.h"
 #include <llvm/CodeGen/SlotIndexes.h>
 #include <llvm/IR/PassManager.h>
 
@@ -129,7 +129,7 @@ public:
   llvm::Error calculate(
       const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
       const MMISlotIndexesAnalysis::Result &SlotIndexes,
-      const AMDGPURegisterLiveness &RegLiveness,
+      const VectorRegLiveness &RegLiveness,
       const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
       const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
       const IPVectorCFG &IPCFG);

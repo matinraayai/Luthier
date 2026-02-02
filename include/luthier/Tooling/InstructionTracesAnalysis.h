@@ -241,15 +241,13 @@ public:
         : Traces{std::move(Traces)} {}
 
   public:
-    /// \c InstructionTracesAnalysis::Result never gets invalidated as the
-    /// inspected memory contents for the traces does not change during
-    /// the code generation process
-    bool invalidate(llvm::MachineFunction &, const llvm::PreservedAnalyses &,
-                    llvm::MachineFunctionAnalysisManager::Invalidator &) {
-      return false;
-    }
+    bool invalidate(llvm::MachineFunction &MF,
+                    const llvm::PreservedAnalyses &PA,
+                    llvm::MachineFunctionAnalysisManager::Invalidator &Inv);
 
-    [[nodiscard]] const InstructionTraces &getTraces() const { return *Traces; }
+    [[nodiscard]] const InstructionTraces *getTraces() const {
+      return Traces.get();
+    }
   };
 
   InstructionTracesAnalysis() = default;

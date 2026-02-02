@@ -2,27 +2,33 @@
 #include "luthier/Tooling/CodeDiscoveryPass.h"
 #include "AMDGPUTargetMachine.h"
 #include "luthier/Common/ErrorCheck.h"
-#include "luthier/Tooling/AnnotatedMachineInstr.h"
 #include "luthier/Tooling/EntryPoint.h"
+#include "luthier/Tooling/FunctionAnnotations.h"
+// #include "luthier/Tooling/IPVectorRegLiveness.h"
 #include "luthier/Tooling/InitialEntryPointAnalysis.h"
 #include "luthier/Tooling/InstructionTracesAnalysis.h"
 #include "luthier/Tooling/MachineFunctionEntryPoint.h"
 #include "luthier/Tooling/MemoryAllocationAccessor.h"
 #include "luthier/Tooling/MetadataParserAnalysis.h"
 #include "luthier/Tooling/PseudoOpcodeAnRegMapper.h"
+#include "luthier/Tooling/TargetMachineInstrMDNode.h"
 #include <MCTargetDesc/AMDGPUMCExpr.h>
 #include <SIMachineFunctionInfo.h>
 #include <SIRegisterInfo.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
+#include <llvm/CodeGen/ReachingDefAnalysis.h>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/MDBuilder.h>
 #include <llvm/IR/Module.h>
 #include <llvm/MC/MCAsmInfo.h>
 #include <llvm/MC/MCDisassembler/MCDisassembler.h>
 #include <llvm/MC/MCInstPrinter.h>
 #include <llvm/MC/TargetRegistry.h>
-#include <luthier/Tooling/MachineFunctionEntryPoint.h>
+// #include <luthier/Tooling/IPVectorRegLiveness.h>
+// #include <luthier/Tooling/IndirectBranchResolverAnalysis.h>
+// #include <luthier/Tooling/MachineFunctionEntryPoint.h>
 #include <unordered_set>
 
 #undef DEBUG_TYPE
@@ -389,57 +395,86 @@ parseKDKernelCode(const llvm::amdhsa::kernel_descriptor_t &KD,
   return llvm::Error::success();
 };
 
-static llvm::Expected<llvm::MachineFunction &> initKernelEntryPointFunction(
-    const llvm::amdhsa::kernel_descriptor_t &KD,
-    const MemoryAllocationAccessor &SegAccessor,
-    const amdgpu::hsamd::MetadataParser &MDParser, llvm::Module &TargetModule,
-    const llvm::GCNTargetMachine &TM, llvm::FunctionAnalysisManager &FAM) {
+/// Initializes the \c llvm::Function and \c llvm::MachineFunction for the
+/// entry point for the \p KD
+static llvm::Expected<std::pair<llvm::MachineFunction &,
+                                std::optional<object::AMDGCNElfSymbolRef>>>
+initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
+                             const MemoryAllocationAccessor &SegAccessor,
+                             const amdgpu::hsamd::MetadataParser &MDParser,
+                             llvm::Module &TargetModule,
+                             const llvm::GCNTargetMachine &TM,
+                             llvm::FunctionAnalysisManager &FAM) {
   llvm::LLVMContext &LLVMContext = TargetModule.getContext();
-
   /// Get the memory allocation associated with the kernel descriptor
   auto KDLoadAddr = reinterpret_cast<uint64_t>(&KD);
   auto SegmentOrErr = SegAccessor.getAllocationDescriptor(KDLoadAddr);
   LUTHIER_RETURN_ON_ERROR(SegmentOrErr.takeError());
 
-  /// TODO: Manage when we don't have a code object associated with the
-  /// kernel descriptor or if metadata does not exist
+  if (SegmentOrErr->empty())
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        llvm::formatv("Failed to find the memory allocation descriptor "
+                      "associated with KD {0:x}.",
+                      KDLoadAddr));
 
   uint64_t KDLoadOffset =
       KDLoadAddr -
-      reinterpret_cast<uint64_t>(SegmentOrErr->AllocationOnDevice.data());
+      reinterpret_cast<uint64_t>(SegmentOrErr->getDeviceAllocation().data());
 
-  /// Locate the KD symbol inside the code object
-  llvm::Expected<object::AMDGCNKernelDescSymbolRef> KDSymbolOrErr =
-      [&]() -> llvm::Expected<object::AMDGCNKernelDescSymbolRef> {
-    llvm::Error Err = llvm::Error::success();
-    for (object::AMDGCNKernelDescSymbolRef CurrentKD :
-         SegmentOrErr->AllocationCodeObject->kernel_descriptors(Err)) {
-      LUTHIER_RETURN_ON_ERROR(Err);
-      llvm::Expected<uint64_t> CurrentKDLoadAddrOrErr = CurrentKD.getAddress();
-      LUTHIER_RETURN_ON_ERROR(CurrentKDLoadAddrOrErr.takeError());
-      if (*CurrentKDLoadAddrOrErr == KDLoadOffset) {
-        return CurrentKD;
+  std::optional<object::AMDGCNKernelDescSymbolRef> KDSymbolIfPresent{
+      std::nullopt};
+
+  auto *ObjFile = SegmentOrErr->getAllocationCodeObject();
+
+  /// If the KD allocation has a code object associated with it,
+  /// locate the KD's symbol
+  if (ObjFile) {
+    /// Lambda is used instead of a plain loop for easier break/error checking
+    llvm::Expected<object::AMDGCNKernelDescSymbolRef> KDSymbolOrErr =
+        [&]() -> llvm::Expected<object::AMDGCNKernelDescSymbolRef> {
+      llvm::Error Err = llvm::Error::success();
+      for (object::AMDGCNKernelDescSymbolRef CurrentKD :
+           ObjFile->kernel_descriptors(Err)) {
         LUTHIER_RETURN_ON_ERROR(Err);
+        llvm::Expected<uint64_t> CurrentKDLoadAddrOrErr =
+            CurrentKD.getAddress();
+        LUTHIER_RETURN_ON_ERROR(CurrentKDLoadAddrOrErr.takeError());
+        if (*CurrentKDLoadAddrOrErr == KDLoadOffset) {
+          return CurrentKD;
+          LUTHIER_RETURN_ON_ERROR(Err);
+        }
       }
-    }
-    LUTHIER_RETURN_ON_ERROR(Err);
-    return llvm::make_error<GenericLuthierError>(llvm::formatv(
-        "Failed to get the KD associated with address {0:x}", KDLoadOffset));
-  }();
+      LUTHIER_RETURN_ON_ERROR(Err);
+      return llvm::make_error<GenericLuthierError>(llvm::formatv(
+          "Failed to get the KD associated with address {0:x}", KDLoadOffset));
+    }();
+    LUTHIER_RETURN_ON_ERROR(KDSymbolOrErr.takeError());
 
-  LUTHIER_RETURN_ON_ERROR(KDSymbolOrErr.takeError());
+    KDSymbolIfPresent = *KDSymbolOrErr;
+  }
 
   /// Get the kernel's name
-  llvm::Expected<llvm::StringRef> KernelNameOrErr = KDSymbolOrErr->getName();
-  LUTHIER_RETURN_ON_ERROR(KernelNameOrErr.takeError());
+  std::string KernelName;
+  if (KDSymbolIfPresent.has_value()) {
+    llvm::Expected<llvm::StringRef> KernelNameOrErr =
+        KDSymbolIfPresent->getName();
+    LUTHIER_RETURN_ON_ERROR(KernelNameOrErr.takeError());
+    KernelName = KernelNameOrErr->substr(0, KernelNameOrErr->rfind(".kd"));
+  } else {
+    KernelName = llvm::formatv("kernel-{0:x}", KDLoadAddr);
+  }
 
-  /// Parse the kernel's metadata
-  llvm::Expected<std::unique_ptr<llvm::msgpack::Document>> MDDocOrErr =
-      SegmentOrErr->AllocationCodeObject->getMetadataDocument();
-  LUTHIER_RETURN_ON_ERROR(MDDocOrErr.takeError());
-  auto KernelMDOrErr =
-      MDParser.parseKernelMetadata(**MDDocOrErr, *KernelNameOrErr);
-  LUTHIER_RETURN_ON_ERROR(KernelMDOrErr.takeError());
+  std::unique_ptr<amdgpu::hsamd::Kernel::Metadata> KernelMetadata{nullptr};
+
+  /// Parse the kernel's metadata if we have an object available
+  if (ObjFile) {
+    llvm::Expected<std::unique_ptr<llvm::msgpack::Document>> MDDocOrErr =
+        ObjFile->getMetadataDocument();
+    LUTHIER_RETURN_ON_ERROR(MDDocOrErr.takeError());
+    LUTHIER_RETURN_ON_ERROR(
+        MDParser.parseKernelMetadata(**MDDocOrErr, KernelName + ".kd")
+            .moveInto(KernelMetadata));
+  }
 
   // Populate the Arguments
   // ==================================================
@@ -452,12 +487,12 @@ static llvm::Expected<llvm::MachineFunction &> initKernelEntryPointFunction(
   llvm::SmallVector<llvm::Type *> Params;
   unsigned int ExplicitArgsOffset = 0;
   unsigned int ImplicitArgsOffset = 0;
-  if ((*KernelMDOrErr)->Args.has_value()) {
+  if (KernelMetadata != nullptr && KernelMetadata->Args.has_value()) {
     // Reserve the number of arguments in the Params vector
-    Params.reserve((*KernelMDOrErr)->Args->size());
+    Params.reserve(KernelMetadata->Args->size());
     // For now, we only rely on required argument metadata
     // This should be updated as new cases are encountered
-    for (const auto &ArgMD : *(*KernelMDOrErr)->Args) {
+    for (const auto &ArgMD : *(KernelMetadata)->Args) {
       if (ArgMD.ValKind >= amdgpu::hsamd::ValueKind::HiddenArgKindBegin)
         break;
       else {
@@ -471,9 +506,9 @@ static llvm::Expected<llvm::MachineFunction &> initKernelEntryPointFunction(
   llvm::FunctionType *FunctionType =
       llvm::FunctionType::get(ReturnType, Params, false);
 
-  auto *F = llvm::Function::Create(
-      FunctionType, llvm::GlobalValue::WeakAnyLinkage,
-      KernelNameOrErr->substr(0, KernelNameOrErr->rfind(".kd")), TargetModule);
+  auto *F =
+      llvm::Function::Create(FunctionType, llvm::GlobalValue::WeakAnyLinkage,
+                             KernelName, TargetModule);
   F->setVisibility(llvm::GlobalValue::ProtectedVisibility);
 
   // Populate the Attributes =================================================
@@ -484,7 +519,7 @@ static llvm::Expected<llvm::MachineFunction &> initKernelEntryPointFunction(
   // attributes getting populated
 
   auto &KDOnHost = *reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
-      &SegmentOrErr->AllocationOnHost[KDLoadOffset]);
+      &SegmentOrErr->getHostAllocation()[KDLoadOffset]);
 
   F->addFnAttr("amdgpu-lds-size",
                llvm::to_string(KDOnHost.group_segment_fixed_size));
@@ -523,7 +558,7 @@ static llvm::Expected<llvm::MachineFunction &> initKernelEntryPointFunction(
   MF.setAlignment(llvm::Align(256));
 
   // Process the hidden args now that MFI and MF has been created
-  if ((*KernelMDOrErr)->Args.has_value()) {
+  if (KernelMetadata != nullptr && KernelMetadata->Args.has_value()) {
     // Add absence of all hidden arguments; As we iterate over all the
     // hidden arguments, we get rid of them if we detect their presence
     F->addFnAttr("amdgpu-no-hostcall-ptr");
@@ -531,7 +566,7 @@ static llvm::Expected<llvm::MachineFunction &> initKernelEntryPointFunction(
     F->addFnAttr("amdgpu-no-completion-action");
     F->addFnAttr("amdgpu-no-multigrid-sync-arg");
     F->addFnAttr("amdgpu-no-heap-ptr");
-    for (const auto &ArgMD : *(*KernelMDOrErr)->Args) {
+    for (const auto &ArgMD : *KernelMetadata->Args) {
       if (ArgMD.ValKind >= amdgpu::hsamd::ValueKind::HiddenArgKindBegin &&
           ArgMD.ValKind <= amdgpu::hsamd::ValueKind::HiddenArgKindEnd) {
         processHiddenKernelArg(
@@ -548,34 +583,43 @@ static llvm::Expected<llvm::MachineFunction &> initKernelEntryPointFunction(
   F->addFnAttr("amdgpu-implicitarg-num-bytes",
                llvm::to_string(ImplicitArgsOffset - ExplicitArgsOffset));
 
-  return MF;
+  return std::make_pair(std::ref(MF), KDSymbolIfPresent);
 }
 
-llvm::Expected<llvm::MachineFunction &> initLiftedDeviceFunctionEntry(
-    uint64_t DeviceEntryPointAddr, const MemoryAllocationAccessor &SegAccessor,
-    llvm::Module &TargetModule, llvm::FunctionAnalysisManager &FAM) {
+llvm::Expected<std::pair<llvm::MachineFunction &,
+                         std::optional<object::AMDGCNElfSymbolRef>>>
+initLiftedDeviceFunctionEntry(uint64_t DeviceEntryPointAddr,
+                              const MemoryAllocationAccessor &SegAccessor,
+                              llvm::Module &TargetModule,
+                              llvm::FunctionAnalysisManager &FAM) {
 
   llvm::LLVMContext &LLVMContext = TargetModule.getContext();
   auto SegmentOrErr = SegAccessor.getAllocationDescriptor(DeviceEntryPointAddr);
   LUTHIER_RETURN_ON_ERROR(SegmentOrErr.takeError());
+  if (SegmentOrErr->empty())
+    return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+        "Failed to find the allocation associated with address {0:x}",
+        DeviceEntryPointAddr));
+
   uint64_t DevFuncLoadOffset =
       DeviceEntryPointAddr -
-      reinterpret_cast<uint64_t>(SegmentOrErr->AllocationOnDevice.data());
+      reinterpret_cast<uint64_t>(SegmentOrErr->getDeviceAllocation().data());
 
   /// Locate the symbol this entry address is part of
-  std::optional<llvm::object::ELFSymbolRef> FuncSymRef{std::nullopt};
+  std::optional<object::AMDGCNElfSymbolRef> FuncSymRef{std::nullopt};
   uint64_t EntryFromStartOfSymbol{0};
 
-  for (object::AMDGCNElfSymbolRef Symbol :
-       SegmentOrErr->AllocationCodeObject->symbols()) {
-    if (Symbol.getELFType() == llvm::ELF::STT_FUNC) {
-      llvm::Expected<uint64_t> SymbolAddrOrErr = Symbol.getAddress();
-      LUTHIER_RETURN_ON_ERROR(SymbolAddrOrErr.takeError());
-      uint64_t SymbolSize = Symbol.getSize();
-      if (*SymbolAddrOrErr <= DevFuncLoadOffset &&
-          DevFuncLoadOffset <= (*SymbolAddrOrErr + SymbolSize)) {
-        FuncSymRef = Symbol;
-        EntryFromStartOfSymbol = DevFuncLoadOffset - *SymbolAddrOrErr;
+  if (auto *ObjFile = SegmentOrErr->getAllocationCodeObject()) {
+    for (object::AMDGCNElfSymbolRef Symbol : ObjFile->symbols()) {
+      if (Symbol.getELFType() == llvm::ELF::STT_FUNC) {
+        llvm::Expected<uint64_t> SymbolAddrOrErr = Symbol.getAddress();
+        LUTHIER_RETURN_ON_ERROR(SymbolAddrOrErr.takeError());
+        uint64_t SymbolSize = Symbol.getSize();
+        if (*SymbolAddrOrErr <= DevFuncLoadOffset &&
+            DevFuncLoadOffset <= (*SymbolAddrOrErr + SymbolSize)) {
+          FuncSymRef = Symbol;
+          EntryFromStartOfSymbol = DevFuncLoadOffset - *SymbolAddrOrErr;
+        }
       }
     }
   }
@@ -607,7 +651,7 @@ llvm::Expected<llvm::MachineFunction &> initLiftedDeviceFunctionEntry(
       FAM.getResult<llvm::MachineFunctionAnalysis>(*F).getMF();
 
   MF.setAlignment(llvm::Align(4));
-  return MF;
+  return std::make_pair(std::ref(MF), FuncSymRef);
 }
 
 static bool shouldReadExec(const llvm::MachineInstr &MI) {
@@ -666,9 +710,9 @@ static llvm::Error fixupBitsetInst(llvm::MachineInstr &MI) {
   return llvm::Error::success();
 }
 
-llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
-                       llvm::MachineFunction &MF) {
-
+static llvm::Error populateMF(const InstructionTraces &MFTrace,
+                              llvm::MachineFunction &MF) {
+  llvm::LLVMContext &Ctx = MF.getFunction().getContext();
   llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
 
   const auto &TM =
@@ -761,10 +805,9 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
       }
       llvm::MachineInstrBuilder Builder =
           llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
-
-      LUTHIER_RETURN_ON_ERROR(assignInstrID(*Builder.getInstr()));
-      LUTHIER_RETURN_ON_ERROR(
-          makeInstrTrace(*Builder.getInstr(), CurrentInstrAddr));
+      auto MDNodeOrErr = TargetMachineInstrMDNode::initializeMDNode(*Builder);
+      LUTHIER_RETURN_ON_ERROR(MDNodeOrErr.takeError());
+      MDNodeOrErr->setTraceInstrAddress(Ctx, CurrentInstrAddr);
 
       LLVM_DEBUG(llvm::dbgs() << "Number of operands according to MCID: "
                               << MCID.operands().size() << "\n";
@@ -964,13 +1007,13 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
 
     llvm::MachineInstrBuilder Builder = llvm::BuildMI(
         EntryMBB, llvm::DebugLoc(), MCInstInfo.get(llvm::AMDGPU::S_BRANCH));
-    LUTHIER_RETURN_ON_ERROR(makeInstrMutable(*Builder.getInstr()));
+    auto MDNodeOrErr = TargetMachineInstrMDNode::initializeMDNode(*Builder);
+    LUTHIER_RETURN_ON_ERROR(MDNodeOrErr.takeError());
+    MDNodeOrErr->setCanRelaxDirectBranch(Ctx, true);
     Builder->addOperand(
         llvm::MachineOperand::CreateMBB(EntryInst->getParent()));
     EntryMBB->addSuccessor(EntryInst->getParent());
   }
-
-  /// TODO: Resolve the indirect call and branch instructions here
 
   LLVM_DEBUG(llvm::dbgs() << "*********************************************"
                              "***************************\n");
@@ -982,7 +1025,7 @@ llvm::Error populateMF(const InstructionTracesAnalysis::Result &MFTrace,
   Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
   Properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
   Properties.set(llvm::MachineFunctionProperties::Property::NoPHIs);
-  Properties.set(llvm::MachineFunctionProperties::Property::TracksLiveness);
+  Properties.reset(llvm::MachineFunctionProperties::Property::TracksLiveness);
   Properties.set(llvm::MachineFunctionProperties::Property::Selected);
 
   LLVM_DEBUG(llvm::dbgs() << "Final form of the Machine function:\n";
@@ -1028,36 +1071,66 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
   while (!UnvisitedPointsOfEntry.empty()) {
     EntryPoint CurrentEntryPoint = *UnvisitedPointsOfEntry.begin();
 
-    llvm::MachineFunction &MF = [&]() -> llvm::MachineFunction & {
+    auto [MF, FuncSymRef] =
+        [&]() -> std::pair<llvm::MachineFunction &,
+                           std::optional<object::AMDGCNElfSymbolRef>> {
       /// Initialize the function handle associated with the entry point
       if (const auto *KDOnDevice = CurrentEntryPoint.getKernelDescriptor()) {
         const auto &MDParser =
             TargetMAM.getResult<MetadataParserAnalysis>(TargetModule)
                 .getParser();
 
-        llvm::Expected<llvm::MachineFunction &> MFOrErr =
-            initKernelEntryPointFunction(*KDOnDevice, SegAccessor, MDParser,
-                                         TargetModule, TM, FAM);
-        LUTHIER_CTX_EMIT_ON_ERROR(Ctx, MFOrErr.takeError());
+        auto MFOrAndSymOrErr = initKernelEntryPointFunction(
+            *KDOnDevice, SegAccessor, MDParser, TargetModule, TM, FAM);
+        LUTHIER_CTX_EMIT_ON_ERROR(Ctx, MFOrAndSymOrErr.takeError());
 
-        return *MFOrErr;
+        return *MFOrAndSymOrErr;
       } else {
-        llvm::Expected<llvm::MachineFunction &> MFOrErr =
-            initLiftedDeviceFunctionEntry(
-                CurrentEntryPoint.getEntryPointAddress(), SegAccessor,
-                TargetModule, FAM);
-        LUTHIER_CTX_EMIT_ON_ERROR(Ctx, MFOrErr.takeError());
-        return *MFOrErr;
+        auto MFOrAndSymOrErr = initLiftedDeviceFunctionEntry(
+            CurrentEntryPoint.getEntryPointAddress(), SegAccessor, TargetModule,
+            FAM);
+        LUTHIER_CTX_EMIT_ON_ERROR(Ctx, MFOrAndSymOrErr.takeError());
+        return *MFOrAndSymOrErr;
       }
     }();
-    MFAM.getResult<MachineFunctionEntryPoint>(MF).setEntryPoint(
-        CurrentEntryPoint);
+    /// Set the function's entry point as an attribute
+    setFunctionEntryPoint(MF.getFunction(), CurrentEntryPoint);
+    if (CurrentEntryPoint == InitialEntryPoint) {
+      MF.getFunction().addFnAttr(InitialEntryPointAttr);
+    }
+
     /// Add the newly created MF's entry point
     /// Ask for the trace of the instructions for this machine function
     auto &TraceResults = MFAM.getResult<InstructionTracesAnalysis>(MF);
+    if (!TraceResults.getTraces()) {
+      LUTHIER_CTX_EMIT_ON_ERROR(
+          Ctx,
+          LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+              "Failed to get trace results for function {0}", MF.getName())));
+    }
+    /// Populate the current machine function using the trace info we just
+    /// obtained
+    LUTHIER_CTX_EMIT_ON_ERROR(Ctx, populateMF(*TraceResults.getTraces(), MF));
 
-    /// Populate the machine function
-    LUTHIER_CTX_EMIT_ON_ERROR(Ctx, populateMF(TraceResults, MF));
+    /// Invalidate all module-level analysis not related to Functions and
+    /// Machine Functions proxies because we just added a new machine function
+    /// and they are now stale
+    llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
+    PA.preserve<llvm::MachineFunctionAnalysisManagerModuleProxy>();
+    PA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
+    TargetMAM.invalidate(TargetModule, PA);
+
+    /// Check if the last instruction in the trace is a call; If so, check
+    /// if there is a function symbol associated with it. If so, see if the
+    /// size of the function indicates there is more code after
+
+    /// Reform the IP-Vector CFG
+
+    /// Check if we have discovered anything there are any other trace entry
+    /// points that are left for us to discover; If so
+
+    /// Re-calculate IP-liveness and IP-reaching definitions
+    // (void)TargetMAM.getResult<IndirectBranchResolverAnalysis>(TargetModule);
 
     UnvisitedPointsOfEntry.erase(CurrentEntryPoint);
     VisitedPointsOfEntry.insert(CurrentEntryPoint);

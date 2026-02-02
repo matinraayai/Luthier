@@ -24,7 +24,6 @@
 #include "luthier/HSATooling/CodeLifter.h"
 #include "luthier/HSATooling/InstrumentationTask.h"
 #include "luthier/HSATooling/ToolExecutableLoader.h"
-#include "luthier/Tooling/AMDGPURegisterLiveness.h"
 #include "luthier/Tooling/InjectedPayloadPEIPass.h"
 #include "luthier/Tooling/InstrumentationPMDriver.h"
 #include "luthier/Tooling/MMISlotIndexesAnalysis.h"
@@ -32,6 +31,7 @@
 #include "luthier/Tooling/PrePostAmbleEmitter.h"
 #include "luthier/Tooling/RunIRPassesOnIModulePass.h"
 #include "luthier/Tooling/RunMIRPassesOnIModulePass.h"
+#include "luthier/Tooling/VectorRegLiveness.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
 #include "luthier/Tooling/BranchRelaxationPass.h"
 #include <AMDGPUResourceUsageAnalysis.h>
@@ -129,6 +129,8 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   // pipeline
   llvm::ModulePassManager TargetMPM;
 
+  llvm::MachineFunctionAnalysisManager TargetMFAM;
+
   SI.registerCallbacks(PIC, &TargetMAM);
   // Add the pass instrumentation analysis as it is required by the new PM
   TargetMAM.registerPass([&]() { return llvm::PassInstrumentationAnalysis(); });
@@ -136,7 +138,7 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
   TargetMAM.registerPass(
       [&]() { return llvm::MachineModuleAnalysis(LR.getMMI()); });
   // Add the LR Register Liveness pass
-  TargetMAM.registerPass([&]() { return AMDGPURegLivenessAnalysis(); });
+  TargetMFAM.registerPass([&]() { return VectorRegLivenessAnalysis(); });
   // Add the LR Callgraph analysis pass
   TargetMAM.registerPass([&]() { return LRCallGraphAnalysis(); });
   // Add the MMI-wide Slot indexes analysis pass
@@ -149,6 +151,7 @@ CodeGenerator::applyInstrumentationTask(const InstrumentationTask &Task,
       [&]() { return FunctionPreambleDescriptorAnalysis(); });
   // Add the instrumentation pass manager driver
   TargetMPM.addPass(InstrumentationPMDriver(InstrumentationPMOptions));
+  /// getPCSection
 
   TargetMPM.run(LR.getModule(), TargetMAM);
   return llvm::Error::success();

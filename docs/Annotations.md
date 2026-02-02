@@ -1,42 +1,73 @@
+# Annotations and Metadata in Luthier's Code Generation Process
+
+Luthier uses LLVM IR annotations and metadata to append additional information
+to both target and instrumentation modules. This information is then used to
+guide Luthier's instrumentation and target module passes. In some cases, the
+annotations will even propagate into the final printed assembly,
+and is used by Luthier's loader for the target runtime.
+
+In this section we go over the format of the annotations and metadata used in
+Luthier and their purpose.
+
+# Function Annotations and Metadata
+
+## `"luthier.function.hook"` Annotation
+
+Used in instrumentation module. Indicates that the annotated function is a hook
+i.e. instrumentation function.
+
+## `"luthier.function.injected_payload"`
+
+Used in instrumentation module. Indicates that the function is an "injected
+payload" i.e. its contents will be patched before instruction(s) in the
+target module.
+
+## `"luthier.function.entrypoint_addr` Metadata
+
+Used in target modules. Indicates that the annotated function was obtained
+via lifting the device code located at the given entry point. If the calling
+convention of the annotated function is of AMDGPU kernel type it indicates the
+device memory address of its kernel descriptor; Otherwise, it indicates its
+starting device address entry point.
+
 # Machine Instruction Annotation
 
 ## Background
 
 When running Luthier instrumentation passes we may want to append additional
-information to a set of `llvm::MachineInstr`s in the target
-`llvm::MachineModuleInfo` (MMI). Some example reasons include:
+information to a set of `llvm::MachineInstr`s in the target application. Some
+example reasons include:
 
 - Keeping track of the injected payload functions that will eventually be
-  patched before or after a target MMI instruction.
-- Keeping track of manually injected instructions in the target MMI so that
-  we don't modify them after patching is done.
+  patched before or after a target machine instruction.
+- Keeping track of branches that can be relaxed after patching is done.
 
-A naive solution is to keep a map between pointers of machine instruction to
+A naive solution is to maintain a map between pointers of machine instruction to
 whatever information we want to maintain in an analysis pass. However, there
 are two issues with this approach:
 
-1. Internally, the `llvm::MachineBasicBlock` stores on to its machine
+1. Internally, the `llvm::MachineBasicBlock` stores its machine
    instructions in an intrusive linked list and has a list element recycler
-   for that re-uses removed elements' memory. In between target module passes,
+   that re-uses removed elements' memory. In between target module passes,
    there is a chance the element recycler is invoked to re-arrange the
-   instructions (especially after target MMI is patched) rendering our pointer
-   maps stale.
+   instructions (especially after machine functions are patched) rendering our
+   pointer maps stale.
 2. It is hard to serialize the state of the Luthier instrumentation pipeline as
    machine instruction pointer locations can change between runs. Serialization
    is very useful for testing and debugging.
 
-To keep track of machine instructions, we instead have to rely on appending
-extra information to the machine instruction itself to guarantee the information
+To get around these issues we instead have to rely on appending extra
+information to the machine instruction itself to guarantee the information
 doesn't get lost while the machine instructions are transformed in between
 passes. Luckily, there is an `Info` field in machine instructions designed for
 [this specific purpose](https://reviews.llvm.org/D50701). There are a limited
-set of extra information that can be appended to this field. Luthier opts to
-define a custom formatted version of
-the [PC Sections Metadata](https://llvm.org/docs/PCSectionsMetadata.html) for
+set of extra information that
+can be appended to this field. Luthier opts to define a custom formatted version
+of the [PC Sections Metadata](https://llvm.org/docs/PCSectionsMetadata.html) for
 the following reasons:
 
 1. PC Sections has been designed for use for instrumentation, and has a flexible
-   formatting that can be expanded.
+   formatting that can be expanded in the future.
 2. PC Sections gets emitted by the assembly printer. This means that combined
    with a custom `llvm::AsmPrinterHandler`, Luthier can emit verbose comments
    regarding Luthier-specific information in the `.s` version of the
@@ -51,7 +82,8 @@ There is one limitation for using the `PCSections` in the machine instructions:
 to wait until it's serialized or implement a workaround ourselves.
 
 The following avenues for appending extra information to a machine
-instructions were investigated but abandoned:
+instructions were investigated in the past but abandoned in favor of the
+`PCSections` field:
 
 1. Using the debug instruction number attached to machine instructions for
    tracking the register values they have defined after register allocation.
@@ -74,7 +106,7 @@ instructions were investigated but abandoned:
    then this logic causes the `implicit_operands()` iterator of the machine
    instruction to also return metadata operands.
 
-## Luthier PC Sections Metadata Format
+## Luthier Target Module PC Sections Metadata Format
 
 According to the
 [PC Sections Metadata Documentation](https://llvm.org/docs/PCSectionsMetadata.html)
@@ -100,30 +132,34 @@ value metadata nodes. PCSections Metadata can be created using the
 entry in the `MDNode` array to introduce a header, with every odd-numbered
 entry introduce the contents for the header.
 
-### Instruction Identifier
-
-The header is `"luthier.instr.id"`, and it is followed by a single element array
-of constant `uint64_t` number. Provides a unique identifier for each instruction
-that is preserved between passes. The module will have a metadata named
-`"luthier.next.instr.id"` that indicates the next ID available for any
-instruction requiring an ID.
+The following subsections define the entries present in the PC sections of
+a target module in Luthier.
 
 ### Trace Instruction Identifier
 
-The header is `"luthier.instr.trace"`, and it is followed by a single element
-array of constant `uint64_t` number. Indicates to passes that the instruction
-was obtained by inspecting and lifting loaded memory, and the constant number
-indicates the memory address it was obtained from.
+This section's header is `"luthier.machine_instr.trace_addr"`, followed by an
+optional constant `uint64_t` element. Presence of the constant `uint64_t` number
+indicates that the machine instruction was obtained by lifting a trace
+instruction. The constant number indicates the trace instruction's device memory
+address. The absence of the constant number indicates that the machine
+instruction is not a trace instruction i.e., it was manually inserted and does
+not belong to the original application.
 
-### Mutable Instruction
+### "Can Relax Branch"
 
-The header is `"luthier.instr.mutable"`, followed by an empty list of constants.
-It indicates (especially to post-patching passes) that an instruction is free
-to be modified or replaced while ensuring the original behavior of the
-instruction. For example, a short mutable branch in the post-patching passes
-indicates it can be relaxed (i.e., converted to a long branch) in case it cannot
-reach its original target. By default, all instructions are treated as immutable
-unless stated otherwise.
+This section's header is `luthier.machine_instr.can_relax_direct_branch`,
+followed by a constant boolean element. It only applies to direct branch
+instructions (both conditional and unconditional). If set to `true`,
+post patching passes are free to relax the branch machine instruction in
+case it cannot make its target. If set to `false`, the post patching passes
+instead will insert a second branch to be the target of the machine instruction
+in question.
+
+###              
+
+`"luthier.instr.indirect_jmp_call_targets"`, followed by the list of functions.
+A value of `undef` at the end of the list means there are unresolved call
+targets.
 
 ## Helpful Links
 

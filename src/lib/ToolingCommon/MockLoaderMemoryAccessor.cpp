@@ -28,14 +28,11 @@ MockLoaderMemoryAccessor::getAllocationDescriptor(uint64_t DeviceAddr) const {
     auto LoadBase = reinterpret_cast<uint64_t>(LoadedRegion.data());
     uint64_t LoadEnd = LoadBase + LoadedRegion.size();
     if (LoadBase <= DeviceAddr && DeviceAddr < LoadEnd) {
-
-      llvm::ArrayRef Alloc{reinterpret_cast<uint8_t *>(LoadBase),
-                           LoadedRegion.size()};
-      return AllocationDescriptor{Alloc, Alloc, &LCO.getCodeObject()};
+      return AllocationDescriptor{*reinterpret_cast<std::byte *>(LoadBase),
+                                  *reinterpret_cast<std::byte *>(LoadBase),
+                                  LoadedRegion.size(), &LCO.getCodeObject()};
     }
   }
-  return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-      "Failed to find any allocations associated with address {0:x}",
-      DeviceAddr));
+  return AllocationDescriptor();
 }
 } // namespace luthier

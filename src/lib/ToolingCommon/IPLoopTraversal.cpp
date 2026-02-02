@@ -12,7 +12,7 @@
 
 namespace luthier {
 bool LoopTraversal::isBlockDone(const VectorMBB *MBB) {
-  unsigned MBBNumber = MBB->getIndex();
+  unsigned MBBNumber = MBB->getNumber();
   assert(MBBNumber < MBBInfos.size() && "Unexpected basic block number.");
   return MBBInfos[MBBNumber].PrimaryCompleted &&
          MBBInfos[MBBNumber].IncomingCompleted ==
@@ -33,7 +33,7 @@ LoopTraversal::TraversalOrder LoopTraversal::traverse(const IPVectorCFG &MF) {
   for (const luthier::VectorMBB *MBB : RPOT) {
     // N.B: IncomingProcessed and IncomingCompleted were already updated while
     // processing this block's predecessors.
-    unsigned MBBNumber = MBB->getIndex();
+    unsigned MBBNumber = MBB->getNumber();
     assert(MBBNumber < MBBInfos.size() && "Unexpected basic block number.");
     MBBInfos[MBBNumber].PrimaryCompleted = true;
     MBBInfos[MBBNumber].PrimaryIncoming = MBBInfos[MBBNumber].IncomingProcessed;
@@ -44,7 +44,7 @@ LoopTraversal::TraversalOrder LoopTraversal::traverse(const IPVectorCFG &MF) {
       bool Done = isBlockDone(ActiveMBB);
       MBBTraversalOrder.push_back(TraversedMBBInfo(ActiveMBB, Primary, Done));
       for (const luthier::VectorMBB *Succ : ActiveMBB->successors()) {
-        unsigned SuccNumber = Succ->getIndex();
+        unsigned SuccNumber = Succ->getNumber();
         assert(SuccNumber < MBBInfos.size() &&
                "Unexpected basic block number.");
         if (!isBlockDone(Succ)) {

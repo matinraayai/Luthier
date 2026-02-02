@@ -39,7 +39,7 @@ class HsaMemoryAllocationAccessor : public MemoryAllocationAccessor {
 
   /// Cache for holding on to the host copy of memory allocations in HSA that
   /// don't have a host-accessible copy
-  mutable llvm::SmallDenseMap<void *, std::vector<uint8_t>>
+  mutable llvm::SmallDenseMap<void *, std::vector<std::byte>>
       CachedAllocationsHostCopy;
 
 public:

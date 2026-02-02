@@ -83,7 +83,11 @@ static constexpr const char *IntrinsicAttribute =
 static constexpr const char *InjectedPayloadAttribute =
     LUTHIER_STRINGIFY(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE);
 
-static constexpr const char *EntryPointAddrAttr = "luthier.entrypoint.addr";
+static constexpr const char *EntryPointAddrAttr =
+    "luthier.function.entrypoint.addr";
+
+static constexpr const char *InitialEntryPointAttr =
+    "luthier.function.initial_entrypoint";
 
 /// \brief If a tool contains an instrumentation hook it \b must
 /// use this macro once. Luthier hooks are annotated via the

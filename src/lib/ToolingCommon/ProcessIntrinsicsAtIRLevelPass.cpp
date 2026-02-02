@@ -21,7 +21,7 @@
 #include "luthier/Tooling/ProcessIntrinsicsAtIRLevelPass.h"
 #include "luthier/Tooling/IntrinsicProcessorsAnalysis.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
-#include "luthier/consts.h"
+
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/ScopedPrinter.h>
 

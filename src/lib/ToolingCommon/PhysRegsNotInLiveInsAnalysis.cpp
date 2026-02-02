@@ -20,10 +20,10 @@
 /// live-in set.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
-#include "luthier/Tooling/AMDGPURegisterLiveness.h"
+#include "luthier/Tooling/VectorRegLiveness.h"
 #include "luthier/Tooling/IModuleIRGeneratorPass.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
-#include "luthier/consts.h"
+
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
 #include <llvm/Support/FormatVariadic.h>
 
@@ -51,41 +51,42 @@ PhysRegsNotInLiveInsAnalysis::run(llvm::Module &IModule,
   auto Out = std::make_unique<llvm::LivePhysRegs>(
       *TM.getSubtargetImpl(*IModule.functions().begin())->getRegisterInfo());
 
-  const auto &LRRegLiveness =
-      MAM.getResult<AMDGPURegLivenessAnalysis>(TargetModule);
-
-  for (const auto &LoweringInfo : IntrinsicIRLoweringInfoMap) {
-    auto &PlaceHolderInlineAsm = LoweringInfo.getPlaceHolderInlineAsm();
-    // Check if the Placeholder inline assembly has only one user
-    if (!PlaceHolderInlineAsm.hasOneUser()) {
-      IModule.getContext().emitError(
-          "Expected a single user for a Luthier intrinsic "
-          "place holder inline assembly.");
-    }
-
-    for (const auto &User : PlaceHolderInlineAsm.users()) {
-      if (auto *InlineAsmCallInst = llvm::dyn_cast<llvm::CallInst>(User)) {
-        auto IntrinsicUserFunction = InlineAsmCallInst->getFunction();
-        if (IntrinsicUserFunction->hasFnAttribute(InjectedPayloadAttribute)) {
-          for (const auto &UsedPhysReg : LoweringInfo.accessed_phys_regs()) {
-            const auto *MIInsertionPoint = IPIP.at(*IntrinsicUserFunction);
-            if (!LRRegLiveness.getMFLevelInstrLiveIns(*MIInsertionPoint)
-                     ->contains(UsedPhysReg)) {
-              if (Out->empty())
-                Out->init(*TM.getSubtargetImpl(*IntrinsicUserFunction)
-                               ->getRegisterInfo());
-              Out->addReg(UsedPhysReg);
-            }
-          }
-        }
-      } else
-        IModule.getContext().emitError(
-            llvm::formatv("Found user of intrinsic inline assembly "
-                          "place holder that's not a call function; "
-                          "Place holder: {0}, User: {1}",
-                          PlaceHolderInlineAsm, User));
-    }
-  }
+  // const auto &LRRegLiveness =
+  //     MAM.getResult<AMDGPURegLivenessAnalysis>(TargetModule);
+  //
+  // for (const auto &LoweringInfo : IntrinsicIRLoweringInfoMap) {
+  //   auto &PlaceHolderInlineAsm = LoweringInfo.getPlaceHolderInlineAsm();
+  //   // Check if the Placeholder inline assembly has only one user
+  //   if (!PlaceHolderInlineAsm.hasOneUser()) {
+  //     IModule.getContext().emitError(
+  //         "Expected a single user for a Luthier intrinsic "
+  //         "place holder inline assembly.");
+  //   }
+  //
+  //   for (const auto &User : PlaceHolderInlineAsm.users()) {
+  //     if (auto *InlineAsmCallInst = llvm::dyn_cast<llvm::CallInst>(User)) {
+  //       auto IntrinsicUserFunction = InlineAsmCallInst->getFunction();
+  //       if (IntrinsicUserFunction->hasFnAttribute(InjectedPayloadAttribute))
+  //       {
+  //         for (const auto &UsedPhysReg : LoweringInfo.accessed_phys_regs()) {
+  //           const auto *MIInsertionPoint = IPIP.at(*IntrinsicUserFunction);
+  //           if (!LRRegLiveness.getMFLevelInstrLiveIns(*MIInsertionPoint)
+  //                    ->contains(UsedPhysReg)) {
+  //             if (Out->empty())
+  //               Out->init(*TM.getSubtargetImpl(*IntrinsicUserFunction)
+  //                              ->getRegisterInfo());
+  //             Out->addReg(UsedPhysReg);
+  //           }
+  //         }
+  //       }
+  //     } else
+  //       IModule.getContext().emitError(
+  //           llvm::formatv("Found user of intrinsic inline assembly "
+  //                         "place holder that's not a call function; "
+  //                         "Place holder: {0}, User: {1}",
+  //                         PlaceHolderInlineAsm, User));
+  //   }
+  // }
   return Result(std::move(Out));
 }
 

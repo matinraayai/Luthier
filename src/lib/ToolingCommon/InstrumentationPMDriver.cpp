@@ -164,6 +164,9 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
     Plugin.registerInstrumentationPassBuilderCallback(PB);
   }
   {
+    /// s_load
+    /// Injected payload -> C function takes no args/returns nothing
+    ///
     llvm::TimeTraceScope Scope("Instrumentation Module IR Optimization");
     SI.registerCallbacks(PIC, &IMAM);
     // Add the Intrinsic Lowering Info analysis pass
@@ -244,6 +247,14 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
 
   TPC->addISelPasses();
 
+  ///  | target application stack | DWORD -> spilling a VGPR | DWORD -> WWM |
+  ///  Instrumentation stack | AMDGPU C calling convention -> FS, S32, IR level
+  ///  it takes no arguments and returns nothing
+  ///  -> MIR level it takes all live registers as argument -> copy to virtual
+  ///  register on entry, copy back to physcial registers on exit
+  /// VGPR2 (WWM) 3 lanes for instrumentation stack [FS_lo, FS_hi, SP] + hidden
+  /// kernel argument ptr -> assign them a frame object function calls within
+  /// instrumentation (WWM -> pass this as argument 0)
   LegacyIPM->add(new PhysicalRegAccessVirtualizationPass());
   LegacyIPM->add(new IntrinsicMIRLoweringPass());
   TPC->insertPass(&llvm::PrologEpilogCodeInserterID,

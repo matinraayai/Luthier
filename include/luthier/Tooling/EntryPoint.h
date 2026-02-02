@@ -83,6 +83,14 @@ public:
     }
   }
 
+  [[nodiscard]] uint64_t getRawAddress() const {
+    if (auto *KD = getKernelDescriptor()) {
+      return reinterpret_cast<uint64_t>(KD);
+    } else {
+      return std::get<uint64_t>(EP);
+    }
+  }
+
   bool operator==(const EntryPoint &Other) const { return EP == Other.EP; }
 };
 

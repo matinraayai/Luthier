@@ -5,7 +5,7 @@
 
 namespace luthier {
 
-void luthier::setFunctionEntryPoint(llvm::Function &F, EntryPoint EP) {
+void setFunctionEntryPoint(llvm::Function &F, EntryPoint EP) {
   F.addFnAttr(EntryPointAddrAttr, llvm::to_string(EP.getRawAddress()));
 }
 

@@ -23,7 +23,6 @@
 /// Must be defined before HIP runtime headers are included
 #define HIP_ENABLE_WARP_SYNC_BUILTINS
 #include "luthier/Common/ErrorCheck.h"
-#include "luthier/consts.h"
 #include <llvm/Support/Error.h>
 /// Undef the ill-defined \c ICMP_NE in HIP headers
 #undef ICMP_NE

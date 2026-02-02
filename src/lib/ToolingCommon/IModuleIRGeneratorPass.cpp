@@ -22,7 +22,6 @@
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Common/LuthierError.h"
 #include "luthier/Intrinsic/IntrinsicCalls.h"
-#include "luthier/consts.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>

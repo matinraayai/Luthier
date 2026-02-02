@@ -37,10 +37,11 @@ namespace luthier {
 class MemoryAllocationAccessor {
 public:
   struct AllocationDescriptor {
+  private:
     /// Encapsulates the allocation's base address on device memory as well as
     /// its size on the device; Note that the underlying memory might not be
     /// host-accessible
-    llvm::ArrayRef<uint8_t> AllocationOnDevice{};
+    const std::byte *DeviceAllocation{nullptr};
 
     /// Encapsulates the allocation's accessible "version" on the host
     /// Depending on the underlying runtime and the allocation being queried,
@@ -48,19 +49,49 @@ public:
     /// be a separate memory containing a copy of the device allocation
     /// The lifetime of this copy can be either managed by the abstracted
     /// underlying runtime or by the accessor
-    llvm::ArrayRef<uint8_t> AllocationOnHost{};
+    const std::byte *HostAccessibleAllocation{nullptr};
+
+    size_t Size{0};
 
     /// If the allocation was loaded using a code object by the underlying
     /// runtime, this field will provide its parsed object
     const object::AMDGCNObjectFile *AllocationCodeObject{nullptr};
 
-    /// TODO: Consider non-uniform loaded code object allocations (i.e., the
-    /// loader loads the code object into multiple non-contiguous memory
-    /// allocations)
+  public:
+    AllocationDescriptor() = default;
+
+    AllocationDescriptor(
+        const std::byte &DeviceAllocation, const std::byte &HostAllocation,
+        size_t Size,
+        const object::AMDGCNObjectFile *AllocationCodeObject = nullptr)
+        : DeviceAllocation(&DeviceAllocation),
+          HostAccessibleAllocation(&HostAllocation), Size(Size),
+          AllocationCodeObject(AllocationCodeObject) {}
+
+    [[nodiscard]] bool empty() const { return Size == 0; }
+
+    [[nodiscard]] size_t getSize() const { return Size; }
+
+    llvm::ArrayRef<uint8_t> getDeviceAllocation() const {
+      return {reinterpret_cast<const uint8_t *>(DeviceAllocation), Size};
+    }
+
+    llvm::ArrayRef<uint8_t> getHostAllocation() const {
+      return {reinterpret_cast<const uint8_t *>(HostAccessibleAllocation),
+              Size};
+    }
+
+    const object::AMDGCNObjectFile *getAllocationCodeObject() const {
+      return AllocationCodeObject;
+    }
+
     /// TODO: Consider adding the allocation flags (e.g., permissions)
   };
 
-  /// Expects the \c SegmentDescriptor associated with the \p DeviceAddr
+  /// Provides the allocation descriptor of the \p DeviceAddr
+  /// \returns The allocation descriptor of the \p DeviceAddr if exists, \c
+  /// std::nullopt if there are not allocation associated with the address, and
+  /// an \c llvm::Error if any other issue was encountered in the process
   [[nodiscard]] virtual llvm::Expected<AllocationDescriptor>
   getAllocationDescriptor(uint64_t DeviceAddr) const = 0;
 

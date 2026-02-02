@@ -19,28 +19,31 @@
 /// passes and their names with the new pass manager's pass builder when loaded.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/AMDGPUMockLoaderPrinter.h"
-#include "luthier/Tooling/AMDGPURegisterLiveness.h"
 #include "luthier/Tooling/CodeDiscoveryPass.h"
 #include "luthier/Tooling/CodeObjectManagerAnalysis.h"
 #include "luthier/Tooling/InitialEntryPointAnalysis.h"
 #include "luthier/Tooling/InstructionTracesAnalysis.h"
-#include "luthier/Tooling/InstrumentationPMDriver.h"
+// #include "luthier/Tooling/InstrumentationPMDriver.h"
 #include "luthier/Tooling/IntrinsicMIRLoweringPass.h"
-#include "luthier/Tooling/LRCallgraph.h"
-#include "luthier/Tooling/MMISlotIndexesAnalysis.h"
+// #include "luthier/Tooling/LRCallgraph.h"
+// #include "luthier/Tooling/MMISlotIndexesAnalysis.h"
 #include "luthier/Tooling/MachineFunctionEntryPoint.h"
 #include "luthier/Tooling/MemoryAllocationAccessor.h"
 #include "luthier/Tooling/MetadataParserAnalysis.h"
 #include "luthier/Tooling/MockAMDGPULoader.h"
 #include "luthier/Tooling/MockLoadAMDGPUCodeObjects.h"
 #include "luthier/Tooling/MockLoaderMemoryAccessor.h"
-#include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
-#include "luthier/Tooling/PrePostAmbleEmitter.h"
-#include "luthier/Tooling/SVStorageAndLoadLocations.h"
+// #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
+// #include "luthier/Tooling/PrePostAmbleEmitter.h"
+// #include "luthier/Tooling/IPVectorRegLiveness.h"
+// #include "luthier/Tooling/SVStorageAndLoadLocations.h"
+#include "luthier/Tooling/IPPredicatedCFG.h"
+#include "luthier/Tooling/NewPMAsmPrinter.h"
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Plugins/PassPlugin.h>
 #include <llvm/Support/TargetSelect.h>
-#include <luthier/Tooling/NewPMAsmPrinter.h>
+// #include <luthier/Tooling/IPReachingDefAnalysis.h>
+// #include <luthier/Tooling/IndirectBranchResolverAnalysis.h>
 
 namespace luthier {
 
@@ -48,7 +51,7 @@ static llvm::cl::OptionCategory OptPluginOptions{"Luthier Opt Plugin Options"};
 
 static std::unique_ptr<MockAMDGPULoader> Loader{nullptr};
 
-static InstrumentationPMDriverOptions InstrumentationPMOptions;
+// static InstrumentationPMDriverOptions InstrumentationPMOptions;
 
 static amdgpu::hsamd::MetadataParser MetadataParser;
 
@@ -184,19 +187,23 @@ llvmGetPassPluginInfo() {
                 *luthier::Loader)));
       });
       MAM.registerPass([]() { return luthier::CodeObjectManagerAnalysis(); });
-      MAM.registerPass([]() { return luthier::AMDGPURegLivenessAnalysis(); });
-      MAM.registerPass([]() { return luthier::LRCallGraphAnalysis(); });
-      MAM.registerPass([]() { return luthier::MMISlotIndexesAnalysis(); });
-      MAM.registerPass([]() {
-        return luthier::LRStateValueStorageAndLoadLocationsAnalysis();
-      });
-      MAM.registerPass(
-          []() { return luthier::FunctionPreambleDescriptorAnalysis(); });
+      // MAM.registerPass([]() { return luthier::LRCallGraphAnalysis(); });
+      // MAM.registerPass([]() { return luthier::MMISlotIndexesAnalysis(); });
+      // MAM.registerPass([]() {
+      //   return luthier::LRStateValueStorageAndLoadLocationsAnalysis();
+      // });
+      // MAM.registerPass(
+      //     []() { return luthier::FunctionPreambleDescriptorAnalysis(); });
       MAM.registerPass(
           []() { return luthier::MockAMDGPULoaderAnalysis(*luthier::Loader); });
       MAM.registerPass([&]() {
         return luthier::MetadataParserAnalysis(luthier::MetadataParser);
       });
+      // MAM.registerPass([]() { return luthier::IPVectorRegLivenessAnalysis();
+      // }); MAM.registerPass(
+      //     []() { return luthier::IndirectBranchResolverAnalysis(); });
+      MAM.registerPass([]() { return luthier::IPPredCFGAnalysis(); });
+      // MAM.registerPass([]() { return luthier::ReachingDefAnalysis(); });
     });
     /// Register Luthier machine function analysis passes
     PB.registerAnalysisRegistrationCallback(
@@ -228,15 +235,19 @@ llvmGetPassPluginInfo() {
             MPM.addPass(luthier::CodeDiscoveryPass());
             return true;
           }
-          if (Name == "luthier-apply-instrumentation") {
-            MPM.addPass(luthier::InstrumentationPMDriver(
-                luthier::InstrumentationPMOptions));
+          if (Name == "luthier-ip-vector-cfg-printer") {
+            MPM.addPass(luthier::IPPredCFGPrinter(llvm::outs()));
             return true;
           }
           if(Name == "luthier-slot-indexes-printer") {
             MPM.addPass(luthier::MMISlotIndexesPrinterPass(llvm::outs()));
             return true;
           }
+          // if (Name == "luthier-apply-instrumentation") {
+          //   MPM.addPass(luthier::InstrumentationPMDriver(
+          //       luthier::InstrumentationPMOptions));
+          //   return true;
+          // }
           return false;
         });
   };

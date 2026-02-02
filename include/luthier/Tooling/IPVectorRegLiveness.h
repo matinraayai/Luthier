@@ -30,13 +30,13 @@ namespace luthier {
 
 class IPVectorRegLiveness {
 private:
-  llvm::DenseMap<const VectorMBB *,
+  llvm::DenseMap<const PredicatedMachineBasicBlock *,
                  std::vector<llvm::MachineBasicBlock::RegisterMaskPair>>
       VectorMBBLivenessMap{};
 
 public:
   llvm::ArrayRef<llvm::MachineBasicBlock::RegisterMaskPair>
-  getVectorMBBLiveIns(const VectorMBB &VecMBB) const {
+  getVectorMBBLiveIns(const PredicatedMachineBasicBlock &VecMBB) const {
     return VectorMBBLivenessMap.at(&VecMBB);
   }
 

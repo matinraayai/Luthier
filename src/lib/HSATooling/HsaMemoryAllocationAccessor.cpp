@@ -56,15 +56,12 @@ HsaMemoryAllocationAccessor::getAllocationDescriptor(
             COC.getAssociatedObjectFile(LCO);
         LUTHIER_RETURN_ON_ERROR(ObjFileOrErr.takeError());
         return AllocationDescriptor{
-            LoadedMemory,
-            {*HostCopyBaseAddrOrErr, LoadedMemory.size()},
-            &*ObjFileOrErr};
+            *reinterpret_cast<const std::byte *>(LoadedMemory.data()),
+            *reinterpret_cast<const std::byte *>(*HostCopyBaseAddrOrErr),
+            LoadedMemory.size(), &*ObjFileOrErr};
       }
     }
-    return LUTHIER_MAKE_HSA_ERROR(
-        llvm::formatv("Failed to obtain the loaded code object associated with "
-                      "device address {0:x}",
-                      DeviceAddr));
+    return AllocationDescriptor();
   }
   case HSA_STATUS_ERROR_INVALID_ARGUMENT: {
     /// The queried address is not managed by the loader; We have to
@@ -82,17 +79,15 @@ HsaMemoryAllocationAccessor::getAllocationDescriptor(
     /// If the allocation already has a host-accessible copy, return it
     if (PointerInfo.hostBaseAddress != nullptr) {
       return AllocationDescriptor{
-          llvm::ArrayRef{static_cast<uint8_t *>(PointerInfo.agentBaseAddress),
-                         PointerInfo.sizeInBytes},
-          llvm::ArrayRef{static_cast<uint8_t *>(PointerInfo.hostBaseAddress),
-                         PointerInfo.sizeInBytes},
-          nullptr};
+          *static_cast<std::byte *>(PointerInfo.agentBaseAddress),
+          *static_cast<std::byte *>(PointerInfo.hostBaseAddress),
+          PointerInfo.sizeInBytes, nullptr};
     } else {
       /// Otherwise, copy the memory to host, and cache it if not already cached
       auto CacheIt =
           CachedAllocationsHostCopy.find(PointerInfo.agentBaseAddress);
       if (CacheIt == CachedAllocationsHostCopy.end()) {
-        std::vector<uint8_t> HostMemory(PointerInfo.sizeInBytes);
+        std::vector<std::byte> HostMemory(PointerInfo.sizeInBytes);
 
         LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
             CoreTable.getTable().callFunction<hsa_memory_copy>(
@@ -107,9 +102,8 @@ HsaMemoryAllocationAccessor::getAllocationDescriptor(
                 .first;
       }
       return AllocationDescriptor{
-          llvm::ArrayRef{static_cast<uint8_t *>(PointerInfo.agentBaseAddress),
-                         PointerInfo.sizeInBytes},
-          CacheIt->second, nullptr};
+          *static_cast<const std::byte *>(PointerInfo.agentBaseAddress),
+          *CacheIt->second.data(), PointerInfo.sizeInBytes, nullptr};
     }
   }
   default:

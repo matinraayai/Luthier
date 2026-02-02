@@ -33,7 +33,7 @@ namespace {
 /// llvm::MDNode::setOperand public instead of protected
 class MutableMDTuple : public llvm::MDTuple {
 public:
-  static bool classof(llvm::MDNode *Node) { return MDTuple::classof(Node); }
+  static bool classof(const Metadata *Node) { return MDTuple::classof(Node); }
 
   LLVM_ABI void setOperand(unsigned I, Metadata *New) {
     MDTuple::setOperand(I, New);
@@ -149,7 +149,7 @@ template <TargetMachineInstrAnnotation Annotation,
           typename = std::enable_if<Annotation != Tag>>
 static std::optional<std::pair<llvm::MDString &, llvm::MDTuple &>>
 getMDEntryIfExists(const TargetMachineInstrMDNode &MDNode) {
-  auto &IndexList = llvm::cast<llvm::MDTuple>(*MDNode.getOperand(Tag));
+  auto &IndexList = llvm::cast<llvm::MDTuple>(*MDNode.getOperand(Tag + 1));
   if (IndexList.getNumOperands() < Annotation + 1) {
     return std::nullopt;
   } else {
@@ -169,7 +169,7 @@ template <TargetMachineInstrAnnotation Annotation,
           typename = std::enable_if<Annotation != Tag>>
 static std::pair<llvm::MDString &, llvm::MDTuple &>
 getOrCreateMDEntry(llvm::LLVMContext &Ctx, TargetMachineInstrMDNode &MDNode) {
-  auto &IndexList = llvm::cast<MutableMDTuple>(*MDNode.getOperand(Tag));
+  auto &IndexList = llvm::cast<MutableMDTuple>(*MDNode.getOperand(Tag + 1));
   if (IndexList.getNumOperands() < Annotation + 1) {
     llvm::MDBuilder MDB{Ctx};
     unsigned CurrentIdx = IndexList.getNumOperands();
@@ -243,6 +243,7 @@ TargetMachineInstrMDNode::setInjectedPayload(llvm::Function &InjectedPayload) {
   } else {
     AuxConstList.push_back(NewAddressMD);
   }
+  return llvm::Error::success();
 }
 
 llvm::Function *TargetMachineInstrMDNode::getInjectedPayloadIfExists() const {

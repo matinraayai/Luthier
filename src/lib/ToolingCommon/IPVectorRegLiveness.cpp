@@ -95,7 +95,7 @@ static void addLiveOutsNoPristines(
 
 static void addLiveIns(
     std::vector<llvm::MachineBasicBlock::RegisterMaskPair> &VecMBBLiveIns,
-    VectorMBB &MBB, const llvm::LivePhysRegs &LiveRegs) {
+    const VectorMBB &MBB, const llvm::LivePhysRegs &LiveRegs) {
   const auto &MF = MBB.getParent().getParent().getMF();
   const auto &MRI = MF.getRegInfo();
   const auto &TRI = *MRI.getTargetRegisterInfo();
@@ -124,7 +124,7 @@ static void computeLiveIns(
 }
 
 std::vector<llvm::MachineBasicBlock::RegisterMaskPair> computeAndAddLiveIns(
-    llvm::LivePhysRegs &LiveRegs, VectorMBB &MBB,
+    llvm::LivePhysRegs &LiveRegs, const VectorMBB &MBB,
     std::vector<llvm::MachineBasicBlock::RegisterMaskPair> &PerVecMBBLiveIns) {
   luthier::computeLiveIns(LiveRegs, MBB, PerVecMBBLiveIns);
   std::vector<llvm::MachineBasicBlock::RegisterMaskPair> OldLiveIns;
@@ -139,7 +139,7 @@ std::vector<llvm::MachineBasicBlock::RegisterMaskPair> computeAndAddLiveIns(
 /// Convenience function for recomputing live-in's for a MBB
 /// \return \c true if any changes were made.
 static bool recomputeLiveIns(
-    VectorMBB &VectorMBB,
+    const VectorMBB &VectorMBB,
     std::vector<llvm::MachineBasicBlock::RegisterMaskPair> &PerVecMBBLiveIns) {
   llvm::LivePhysRegs LPR;
 

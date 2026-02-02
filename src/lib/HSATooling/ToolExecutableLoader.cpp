@@ -25,7 +25,7 @@
 #include "luthier/HSATooling/LoadedCodeObjectCache.h"
 #include "luthier/HSATooling/TargetManager.h"
 #include "luthier/Object/AMDGCNObjectFile.h"
-#include "luthier/consts.h"
+
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Analysis/ValueTracking.h>
 #include <llvm/Bitcode/BitcodeReader.h>
