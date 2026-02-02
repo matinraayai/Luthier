@@ -1,6 +1,5 @@
 //===-- SlotIndexes.cpp - Slot Indexes  ------------------------------===//
 
-// TODO: Add back the print methods
 #include "luthier/Tooling/SlotIndexes.h"
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/Config/llvm-config.h>
@@ -23,7 +22,7 @@ void SlotIndexes::clear() {
   ileAllocator.Reset();
 }
 
-void SlotIndexes::analyze(llvm::MachineFunction &fn, VectorCFG &VecCFG) {
+void SlotIndexes::analyze(PredicatedMachineFunction &PMF) {
 
   // Compute numbering as follows:
   // Grab an iterator to the start of the index list.
@@ -36,7 +35,7 @@ void SlotIndexes::analyze(llvm::MachineFunction &fn, VectorCFG &VecCFG) {
   // FIXME: This can be simplified. The mi2iMap_, Idx2MBBMap, etc. should
   // only need to be set up once after the first numbering is computed.
 
-  mf = &fn;
+  mf = &PMF;
 
   // Check that the list contains only the sentinel.
   assert(indexList.empty() && "Index list non-empty at initial numbering?");
@@ -48,20 +47,19 @@ void SlotIndexes::analyze(llvm::MachineFunction &fn, VectorCFG &VecCFG) {
          "MachineInstr -> Index mapping non-empty at initial numbering?");
 
   unsigned index = 0;
-  MBBRanges.resize(mf->getNumBlockIDs());
-  idx2MBBMap.reserve(mf->size());
+  MBBRanges.resize(PMF.getParent().getNumVecMBBs());
+  idx2MBBMap.reserve(PMF.getParent().getNumVecMBBs());
 
   indexList.push_back(*createEntry(nullptr, index));
 
-  // Iterate over the function, we get the assosciated scalarMBB and iterate over VectorMBB.
-  for (llvm::MachineBasicBlock &MBB : *mf) {
-    ScalarMBB& SMBB = VecCFG.getScalarMBB(MBB);
-    for(VectorMBB& VMBB : SMBB){
+  // Iterate over the function, we get the assosciated LinearMachineBasicBlock and iterate over PredicatedMachineBasicBlock.
+  for (LinearMachineBasicBlock &MBB : PMF) {
+    for(PredicatedMachineBasicBlock& PMBB : MBB){
 
         // Insert an index for the MBB start.
         SlotIndex blockStartIndex(&indexList.back(), SlotIndex::Slot_Block);
 
-        for (MachineInstr &MI : MBB) {
+        for (llvm::MachineInstr &MI : PMBB) {
         if (MI.isDebugOrPseudoInstr())
             continue;
 
@@ -76,10 +74,10 @@ void SlotIndexes::analyze(llvm::MachineFunction &fn, VectorCFG &VecCFG) {
         // We insert one blank instructions between basic blocks.
         indexList.push_back(*createEntry(nullptr, index += SlotIndex::InstrDist));
 
-        MBBRanges[MBB.getNumber()].first = blockStartIndex;
-        MBBRanges[MBB.getNumber()].second = SlotIndex(&indexList.back(),
+        MBBRanges[PMBB.getGlobalNumber()].first = blockStartIndex;
+        MBBRanges[PMBB.getGlobalNumber()].second = SlotIndex(&indexList.back(),
                                                     SlotIndex::Slot_Block);
-        idx2MBBMap.push_back(IdxMBBPair(blockStartIndex, &MBB));
+        idx2MBBMap.push_back(IdxMBBPair(blockStartIndex, &PMBB));
     }
   }
 
@@ -154,79 +152,112 @@ void SlotIndexes::renumberIndexes(IndexList::iterator curItr) {
 }
 
 // Repair indexes after adding and removing instructions.
-// void SlotIndexes::repairIndexesInRange(MachineBasicBlock *MBB,
-//                                        MachineBasicBlock::iterator Begin,
-//                                        MachineBasicBlock::iterator End) {
-//   bool includeStart = (Begin == MBB->begin());
-//   SlotIndex startIdx;
-//   if (includeStart)
-//     startIdx = getMBBStartIdx(MBB);
-//   else
-//     startIdx = getInstructionIndex(*--Begin);
+void SlotIndexes::repairIndexesInRange(PredicatedMachineBasicBlock *MBB,
+                                       PredicatedMachineBasicBlock::iterator Begin,
+                                       PredicatedMachineBasicBlock::iterator End) {
+  bool includeStart = (Begin == MBB->begin());
+  SlotIndex startIdx;
+  if (includeStart)
+    startIdx = getMBBStartIdx(MBB);
+  else
+    startIdx = getInstructionIndex(*--Begin);
 
-//   SlotIndex endIdx;
-//   if (End == MBB->end())
-//     endIdx = getMBBEndIdx(MBB);
-//   else
-//     endIdx = getInstructionIndex(*End);
+  SlotIndex endIdx;
+  if (End == MBB->end())
+    endIdx = getMBBEndIdx(MBB);
+  else
+    endIdx = getInstructionIndex(*End);
 
-//   // FIXME: Conceptually, this code is implementing an iterator on MBB that
-//   // optionally includes an additional position prior to MBB->begin(), indicated
-//   // by the includeStart flag. This is done so that we can iterate MIs in a MBB
-//   // in parallel with SlotIndexes, but there should be a better way to do this.
-//   IndexList::iterator ListB = startIdx.listEntry()->getIterator();
-//   IndexList::iterator ListI = endIdx.listEntry()->getIterator();
-//   MachineBasicBlock::iterator MBBI = End;
-//   bool pastStart = false;
-//   bool OldIndexesRemoved = false;
-//   while (ListI != ListB || MBBI != Begin || (includeStart && !pastStart)) {
-//     assert(ListI->getIndex() >= startIdx.getIndex() &&
-//            (includeStart || !pastStart) &&
-//            "Decremented past the beginning of region to repair.");
+  // FIXME: Conceptually, this code is implementing an iterator on MBB that
+  // optionally includes an additional position prior to MBB->begin(), indicated
+  // by the includeStart flag. This is done so that we can iterate MIs in a MBB
+  // in parallel with SlotIndexes, but there should be a better way to do this.
+  IndexList::iterator ListB = startIdx.listEntry()->getIterator();
+  IndexList::iterator ListI = endIdx.listEntry()->getIterator();
+  PredicatedMachineBasicBlock::iterator MBBI = End;
+  bool pastStart = false;
+  bool OldIndexesRemoved = false;
+  while (ListI != ListB || MBBI != Begin || (includeStart && !pastStart)) {
+    assert(ListI->getIndex() >= startIdx.getIndex() &&
+           (includeStart || !pastStart) &&
+           "Decremented past the beginning of region to repair.");
 
-//     MachineInstr *SlotMI = ListI->getInstr();
-//     MachineInstr *MI = (MBBI != MBB->end() && !pastStart) ? &*MBBI : nullptr;
-//     bool MBBIAtBegin = MBBI == Begin && (!includeStart || pastStart);
-//     bool MIIndexNotFound = MI && !mi2iMap.contains(MI);
-//     bool SlotMIRemoved = false;
+    llvm::MachineInstr *SlotMI = ListI->getInstr();
+    llvm::MachineInstr *MI = (MBBI != MBB->end() && !pastStart) ? &*MBBI : nullptr;
+    bool MBBIAtBegin = MBBI == Begin && (!includeStart || pastStart);
+    bool MIIndexNotFound = MI && !mi2iMap.contains(MI);
+    bool SlotMIRemoved = false;
 
-//     if (SlotMI == MI && !MBBIAtBegin) {
-//       --ListI;
-//       if (MBBI != Begin)
-//         --MBBI;
-//       else
-//         pastStart = true;
-//     } else if (MIIndexNotFound || OldIndexesRemoved) {
-//       if (MBBI != Begin)
-//         --MBBI;
-//       else
-//         pastStart = true;
-//     } else {
-//       // We ran through all the indexes on the interval
-//       //   -> The only thing left is to go through all the
-//       //   remaining MBB instructions and update their indexes
-//       if (ListI == ListB)
-//         OldIndexesRemoved = true;
-//       else
-//         --ListI;
-//       if (SlotMI) {
-//         removeMachineInstrFromMaps(*SlotMI);
-//         SlotMIRemoved = true;
-//       }
-//     }
+    if (SlotMI == MI && !MBBIAtBegin) {
+      --ListI;
+      if (MBBI != Begin)
+        --MBBI;
+      else
+        pastStart = true;
+    } else if (MIIndexNotFound || OldIndexesRemoved) {
+      if (MBBI != Begin)
+        --MBBI;
+      else
+        pastStart = true;
+    } else {
+      // We ran through all the indexes on the interval
+      //   -> The only thing left is to go through all the
+      //   remaining MBB instructions and update their indexes
+      if (ListI == ListB)
+        OldIndexesRemoved = true;
+      else
+        --ListI;
+      if (SlotMI) {
+        removeMachineInstrFromMaps(*SlotMI);
+        SlotMIRemoved = true;
+      }
+    }
 
-//     MachineInstr *InstrToInsert = SlotMIRemoved ? SlotMI : MI;
+    llvm::MachineInstr *InstrToInsert = SlotMIRemoved ? SlotMI : MI;
 
-//     // Insert instruction back into the maps after passing it/removing the index
-//     if ((MIIndexNotFound || SlotMIRemoved) && InstrToInsert->getParent() &&
-//         !InstrToInsert->isDebugOrPseudoInstr())
-//       insertMachineInstrInMaps(*InstrToInsert);
-//   }
-// }
+    // Insert instruction back into the maps after passing it/removing the index
+    if ((MIIndexNotFound || SlotMIRemoved) && InstrToInsert->getParent() &&
+        !InstrToInsert->isDebugOrPseudoInstr())
+      insertMachineInstrInMaps(*InstrToInsert);
+  }
+}
 
 void SlotIndexes::packIndexes() {
   for (auto [Index, Entry] : enumerate(indexList))
     Entry.setIndex(Index * SlotIndex::InstrDist);
 }
 
+void SlotIndexes::print(llvm::raw_ostream &OS) const {
+  for (const IndexListEntry &ILE : indexList) {
+    OS << ILE.getIndex() << ' ';
 
+    if (ILE.getInstr())
+      OS << *ILE.getInstr();
+    else
+      OS << '\n';
+  }
+
+  for (unsigned i = 0, e = MBBRanges.size(); i != e; ++i)
+    OS << "%bb." << i << "\t[" << MBBRanges[i].first << ';'
+       << MBBRanges[i].second << ")\n";
+}
+
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+LLVM_DUMP_METHOD void SlotIndexes::dump() const { print(llvm::dbgs()); }
+#endif
+
+// Print a SlotIndex to a raw_ostream.
+void SlotIndex::print(llvm::raw_ostream &os) const {
+  if (isValid())
+    os << listEntry()->getIndex() << "Berd"[getSlot()];
+  else
+    os << "invalid";
+}
+
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+// Dump a SlotIndex to stderr.
+LLVM_DUMP_METHOD void SlotIndex::dump() const {
+  print(llvm::dbgs());
+  llvm::dbgs() << "\n";
+}
+#endif
