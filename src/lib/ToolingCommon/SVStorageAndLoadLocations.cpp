@@ -19,7 +19,6 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/SVStorageAndLoadLocations.h"
 #include "luthier/Common/LuthierError.h"
-#include "luthier/Tooling/AMDGPURegisterLiveness.h"
 #include "luthier/Tooling/IPVectorCFG.h"
 #include "luthier/Tooling/IModuleIRGeneratorPass.h"
 #include "luthier/Tooling/LRCallgraph.h"
@@ -27,6 +26,7 @@
 #include "luthier/Tooling/SlotIndexes.h"
 #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
 #include "luthier/Tooling/StateValueArrayStorage.h"
+#include "luthier/Tooling/VectorRegLiveness.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
 #include <GCNSubtarget.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
@@ -409,7 +409,7 @@ SVStorageAndLoadLocations::getStateValueArrayLoadPlanForInstPoint(
 llvm::Error SVStorageAndLoadLocations::calculate(
     const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
     const MMISlotIndexesAnalysis::Result &SlotIndexes,
-    const AMDGPURegisterLiveness &RegLiveness,
+    const VectorRegLiveness &RegLiveness,
     const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
     const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
     const IPVectorCFG &IPCFG) {
@@ -621,14 +621,14 @@ LRStateValueStorageAndLoadLocationsAnalysis::run(
       TargetMAM.getCachedResult<llvm::MachineModuleAnalysis>(TargetModule)
           ->getMMI(),
       TargetModule, TargetMAM.getResult<MMISlotIndexesAnalysis>(TargetModule),
-      *TargetMAM.getCachedResult<AMDGPURegLivenessAnalysis>(TargetModule),
+      *TargetMAM.getCachedResult<VectorRegLivenessAnalysis>(TargetModule),
       *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule),
       TargetMAM.getResult<FunctionPreambleDescriptorAnalysis>(TargetModule),
       IMAM.getResult<PhysRegsNotInLiveInsAnalysis>(IModule)
           .getPhysRegsNotInLiveIns(),
       TargetMAM.getResult<IPVectorCFGAnalysis>(TargetModule).getVecCFG())
   if (Err)
-    TargetModule.getContext().emitError(toString(std::move(Err)));
+    TargetModule.getContext().emitError(llvm::toString(std::move(Err)));
 
   return Out;
 }
