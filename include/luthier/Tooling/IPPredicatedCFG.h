@@ -54,7 +54,7 @@ private:
 
   unsigned NumVecMBBs{0};
 
-  llvm::MachineFunction *EntryMF;
+  PredMFBuilder *EntryPredMF;
 
   IPPredicatedCFG() = default;
 
@@ -177,12 +177,12 @@ public:
 
   LLVM_DUMP_METHOD void dump() const;
 
-  llvm::MachineFunction &getEntry() {
-    assert(EntryMF && "Entry function must be set");
-    return *EntryMF;
+  PredicatedMachineFunction &getEntry() {
+    assert(EntryPredMF && "Entry function must be set");
+    return EntryPredMF->getPredMF();
   }
 
-  [[nodiscard]] const llvm::MachineFunction &getEntry() const {
+  [[nodiscard]] const PredicatedMachineFunction &getEntry() const {
     return const_cast<IPPredicatedCFG *>(this)->getEntry();
   }
 
@@ -245,216 +245,247 @@ public:
 
 } // namespace luthier
 
-// namespace llvm {
-//
-// template <>
-// struct GraphTraits<luthier::IPPredicatedCFG *>
-//     : public GraphTraits<luthier::PredicatedMachineBasicBlock *> {
-//   static NodeRef getEntryNode(luthier::IPPredicatedCFG *F) {
-//     auto EntryFunctionIt = F->getEntry();
-//     if (EntryFunctionIt != F->end() && !EntryFunctionIt->empty()) {
-//       return *EntryFunctionIt->begin()->begin();
-//     }
-//     return nullptr;
-//   }
-//
-//   class node_iterator {
-//     luthier::IPPredicatedCFG::iterator PredMFIter;
-//     luthier::PredicatedMachineFunction::iterator LinearMBBIter;
-//     luthier::LinearMachineBasicBlock::iterator PredMBBIter;
-//
-//   public:
-//     node_iterator(luthier::IPPredicatedCFG::iterator PredMFIter,
-//                   luthier::PredicatedMachineFunction::iterator LinearMBBIter,
-//                   luthier::LinearMachineBasicBlock::iterator PredMBBIter)
-//         : PredMFIter(PredMFIter), LinearMBBIter(LinearMBBIter),
-//           PredMBBIter(PredMBBIter) {}
-//
-//     using difference_type = ptrdiff_t;
-//     using iterator_category = std::forward_iterator_tag;
-//     using value_type = luthier::PredicatedMachineBasicBlock;
-//     using pointer = value_type *;
-//
-//     pointer operator*() const { return &*PredMBBIter; }
-//
-//     pointer operator->() const { return &*PredMBBIter; }
-//
-//     node_iterator operator++() {
-//       ++PredMBBIter;
-//       if (PredMBBIter == LinearMBBIter->end()) {
-//         assert(LinearMBBIter != PredMFIter->end() && "went over the end");
-//         ++LinearMBBIter;
-//         if (LinearMBBIter == PredMFIter->end()) {
-//           assert(PredMFIter != PredMFIter->getParent().end() &&
-//                  "went over the end");
-//           ++PredMFIter;
-//           LinearMBBIter = PredMFIter->begin();
-//         }
-//         PredMBBIter = LinearMBBIter->begin();
-//       }
-//       return *this;
-//     }
-//
-//     node_iterator operator++(int) {
-//       auto Copy = *this;
-//       ++(*this);
-//       return Copy;
-//     }
-//
-//     bool operator==(const node_iterator &Other) const {
-//       return PredMFIter == Other.PredMFIter &&
-//              PredMBBIter == Other.PredMBBIter &&
-//              LinearMBBIter == Other.LinearMBBIter;
-//     }
-//
-//     bool operator!=(const node_iterator &Other) const {
-//       return !(*this == Other);
-//     }
-//   };
-//
-//   // nodes_iterator/begin/end - Allow iteration over all nodes in the graph
-//
-//   static node_iterator nodes_begin(luthier::IPPredicatedCFG *F) {
-//     auto MFPredIt = F->end();
-//     auto LinearMBBIt = MFPredIt != F->end()
-//                            ? MFPredIt->begin()
-//                            : luthier::PredicatedMachineFunction::iterator{};
-//     auto PredMBBIt =
-//         LinearMBBIt != luthier::PredicatedMachineFunction::iterator{}
-//             ? LinearMBBIt->begin()
-//             : luthier::LinearMachineBasicBlock::iterator{};
-//     return node_iterator{MFPredIt, LinearMBBIt, PredMBBIt};
-//   }
-//
-//   static node_iterator nodes_end(luthier::IPPredicatedCFG *F) {
-//     auto MFPredIt = F->begin();
-//     auto LinearMBBIt = F->empty()
-//                            ? luthier::PredicatedMachineFunction::iterator{}
-//                            : F->back().end();
-//     auto PredMBBIt =
-//         LinearMBBIt != luthier::PredicatedMachineFunction::iterator{}
-//             ? F->back().back().end()
-//             : luthier::LinearMachineBasicBlock::iterator{};
-//     return node_iterator{MFPredIt, LinearMBBIt, PredMBBIt};
-//   }
-//
-//   static unsigned size(luthier::IPPredicatedCFG *F) {
-//     return F->getNumVecMBBs();
-//   }
-//
-//   static unsigned getMaxNumber(luthier::IPPredicatedCFG *F) {
-//     return F->getNumVecMBBs();
-//   }
-//   static unsigned getNumberEpoch(luthier::IPPredicatedCFG *F) {
-//     return F->getNumVecMBBs();
-//   }
-// };
-//
-// template <>
-// struct GraphTraits<const luthier::IPPredicatedCFG *>
-//     : public GraphTraits<const luthier::PredicatedMachineBasicBlock *> {
-//   static NodeRef getEntryNode(const luthier::IPPredicatedCFG *F) {
-//     auto EntryFunctionIt = F->getEntry();
-//     if (EntryFunctionIt != F->end() && !EntryFunctionIt->empty()) {
-//       return &*EntryFunctionIt->begin()->begin();
-//     }
-//     return nullptr;
-//   }
-//
-//   class node_iterator {
-//     luthier::IPPredicatedCFG::const_iterator PredMFIter;
-//     luthier::PredicatedMachineFunction::const_iterator LinearMBBIter;
-//     luthier::LinearMachineBasicBlock::const_iterator PredMBBIter;
-//
-//   public:
-//     node_iterator(
-//         luthier::IPPredicatedCFG::const_iterator PredMFIter,
-//         luthier::PredicatedMachineFunction::const_iterator LinearMBBIter,
-//         luthier::LinearMachineBasicBlock::const_iterator PredMBBIter)
-//         : PredMFIter(PredMFIter), LinearMBBIter(LinearMBBIter),
-//           PredMBBIter(PredMBBIter) {}
-//
-//     using difference_type = ptrdiff_t;
-//     using iterator_category = std::forward_iterator_tag;
-//     using value_type = const luthier::PredicatedMachineBasicBlock;
-//     using pointer = value_type *;
-//
-//     pointer operator*() const { return &*PredMBBIter; }
-//
-//     pointer operator->() const { return &*PredMBBIter; }
-//
-//     node_iterator operator++() {
-//       ++PredMBBIter;
-//       if (PredMBBIter == LinearMBBIter->end()) {
-//         assert(LinearMBBIter != PredMFIter->end() && "went over the end");
-//         ++LinearMBBIter;
-//         if (LinearMBBIter == PredMFIter->end()) {
-//           assert(PredMFIter != PredMFIter->getParent().end() &&
-//                  "went over the end");
-//           ++PredMFIter;
-//           LinearMBBIter = PredMFIter->begin();
-//         }
-//         PredMBBIter = LinearMBBIter->begin();
-//       }
-//       return *this;
-//     }
-//
-//     node_iterator operator++(int) {
-//       auto Copy = *this;
-//       ++(*this);
-//       return Copy;
-//     }
-//
-//     bool operator==(const node_iterator &Other) const {
-//       return PredMFIter == Other.PredMFIter &&
-//              PredMBBIter == Other.PredMBBIter &&
-//              LinearMBBIter == Other.LinearMBBIter;
-//     }
-//
-//     bool operator!=(const node_iterator &Other) const {
-//       return !(*this == Other);
-//     }
-//   };
-//
-//   // nodes_iterator/begin/end - Allow iteration over all nodes in the graph
-//
-//   static node_iterator nodes_begin(const luthier::IPPredicatedCFG *F) {
-//     auto MFPredIt = F->begin();
-//     auto LinearMBBIt =
-//         MFPredIt != F->end()
-//             ? MFPredIt->begin()
-//             : luthier::PredicatedMachineFunction::const_iterator{};
-//     auto PredMBBIt =
-//         LinearMBBIt != luthier::PredicatedMachineFunction::const_iterator{}
-//             ? LinearMBBIt->begin()
-//             : luthier::LinearMachineBasicBlock::const_iterator{};
-//     return node_iterator{MFPredIt, LinearMBBIt, PredMBBIt};
-//   }
-//
-//   static node_iterator nodes_end(const luthier::IPPredicatedCFG *F) {
-//     auto MFPredIt = F->end();
-//     auto LinearMBBIt =
-//         F->empty() ? luthier::PredicatedMachineFunction::const_iterator{}
-//                    : F->back().end();
-//     auto PredMBBIt =
-//         LinearMBBIt != luthier::PredicatedMachineFunction::const_iterator{}
-//             ? F->back().back().end()
-//             : luthier::LinearMachineBasicBlock::const_iterator{};
-//     return node_iterator{MFPredIt, LinearMBBIt, PredMBBIt};
-//   }
-//
-//   static unsigned size(luthier::IPPredicatedCFG *F) {
-//     return F->getNumVecMBBs();
-//   }
-//
-//   static unsigned getMaxNumber(luthier::IPPredicatedCFG *F) {
-//     return F->getNumVecMBBs();
-//   }
-//   static unsigned getNumberEpoch(luthier::IPPredicatedCFG *F) {
-//     return F->getNumVecMBBs();
-//   }
-// };
-//
-// } // namespace llvm
+namespace llvm {
+
+template <>
+struct GraphTraits<luthier::IPPredicatedCFG *>
+    : public GraphTraits<luthier::PredicatedMachineBasicBlock *> {
+  static NodeRef getEntryNode(luthier::IPPredicatedCFG *F) {
+    luthier::PredicatedMachineFunction &EntryPredMF = F->getEntry();
+    return F->empty() ? nullptr : &*EntryPredMF.begin()->begin();
+  }
+
+  class node_iterator {
+    luthier::IPPredicatedCFG::iterator PredMFIter;
+    luthier::PredicatedMachineFunction::iterator LinearMBBIter;
+    luthier::LinearMachineBasicBlock::iterator PredMBBIter;
+
+  public:
+    explicit node_iterator(
+        luthier::IPPredicatedCFG::iterator PredMFIter,
+        luthier::PredicatedMachineFunction::iterator LinearMBBIter = {},
+        luthier::LinearMachineBasicBlock::iterator PredMBBIter = {})
+        : PredMFIter(PredMFIter), LinearMBBIter(LinearMBBIter),
+          PredMBBIter(PredMBBIter) {}
+
+    using difference_type = ptrdiff_t;
+    using iterator_category = std::forward_iterator_tag;
+    using value_type = luthier::PredicatedMachineBasicBlock;
+    using pointer = value_type *;
+    using reference = value_type &;
+
+    reference operator*() const { return *PredMBBIter; }
+
+    pointer operator->() const { return &*PredMBBIter; }
+
+    node_iterator operator++() {
+      ++PredMBBIter;
+      if (PredMBBIter == LinearMBBIter->end()) {
+        assert(LinearMBBIter != PredMFIter->end() && "went over the end");
+        ++LinearMBBIter;
+        if (LinearMBBIter == PredMFIter->end()) {
+          assert(PredMFIter != PredMFIter->getParent().end() &&
+                 "went over the end");
+          ++PredMFIter;
+          LinearMBBIter = PredMFIter->begin();
+        }
+        PredMBBIter = LinearMBBIter->begin();
+      }
+      return *this;
+    }
+
+    node_iterator operator++(int) {
+      auto Copy = *this;
+      ++(*this);
+      return Copy;
+    }
+
+    bool operator==(const node_iterator &Other) const {
+      return PredMFIter == Other.PredMFIter &&
+             PredMBBIter == Other.PredMBBIter &&
+             LinearMBBIter == Other.LinearMBBIter;
+    }
+
+    bool operator!=(const node_iterator &Other) const {
+      return !(*this == Other);
+    }
+  };
+
+  // nodes_iterator/begin/end - Allow iteration over all nodes in the graph
+
+  static node_iterator nodes_begin(luthier::IPPredicatedCFG *F) {
+    auto MFPredIt = F->end();
+    auto LinearMBBIt = MFPredIt != F->end()
+                           ? MFPredIt->begin()
+                           : luthier::PredicatedMachineFunction::iterator{};
+    auto PredMBBIt =
+        LinearMBBIt != luthier::PredicatedMachineFunction::iterator{}
+            ? LinearMBBIt->begin()
+            : luthier::LinearMachineBasicBlock::iterator{};
+    return node_iterator{MFPredIt, LinearMBBIt, PredMBBIt};
+  }
+
+  static node_iterator nodes_end(luthier::IPPredicatedCFG *F) {
+    auto MFPredIt = F->begin();
+    auto LinearMBBIt = F->empty()
+                           ? luthier::PredicatedMachineFunction::iterator{}
+                           : F->back().end();
+    auto PredMBBIt =
+        LinearMBBIt != luthier::PredicatedMachineFunction::iterator{}
+            ? F->back().back().end()
+            : luthier::LinearMachineBasicBlock::iterator{};
+    return node_iterator{MFPredIt, LinearMBBIt, PredMBBIt};
+  }
+
+  static unsigned size(luthier::IPPredicatedCFG *F) {
+    return F->getNumVecMBBs();
+  }
+
+  static unsigned getMaxNumber(luthier::IPPredicatedCFG *F) {
+    return F->getNumVecMBBs();
+  }
+  static unsigned getNumberEpoch(luthier::IPPredicatedCFG *F) {
+    return F->getNumVecMBBs();
+  }
+};
+
+template <>
+struct GraphTraits<const luthier::IPPredicatedCFG *>
+    : public GraphTraits<const luthier::PredicatedMachineBasicBlock *> {
+  static NodeRef getEntryNode(const luthier::IPPredicatedCFG *F) {
+    const luthier::PredicatedMachineFunction &EntryPredMF = F->getEntry();
+    return F->empty() ? nullptr : &*EntryPredMF.begin()->begin();
+  }
+
+  class node_iterator {
+    luthier::IPPredicatedCFG::const_iterator PredMFIter;
+    luthier::PredicatedMachineFunction::const_iterator LinearMBBIter;
+    luthier::LinearMachineBasicBlock::const_iterator PredMBBIter;
+
+  public:
+    node_iterator(
+        luthier::IPPredicatedCFG::const_iterator PredMFIter,
+        luthier::PredicatedMachineFunction::const_iterator LinearMBBIter,
+        luthier::LinearMachineBasicBlock::const_iterator PredMBBIter)
+        : PredMFIter(PredMFIter), LinearMBBIter(LinearMBBIter),
+          PredMBBIter(PredMBBIter) {}
+
+    using difference_type = ptrdiff_t;
+    using iterator_category = std::forward_iterator_tag;
+    using value_type = const luthier::PredicatedMachineBasicBlock;
+    using pointer = value_type *;
+    using reference = value_type &;
+
+    reference operator*() const { return *PredMBBIter; }
+
+    pointer operator->() const { return &*PredMBBIter; }
+
+    node_iterator operator++() {
+      ++PredMBBIter;
+      if (PredMBBIter == LinearMBBIter->end()) {
+        assert(LinearMBBIter != PredMFIter->end() && "went over the end");
+        ++LinearMBBIter;
+        if (LinearMBBIter == PredMFIter->end()) {
+          assert(PredMFIter != PredMFIter->getParent().end() &&
+                 "went over the end");
+          ++PredMFIter;
+          LinearMBBIter = PredMFIter->begin();
+        }
+        PredMBBIter = LinearMBBIter->begin();
+      }
+      return *this;
+    }
+
+    node_iterator operator++(int) {
+      auto Copy = *this;
+      ++(*this);
+      return Copy;
+    }
+
+    bool operator==(const node_iterator &Other) const {
+      return PredMFIter == Other.PredMFIter &&
+             PredMBBIter == Other.PredMBBIter &&
+             LinearMBBIter == Other.LinearMBBIter;
+    }
+
+    bool operator!=(const node_iterator &Other) const {
+      return !(*this == Other);
+    }
+  };
+
+  // nodes_iterator/begin/end - Allow iteration over all nodes in the graph
+
+  static node_iterator nodes_begin(const luthier::IPPredicatedCFG *F) {
+    auto MFPredIt = F->begin();
+    auto LinearMBBIt =
+        MFPredIt != F->end()
+            ? MFPredIt->begin()
+            : luthier::PredicatedMachineFunction::const_iterator{};
+    auto PredMBBIt =
+        LinearMBBIt != luthier::PredicatedMachineFunction::const_iterator{}
+            ? LinearMBBIt->begin()
+            : luthier::LinearMachineBasicBlock::const_iterator{};
+    return node_iterator{MFPredIt, LinearMBBIt, PredMBBIt};
+  }
+
+  static node_iterator nodes_end(const luthier::IPPredicatedCFG *F) {
+    auto MFPredIt = F->end();
+    auto LinearMBBIt =
+        F->empty() ? luthier::PredicatedMachineFunction::const_iterator{}
+                   : F->back().end();
+    auto PredMBBIt =
+        LinearMBBIt != luthier::PredicatedMachineFunction::const_iterator{}
+            ? F->back().back().end()
+            : luthier::LinearMachineBasicBlock::const_iterator{};
+    return node_iterator{MFPredIt, LinearMBBIt, PredMBBIt};
+  }
+
+  static unsigned size(luthier::IPPredicatedCFG *F) {
+    return F->getNumVecMBBs();
+  }
+
+  static unsigned getMaxNumber(luthier::IPPredicatedCFG *F) {
+    return F->getNumVecMBBs();
+  }
+  static unsigned getNumberEpoch(luthier::IPPredicatedCFG *F) {
+    return F->getNumVecMBBs();
+  }
+};
+
+/// Specialization of \c DomTreeNodeTraits because the normal one works with
+/// "Normal" IR/MIR
+template <> struct DomTreeNodeTraits<luthier::PredicatedMachineBasicBlock> {
+  using NodeType = luthier::PredicatedMachineBasicBlock;
+  using NodePtr = luthier::PredicatedMachineBasicBlock *;
+  using ParentPtr = luthier::IPPredicatedCFG *;
+  using ParentType = std::remove_pointer_t<ParentPtr>;
+
+  static luthier::PredicatedMachineBasicBlock *getEntryNode(ParentPtr Parent) {
+    return GraphTraits<luthier::IPPredicatedCFG *>::getEntryNode(Parent);
+  }
+
+  static ParentPtr getParent(NodePtr BB) {
+    return &BB->getParent().getParent().getParent();
+  }
+};
+
+template <>
+struct DomTreeNodeTraits<const luthier::PredicatedMachineBasicBlock> {
+  using NodeType = const luthier::PredicatedMachineBasicBlock;
+  using NodePtr = const luthier::PredicatedMachineBasicBlock *;
+  using ParentPtr = const luthier::IPPredicatedCFG *;
+  using ParentType = std::remove_pointer_t<ParentPtr>;
+
+  static const luthier::PredicatedMachineBasicBlock *
+  getEntryNode(ParentPtr Parent) {
+    return GraphTraits<const luthier::IPPredicatedCFG *>::getEntryNode(Parent);
+  }
+
+  static ParentPtr getParent(NodePtr BB) {
+    return &BB->getParent().getParent().getParent();
+  }
+};
+
+} // namespace llvm
 
 #endif

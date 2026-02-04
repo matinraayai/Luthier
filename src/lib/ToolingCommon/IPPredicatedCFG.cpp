@@ -93,7 +93,11 @@ IPPredicatedCFG::getIPPredCFG(llvm::Module &M,
     Out->MFToPredMF.insert({std::ref(MF), std::ref(PredMF)});
   }
 
-  Out->EntryMF = EntryMF;
+  if (!EntryMF) {
+    return LUTHIER_MAKE_GENERIC_ERROR("Failed to find an entry function.");
+  }
+
+  Out->EntryPredMF = &Out->MFToPredMF.at(*EntryMF).get();
 
   /// Link the call and indirect jump instructions + sort the numbering of
   /// all vector CFGs

@@ -23,7 +23,7 @@ add_library(LuthierToolingCommon OBJECT
         #        PhysicalRegAccessVirtualizationPass.cpp
         #        SVStorageAndLoadLocations.cpp
         #        LRCallGraph.cpp
-        #        IPVectorRegLiveness.cpp
+        IPVectorRegLiveness.cpp
         #        IntrinsicMIRLoweringPass.cpp
         #        InjectedPayloadPEIPass.cpp
         #        PrePostAmbleEmitter.cpp
@@ -55,10 +55,10 @@ add_library(LuthierToolingCommon OBJECT
         Metadata.cpp
         NewPMAsmPrinter.cpp
         FunctionAnnotations.cpp
-        #        IPReachingDefAnalysis.cpp
-        #        IPLoopTraversal.cpp
+        IPReachingDefAnalysis.cpp
+        IPPredicatedLoopTraversal.cpp
         #        IPRegScavenger.cpp
-                IndirectBranchResolverAnalysis.cpp
+        IndirectBranchResolverAnalysis.cpp
         PredicatedMachineBasicBlock.cpp
         LinearMachineBasicBlock.cpp
         PredicatedMachineFunction.cpp

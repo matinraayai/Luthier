@@ -35,14 +35,14 @@
 #include "luthier/Tooling/MockLoaderMemoryAccessor.h"
 // #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
 // #include "luthier/Tooling/PrePostAmbleEmitter.h"
-// #include "luthier/Tooling/IPVectorRegLiveness.h"
+#include "luthier/Tooling/IPVectorRegLiveness.h"
 // #include "luthier/Tooling/SVStorageAndLoadLocations.h"
 #include "luthier/Tooling/IPPredicatedCFG.h"
+#include "luthier/Tooling/IPReachingDefAnalysis.h"
 #include "luthier/Tooling/NewPMAsmPrinter.h"
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Plugins/PassPlugin.h>
 #include <llvm/Support/TargetSelect.h>
-// #include <luthier/Tooling/IPReachingDefAnalysis.h>
 // #include <luthier/Tooling/IndirectBranchResolverAnalysis.h>
 
 namespace luthier {
@@ -199,11 +199,11 @@ llvmGetPassPluginInfo() {
       MAM.registerPass([&]() {
         return luthier::MetadataParserAnalysis(luthier::MetadataParser);
       });
-      // MAM.registerPass([]() { return luthier::IPVectorRegLivenessAnalysis();
-      // }); MAM.registerPass(
-      //     []() { return luthier::IndirectBranchResolverAnalysis(); });
+      MAM.registerPass([]() { return luthier::IPVectorRegLivenessAnalysis(); });
+      // MAM.registerPass(
+      // []() { return luthier::IndirectBranchResolverAnalysis(); });
       MAM.registerPass([]() { return luthier::IPPredCFGAnalysis(); });
-      // MAM.registerPass([]() { return luthier::ReachingDefAnalysis(); });
+      MAM.registerPass([]() { return luthier::ReachingDefAnalysis(); });
     });
     /// Register Luthier machine function analysis passes
     PB.registerAnalysisRegistrationCallback(
@@ -241,6 +241,12 @@ llvmGetPassPluginInfo() {
           }
           if(Name == "luthier-slot-indexes-printer") {
             MPM.addPass(luthier::MMISlotIndexesPrinterPass(llvm::outs()));
+          if (Name == "luthier-ip-vector-reg-liveness-printer") {
+            MPM.addPass(luthier::IPVectorRegLivenessPrinter(llvm::outs()));
+            return true;
+          }
+          if (Name == "luthier-ip-reaching-def-printer") {
+            MPM.addPass(luthier::ReachingDefPrinterPass(llvm::outs()));
             return true;
           }
           // if (Name == "luthier-apply-instrumentation") {

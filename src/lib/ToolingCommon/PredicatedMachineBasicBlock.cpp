@@ -38,6 +38,29 @@ std::string PredicatedMachineBasicBlock::getName() const {
       .str();
 }
 
+PredicatedMachineBasicBlock::iterator
+PredicatedMachineBasicBlock::getFirstNonDebugInstr(bool SkipPseudoOp) {
+  // Skip over begin-of-block dbg_value instructions.
+  return skipDebugInstructionsForward(begin(), end(), SkipPseudoOp);
+}
+
+PredicatedMachineBasicBlock::iterator
+PredicatedMachineBasicBlock::getLastNonDebugInstr(bool SkipPseudoOp) {
+  // Skip over end-of-block dbg_value instructions.
+  iterator B = begin(), I = end();
+  while (I != B) {
+    --I;
+    // Return instruction that starts a bundle.
+    if (I->isDebugInstr() || I->isInsideBundle())
+      continue;
+    if (SkipPseudoOp && I->isPseudoProbe())
+      continue;
+    return I;
+  }
+  // The block is all debug values.
+  return end();
+}
+
 void PredicatedMachineBasicBlock::print(llvm::raw_ostream &OS,
                                         unsigned int Indent) const {
   const auto &ST = getParent().getParent().getMF().getSubtarget();
