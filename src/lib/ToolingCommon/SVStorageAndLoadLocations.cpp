@@ -1,4 +1,4 @@
-//===-- StateValueLocationIntervalsPass.cpp -------------------------------===//
+//===-- StateValueLocationAndLoadLocations.cpp ----------------------------===//
 // Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,7 @@
 #include "luthier/Tooling/SlotIndexes.h"
 #include "luthier/Tooling/IPPredicatedCFG.h"
 #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
+#include "luthier/Tooling/Predic"
 #include "luthier/Tooling/StateValueArrayStorage.h"
 #include "luthier/Tooling/IPVectorRegLiveness.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
@@ -39,7 +40,7 @@
 
 namespace luthier {
 
-/// Scavenges \p NumRegs registers with class \p RC available in \p MRI
+/// Finds \p NumRegs registers with class \p RC available in \p MRI
 /// Availability means a register is allocatable and not in \p MRI and
 /// is not in \p AccessedPhysicalRegsNotInLiveIns and not in \p LiveInRegs
 /// \param [in] MRI the \c llvm::MachineRegisterInfo of the function being
@@ -55,7 +56,7 @@ namespace luthier {
 /// \param [in] NumRegs the number of registers to be scavenged
 /// \param [out] ScavengedRegs the registers scavenged by the function
 static void
-scavengeFreeRegister(const llvm::MachineRegisterInfo &MRI,
+findAvailableRegister(const llvm::MachineRegisterInfo &MRI,
                      const llvm::TargetRegisterClass &RC,
                      const llvm::LivePhysRegs &AccessedPhysicalRegsNotInLiveIns,
                      const llvm::LivePhysRegs &LiveInRegs, int NumRegs,
@@ -73,22 +74,22 @@ scavengeFreeRegister(const llvm::MachineRegisterInfo &MRI,
   }
 }
 
-/// Scavenges \p NumRegs registers with class \p RC available in \p MRI
+/// Searches for \p NumRegs registers with class \p RC available in \p MRI
 /// Availability means a register is allocatable and not used in \p MRI and
 /// is not in \p AccessedPhysicalRegsNotInLiveIns and not in \p LiveInRegs
 /// \param MRI the \c llvm::MachineRegisterInfo of the function being
-/// scavenged
+/// searches
 /// \param RC the \c llvm::TargetRegisterClass of the register to be
-//// scavenged
+//// searched
 /// \param AccessedPhysicalRegsNotInLiveIns a set of physical registers
 /// that are accessed by injected payloads of the instrumentation module but
 /// at the point of access are not part of the Live-in registers of the
 /// instrumentation points
 /// \param LiveInRegs a set of physical registers that are live at the
 /// app instruction where the register scavenging is taking place
-/// \return the scavenged register if successful, or zero otherwise
+/// \return the available register if successful, or zero otherwise
 static llvm::MCRegister
-scavengeFreeRegister(const llvm::MachineRegisterInfo &MRI,
+findAvailableRegister(const llvm::MachineRegisterInfo &MRI,
                      const llvm::TargetRegisterClass &RC,
                      const llvm::LivePhysRegs &AccessedPhysicalRegsNotInLiveIns,
                      const llvm::LivePhysRegs &LiveInRegs) {
@@ -102,17 +103,17 @@ scavengeFreeRegister(const llvm::MachineRegisterInfo &MRI,
   return {};
 }
 
-/// Scavenges \p NumRegs register of class \p RC that are unused across
+/// Finds \p NumRegs register of class \p RC that are unused across
 /// all \p RelatedFunctions and are not in \p AccessedPhysRegsNotInLiveIns
-/// \param [in] Functions the functions being scavenged for a free register
-/// \param [in] RC the register class of the registers being scavenged
+/// \param [in] Functions the functions being searched for a free register
+/// \param [in] RC the register class of the registers being searched
 /// \param [in] AccessedPhysRegsNotInLiveIns a set of physical registers
 /// accessed by the injected payloads that are not in the live-in set of their
 /// injected payload at the point of access
-/// \param [in] NumRegs number of registers to be scavenged
-/// \param [out] Regs the set of registers that were scavenged
+/// \param [in] NumRegs number of available registers needed
+/// \param [out] Regs the set of registers that were available
 static void
-scavengeFreeRegister(llvm::ArrayRef<PredicatedMachineFunction *> Functions,
+findAvailableRegister(llvm::ArrayRef<PredicatedMachineFunction *> Functions,
                      const llvm::TargetRegisterClass *RC,
                      const llvm::LivePhysRegs &AccessedPhysRegsNotInLiveIns,
                      unsigned int NumRegs,
@@ -120,11 +121,12 @@ scavengeFreeRegister(llvm::ArrayRef<PredicatedMachineFunction *> Functions,
   unsigned int NumRegFound = 0;
 
   for (llvm::MCRegister Reg : *RC) {
-    bool IsUnused = llvm::all_of(Functions, [&](PredicatedMachineFunction *MF) {
-      auto &MRI = MF->getMF().getRegInfo();
+    bool IsUnused = llvm::all_of(Functions, [&](PredicatedMachineFunction *PMF) {
+      auto &MF = PMF->getMF();
+      auto &MRI = MF.getRegInfo();
 
-      LLVM_DEBUG(auto TRI = MF->getSubtarget().getRegisterInfo();
-                 llvm::dbgs() << "Trying to scavenged register "
+      LLVM_DEBUG(auto TRI = MF.getSubtarget().getRegisterInfo();
+                 llvm::dbgs() << "Trying to find register "
                               << llvm::printReg(Reg, TRI) << "...\n";
                  llvm::dbgs()
                  << "Is reg allocatable? " << MRI.isAllocatable(Reg) << ".\n";
@@ -142,7 +144,7 @@ scavengeFreeRegister(llvm::ArrayRef<PredicatedMachineFunction *> Functions,
       NumRegFound++;
       if (NumRegFound == NumRegs) {
         LLVM_DEBUG(llvm::dbgs() << "Found " << NumRegFound
-                                << " registers; Scavenging was a success!\n";);
+                                << " registers; Search was a success!\n";);
         return;
       }
     }
@@ -150,13 +152,14 @@ scavengeFreeRegister(llvm::ArrayRef<PredicatedMachineFunction *> Functions,
 }
 
 llvm::MCRegister
-scavengeFreeRegister(llvm::ArrayRef<PredicatedMachineFunction *> RelatedFunctions,
+findAvailableRegister(llvm::ArrayRef<PredicatedMachineFunction *> RelatedFunctions,
                      const llvm::TargetRegisterClass *RC,
                      const llvm::LivePhysRegs &AccessedPhysRegsNotInLiveIns) {
   for (llvm::MCRegister Reg : *RC) {
     bool IsUnused =
         llvm::all_of(RelatedFunctions, [&](PredicatedMachineFunction *MF) {
-          auto &MRI = MF->getMF().getRegInfo();
+          auto &MF = PMF->getMF();
+          auto &MRI = MF.getRegInfo();
           bool IsUnusedInMF = MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg);
           if (!AccessedPhysRegsNotInLiveIns.empty())
             IsUnusedInMF = IsUnusedInMF &&
@@ -168,6 +171,24 @@ scavengeFreeRegister(llvm::ArrayRef<PredicatedMachineFunction *> RelatedFunction
     }
   }
   return {};
+}
+
+// FIXME: Either use LRU for these or add method to get LPR liveness on IPVectorRegLiveness
+bool getMILevelLiveIns(const llvm::MachineInstr& TargetMI, const PredicatedMachineBasicBlock& PMBB, const IPVectorRegLiveness& RegLiveness, llvm::LivePhysRegs& LPR){
+  LPR.clear();
+  RegLiveness.addLiveOutsNoPristines(LPR, PMBB);
+  if(PMBB.getExecMaskValue() == PredicatedMachineBasicBlock::ZeroOrOne){
+    for(llvm::MachineInstr &MI : llvm::reverse(PMBB)){
+      LPR.stepBackward(MI);
+      if(MI == TargetMI) return true;
+    }
+  }
+  else{
+    RegLiveness.addBlockLiveIns(LPR, PMBB);
+    return true;
+  }
+  
+  return false;
 }
 
 /// Selects a VGPR to load the state value array into for use for the
@@ -205,13 +226,13 @@ selectVGPRLoadLocationForInjectedPayload(
     } else {
       auto &InstrumentedMF = *InstPoint.getParent()->getParent();
       // Scavenge a dead VGPR to hold the state value array
-      AVGPRLocation = scavengeFreeRegister(
+      AVGPRLocation = findAvailableRegister(
           InstrumentedMF.getRegInfo(), llvm::AMDGPU::VGPR_32RegClass,
           AccessedPhysicalRegsNotInLiveIns, InstPointLiveRegs);
       // Scavenge a dead AGPR to hold the state value array if no VGPR is
       // found
       if (AVGPRLocation == 0)
-        AVGPRLocation = scavengeFreeRegister(
+        AVGPRLocation = findAvailableRegister(
             InstrumentedMF.getRegInfo(), llvm::AMDGPU::AGPR_32RegClass,
             AccessedPhysicalRegsNotInLiveIns, InstPointLiveRegs);
       if (AVGPRLocation == 0) {
@@ -263,7 +284,7 @@ static std::shared_ptr<StateValueArrayStorage> findFixedStateValueArrayStorage(
     const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns) {
   // Find the next VGPR available to hold the value state array
   llvm::MCRegister StateValueArrayFixedVGPRLocation =
-      scavengeFreeRegister(RelatedFunctions, &llvm::AMDGPU::VGPR_32RegClass,
+      findAvailableRegister(RelatedFunctions, &llvm::AMDGPU::VGPR_32RegClass,
                            AccessedPhysicalRegistersNotInLiveIns);
   // If we failed to find a free VGPR, we then have to scavenge for all
   // possible SGPRs and AGPRs that can be used in storing the state value
@@ -272,21 +293,21 @@ static std::shared_ptr<StateValueArrayStorage> findFixedStateValueArrayStorage(
     llvm::SmallVector<llvm::MCRegister, 3> SGPRsScavenged;
     llvm::SmallVector<llvm::MCRegister, 2> AGPRsScavenged;
     // Scavenge the maximum number of AGPRs used by all storage schemes
-    scavengeFreeRegister(RelatedFunctions, &llvm::AMDGPU::AGPR_32RegClass,
+    findAvailableRegister(RelatedFunctions, &llvm::AMDGPU::AGPR_32RegClass,
                          AccessedPhysicalRegistersNotInLiveIns,
                          MaxAGPRsUsedByAllStorage, AGPRsScavenged);
     // Scavenge the maximum number of SGPRs used by all storage schemes
-    scavengeFreeRegister(RelatedFunctions, &llvm::AMDGPU::SGPR_32RegClass,
+    findAvailableRegister(RelatedFunctions, &llvm::AMDGPU::SGPR_32RegClass,
                          AccessedPhysicalRegistersNotInLiveIns,
                          MaxSGPRsUsedByAllStorage, SGPRsScavenged);
 
     LLVM_DEBUG(
 
         llvm::dbgs()
-            << "Number of AGPRs scavenged for fixed location SVA storage: "
+            << "Number of AGPRs available for fixed location SVA storage: "
             << AGPRsScavenged.size() << "\n";
         llvm::dbgs()
-        << "Number of SGPRs scavenged for fixed location SVA storage: "
+        << "Number of SGPRs available for fixed location SVA storage: "
         << SGPRsScavenged.size() << "\n";
 
     );
@@ -332,7 +353,7 @@ static std::shared_ptr<StateValueArrayStorage> findStateValueArrayStorageAtMI(
     int MaxAGPRsUsedByAllStorage, int MaxSGPRsUsedByAllStorage) {
   // Find the next VGPR available to hold the value state array
   llvm::MCRegister StateValueArrayVGPRLocation =
-      scavengeFreeRegister(MRI, llvm::AMDGPU::VGPR_32RegClass,
+      findAvailableRegister(MRI, llvm::AMDGPU::VGPR_32RegClass,
                            AccessedPhysicalRegistersNotInLiveIns, MILiveIns);
   // If we failed to find a free VGPR, we then have to scavenge for all
   // possible SGPRs and AGPRs that can be used in storing the state value
@@ -341,12 +362,12 @@ static std::shared_ptr<StateValueArrayStorage> findStateValueArrayStorageAtMI(
     llvm::SmallVector<llvm::MCRegister, 3> SGPRsScavenged;
     llvm::SmallVector<llvm::MCRegister, 2> AGPRsScavenged;
     // Scavenge the maximum number of AGPRs used by all storage schemes
-    scavengeFreeRegister(MRI, llvm::AMDGPU::AGPR_32RegClass,
+    findAvailableRegister(MRI, llvm::AMDGPU::AGPR_32RegClass,
                          AccessedPhysicalRegistersNotInLiveIns, MILiveIns,
                          MaxAGPRsUsedByAllStorage, AGPRsScavenged);
 
     // Scavenge the maximum number of SGPRs used by all storage schemes
-    scavengeFreeRegister(MRI, llvm::AMDGPU::SGPR_32RegClass,
+    findAvailableRegister(MRI, llvm::AMDGPU::SGPR_32RegClass,
                          AccessedPhysicalRegistersNotInLiveIns, MILiveIns,
                          MaxSGPRsUsedByAllStorage, SGPRsScavenged);
 
@@ -388,7 +409,7 @@ static std::shared_ptr<StateValueArrayStorage> findStateValueArrayStorageAtMI(
 
 llvm::ArrayRef<StateValueStorageSegment>
 SVStorageAndLoadLocations::getStorageIntervals(
-    const VectorMBB &MBB) const {
+    const PredicatedMachineBasicBlock &MBB) const {
   auto It = StateValueStorageIntervals.find(&MBB);
   if (It == StateValueStorageIntervals.end())
     return {};
@@ -409,7 +430,7 @@ SVStorageAndLoadLocations::getStateValueArrayLoadPlanForInstPoint(
 llvm::Error SVStorageAndLoadLocations::calculate(
     const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
     const MMISlotIndexesAnalysis::Result &SlotIndexes,
-    const VectorRegLiveness &RegLiveness,
+    const IPVectorRegLiveness &RegLiveness,
     const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
     const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
     const IPPredicatedCFG &IPCFG) {
@@ -426,6 +447,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
   // Get all the possible state value array storage for the sub-target being
   // used and check if we have at least only one method for storage
   const auto &ST = MFs[0]->getMF().getSubtarget<llvm::GCNSubtarget>();
+  const auto &TRI = ST.getRegisterInfo();
   llvm::SmallVector<StateValueArrayStorage::StorageKind, 6> SupportedStorage;
   getSupportedSVAStorageList(ST, SupportedStorage);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
@@ -452,7 +474,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
   auto StateValueFixedLocation = findFixedStateValueArrayStorage(
       MFs, SupportedStorage, MaxNumAGPRsUsedByAllStorage,
       MaxNumSGPRsUsedByAllStorage, AccessedPhysicalRegistersNotInLiveIns);
-
+  // TODO: Add this information to metadata
   if (StateValueFixedLocation != nullptr) {
     // If a fixed location was found, then all MBB intervals inside all MFs
     // will get the fixed state value location
@@ -471,16 +493,11 @@ llvm::Error SVStorageAndLoadLocations::calculate(
                               StateValueFixedLocation);
         }
       }
-      if (MF->getMF().getFunction().getCallingConv() !=
-          llvm::CallingConv::AMDGPU_KERNEL) {
-        FPD.DeviceFunctions[MF].RequiresPreAndPostAmble = false;
-      }
     }
     for (const auto &[InsertionPointMI, HookFunction] : IPIP.mi_payload()) {
-      auto *HookLiveRegs =
-          RegLiveness.getMFLevelInstrLiveIns(*InsertionPointMI);
+      llvm::LivePhysRegs HookLiveRegs{TRI};
       LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-          HookLiveRegs != nullptr,
+          getMILevelLiveIns(*InsertionPointMI, IPCFG.getPredMBB(*InsertionPointMI), RegLiveness, HookLiveRegs),
           llvm::formatv(
               "Failed to get the Live Physical register set for MI {0}.",
               *InsertionPointMI)));
@@ -497,10 +514,6 @@ llvm::Error SVStorageAndLoadLocations::calculate(
     // If not, we'll have to shuffle between possible state value array
     // storage schemes
     for (const auto *MF : MFs) {
-      if (MF->getMF().getFunction().getCallingConv() ==
-          llvm::CallingConv::AMDGPU_KERNEL) {
-        FPD.DeviceFunctions[MF].RequiresPreAndPostAmble = true;
-      }
       auto &MRI = MF->getMF().getRegInfo();
       // Pick the highest numbered VGPR not accessed by the Hooks
       // to hold the value state
@@ -508,24 +521,25 @@ llvm::Error SVStorageAndLoadLocations::calculate(
       // TODO: if an argument is passed specifying to keep the register
       // usage of the kernel the same as before, these needs to be initialized
       // to the last available SGPR/VGPR/AGPR
-      auto FirstMILiveIns =
-          RegLiveness.getMFLevelInstrLiveIns(*MF->begin()->begin());
+      PredicatedMachineBasicBlock& FirstPMBB = MF->front().front();
+      // May change to LPR
+      llvm::LivePhysRegs FirstMILiveIns{TRI};
       LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-          FirstMILiveIns != nullptr,
+          getMILevelLiveIns(FirstPMBB.getFirstNonDebugInstr(), FirstPMBB, RegLiveness, FirstMILiveIns),
           llvm::formatv("Failed to obtain the live physical regs for MI {0}.",
-                        *MF->begin()->begin())));
+                        FirstPMBB.getFirstNonDebugInstr())));
 
       // The current location of the state value register
       std::shared_ptr<StateValueArrayStorage> SVS =
           findStateValueArrayStorageAtMI(
-              MRI, *FirstMILiveIns, AccessedPhysicalRegistersNotInLiveIns,
+              MRI, FirstMILiveIns, AccessedPhysicalRegistersNotInLiveIns,
               SupportedStorage, MaxNumAGPRsUsedByAllStorage,
               MaxNumSGPRsUsedByAllStorage);
 
       LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           SVS != nullptr,
           llvm::formatv("Failed to get a state value array storage for MI {0}.",
-                        *MF->begin()->begin())));
+                        FirstPMBB.getFirstNonDebugInstr())));
 
       LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           llvm::isa<VGPRStateValueArrayStorage>(SVS.get()) ||
@@ -546,9 +560,10 @@ llvm::Error SVStorageAndLoadLocations::calculate(
           for (const auto &MI : PBB) {
             if (IPIP.contains(MI))
               HookInsertionPointsInCurrentSegment.insert(&MI);
-            auto *InstrLiveRegs = RegLiveness.getMFLevelInstrLiveIns(MI);
+            llvm::LivePhysRegs InstrLiveRegs{TRI};
+            
             LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-                InstrLiveRegs != nullptr,
+                getMILevelLiveIns(MI, PBB, RegLiveness, InstrLiveRegs),
                 llvm::formatv(
                     "Failed to get the live physical register set for MI {0}.",
                     MI)));
@@ -581,7 +596,12 @@ llvm::Error SVStorageAndLoadLocations::calculate(
               CurrentMBBSegments.emplace_back(CurrentIntervalBegin, NextIndex,
                                               SVS);
               for (const auto &HookMI : HookInsertionPointsInCurrentSegment) {
-                auto *HookLiveRegs = RegLiveness.getMFLevelInstrLiveIns(*HookMI);
+                llvm::LivePhysRegs HookLiveRegs{TRI};
+                LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+                getMILevelLiveIns(*HookMI, PBB, RegLiveness, HookLiveRegs),
+                llvm::formatv(
+                    "Failed to get the live physical register set for MI {0}.",
+                    *HookMI)));
                 auto [HookSVGPR, ClobbersAppReg] =
                     selectVGPRLoadLocationForInjectedPayload(
                         *HookMI, *SVS, *HookLiveRegs,
@@ -632,5 +652,10 @@ LRStateValueStorageAndLoadLocationsAnalysis::run(
     TargetModule.getContext().emitError(llvm::toString(std::move(Err)));
 
   return Out;
+}
+
+llvm::PreservedAnalyses LRStateValueStorageAndLoadLocationsPrinterPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM){
+  
+
 }
 } // namespace luthier
