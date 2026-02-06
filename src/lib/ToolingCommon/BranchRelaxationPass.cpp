@@ -34,7 +34,6 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
 #include <luthier/Tooling/BranchRelaxationPass.h>
-#include <luthier/Tooling/ImmutableMachineInstr.h>
 #include <luthier/Tooling/WrapperAnalysisPasses.h>
 #include <memory>
 #undef DEBUG_TYPE
@@ -43,154 +42,157 @@
 
 namespace luthier {
 
+class BranchRelaxationPass;
+
 char BranchRelaxationPass::ID = 0;
 
 LUTHIER_INITIALIZE_LEGACY_PASS_BODY(BranchRelaxationPass, "branch-relaxation",
                                     "Branch Relaxation Pass", true,
                                     false); // Is it CFG only?
 //FIXME: Change to custom Register Scavenger
-void BranchRelaxationPass::insertIndirectBranch(llvm::MachineBasicBlock &MBB,
-                                       llvm::MachineBasicBlock &DestBB,
-                                       llvm::MachineBasicBlock &RestoreBB,
-                                       const llvm::DebugLoc &DL, int64_t BrOffset,
-                                       /*RegScavenger *RS*/) const { 
-  assert(MBB.empty() &&
-         "new block should be inserted for expanding unconditional branch");
-  assert(MBB.pred_size() == 1);
-  assert(RestoreBB.empty() &&
-         "restore block should be inserted for restoring clobbered registers");
+// void BranchRelaxationPass::insertIndirectBranch(llvm::MachineBasicBlock &MBB,
+//                                        llvm::MachineBasicBlock &DestBB,
+//                                        llvm::MachineBasicBlock &RestoreBB,
+//                                        const llvm::DebugLoc &DL, int64_t BrOffset,
+//                                        llvm::RegScavenger *RS) const { 
+//   assert(MBB.empty() &&
+//          "new block should be inserted for expanding unconditional branch");
+//   assert(MBB.pred_size() == 1);
+//   assert(RestoreBB.empty() &&
+//          "restore block should be inserted for restoring clobbered registers");
 
-  llvm::MachineFunction *MF = MBB.getParent();
-  llvm::MachineRegisterInfo &MRI = MF->getRegInfo();
-  const llvm::SIMachineFunctionInfo *MFI = MF->getInfo<llvm::SIMachineFunctionInfo>();
-  auto I = MBB.end();
-  auto &MCCtx = MF->getContext();
+//   llvm::MachineFunction *MF = MBB.getParent();
+//   llvm::MachineRegisterInfo &MRI = MF->getRegInfo();
+//   auto& ST = MF->getSubtarget<llvm::GCNSubtarget>();
+//   const llvm::SIMachineFunctionInfo *MFI = MF->getInfo<llvm::SIMachineFunctionInfo>();
+//   auto I = MBB.end();
+//   auto &MCCtx = MF->getContext();
 
-  if (ST.hasAddPC64Inst()) {
-    llvm::MCSymbol *Offset =
-        MCCtx.createTempSymbol("offset", /*AlwaysAddSuffix=*/true);
-    auto AddPC = llvm::BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_ADD_PC_I64))
-                     .addSym(Offset, llvm::MO_FAR_BRANCH_OFFSET);
-    llvm::MCSymbol *PostAddPCLabel =
-        MCCtx.createTempSymbol("post_addpc", /*AlwaysAddSuffix=*/true);
-    AddPC->setPostInstrSymbol(*MF, PostAddPCLabel);
-    auto *OffsetExpr = llvm::MCBinaryExpr::createSub(
-        LLVM::MCSymbolRefExpr::create(DestBB.getSymbol(), MCCtx),
-        LLVM::MCSymbolRefExpr::create(PostAddPCLabel, MCCtx), MCCtx);
-    Offset->setVariableValue(OffsetExpr);
-    return;
-  }
+//   if (ST.hasAddPC64Inst()) {
+//     llvm::MCSymbol *Offset =
+//         MCCtx.createTempSymbol("offset", /*AlwaysAddSuffix=*/true);
+//     auto AddPC = llvm::BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_ADD_PC_I64))
+//                      .addSym(Offset, llvm::MO_FAR_BRANCH_OFFSET);
+//     llvm::MCSymbol *PostAddPCLabel =
+//         MCCtx.createTempSymbol("post_addpc", /*AlwaysAddSuffix=*/true);
+//     AddPC->setPostInstrSymbol(*MF, PostAddPCLabel);
+//     auto *OffsetExpr = llvm::MCBinaryExpr::createSub(
+//         LLVM::MCSymbolRefExpr::create(DestBB.getSymbol(), MCCtx),
+//         LLVM::MCSymbolRefExpr::create(PostAddPCLabel, MCCtx), MCCtx);
+//     Offset->setVariableValue(OffsetExpr);
+//     return;
+//   }
 
-  assert(RS && "RegScavenger required for long branching");
+//   assert(RS && "RegScavenger required for long branching");
 
-  // FIXME: Virtual register workaround for RegScavenger not working with empty
-  // blocks.
-  llvm::Register PCReg = MRI.createVirtualRegister(&llvm::AMDGPU::SReg_64RegClass);
+//   // FIXME: Virtual register workaround for RegScavenger not working with empty
+//   // blocks.
+//   llvm::Register PCReg = MRI.createVirtualRegister(&llvm::AMDGPU::SReg_64RegClass);
 
-  // Note: as this is used after hazard recognizer we need to apply some hazard
-  // workarounds directly.
-  const bool FlushSGPRWrites = (ST.isWave64() && ST.hasVALUMaskWriteHazard()) ||
-                               ST.hasVALUReadSGPRHazard();
-  auto ApplyHazardWorkarounds = [this, &MBB, &I, &DL, FlushSGPRWrites]() {
-    if (FlushSGPRWrites)
-      BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_WAITCNT_DEPCTR))
-          .addImm(llvm::AMDGPU::DepCtr::encodeFieldSaSdst(0, ST));
-  };
+//   // Note: as this is used after hazard recognizer we need to apply some hazard
+//   // workarounds directly.
+//   const bool FlushSGPRWrites = (ST.isWave64() && ST.hasVALUMaskWriteHazard()) ||
+//                                ST.hasVALUReadSGPRHazard();
+//   auto ApplyHazardWorkarounds = [this, &MBB, &I, &DL, FlushSGPRWrites]() {
+//     if (FlushSGPRWrites)
+//       BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_WAITCNT_DEPCTR))
+//           .addImm(llvm::AMDGPU::DepCtr::encodeFieldSaSdst(0, ST));
+//   };
 
-  // We need to compute the offset relative to the instruction immediately after
-  // s_getpc_b64. Insert pc arithmetic code before last terminator.
-  llvm::MachineInstr *GetPC = BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_GETPC_B64), PCReg);
-  ApplyHazardWorkarounds();
+//   // We need to compute the offset relative to the instruction immediately after
+//   // s_getpc_b64. Insert pc arithmetic code before last terminator.
+//   llvm::MachineInstr *GetPC = BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_GETPC_B64), PCReg);
+//   ApplyHazardWorkarounds();
 
-  llvm::MCSymbol *PostGetPCLabel =
-      MCCtx.createTempSymbol("post_getpc", /*AlwaysAddSuffix=*/true);
-  GetPC->setPostInstrSymbol(*MF, PostGetPCLabel);
+//   llvm::MCSymbol *PostGetPCLabel =
+//       MCCtx.createTempSymbol("post_getpc", /*AlwaysAddSuffix=*/true);
+//   GetPC->setPostInstrSymbol(*MF, PostGetPCLabel);
 
-  llvm::MCSymbol *OffsetLo =
-      MCCtx.createTempSymbol("offset_lo", /*AlwaysAddSuffix=*/true);
-  llvm::MCSymbol *OffsetHi =
-      MCCtx.createTempSymbol("offset_hi", /*AlwaysAddSuffix=*/true);
-  llvm::BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_ADD_U32))
-      .addReg(PCReg, llvm::RegState::Define, llvm::AMDGPU::sub0)
-      .addReg(PCReg, 0, llvm::AMDGPU::sub0)
-      .addSym(OffsetLo, llvm::MO_FAR_BRANCH_OFFSET);
-  llvm::BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_ADDC_U32))
-      .addReg(PCReg, llvm::RegState::Define, llvm::AMDGPU::sub1)
-      .addReg(PCReg, 0, llvm::AMDGPU::sub1)
-      .addSym(OffsetHi, llvm::MO_FAR_BRANCH_OFFSET);
-  ApplyHazardWorkarounds();
+//   llvm::MCSymbol *OffsetLo =
+//       MCCtx.createTempSymbol("offset_lo", /*AlwaysAddSuffix=*/true);
+//   llvm::MCSymbol *OffsetHi =
+//       MCCtx.createTempSymbol("offset_hi", /*AlwaysAddSuffix=*/true);
+//   llvm::BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_ADD_U32))
+//       .addReg(PCReg, llvm::RegState::Define, llvm::AMDGPU::sub0)
+//       .addReg(PCReg, 0, llvm::AMDGPU::sub0)
+//       .addSym(OffsetLo, llvm::MO_FAR_BRANCH_OFFSET);
+//   llvm::BuildMI(MBB, I, DL, get(llvm::AMDGPU::S_ADDC_U32))
+//       .addReg(PCReg, llvm::RegState::Define, llvm::AMDGPU::sub1)
+//       .addReg(PCReg, 0, llvm::AMDGPU::sub1)
+//       .addSym(OffsetHi, llvm::MO_FAR_BRANCH_OFFSET);
+//   ApplyHazardWorkarounds();
 
-  // Insert the indirect branch after the other terminator.
-  llvm::BuildMI(&MBB, DL, get(llvm::AMDGPU::S_SETPC_B64)).addReg(PCReg);
+//   // Insert the indirect branch after the other terminator.
+//   llvm::BuildMI(&MBB, DL, get(llvm::AMDGPU::S_SETPC_B64)).addReg(PCReg);
 
-  // If a spill is needed for the pc register pair, we need to insert a spill
-  // restore block right before the destination block, and insert a short branch
-  // into the old destination block's fallthrough predecessor.
-  // e.g.:
-  //
-  // s_cbranch_scc0 skip_long_branch:
-  //
-  // long_branch_bb:
-  //   spill s[8:9]
-  //   s_getpc_b64 s[8:9]
-  //   s_add_u32 s8, s8, restore_bb
-  //   s_addc_u32 s9, s9, 0
-  //   s_setpc_b64 s[8:9]
-  //
-  // skip_long_branch:
-  //   foo;
-  //
-  // .....
-  //
-  // dest_bb_fallthrough_predecessor:
-  // bar;
-  // s_branch dest_bb
-  //
-  // restore_bb:
-  //  restore s[8:9]
-  //  fallthrough dest_bb
-  ///
-  // dest_bb:
-  //   buzz;
+//   // If a spill is needed for the pc register pair, we need to insert a spill
+//   // restore block right before the destination block, and insert a short branch
+//   // into the old destination block's fallthrough predecessor.
+//   // e.g.:
+//   //
+//   // s_cbranch_scc0 skip_long_branch:
+//   //
+//   // long_branch_bb:
+//   //   spill s[8:9]
+//   //   s_getpc_b64 s[8:9]
+//   //   s_add_u32 s8, s8, restore_bb
+//   //   s_addc_u32 s9, s9, 0
+//   //   s_setpc_b64 s[8:9]
+//   //
+//   // skip_long_branch:
+//   //   foo;
+//   //
+//   // .....
+//   //
+//   // dest_bb_fallthrough_predecessor:
+//   // bar;
+//   // s_branch dest_bb
+//   //
+//   // restore_bb:
+//   //  restore s[8:9]
+//   //  fallthrough dest_bb
+//   ///
+//   // dest_bb:
+//   //   buzz;
 
-  llvm::Register LongBranchReservedReg = MFI->getLongBranchReservedReg();
-  llvm::Register Scav;
+//   llvm::Register LongBranchReservedReg = MFI->getLongBranchReservedReg();
+//   llvm::Register Scav;
 
-  // If we've previously reserved a register for long branches
-  // avoid running the scavenger and just use those registers
-  if (LongBranchReservedReg) {
-    RS->enterBasicBlock(MBB);
-    Scav = LongBranchReservedReg;
-  } else {
-    RS->enterBasicBlockEnd(MBB);
-    Scav = RS->scavengeRegisterBackwards(
-        llvm::AMDGPU::SReg_64RegClass, llvm::MachineBasicBlock::iterator(GetPC),
-        /* RestoreAfter */ false, 0, /* AllowSpill */ false);
-  }
-  if (Scav) {
-    RS->setRegUsed(Scav);
-    MRI.replaceRegWith(PCReg, Scav);
-    MRI.clearVirtRegs();
-  } else {
-    // As SGPR needs VGPR to be spilled, we reuse the slot of temporary VGPR for
-    // SGPR spill.
-    const llvm::GCNSubtarget &ST = MF->getSubtarget<llvm::GCNSubtarget>();
-    TRI->spillEmergencySGPR(GetPC, RestoreBB, llvm::AMDGPU::SGPR0_SGPR1, RS);
-    MRI.replaceRegWith(PCReg, llvm::AMDGPU::SGPR0_SGPR1);
-    MRI.clearVirtRegs();
-  }
+//   // If we've previously reserved a register for long branches
+//   // avoid running the scavenger and just use those registers
+//   if (LongBranchReservedReg) {
+//     RS->enterBasicBlock(MBB);
+//     Scav = LongBranchReservedReg;
+//   } else {
+//     RS->enterBasicBlockEnd(MBB);
+//     Scav = RS->scavengeRegisterBackwards(
+//         llvm::AMDGPU::SReg_64RegClass, llvm::MachineBasicBlock::iterator(GetPC),
+//         /* RestoreAfter */ false, 0, /* AllowSpill */ false);
+//   }
+//   if (Scav) {
+//     RS->setRegUsed(Scav);
+//     MRI.replaceRegWith(PCReg, Scav);
+//     MRI.clearVirtRegs();
+//   } else {
+//     // As SGPR needs VGPR to be spilled, we reuse the slot of temporary VGPR for
+//     // SGPR spill.
+//     const llvm::GCNSubtarget &ST = MF->getSubtarget<llvm::GCNSubtarget>();
+//     TRI->spillEmergencySGPR(GetPC, RestoreBB, llvm::AMDGPU::SGPR0_SGPR1, RS);
+//     MRI.replaceRegWith(PCReg, llvm::AMDGPU::SGPR0_SGPR1);
+//     MRI.clearVirtRegs();
+//   }
 
-  llvm::MCSymbol *DestLabel = Scav ? DestBB.getSymbol() : RestoreBB.getSymbol();
-  // Now, the distance could be defined.
-  auto *Offset = llvm::MCBinaryExpr::createSub(
-      llvm::MCSymbolRefExpr::create(DestLabel, MCCtx),
-      llvm::MCSymbolRefExpr::create(PostGetPCLabel, MCCtx), MCCtx);
-  // Add offset assignments.
-  auto *Mask = llvm::MCConstantExpr::create(0xFFFFFFFFULL, MCCtx);
-  OffsetLo->setVariableValue(llvm::MCBinaryExpr::createAnd(Offset, Mask, MCCtx));
-  auto *ShAmt = llvm::MCConstantExpr::create(32, MCCtx);
-  OffsetHi->setVariableValue(llvm::MCBinaryExpr::createAShr(Offset, ShAmt, MCCtx));
-}
+//   llvm::MCSymbol *DestLabel = Scav ? DestBB.getSymbol() : RestoreBB.getSymbol();
+//   // Now, the distance could be defined.
+//   auto *Offset = llvm::MCBinaryExpr::createSub(
+//       llvm::MCSymbolRefExpr::create(DestLabel, MCCtx),
+//       llvm::MCSymbolRefExpr::create(PostGetPCLabel, MCCtx), MCCtx);
+//   // Add offset assignments.
+//   auto *Mask = llvm::MCConstantExpr::create(0xFFFFFFFFULL, MCCtx);
+//   OffsetLo->setVariableValue(llvm::MCBinaryExpr::createAnd(Offset, Mask, MCCtx));
+//   auto *ShAmt = llvm::MCConstantExpr::create(32, MCCtx);
+//   OffsetHi->setVariableValue(llvm::MCBinaryExpr::createAShr(Offset, ShAmt, MCCtx));
+// }
 
 void BranchRelaxationPass::scanFunction() {
   BlockInfo.clear();
@@ -204,7 +206,7 @@ void BranchRelaxationPass::scanFunction() {
   for (llvm::MachineBasicBlock &MBB : *MF) {
     BlockInfo[MBB.getNumber()].Size = computeBlockSize(MBB);
 
-    if (MBB.getSectionID() != MBBSectionID::ColdSectionID)
+    if (MBB.getSectionID() != llvm::MBBSectionID::ColdSectionID)
       TrampolineInsertionPoint = &MBB;
   }
 
@@ -314,7 +316,7 @@ BranchRelaxationPass::splitBlockBeforeInstr(llvm::MachineInstr &MI,
   // Note the new unconditional branch is not being recorded.
   // There doesn't seem to be meaningful DebugInfo available; this doesn't
   // correspond to anything in the source.
-  TII->insertUnconditionalBranch(*OrigBB, NewBB, DebugLoc());
+  TII->insertUnconditionalBranch(*OrigBB, NewBB, llvm::DebugLoc());
 
   // Insert an entry into BlockInfo to align it properly with the block numbers.
   BlockInfo.insert(BlockInfo.begin() + NewBB->getNumber(), BasicBlockInfo());
@@ -344,8 +346,6 @@ BranchRelaxationPass::splitBlockBeforeInstr(llvm::MachineInstr &MI,
   // Need to fix live-in lists if we track liveness.
   if (TRI->trackLivenessAfterRegAlloc(*MF))
     llvm::computeAndAddLiveIns(LiveRegs, *NewBB);
-
-  ++NumSplit;
 
   return NewBB;
 }
@@ -382,7 +382,7 @@ bool BranchRelaxationPass::fixupConditionalBranch(llvm::MachineInstr &MI) {
   llvm::MachineBasicBlock *MBB = MI.getParent();
   llvm::MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
   llvm::MachineBasicBlock *NewBB = nullptr;
-  llvm::SmallVector<MachineOperand, 4> Cond;
+  llvm::SmallVector<llvm::MachineOperand, 4> Cond;
 
   auto insertUncondBranch = [&](llvm::MachineBasicBlock *MBB,
                                 llvm::MachineBasicBlock *DestBB) {
@@ -394,7 +394,7 @@ bool BranchRelaxationPass::fixupConditionalBranch(llvm::MachineInstr &MI) {
   auto insertBranch = [&](llvm::MachineBasicBlock *MBB,
                           llvm::MachineBasicBlock *TBB,
                           llvm::MachineBasicBlock *FBB,
-                          llvm::SmallVectorImpl<MachineOperand> &Cond) {
+                          llvm::SmallVectorImpl<llvm::MachineOperand> &Cond) {
     unsigned &BBSize = BlockInfo[MBB->getNumber()].Size;
     int NewBrSize = 0;
     TII->insertBranch(*MBB, TBB, FBB, Cond, DL, &NewBrSize);
@@ -458,7 +458,7 @@ bool BranchRelaxationPass::fixupConditionalBranch(llvm::MachineInstr &MI) {
       insertBranch(MBB, NewBB, FBB, Cond);
 
       TrampolineInsertionPoint = NewBB;
-      llvm::updateOffsetAndLiveness(NewBB);
+      updateOffsetAndLiveness(NewBB);
       return true;
     }
 
@@ -647,7 +647,7 @@ bool BranchRelaxationPass::fixupUnconditionalBranch(llvm::MachineInstr &MI) {
         DestBB->getSectionID() != llvm::MBBSectionID::ColdSectionID) {
       llvm::MachineBasicBlock *NewBB =
           createNewBlockAfter(*TrampolineInsertionPoint);
-      TII->insertUnconditionalBranch(*NewBB, DestBB, DebugLoc());
+      TII->insertUnconditionalBranch(*NewBB, DestBB, llvm::DebugLoc());
       BlockInfo[NewBB->getNumber()].Size = computeBlockSize(*NewBB);
       adjustBlockOffsets(*TrampolineInsertionPoint,
                          std::next(NewBB->getIterator()));
@@ -674,7 +674,7 @@ bool BranchRelaxationPass::fixupUnconditionalBranch(llvm::MachineInstr &MI) {
     // terminators.
     if (auto *FT = PrevBB->getLogicalFallThrough()) {
       assert(FT == DestBB);
-      TII->insertUnconditionalBranch(*PrevBB, FT, DebugLoc());
+      TII->insertUnconditionalBranch(*PrevBB, FT, llvm::DebugLoc());
       BlockInfo[PrevBB->getNumber()].Size = computeBlockSize(*PrevBB);
     }
     // Now, RestoreBB could be placed directly before DestBB.
@@ -727,7 +727,6 @@ bool BranchRelaxationPass::relaxBranchInstructions() {
         if (!isBlockInRange(*Last, *DestBB) && !TII->isTailCall(*Last) &&
             !RelaxedUnconditionals.contains({&MBB, DestBB})) {
           fixupUnconditionalBranch(*Last);
-          ++NumUnconditionalRelaxed;
           Changed = true;
         }
       }
@@ -756,13 +755,10 @@ bool BranchRelaxationPass::relaxBranchInstructions() {
           // each one will be analyzable.
 
           splitBlockBeforeInstr(*Next, DestBB);
-        } else {
-          fixupConditionalBranch(MI);
-          ++NumConditionalRelaxed;
         }
-
+        else{fixupConditionalBranch(MI);}
+          
         Changed = true;
-
         // This may have modified all of the terminators, so start over.
         Next = MBB.getFirstTerminator();
       }
@@ -802,26 +798,26 @@ bool BranchRelaxationPass::runOnMachineFunction(llvm::MachineFunction &IMF) {
   auto &TargetMAM = IMAM.getCachedResult<TargetAppModuleAndMAMAnalysis>(IModule)
                         ->getTargetAppMAM();
 
-  MF = &(IPIP.at(IMF.getFunction())->getMF());
+  MF = IPIP.at(IMF.getFunction())->getMF();
   const auto &StateValueLocations =
       *TargetMAM.getCachedResult<LRStateValueStorageAndLoadLocationsAnalysis>(
           TargetModule);
 
   auto *SVALoadPlan =
       StateValueLocations.getStateValueArrayLoadPlanForInstPoint(
-          *IPIP.at(MF.getFunction()));
+          *IPIP.at(MF->getFunction()));
   if (!SVALoadPlan) {
-    MF.getContext().reportError(
+    MF->getContext().reportError(
         {},
         llvm::formatv(
             "Could not find the state value load plan for Machine Instr {0}.",
-            *IPIP.at(MF.getFunction())));
+            *IPIP.at(MF->getFunction())));
     return false;
   }
 
   SVA = SVALoadPlan->StateValueArrayLoadVGPR;
 
-  const llvm::TargetSubtargetInfo &ST = TargetMF.getSubtarget();
+  const llvm::TargetSubtargetInfo &ST = MF->getSubtarget();
   TII = ST.getInstrInfo();
 
   MF->RenumberBlocks();

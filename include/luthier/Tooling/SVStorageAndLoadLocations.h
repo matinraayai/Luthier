@@ -30,7 +30,7 @@
 #include "luthier/Tooling/MMISlotIndexesAnalysis.h"
 #include "luthier/Tooling/PrePostAmbleEmitter.h"
 #include "luthier/Tooling/StateValueArrayStorage.h"
-#include "luthier/Tooling/VectorRegLiveness.h"
+#include "luthier/Tooling/IPVectorRegLiveness.h"
 #include <llvm/CodeGen/SlotIndexes.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Support/raw_ostream.h>
@@ -171,9 +171,8 @@ public:
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &);
 };
 
-class LRStateValueStorageAndLoadLocationsPrinterPass : llvm::PassInfoMixin<LRStateValueStorageAndLoadLocationsPrinterPass>{
+class LRStateValueStorageAndLoadLocationsPrinterPass : public llvm::PassInfoMixin<LRStateValueStorageAndLoadLocationsPrinterPass>{
   llvm::raw_ostream &OS;
-
   public:
     explicit LRStateValueStorageAndLoadLocationsPrinterPass(llvm::raw_ostream &OS) : OS(OS){}
     llvm::PreservedAnalyses run(llvm::Module &M,

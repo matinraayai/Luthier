@@ -372,7 +372,7 @@ namespace luthier {
       auto BundleStart = llvm::getBundleStart(MI.getIterator());
       auto BundleEnd = llvm::getBundleEnd(MI.getIterator());
       // Use the first non-debug instruction in the bundle to get SlotIndex.
-      const MachineInstr &BundleNonDebug =
+      const llvm::MachineInstr &BundleNonDebug =
           IgnoreBundle ? MI
                        : *llvm::skipDebugInstructionsForward(BundleStart, BundleEnd);
       assert(!BundleNonDebug.isDebugInstr() &&
@@ -404,9 +404,9 @@ namespace luthier {
     /// before MI, or the start index of its basic block.
     /// MI is not required to have an index.
     SlotIndex getIndexBefore(const llvm::MachineInstr &MI) const {
-      const PredicatedMachineBasicBlock *MBB = mf->getParent().getPredMBB(MI);
+      const PredicatedMachineBasicBlock *MBB = &(mf->getParent().getPredMBB(MI));
       assert(MBB && "MI must be inserted in a basic block");
-      PredicatedMachineBasicBlock::const_iterator I = MI, B = MBB->begin();
+      PredicatedMachineBasicBlock::const_iterator I = MI.getIterator(), B = MBB->begin();
       while (true) {
         if (I == B)
           return getMBBStartIdx(MBB);
@@ -421,9 +421,9 @@ namespace luthier {
     /// after MI, or the end index of its basic block.
     /// MI is not required to have an index.
     SlotIndex getIndexAfter(const llvm::MachineInstr &MI) const {
-      const PredicatedMachineBasicBlock *MBB = mf->getParent().getPredMBB(MI);
+      const PredicatedMachineBasicBlock *MBB = &(mf->getParent().getPredMBB(MI));
       assert(MBB && "MI must be inserted in a basic block");
-      PredicatedMachineBasicBlock::const_iterator I = MI, E = MBB->end();
+      PredicatedMachineBasicBlock::const_iterator I = MI.getIterator(), E = MBB->end();
       while (true) {
         ++I;
         if (I == E)
@@ -443,7 +443,7 @@ namespace luthier {
     /// Return the (start,end) range of the given basic block.
     const std::pair<SlotIndex, SlotIndex> &
     getMBBRange(const PredicatedMachineBasicBlock *MBB) const {
-      return getMBBRange(MBB->getIndex());
+      return getMBBRange(MBB->getGlobalNumber());
     }
 
     /// Returns the first index in the given basic block number.
@@ -479,7 +479,7 @@ namespace luthier {
 
     /// Iterator over the idx2MBBMap (sorted pairs of slot index of basic block
     /// begin and basic block)
-    using MBBIndexIterator = SmallVectorImpl<IdxMBBPair>::const_iterator;
+    using MBBIndexIterator = llvm::SmallVectorImpl<IdxMBBPair>::const_iterator;
 
     /// Get an iterator pointing to the first IdxMBBPair with SlotIndex greater
     /// than or equal to \p Idx. If \p Start is provided, only search the range
@@ -607,7 +607,7 @@ namespace luthier {
     void insertMBBInMaps(PredicatedMachineBasicBlock *mbb) {
       assert(mbb != &mbb->getParent()->getParent()->front() &&
              "Can't insert a new block at the beginning of a function.");
-      auto prevMBB = std::prev(PredicatedMachineFunction::iterator(mbb));
+      auto prevMBB = std::prev(mbb);
 
       // Create a new entry to be used for the start of mbb and the end of
       // prevMBB.
@@ -630,7 +630,7 @@ namespace luthier {
       idx2MBBMap.push_back(IdxMBBPair(startIdx, mbb));
 
       renumberIndexes(newItr);
-      llvm::sort(idx2MBBMap, less_first());
+      llvm::sort(idx2MBBMap, llvm::less_first());
     }
 
     /// Renumber all indexes using the default instruction distance.

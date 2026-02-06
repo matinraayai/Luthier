@@ -39,14 +39,14 @@ class BranchRelaxationPass : public llvm::MachineFunctionPass {
     /// block.
     unsigned postOffset(const llvm::MachineBasicBlock &MBB) const {
       const unsigned PO = Offset + Size;
-      const Align Alignment = MBB.getAlignment();
-      const Align ParentAlign = MBB.getParent()->getAlignment();
+      const llvm::Align Alignment = MBB.getAlignment();
+      const llvm::Align ParentAlign = MBB.getParent()->getAlignment();
       if (Alignment <= ParentAlign)
-        return alignTo(PO, Alignment);
+        return llvm::alignTo(PO, Alignment);
 
       // The alignment of this MBB is larger than the function's alignment, so
       // we can't tell whether or not it will insert nops. Assume that it will.
-      return alignTo(PO, Alignment) + Alignment.value() - ParentAlign.value();
+      return llvm::alignTo(PO, Alignment) + Alignment.value() - ParentAlign.value();
     }
   };
 
@@ -62,12 +62,16 @@ class BranchRelaxationPass : public llvm::MachineFunctionPass {
   const llvm::TargetRegisterInfo *TRI = nullptr;
   const llvm::TargetInstrInfo *TII = nullptr;
   const llvm::TargetMachine *TM = nullptr;
-  
-  MachineBasicBlock *createNewBlockAfter(llvm::MachineBasicBlock &OrigMBB);
-  MachineBasicBlock *createNewBlockAfter(llvm::MachineBasicBlock &OrigMBB,
+  // void insertIndirectBranch(llvm::MachineBasicBlock &MBB,
+  //                                      llvm::MachineBasicBlock &DestBB,
+  //                                      llvm::MachineBasicBlock &RestoreBB,
+  //                                      const llvm::DebugLoc &DL, int64_t BrOffset,
+  //                                      llvm::RegScavenger *RS) const;
+  llvm::MachineBasicBlock *createNewBlockAfter(llvm::MachineBasicBlock &OrigMBB);
+  llvm::MachineBasicBlock *createNewBlockAfter(llvm::MachineBasicBlock &OrigMBB,
                                          const llvm::BasicBlock *BB);
 
-  MachineBasicBlock *splitBlockBeforeInstr(llvm::MachineInstr &MI,
+  llvm::MachineBasicBlock *splitBlockBeforeInstr(llvm::MachineInstr &MI,
                                            llvm::MachineBasicBlock *DestBB);
   void adjustBlockOffsets(llvm::MachineBasicBlock &Start);
   void adjustBlockOffsets(llvm::MachineBasicBlock &Start,
@@ -79,10 +83,12 @@ class BranchRelaxationPass : public llvm::MachineFunctionPass {
   bool fixupUnconditionalBranch(llvm::MachineInstr &MI);
   uint64_t computeBlockSize(const llvm::MachineBasicBlock &MBB) const;
   unsigned getInstrOffset(const llvm::MachineInstr &MI) const;
+  void scanFunction();
+  bool relaxBranchInstructions();
 
 public:
   static char ID;
-  BranchRelaxationPass : llvm::MachineFunctionPass(ID) {}
+  BranchRelaxationPass() : llvm::MachineFunctionPass(ID) {}
   bool runOnMachineFunction(llvm::MachineFunction &TargetMF) override;
   void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
 };

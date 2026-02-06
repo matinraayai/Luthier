@@ -22,10 +22,10 @@
 #include "luthier/HSA/LoadedCodeObject.h"
 #include "luthier/HSA/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/HSA/LoadedCodeObjectKernel.h"
-#include "luthier/Tooling/AMDGPURegisterLiveness.h"
 #include "luthier/Tooling/LiftedRepresentation.h"
 #include "luthier/Tooling/PrePostAmbleEmitter.h"
 #include <llvm/CodeGen/SlotIndexes.h>
+#include <llvm/Support/raw_ostream.h>
 
 namespace llvm {
 class GCNSubtarget;
@@ -164,7 +164,7 @@ public:
   bool isSupportedOnSubTarget(const llvm::GCNSubtarget &ST) const {
     return isSupportedOnSubTarget(Kind, ST);
   }
-  virtual void print(llvm::ostream& OS) const{
+  virtual void print(llvm::raw_ostream& OS) const{
     OS << "Unknown storage kind";
   }
 };
@@ -207,7 +207,7 @@ public:
     Regs.push_back(StorageVGPR);
   }
 
-  void print(llvm::ostream& OS)const override{
+  void print(llvm::raw_ostream& OS)const override{
     OS << "SVS_SINGLE_VGPR";
   }
 };
@@ -252,7 +252,7 @@ public:
     Regs.push_back(StorageAGPR);
   }
   
-  void print(llvm::ostream& OS) const override {
+  void print(llvm::raw_ostream& OS) const override {
     OS << "SVS_ONE_AGPR_post_gfx908";
   }
 };
@@ -301,7 +301,7 @@ public:
     Regs.push_back(TempAGPR);
   }
 
-  void print(llvm::ostream& OS) const override {
+  void print(llvm::raw_ostream& OS) const override {
     OS << "SVS_TWO_AGPRs_pre_gfx908";
   }
 };
@@ -364,7 +364,7 @@ public:
     Regs.push_back(EmergencyVGPRSpillSlotOffset);
   }
 
-  void print(llvm::ostream& OS) const override {
+  void print(llvm::raw_ostream& OS) const override {
     OS << "SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908";
   }
 };
@@ -420,7 +420,7 @@ public:
     Regs.push_back(EmergencyVGPRSpillSlotOffset);
   }
 
-  void print(llvm::ostream& OS) const override {
+  void print(llvm::raw_ostream& OS) const override {
     OS << "SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs";
   }
 };
@@ -467,7 +467,7 @@ public:
     Regs.push_back(EmergencyVGPRSpillSlotOffset);
   }
 
-  void print(llvm::ostream& OS) const override {
+  void print(llvm::raw_ostream& OS) const override {
     OS << "SVS_SPILLED_WITH_ONE_SGPR_architected_fs";
   }
 };

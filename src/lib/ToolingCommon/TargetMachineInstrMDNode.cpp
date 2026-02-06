@@ -33,10 +33,10 @@ namespace {
 /// llvm::MDNode::setOperand public instead of protected
 class MutableMDTuple : public llvm::MDTuple {
 public:
-  static bool classof(const Metadata *Node) { return MDTuple::classof(Node); }
+  static bool classof(const llvm::Metadata *Node) { return llvm::MDTuple::classof(Node); }
 
-  LLVM_ABI void setOperand(unsigned I, Metadata *New) {
-    MDTuple::setOperand(I, New);
+  LLVM_ABI void setOperand(unsigned I, llvm::Metadata *New) {
+    llvm::MDTuple::setOperand(I, New);
   };
 };
 

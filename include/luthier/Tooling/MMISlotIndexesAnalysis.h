@@ -68,7 +68,7 @@ class MMISlotIndexesPrinterPass : public llvm::PassInfoMixin<MMISlotIndexesPrint
     llvm::raw_ostream &OS;
 
   public:
-    explicit SlotIndexesPrinterPass(llvm::raw_ostream &OS) : OS(OS) {}
+    explicit MMISlotIndexesPrinterPass(llvm::raw_ostream &OS) : OS(OS) {}
     llvm::PreservedAnalyses run(llvm::Module &M,
                                    llvm::ModuleAnalysisManager &MAM);
     static bool isRequired() { return true; }
