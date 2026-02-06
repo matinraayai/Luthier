@@ -25,7 +25,6 @@
 #include "luthier/Tooling/SlotIndexes.h"
 #include "luthier/Tooling/IPPredicatedCFG.h"
 #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
-#include "luthier/Tooling/Predic"
 #include "luthier/Tooling/StateValueArrayStorage.h"
 #include "luthier/Tooling/IPVectorRegLiveness.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
@@ -59,13 +58,13 @@ static void
 findAvailableRegister(const llvm::MachineRegisterInfo &MRI,
                      const llvm::TargetRegisterClass &RC,
                      const llvm::LivePhysRegs &AccessedPhysicalRegsNotInLiveIns,
-                     const llvm::LivePhysRegs &LiveInRegs, int NumRegs,
+                     const llvm::LiveRegUnits &LiveInRegs, int NumRegs,
                      llvm::SmallVectorImpl<llvm::MCRegister> &ScavengedRegs) {
   int NumRegsFound = 0;
   for (llvm::MCRegister Reg : reverse(RC)) {
     if (MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg) &&
         AccessedPhysicalRegsNotInLiveIns.available(MRI, Reg) &&
-        LiveInRegs.available(MRI, Reg)) {
+        LiveInRegs.available(Reg)) {
       ScavengedRegs.push_back(Reg);
       NumRegsFound++;
       if (NumRegsFound == NumRegs)
@@ -92,11 +91,11 @@ static llvm::MCRegister
 findAvailableRegister(const llvm::MachineRegisterInfo &MRI,
                      const llvm::TargetRegisterClass &RC,
                      const llvm::LivePhysRegs &AccessedPhysicalRegsNotInLiveIns,
-                     const llvm::LivePhysRegs &LiveInRegs) {
+                     const llvm::LiveRegUnits &LiveInRegs) {
   for (llvm::MCRegister Reg : reverse(RC)) {
     if (MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg) &&
         AccessedPhysicalRegsNotInLiveIns.available(MRI, Reg) &&
-        LiveInRegs.available(MRI, Reg)) {
+        LiveInRegs.available(Reg)) {
       return Reg;
     }
   }
@@ -174,17 +173,17 @@ findAvailableRegister(llvm::ArrayRef<PredicatedMachineFunction *> RelatedFunctio
 }
 
 // FIXME: Either use LRU for these or add method to get LPR liveness on IPVectorRegLiveness
-bool getMILevelLiveIns(const llvm::MachineInstr& TargetMI, const PredicatedMachineBasicBlock& PMBB, const IPVectorRegLiveness& RegLiveness, llvm::LivePhysRegs& LPR){
+bool getMILevelLiveIns(const llvm::MachineInstr& TargetMI, const PredicatedMachineBasicBlock& PMBB, const IPVectorRegLiveness& RegLiveness, llvm::LiveRegUnits& LRU){
   LPR.clear();
-  RegLiveness.addLiveOutsNoPristines(LPR, PMBB);
+  RegLiveness.addLiveOuts(PMBB, LRU);
   if(PMBB.getExecMaskValue() == PredicatedMachineBasicBlock::ZeroOrOne){
     for(llvm::MachineInstr &MI : llvm::reverse(PMBB)){
-      LPR.stepBackward(MI);
+      LRU.stepBackward(MI);
       if(MI == TargetMI) return true;
     }
   }
   else{
-    RegLiveness.addBlockLiveIns(LPR, PMBB);
+    RegLiveness.addLiveIns(PMBB, LRU);
     return true;
   }
   
@@ -210,7 +209,7 @@ bool getMILevelLiveIns(const llvm::MachineInstr& TargetMI, const PredicatedMachi
 static std::pair<llvm::MCRegister, bool>
 selectVGPRLoadLocationForInjectedPayload(
     const llvm::MachineInstr &InstPoint, StateValueArrayStorage &SVS,
-    const llvm::LivePhysRegs &InstPointLiveRegs,
+    const llvm::LiveRegUnits &InstPointLiveRegs,
     const llvm::LivePhysRegs &AccessedPhysicalRegsNotInLiveIns,
     bool ScavengeDeadAVGPRs) {
   llvm::MCRegister AVGPRLocation{0};
@@ -224,7 +223,7 @@ selectVGPRLoadLocationForInjectedPayload(
       AVGPRLocation = llvm::AMDGPU::VGPR0;
       ClobbersAppRegister = true;
     } else {
-      auto &InstrumentedMF = *InstPoint.getParent()->getParent();
+      auto &InstrumentedMF = *(InstPoint.getParent()->getParent());
       // Scavenge a dead VGPR to hold the state value array
       AVGPRLocation = findAvailableRegister(
           InstrumentedMF.getRegInfo(), llvm::AMDGPU::VGPR_32RegClass,
@@ -347,7 +346,7 @@ static std::shared_ptr<StateValueArrayStorage> findFixedStateValueArrayStorage(
 }
 
 static std::shared_ptr<StateValueArrayStorage> findStateValueArrayStorageAtMI(
-    const llvm::MachineRegisterInfo &MRI, const llvm::LivePhysRegs &MILiveIns,
+    const llvm::MachineRegisterInfo &MRI, const llvm::LiveRegUnits &MILiveIns,
     const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
     llvm::ArrayRef<StateValueArrayStorage::StorageKind> SupportedStorage,
     int MaxAGPRsUsedByAllStorage, int MaxSGPRsUsedByAllStorage) {
@@ -495,7 +494,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
       }
     }
     for (const auto &[InsertionPointMI, HookFunction] : IPIP.mi_payload()) {
-      llvm::LivePhysRegs HookLiveRegs{TRI};
+      llvm::LiveRegUnits HookLiveRegs{TRI};
       LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           getMILevelLiveIns(*InsertionPointMI, IPCFG.getPredMBB(*InsertionPointMI), RegLiveness, HookLiveRegs),
           llvm::formatv(
@@ -523,7 +522,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
       // to the last available SGPR/VGPR/AGPR
       PredicatedMachineBasicBlock& FirstPMBB = MF->front().front();
       // May change to LPR
-      llvm::LivePhysRegs FirstMILiveIns{TRI};
+      llvm::LiveRegUnits FirstMILiveIns{TRI};
       LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           getMILevelLiveIns(FirstPMBB.getFirstNonDebugInstr(), FirstPMBB, RegLiveness, FirstMILiveIns),
           llvm::formatv("Failed to obtain the live physical regs for MI {0}.",
@@ -560,7 +559,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
           for (const auto &MI : PBB) {
             if (IPIP.contains(MI))
               HookInsertionPointsInCurrentSegment.insert(&MI);
-            llvm::LivePhysRegs InstrLiveRegs{TRI};
+            llvm::LiveRegUnits InstrLiveRegs{TRI};
             
             LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
                 getMILevelLiveIns(MI, PBB, RegLiveness, InstrLiveRegs),
@@ -596,7 +595,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
               CurrentMBBSegments.emplace_back(CurrentIntervalBegin, NextIndex,
                                               SVS);
               for (const auto &HookMI : HookInsertionPointsInCurrentSegment) {
-                llvm::LivePhysRegs HookLiveRegs{TRI};
+                llvm::LiveRegUnits HookLiveRegs{TRI};
                 LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
                 getMILevelLiveIns(*HookMI, PBB, RegLiveness, HookLiveRegs),
                 llvm::formatv(
@@ -655,7 +654,59 @@ LRStateValueStorageAndLoadLocationsAnalysis::run(
 }
 
 llvm::PreservedAnalyses LRStateValueStorageAndLoadLocationsPrinterPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM){
-  
-
+  const auto &MMI = MAM.getResult<llvm::MachineModuleAnalysis>(M)->getMMI();
+  const auto &SVS = MAM.getResult<LRStateValueStorageAndLoadLocationsAnalysis>(M);
+  const auto &IPCFG = MAM.getResult<IPPredCFGAnalysis>(M).getVecCFG();
+  const auto &ModuleSI = MAM.getResult<MMISlotIndexesAnalysis>(M);
+  const auto &ST = MF.getMF().getSubtarget();
+  const auto TII = ST.getInstrInfo();
+  const auto *TRI = ST.getRegisterInfo();
+  const auto IPIP = *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+  int Indent = 2;
+  for(const auto& F : M){
+    PredicatedMachineFunction MF = IPCFG.at(*(MMI.getMachineFunction(F)));
+    const auto& MFSI = ModuleSI.at(MF);
+    MFSI.print(OS);
+    for(const auto& LMBB : MF){
+      for(const auto& PMBB : LMBB){
+        auto Segments = SVS.getStorageIntervals(PMBB);
+        const auto &CurrentSegment = Segments.begin();
+        OS.indent(Indent) << "Predicated MBB " << getName() << "\n";
+        OS.indent(Indent) << "Predecessors: [";
+        llvm::interleave(
+            Predecessors.begin(), Predecessors.end(),
+            [&](const PredMBBBuilder &MBB) {
+              OS << "MBB " << MBB.getPredMBB().getName();
+            },
+            [&]() { OS << ", "; });
+        OS << "]\n";
+        if(!PMBB.empty()){
+          for(const auto& MI : PMBB){
+            if(MFSI.getInstructionIndex(MI) == CurrentSegment->End){
+              CurrentSegment++;
+              OS << "Load Plan for segment [" << CurrentSegment->begin().print() << ", " << CurrentSegment->end().print() << ") -> " << CurrentSegment->getSVS().print() << "\n";
+            }
+            
+            if(IPIP.contains(MI)){
+              const auto InstPointSVA =  SVS.getStateValueArrayLoadPlanForInstPoint(MI);
+              OS << "Instrumented MI\n";
+              OS << "SVA Register-> " << TRI->getName(InstPointSVA->StateValueArrayLoadVGPR) << "\n";
+              OS << "LoadDestClobbersAppVGPR->" << InstPointSVA->LoadDestClobbersAppVGPR << "\n";
+              OS << "SVA Storage-> " << InstrPointSVA->StateValueStorageLocation.print() << "\n";
+            }
+            MI.print(OS.indent(Indent + 2), true, false, false, true, TII);
+          }
+        }
+        OS.indent(Indent) << "Successors: [";
+        llvm::interleave(
+            Successors.begin(), Successors.end(),
+            [&](const PredMBBBuilder &MBB) {
+              OS << "MBB " << MBB.getPredMBB().getName();
+            },
+            [&]() { OS << ", "; });
+        OS << "]\n";
+      }
+    }
+  }
 }
 } // namespace luthier

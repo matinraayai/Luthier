@@ -38,18 +38,18 @@ private:
 public:
   class Result {
     friend MMISlotIndexesAnalysis;
-    llvm::DenseMap<llvm::MachineFunction *, SlotIndexes> Res;
+    llvm::DenseMap<PredicatedMachineFunction *, SlotIndexes> Res;
     Result() = default;
 
   public:
-    typedef llvm::DenseMap<llvm::MachineFunction *,
+    typedef llvm::DenseMap<PredicatedMachineFunction *,
                            SlotIndexes>::const_iterator const_iterator;
 
     [[nodiscard]] const_iterator begin() const { return Res.begin(); }
 
     [[nodiscard]] const_iterator end() const { return Res.end(); }
 
-    const SlotIndexes &at(llvm::MachineFunction &MF) const {
+    const SlotIndexes &at(PredicatedMachineFunction &MF) const {
       return Res.at(&MF);
     }
 

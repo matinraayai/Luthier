@@ -37,7 +37,7 @@ MMISlotIndexesAnalysis::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
     auto& PMF = IPVecCFG.at(*MF);
     if (!MF)
       continue;
-    Out.Res.insert({MF, SlotIndexes(*MF, PMF)});
+    Out.Res.insert({PMF, SlotIndexes(PMF)});
   }
   return Out;
 }
@@ -49,7 +49,7 @@ MMISlotIndexesPrinterPass::run(llvm::Module &M,
   for(auto &Entry : SIA){
     auto* MF = Entry.getFirst();
     auto& SI = Entry.getSecond();
-    OS << "Slot indexes in machine function: " << MF->getName() << '\n';
+    OS << "Slot indexes in machine function: " << MF->getMF().getName() << '\n';
     SI.print(OS);
   }
   
