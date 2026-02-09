@@ -22,7 +22,7 @@ void SlotIndexes::clear() {
   ileAllocator.Reset();
 }
 
-void SlotIndexes::analyze(PredicatedMachineFunction &PMF) {
+void SlotIndexes::analyze(const PredicatedMachineFunction &PMF) {
 
   // Compute numbering as follows:
   // Grab an iterator to the start of the index list.

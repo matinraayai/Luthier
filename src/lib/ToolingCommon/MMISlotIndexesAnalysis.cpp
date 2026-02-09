@@ -34,10 +34,10 @@ MMISlotIndexesAnalysis::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
 
   for (const auto &F : M) {
     auto *MF = MMI.getMachineFunction(F);
-    auto& PMF = IPVecCFG.at(*MF);
+    auto& PMF = IPVecCFG[*MF];
     if (!MF)
       continue;
-    Out.Res.insert({PMF, SlotIndexes(PMF)});
+    Out.Res.insert({&PMF, SlotIndexes(PMF)});
   }
   return Out;
 }
@@ -53,7 +53,7 @@ MMISlotIndexesPrinterPass::run(llvm::Module &M,
     SI.print(OS);
   }
   
-  return PreservedAnalyses::all();
+  return llvm::PreservedAnalyses::all();
 }
 
 } // namespace luthier

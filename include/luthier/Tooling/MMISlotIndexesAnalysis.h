@@ -49,7 +49,7 @@ public:
 
     [[nodiscard]] const_iterator end() const { return Res.end(); }
 
-    const SlotIndexes &at(PredicatedMachineFunction &MF) const {
+    const SlotIndexes &at(const PredicatedMachineFunction &MF) const {
       return Res.at(&MF);
     }
 
