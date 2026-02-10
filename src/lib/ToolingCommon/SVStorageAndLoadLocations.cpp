@@ -636,7 +636,6 @@ LRStateValueStorageAndLoadLocationsAnalysis::run(
   auto &IModuleAndPMRes = TargetMAM.getResult<IModulePMAnalysis>(TargetModule);
   auto &IModule = IModuleAndPMRes.getModule();
   auto &IMAM = IModuleAndPMRes.getMAM();
-
   auto Err = Out.calculate(
       TargetMAM.getCachedResult<llvm::MachineModuleAnalysis>(TargetModule)
           ->getMMI(),
@@ -658,33 +657,39 @@ llvm::PreservedAnalyses LRStateValueStorageAndLoadLocationsPrinterPass::run(llvm
   const auto &SVS = MAM.getResult<LRStateValueStorageAndLoadLocationsAnalysis>(M);
   const auto &IPCFG = MAM.getResult<IPPredCFGAnalysis>(M).getVecCFG();
   const auto &ModuleSI = MAM.getResult<MMISlotIndexesAnalysis>(M);
-  const auto TII = ST.getInstrInfo();
-  const auto *TRI = ST.getRegisterInfo();
-  const auto IPIP = *MAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+  const auto &IPIP = MAM.getResult<InjectedPayloadAndInstPointAnalysis>(M);
   int Indent = 2;
   for(const auto& F : M){
     const auto& MF = IPCFG.at(*(MMI.getMachineFunction(F)));
     const auto& MFSI = ModuleSI.at(MF);
     const auto &ST = MF.getMF().getSubtarget();
+    const auto *TII = ST.getInstrInfo();
+    const auto *TRI = ST.getRegisterInfo();
     MFSI.print(OS);
     for(const auto& LMBB : MF){
       for(const auto& PMBB : LMBB){
         auto Segments = SVS.getStorageIntervals(PMBB);
-        const auto &CurrentSegment = Segments.begin();
-        OS.indent(Indent) << "Predicated MBB " << getName() << "\n";
+        const auto* CurrentSegment = Segments.begin();
+        OS.indent(Indent) << "Predicated MBB " << PMBB.getName() << "\n";
         OS.indent(Indent) << "Predecessors: [";
         llvm::interleave(
-            Predecessors.begin(), Predecessors.end(),
-            [&](const PredMBBBuilder &MBB) {
-              OS << "MBB " << MBB.getPredMBB().getName();
+            PMBB.predecessors().begin(), PMBB.predecessors().end(),
+            [&](const auto &PMBB_Item) {
+              OS << "MBB " << PMBB_Item.getName();
             },
             [&]() { OS << ", "; });
         OS << "]\n";
         if(!PMBB.empty()){
           for(const auto& MI : PMBB){
-            if(MFSI.getInstructionIndex(MI) == CurrentSegment->End){
+            if(MFSI.getInstructionIndex(MI) == CurrentSegment->end() && CurrentSegment != Segments.end()){
               CurrentSegment++;
-              OS << "Load Plan for segment [" << CurrentSegment->begin().print() << ", " << CurrentSegment->end().print() << ") -> " << CurrentSegment->getSVS().print() << "\n";
+              OS << "Load Plan for segment [";
+              CurrentSegment->begin().print(OS);
+              OS <<  ", ";
+              CurrentSegment->end().print(OS);
+              OS << ") -> ";
+              CurrentSegment->getSVS().print(OS);
+              OS << "\n";
             }
             
             if(IPIP.contains(MI)){
@@ -692,21 +697,24 @@ llvm::PreservedAnalyses LRStateValueStorageAndLoadLocationsPrinterPass::run(llvm
               OS << "Instrumented MI\n";
               OS << "SVA Register-> " << TRI->getName(InstPointSVA->StateValueArrayLoadVGPR) << "\n";
               OS << "LoadDestClobbersAppVGPR->" << InstPointSVA->LoadDestClobbersAppVGPR << "\n";
-              OS << "SVA Storage-> " << InstrPointSVA->StateValueStorageLocation.print() << "\n";
+              OS << "SVA Storage-> ";
+              InstPointSVA->StateValueStorageLocation.print(OS); 
+              OS << "\n";
             }
             MI.print(OS.indent(Indent + 2), true, false, false, true, TII);
           }
         }
         OS.indent(Indent) << "Successors: [";
         llvm::interleave(
-            Successors.begin(), Successors.end(),
-            [&](const PredMBBBuilder &MBB) {
-              OS << "MBB " << MBB.getPredMBB().getName();
+            PMBB.successors().begin(), PMBB.successors().end(),
+            [&](const auto &PMBB_Item) {
+              OS << "MBB " << PMBB_Item.getName();
             },
             [&]() { OS << ", "; });
         OS << "]\n";
       }
     }
   }
+  return llvm::PreservedAnalyses::all();
 }
 } // namespace luthier

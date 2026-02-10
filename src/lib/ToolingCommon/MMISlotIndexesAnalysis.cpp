@@ -20,7 +20,9 @@
 #include "luthier/Tooling/MMISlotIndexesAnalysis.h"
 #include "luthier/Tooling/IPPredicatedCFG.h"
 #include <llvm/CodeGen/MachineModuleInfo.h>
+#include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/IR/Module.h>
+#include <iostream>
 
 namespace luthier {
 
@@ -29,14 +31,12 @@ llvm::AnalysisKey MMISlotIndexesAnalysis::Key;
 MMISlotIndexesAnalysis::Result
 MMISlotIndexesAnalysis::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
   MMISlotIndexesAnalysis::Result Out;
-  auto &MMI = MAM.getCachedResult<llvm::MachineModuleAnalysis>(M)->getMMI();
+  auto &FAM = MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(M).getManager();
   auto &IPVecCFG = MAM.getResult<IPPredCFGAnalysis>(M).getVecCFG();
-
-  for (const auto &F : M) {
-    auto *MF = MMI.getMachineFunction(F);
-    auto& PMF = IPVecCFG[*MF];
-    if (!MF)
-      continue;
+  for (auto &F : M) {
+    llvm::MachineFunction &MF =
+        FAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
+    auto& PMF = IPVecCFG[MF];  
     Out.Res.insert({&PMF, SlotIndexes(PMF)});
   }
   return Out;
@@ -44,9 +44,10 @@ MMISlotIndexesAnalysis::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
 
 llvm::PreservedAnalyses
 MMISlotIndexesPrinterPass::run(llvm::Module &M,
-                            llvm::ModuleAnalysisManager &MAM) {
+                            llvm::ModuleAnalysisManager &MAM) {                         
   auto &SIA = MAM.getResult<MMISlotIndexesAnalysis>(M);
   for(auto &Entry : SIA){
+    std::cout << "Entry" << std::endl;
     auto* MF = Entry.getFirst();
     auto& SI = Entry.getSecond();
     OS << "Slot indexes in machine function: " << MF->getMF().getName() << '\n';

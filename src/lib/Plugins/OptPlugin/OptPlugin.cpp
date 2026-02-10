@@ -33,7 +33,7 @@
 #include "luthier/Tooling/MockAMDGPULoader.h"
 #include "luthier/Tooling/MockLoadAMDGPUCodeObjects.h"
 #include "luthier/Tooling/MockLoaderMemoryAccessor.h"
-// #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
+#include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
 // #include "luthier/Tooling/PrePostAmbleEmitter.h"
 #include "luthier/Tooling/IPVectorRegLiveness.h"
 #include "luthier/Tooling/SVStorageAndLoadLocations.h"
@@ -188,7 +188,7 @@ llvmGetPassPluginInfo() {
       });
       MAM.registerPass([]() { return luthier::CodeObjectManagerAnalysis(); });
       // MAM.registerPass([]() { return luthier::LRCallGraphAnalysis(); });
-      // MAM.registerPass([]() { return luthier::MMISlotIndexesAnalysis(); });
+      MAM.registerPass([]() { return luthier::MMISlotIndexesAnalysis(); });
       // MAM.registerPass([]() {
       //   return luthier::LRStateValueStorageAndLoadLocationsAnalysis();
       // });
@@ -243,10 +243,10 @@ llvmGetPassPluginInfo() {
             MPM.addPass(luthier::MMISlotIndexesPrinterPass(llvm::outs()));
             return true;
           }
-          if(Name == "luthier-svstorage-and-load-locations-printer"){
-            MPM.addPass(luthier::LRStateValueStorageAndLoadLocationsPrinterPass(llvm::outs()));
-            return true;
-          }
+          // if(Name == "luthier-svstorage-and-load-locations-printer"){
+          //   MPM.addPass(luthier::LRStateValueStorageAndLoadLocationsPrinterPass(llvm::outs()));
+          //   return true;
+          // }
           if (Name == "luthier-ip-vector-reg-liveness-printer") {
             MPM.addPass(luthier::IPVectorRegLivenessPrinter(llvm::outs()));
             return true;

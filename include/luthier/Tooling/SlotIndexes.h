@@ -316,7 +316,7 @@ namespace luthier {
 
     void clear();
 
-    void analyze(const PredicatedMachineFunction &MF);
+    void analyze(PredicatedMachineFunction &MF);
 
     IndexListEntry* createEntry(llvm::MachineInstr *mi, unsigned index) {
       IndexListEntry *entry =
@@ -334,7 +334,7 @@ namespace luthier {
   public:
     SlotIndexes(SlotIndexes &&) = default;
 
-    SlotIndexes(const PredicatedMachineFunction &PMF) { analyze(PMF); }
+    SlotIndexes(PredicatedMachineFunction &PMF) { analyze(PMF); }
 
     ~SlotIndexes();
 

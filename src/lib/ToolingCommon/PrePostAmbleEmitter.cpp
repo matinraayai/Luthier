@@ -479,9 +479,9 @@ bool PrePostAmbleEmitter::runOnModule(llvm::Module &IModule) {
       *TargetMAM.getCachedResult<FunctionPreambleDescriptorAnalysis>(
           TargetModule);
 
-  auto &SVLocations =
-      *TargetMAM.getCachedResult<LRStateValueStorageAndLoadLocationsAnalysis>(
-          TargetModule);
+  // auto &SVLocations =
+  //     *TargetMAM.getCachedResult<LRStateValueStorageAndLoadLocationsAnalysis>(
+  //         TargetModule);
 
   // First we need to figure out if we need to set up the state value array
   // at all

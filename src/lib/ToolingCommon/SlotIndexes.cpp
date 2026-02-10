@@ -22,7 +22,7 @@ void SlotIndexes::clear() {
   ileAllocator.Reset();
 }
 
-void SlotIndexes::analyze(const PredicatedMachineFunction &PMF) {
+void SlotIndexes::analyze(PredicatedMachineFunction &PMF) {
 
   // Compute numbering as follows:
   // Grab an iterator to the start of the index list.
@@ -82,9 +82,9 @@ void SlotIndexes::analyze(const PredicatedMachineFunction &PMF) {
   }
 
   // Sort the Idx2MBBMap
-  llvm::sort(idx2MBBMap, less_first());
+  llvm::sort(idx2MBBMap, llvm::less_first());
 
-  LLVM_DEBUG(mf->print(dbgs(), this));
+  LLVM_DEBUG(PMF.print(dbgs(), this));
 }
 
 void SlotIndexes::removeMachineInstrFromMaps(llvm::MachineInstr &MI,
@@ -148,7 +148,6 @@ void SlotIndexes::renumberIndexes(IndexList::iterator curItr) {
 
   LLVM_DEBUG(llvm::dbgs() << "\n*** Renumbered SlotIndexes " << startItr->getIndex()
                     << '-' << index << " ***\n");
-  ++NumLocalRenum;
 }
 
 // Repair indexes after adding and removing instructions.
