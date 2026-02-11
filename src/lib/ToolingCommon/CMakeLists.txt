@@ -21,16 +21,16 @@ add_library(LuthierToolingCommon OBJECT
         InstructionModel.cpp
         LiftedRepresentation.cpp
         #        PhysicalRegAccessVirtualizationPass.cpp
-        #        SVStorageAndLoadLocations.cpp
+        SVStorageAndLoadLocations.cpp
         #        LRCallGraph.cpp
         IPVectorRegLiveness.cpp
         #        IntrinsicMIRLoweringPass.cpp
         #        InjectedPayloadPEIPass.cpp
         #        PrePostAmbleEmitter.cpp
-        #        StateValueArraySpecs.cpp
+        StateValueArraySpecs.cpp
         IPPredicatedCFG.cpp
-        #        StateValueArrayStorage.cpp
-        #        IModuleIRGeneratorPass.cpp
+        StateValueArrayStorage.cpp
+        IModuleIRGeneratorPass.cpp
         #        RunIRPassesOnIModulePass.cpp
         MMISlotIndexesAnalysis.cpp
         SlotIndexes.cpp

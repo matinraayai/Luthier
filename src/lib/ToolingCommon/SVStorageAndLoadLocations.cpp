@@ -31,8 +31,10 @@
 #include <GCNSubtarget.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
+#include <llvm/CodeGen/MachineFunctionAnalysis.h>
 
 #include <utility>
+#include <iostream>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-lr-state-value-storage-and-load"
@@ -426,17 +428,19 @@ SVStorageAndLoadLocations::getStateValueArrayLoadPlanForInstPoint(
 }
 
 llvm::Error SVStorageAndLoadLocations::calculate(
-    const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
+    const llvm::MachineModuleInfo &TargetMMI,  llvm::Module &TargetM,
     const MMISlotIndexesAnalysis::Result &SlotIndexes,
     const IPVectorRegLiveness &RegLiveness,
-    const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
-    const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
-    const IPPredicatedCFG &IPCFG) {
+    const InjectedPayloadAndInstPoint &IPIP, 
+  /*const*/llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
+    const IPPredicatedCFG &IPCFG,
+    llvm::FunctionAnalysisManager& FAM){
   llvm::SmallVector<const PredicatedMachineFunction*, 4> MFs;
-  for (const auto &F : TargetM) {
-    if (auto *MF = TargetMMI.getMachineFunction(F)) {
-      MFs.push_back(&IPCFG.at(*MF));
-    }
+  for (auto &F : TargetM) {
+    llvm::MachineFunction &MF =
+          FAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
+    MFs.push_back(&IPCFG.at(MF));
+    
   }
 
   // Early exit if no MF is present in the LCO of LR
@@ -446,6 +450,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
   // used and check if we have at least only one method for storage
   const auto &ST = MFs[0]->getMF().getSubtarget<llvm::GCNSubtarget>();
   const auto TRI = ST.getRegisterInfo();
+  AccessedPhysicalRegistersNotInLiveIns.init(*TRI);
   llvm::SmallVector<StateValueArrayStorage::StorageKind, 6> SupportedStorage;
   getSupportedSVAStorageList(ST, SupportedStorage);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
@@ -633,19 +638,21 @@ LRStateValueStorageAndLoadLocationsAnalysis::Result
 LRStateValueStorageAndLoadLocationsAnalysis::run(
     llvm::Module &TargetModule, llvm::ModuleAnalysisManager &TargetMAM) {
   SVStorageAndLoadLocations Out;
-  auto &IModuleAndPMRes = TargetMAM.getResult<IModulePMAnalysis>(TargetModule);
-  auto &IModule = IModuleAndPMRes.getModule();
-  auto &IMAM = IModuleAndPMRes.getMAM();
+  // auto &IModuleAndPMRes = TargetMAM.getResult<IModulePMAnalysis>(TargetModule);
+  // auto &IModule = IModuleAndPMRes.getModule();
+  // auto &IMAM = IModuleAndPMRes.getMAM();
+  llvm::LivePhysRegs LPR{};
   auto Err = Out.calculate(
       TargetMAM.getCachedResult<llvm::MachineModuleAnalysis>(TargetModule)
           ->getMMI(),
       TargetModule, TargetMAM.getResult<MMISlotIndexesAnalysis>(TargetModule),
       *TargetMAM.getCachedResult<IPVectorRegLivenessAnalysis>(TargetModule),
-      *IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule),
-      TargetMAM.getResult<FunctionPreambleDescriptorAnalysis>(TargetModule),
-      IMAM.getResult<PhysRegsNotInLiveInsAnalysis>(IModule)
-          .getPhysRegsNotInLiveIns(),
-      TargetMAM.getResult<IPPredCFGAnalysis>(TargetModule).getVecCFG());
+      /**IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule)*/ {},
+      // IMAM.getResult<PhysRegsNotInLiveInsAnalysis>(IModule)
+      //     .getPhysRegsNotInLiveIns(),
+      LPR,
+      TargetMAM.getResult<IPPredCFGAnalysis>(TargetModule).getVecCFG(),
+      TargetMAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule).getManager());
   if (Err)
     TargetModule.getContext().emitError(llvm::toString(std::move(Err)));
 
@@ -657,7 +664,7 @@ llvm::PreservedAnalyses LRStateValueStorageAndLoadLocationsPrinterPass::run(llvm
   const auto &SVS = MAM.getResult<LRStateValueStorageAndLoadLocationsAnalysis>(M);
   const auto &IPCFG = MAM.getResult<IPPredCFGAnalysis>(M).getVecCFG();
   const auto &ModuleSI = MAM.getResult<MMISlotIndexesAnalysis>(M);
-  const auto &IPIP = MAM.getResult<InjectedPayloadAndInstPointAnalysis>(M);
+  //const auto &IPIP = MAM.getResult<InjectedPayloadAndInstPointAnalysis>(M);
   int Indent = 2;
   for(const auto& F : M){
     const auto& MF = IPCFG.at(*(MMI.getMachineFunction(F)));
@@ -665,53 +672,60 @@ llvm::PreservedAnalyses LRStateValueStorageAndLoadLocationsPrinterPass::run(llvm
     const auto &ST = MF.getMF().getSubtarget();
     const auto *TII = ST.getInstrInfo();
     const auto *TRI = ST.getRegisterInfo();
-    MFSI.print(OS);
     for(const auto& LMBB : MF){
       for(const auto& PMBB : LMBB){
         auto Segments = SVS.getStorageIntervals(PMBB);
         const auto* CurrentSegment = Segments.begin();
-        OS.indent(Indent) << "Predicated MBB " << PMBB.getName() << "\n";
-        OS.indent(Indent) << "Predecessors: [";
-        llvm::interleave(
-            PMBB.predecessors().begin(), PMBB.predecessors().end(),
-            [&](const auto &PMBB_Item) {
-              OS << "MBB " << PMBB_Item.getName();
-            },
-            [&]() { OS << ", "; });
-        OS << "]\n";
+        // OS.indent(Indent) << "Predicated MBB " << PMBB.getName() << "\n";
+        // OS.indent(Indent) << "Predecessors: [";
+        // llvm::interleave(
+        //     PMBB.predecessors().begin(), PMBB.predecessors().end(),
+        //     [&](const auto &PMBB_Item) {
+        //       OS << "MBB " << PMBB_Item.getName();
+        //     },
+        //     [&]() { OS << ", "; });
+        // OS << "]\n";
         if(!PMBB.empty()){
           for(const auto& MI : PMBB){
-            if(MFSI.getInstructionIndex(MI) == CurrentSegment->end() && CurrentSegment != Segments.end()){
-              CurrentSegment++;
+            SlotIndex MIIdx = MFSI.getInstructionIndex(MI);
+            if (CurrentSegment != Segments.end() && !CurrentSegment->contains(MIIdx)) {
               OS << "Load Plan for segment [";
               CurrentSegment->begin().print(OS);
-              OS <<  ", ";
+              OS << ", ";
               CurrentSegment->end().print(OS);
               OS << ") -> ";
               CurrentSegment->getSVS().print(OS);
               OS << "\n";
+              ++CurrentSegment;
             }
-            
-            if(IPIP.contains(MI)){
-              const auto InstPointSVA =  SVS.getStateValueArrayLoadPlanForInstPoint(MI);
-              OS << "Instrumented MI\n";
-              OS << "SVA Register-> " << TRI->getName(InstPointSVA->StateValueArrayLoadVGPR) << "\n";
-              OS << "LoadDestClobbersAppVGPR->" << InstPointSVA->LoadDestClobbersAppVGPR << "\n";
-              OS << "SVA Storage-> ";
-              InstPointSVA->StateValueStorageLocation.print(OS); 
-              OS << "\n";
-            }
-            MI.print(OS.indent(Indent + 2), true, false, false, true, TII);
+            // if(IPIP.contains(MI)){
+            //   const auto InstPointSVA =  SVS.getStateValueArrayLoadPlanForInstPoint(MI);
+            //   OS << "Instrumented MI\n";
+            //   OS << "SVA Register-> " << TRI->getName(InstPointSVA->StateValueArrayLoadVGPR) << "\n";
+            //   OS << "LoadDestClobbersAppVGPR->" << InstPointSVA->LoadDestClobbersAppVGPR << "\n";
+            //   OS << "SVA Storage-> ";
+            //   InstPointSVA->StateValueStorageLocation.print(OS); 
+            //   OS << "\n";
+            // }
+            //MI.print(OS.indent(Indent + 2), true, false, false, true, TII);
           }
+          // Make sure we print the final segment of the PMBB 
+          OS << "Load Plan for segment [";
+          CurrentSegment->begin().print(OS);
+          OS << ", ";
+          CurrentSegment->end().print(OS);
+          OS << ") -> ";
+          CurrentSegment->getSVS().print(OS);
+          OS << "\n";
         }
-        OS.indent(Indent) << "Successors: [";
-        llvm::interleave(
-            PMBB.successors().begin(), PMBB.successors().end(),
-            [&](const auto &PMBB_Item) {
-              OS << "MBB " << PMBB_Item.getName();
-            },
-            [&]() { OS << ", "; });
-        OS << "]\n";
+        // OS.indent(Indent) << "Successors: [";
+        // llvm::interleave(
+        //     PMBB.successors().begin(), PMBB.successors().end(),
+        //     [&](const auto &PMBB_Item) {
+        //       OS << "MBB " << PMBB_Item.getName();
+        //     },
+        //     [&]() { OS << ", "; });
+        // OS << "]\n";
       }
     }
   }

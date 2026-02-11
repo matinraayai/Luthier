@@ -128,12 +128,13 @@ public:
   /// \return an \c llvm::Error indication the success of failure of the
   /// operation
   llvm::Error calculate(
-      const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
+      const llvm::MachineModuleInfo &TargetMMI,  llvm::Module &TargetM,
       const MMISlotIndexesAnalysis::Result &SlotIndexes,
       const IPVectorRegLiveness &RegLiveness,
-      const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
-      const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
-      const IPPredicatedCFG &IPCFG);
+      const InjectedPayloadAndInstPoint &IPIP,
+      /*const*/ llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
+      const IPPredicatedCFG &IPCFG,
+      llvm::FunctionAnalysisManager& FAM);
 
   /// Given the \p MBB of the \c LiftedRepresentation being worked on by this
   /// analysis, returns the state value array storage of every instruction

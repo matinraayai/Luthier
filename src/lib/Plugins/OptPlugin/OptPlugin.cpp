@@ -189,9 +189,9 @@ llvmGetPassPluginInfo() {
       MAM.registerPass([]() { return luthier::CodeObjectManagerAnalysis(); });
       // MAM.registerPass([]() { return luthier::LRCallGraphAnalysis(); });
       MAM.registerPass([]() { return luthier::MMISlotIndexesAnalysis(); });
-      // MAM.registerPass([]() {
-      //   return luthier::LRStateValueStorageAndLoadLocationsAnalysis();
-      // });
+      MAM.registerPass([]() {
+        return luthier::LRStateValueStorageAndLoadLocationsAnalysis();
+      });
       // MAM.registerPass(
       //     []() { return luthier::FunctionPreambleDescriptorAnalysis(); });
       MAM.registerPass(
@@ -243,10 +243,10 @@ llvmGetPassPluginInfo() {
             MPM.addPass(luthier::MMISlotIndexesPrinterPass(llvm::outs()));
             return true;
           }
-          // if(Name == "luthier-svstorage-and-load-locations-printer"){
-          //   MPM.addPass(luthier::LRStateValueStorageAndLoadLocationsPrinterPass(llvm::outs()));
-          //   return true;
-          // }
+          if(Name == "luthier-svstorage-and-load-locations-printer"){
+            MPM.addPass(luthier::LRStateValueStorageAndLoadLocationsPrinterPass(llvm::outs()));
+            return true;
+          }
           if (Name == "luthier-ip-vector-reg-liveness-printer") {
             MPM.addPass(luthier::IPVectorRegLivenessPrinter(llvm::outs()));
             return true;
