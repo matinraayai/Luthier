@@ -72,6 +72,10 @@ public:
                                                       bool Status);
 
   bool getIndirectBranchOrCallTargetsResolutionStatus() const;
+  
+  void TargetMachineInstrMDNode::setStateValueArrayLocation(llvm::LLVMContext &Ctx, llvm::MCRegister& SVA);
+
+  llvm::MCRegister TargetMachineInstrMDNode::getStateValueArrayLocation() const;
 
   static bool classof(const Metadata *MD);
 };

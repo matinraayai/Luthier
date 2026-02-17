@@ -1,4 +1,3 @@
-
 #include "luthier/Tooling/AnnotatedMachineInstr.h"
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
