@@ -676,15 +676,6 @@ llvm::PreservedAnalyses LRStateValueStorageAndLoadLocationsPrinterPass::run(llvm
       for(const auto& PMBB : LMBB){
         auto Segments = SVS.getStorageIntervals(PMBB);
         const auto* CurrentSegment = Segments.begin();
-        // OS.indent(Indent) << "Predicated MBB " << PMBB.getName() << "\n";
-        // OS.indent(Indent) << "Predecessors: [";
-        // llvm::interleave(
-        //     PMBB.predecessors().begin(), PMBB.predecessors().end(),
-        //     [&](const auto &PMBB_Item) {
-        //       OS << "MBB " << PMBB_Item.getName();
-        //     },
-        //     [&]() { OS << ", "; });
-        // OS << "]\n";
         if(!PMBB.empty()){
           for(const auto& MI : PMBB){
             SlotIndex MIIdx = MFSI.getInstructionIndex(MI);
@@ -707,7 +698,6 @@ llvm::PreservedAnalyses LRStateValueStorageAndLoadLocationsPrinterPass::run(llvm
             //   InstPointSVA->StateValueStorageLocation.print(OS); 
             //   OS << "\n";
             // }
-            //MI.print(OS.indent(Indent + 2), true, false, false, true, TII);
           }
           // Make sure we print the final segment of the PMBB 
           OS << "Load Plan for segment [";
@@ -718,14 +708,6 @@ llvm::PreservedAnalyses LRStateValueStorageAndLoadLocationsPrinterPass::run(llvm
           CurrentSegment->getSVS().print(OS);
           OS << "\n";
         }
-        // OS.indent(Indent) << "Successors: [";
-        // llvm::interleave(
-        //     PMBB.successors().begin(), PMBB.successors().end(),
-        //     [&](const auto &PMBB_Item) {
-        //       OS << "MBB " << PMBB_Item.getName();
-        //     },
-        //     [&]() { OS << ", "; });
-        // OS << "]\n";
       }
     }
   }
