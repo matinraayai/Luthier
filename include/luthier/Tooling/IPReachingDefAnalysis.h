@@ -123,7 +123,7 @@ private:
   /// Instruction that defined each register, relative to the beginning of the
   /// current basic block.  When a LiveRegsDefInfo is used to represent a
   /// live-out register, this value is relative to the end of the basic block,
-  /// so it will be a negative number. 
+  /// so it will be a negative number.
   using LiveRegsDefInfo = std::vector<int>;
   LiveRegsDefInfo LiveRegs;
 
