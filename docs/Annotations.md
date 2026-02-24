@@ -155,6 +155,14 @@ case it cannot make its target. If set to `false`, the post patching passes
 instead will insert a second branch to be the target of the machine instruction
 in question.
 
+### "State Value Array Location"
+
+This section's header is `luthier.machine_instr.state_value_array_location`,
+followed by the id of the register holding the State Value Array(SVA). This metadata is
+used to tell the program in which VGPR the SVA is. If SVA for some reason is not loaded anywhere
+then we return `llvm::NoRegister` or 0. When a program needs the SVA register,
+we use the id stored in the section to construct the `llvm::MCRegister` and return it.
+
 ###              
 
 `"luthier.instr.indirect_jmp_call_targets"`, followed by the list of functions.

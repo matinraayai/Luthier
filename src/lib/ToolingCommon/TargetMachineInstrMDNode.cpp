@@ -93,7 +93,7 @@ struct MachineInstrAnnotationInfo<AreIndirectBranchAndCallTargetsResolved> {
 template <>
 struct MachineInstrAnnotationInfo<StateValueArrayLocation> {
   static constexpr auto MDName =
-      "luthier.machine_instr.state_value_array_location";
+      "luthier.machine_instr.state_value_arry_location"a;
 };
 
 /// Modified version of the \c llvm::MDBuilder::createPCSections that will force
