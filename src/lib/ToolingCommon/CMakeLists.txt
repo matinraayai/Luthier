@@ -15,24 +15,23 @@ add_library(LuthierToolingCommon OBJECT
         TargetMachineInstrMDNode.cpp
         CodeDiscoveryPass.cpp
         MachineFunctionEntryPoint.cpp
-        MachineToTraceInstrAnalysis.cpp
         InstructionTracesAnalysis.cpp
         MemoryAllocationAccessor.cpp
         InstructionModel.cpp
-        LiftedRepresentation.cpp
         #        PhysicalRegAccessVirtualizationPass.cpp
-        #        SVStorageAndLoadLocations.cpp
+        SVStorageAndLoadLocations.cpp
         #        LRCallGraph.cpp
         IPVectorRegLiveness.cpp
         #        IntrinsicMIRLoweringPass.cpp
         #        InjectedPayloadPEIPass.cpp
         #        PrePostAmbleEmitter.cpp
-        #        StateValueArraySpecs.cpp
+        StateValueArraySpecs.cpp
         IPPredicatedCFG.cpp
-        #        StateValueArrayStorage.cpp
-        #        IModuleIRGeneratorPass.cpp
+        StateValueArrayStorage.cpp
+        IModuleIRGeneratorPass.cpp
         #        RunIRPassesOnIModulePass.cpp
-        #        MMISlotIndexesAnalysis.cpp
+        MMISlotIndexesAnalysis.cpp
+        SlotIndexes.cpp
         #        ProcessIntrinsicsAtIRLevelPass.cpp
         #        PhysRegsNotInLiveInsAnalysis.cpp
         WrapperAnalysisPasses.cpp
@@ -41,6 +40,8 @@ add_library(LuthierToolingCommon OBJECT
         MIRConvenience.cpp
         MockAMDGPULoader.cpp
         MetadataParserAnalysis.cpp
+        #        ImmutableMachineInstr.cpp
+        #BranchRelaxationPass.cpp
         IntrinsicProcessorRegistry.cpp
         IntrinsicProcessorsAnalysis.cpp
         InstrumentationPMDriver.cpp
@@ -53,7 +54,7 @@ add_library(LuthierToolingCommon OBJECT
         Metadata.cpp
         NewPMAsmPrinter.cpp
         FunctionAnnotations.cpp
-        IPReachingRefAnalysis.cpp
+        IPReachingDefAnalysis.cpp
         IPPredicatedLoopTraversal.cpp
         #        IPRegScavenger.cpp
         IndirectBranchResolverAnalysis.cpp

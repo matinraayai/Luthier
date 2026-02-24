@@ -21,8 +21,9 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_MMI_SLOT_INDEXES_ANALYSIS_H
 #define LUTHIER_TOOLING_MMI_SLOT_INDEXES_ANALYSIS_H
+
+#include "luthier/Tooling/SlotIndexes.h"
 #include <llvm/CodeGen/MachineFunction.h>
-#include <llvm/CodeGen/SlotIndexes.h>
 #include <llvm/IR/PassManager.h>
 
 namespace luthier {
@@ -37,18 +38,18 @@ private:
 public:
   class Result {
     friend MMISlotIndexesAnalysis;
-    llvm::DenseMap<llvm::MachineFunction *, llvm::SlotIndexes> Res;
+    llvm::DenseMap<PredicatedMachineFunction *, SlotIndexes> Res;
     Result() = default;
 
   public:
-    typedef llvm::DenseMap<llvm::MachineFunction *,
-                           llvm::SlotIndexes>::const_iterator const_iterator;
+    typedef llvm::DenseMap<PredicatedMachineFunction *,
+                           SlotIndexes>::const_iterator const_iterator;
 
     [[nodiscard]] const_iterator begin() const { return Res.begin(); }
 
     [[nodiscard]] const_iterator end() const { return Res.end(); }
 
-    const llvm::SlotIndexes &at(llvm::MachineFunction &MF) const {
+    const SlotIndexes &at(const PredicatedMachineFunction &MF) const {
       return Res.at(&MF);
     }
 
@@ -62,6 +63,17 @@ public:
 
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
 };
+
+class MMISlotIndexesPrinterPass : public llvm::PassInfoMixin<MMISlotIndexesPrinterPass> {
+    llvm::raw_ostream &OS;
+
+  public:
+    explicit MMISlotIndexesPrinterPass(llvm::raw_ostream &OS) : OS(OS) {}
+    llvm::PreservedAnalyses run(llvm::Module &M,
+                                   llvm::ModuleAnalysisManager &MAM);
+    static bool isRequired() { return true; }
+  };
+
 
 } // namespace luthier
 

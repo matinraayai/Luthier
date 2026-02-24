@@ -21,6 +21,7 @@
 #define LUTHIER_TOOLING_TARGET_MACHINE_INSTR_MD_NODE_H
 #include <llvm/IR/Metadata.h>
 #include <llvm/Support/Error.h>
+#include <llvm/MC/MCRegister.h>
 
 namespace llvm {
 class MachineInstr;
@@ -72,6 +73,10 @@ public:
                                                       bool Status);
 
   bool getIndirectBranchOrCallTargetsResolutionStatus() const;
+  
+  void setStateValueArrayLocation(llvm::LLVMContext &Ctx, llvm::MCRegister& SVA);
+
+  llvm::MCRegister getStateValueArrayLocation() const;
 
   static bool classof(const Metadata *MD);
 };

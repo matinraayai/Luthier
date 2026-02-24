@@ -33,10 +33,10 @@ namespace {
 /// llvm::MDNode::setOperand public instead of protected
 class MutableMDTuple : public llvm::MDTuple {
 public:
-  static bool classof(const Metadata *Node) { return MDTuple::classof(Node); }
+  static bool classof(const llvm::Metadata *Node) { return llvm::MDTuple::classof(Node); }
 
-  LLVM_ABI void setOperand(unsigned I, Metadata *New) {
-    MDTuple::setOperand(I, New);
+  LLVM_ABI void setOperand(unsigned I, llvm::Metadata *New) {
+    llvm::MDTuple::setOperand(I, New);
   };
 };
 
@@ -45,14 +45,15 @@ public:
 namespace luthier {
 
 /// \brief set of target machine instruction annotations defined so far
-enum TargetMachineInstrAnnotation : uint8_t {
+enum TargetMachineInstrAnnotation : uint8_t { 
   Tag = 0,
   TraceAddr = 1,
   InjectedPayload = 2,
   CanRelaxDirectBranch = 3,
   IndirectBranchAndCallTargets = 4,
   AreIndirectBranchAndCallTargetsResolved = 5,
-  LastMachineInstrAnnotation = IndirectBranchAndCallTargets
+  StateValueArrayLocation = 6,
+  LastMachineInstrAnnotation = StateValueArrayLocation
 };
 
 /// \brief This struct statically maps the enums in \c
@@ -89,12 +90,18 @@ struct MachineInstrAnnotationInfo<AreIndirectBranchAndCallTargetsResolved> {
       "luthier.machine_instr.are_indirect_branch_and_call_targets_resolved";
 };
 
+template <>
+struct MachineInstrAnnotationInfo<StateValueArrayLocation> {
+  static constexpr auto MDName =
+      "luthier.machine_instr.state_value_arry_location"a;
+};
+
 /// Modified version of the \c llvm::MDBuilder::createPCSections that will force
 /// any \c llvm::MDTuple created in the PCSections to be distinct to allow
 /// modification/resizing in Luthier passes
 static llvm::MDTuple *
 createPCSections(llvm::LLVMContext &Ctx,
-                 llvm::ArrayRef<llvm::MDBuilder::PCSection> Sections) {
+                 llvm::ArrayRef<llvm::MDBuilder::PCSection> Sections) { 
   llvm::SmallVector<llvm::Metadata *, 2> Ops;
   llvm::MDBuilder MDB{Ctx};
   for (const auto &Entry : Sections) {
@@ -366,6 +373,38 @@ bool TargetMachineInstrMDNode::getIndirectBranchOrCallTargetsResolutionStatus()
     }
   }
   return true;
+}
+
+void TargetMachineInstrMDNode::setStateValueArrayLocation(llvm::LLVMContext &Ctx, llvm::MCRegister& SVA){
+  auto [StringHeader, AuxConstList] =
+    getOrCreateMDEntry<StateValueArrayLocation>(Ctx, *this);
+  llvm::MDBuilder MDB{Ctx};
+  unsigned SVAID = SVA.id(); 
+  llvm::ConstantAsMetadata *NewSVAMD = MDB.createConstant(
+      llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(Ctx), SVAID));
+  if (AuxConstList.getNumOperands() >= 1) {
+    llvm::cast<MutableMDTuple>(AuxConstList).setOperand(0, NewSVAMD);
+  } else {
+    AuxConstList.push_back(NewSVAMD);
+  }
+}
+
+// Returns Register stored in Metadata or NoRegister. Make sure you check return value
+// FIXME: Should we assert if there is no entry?
+llvm::MCRegister TargetMachineInstrMDNode::getStateValueArrayLocation() const {
+  auto SVALocationIfExists =
+      getMDEntryIfExists<StateValueArrayLocation>(*this);
+  if(!SVALocationIfExists.has_value()){
+    return llvm::MCRegister::NoRegister;
+  }
+  if (auto &ListMD = SVALocationIfExists->second;
+      ListMD.getNumOperands() >= 1) {
+    if (auto *SVA = llvm::mdconst::extract_or_null<llvm::ConstantInt>(
+            ListMD.getOperand(0))){
+      return llvm::MCRegister(static_cast<unsigned>(SVA->getZExtValue()));
+    }
+  }      
+  return llvm::MCRegister::NoRegister;  
 }
 
 bool TargetMachineInstrMDNode::classof(const Metadata *MD) {

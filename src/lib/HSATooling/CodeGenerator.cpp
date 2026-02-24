@@ -33,11 +33,13 @@
 #include "luthier/Tooling/RunMIRPassesOnIModulePass.h"
 #include "luthier/Tooling/VectorRegLiveness.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
+#include "luthier/Tooling/BranchRelaxationPass.h"
 #include <AMDGPUResourceUsageAnalysis.h>
 #include <AMDGPUTargetMachine.h>
 #include <amd_comgr/amd_comgr.h>
 #include <llvm/Analysis/CallGraphSCCPass.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
+#include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Passes/StandardInstrumentations.h>

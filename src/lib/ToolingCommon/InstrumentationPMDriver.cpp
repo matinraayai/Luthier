@@ -26,6 +26,7 @@
 #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
 #include "luthier/Tooling/ProcessIntrinsicsAtIRLevelPass.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
+#include "luthier/Tooling/BranchRelaxationPass.h"
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/LoopAnalysisManager.h>
 #include <llvm/Analysis/RuntimeLibcallInfo.h>
@@ -70,6 +71,7 @@ InstrumentationPMDriver::InstrumentationPMDriver(
   initializePhysicalRegAccessVirtualizationPass(*Registry);
   initializeInjectedPayloadPEIPass(*Registry);
   initializeIntrinsicMIRLoweringPass(*Registry);
+  initializeBranchRelaxationPass(*Registry);
   for (const auto &Plugin : PassPlugins) {
     Plugin.registerLegacyCodegenPassesCallback(*Registry);
   }
@@ -264,6 +266,8 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
   LegacyIPM->add(new PrePostAmbleEmitter());
   // Add the lifted representation patching pass
   LegacyIPM->add(new PatchLiftedRepresentationPass());
+  // Add the branch relaxation pass
+  LegacyIPM->add(new BranchRelaxationPass());
 
   llvm::PassRegistry *Registry = llvm::PassRegistry::getPassRegistry();
 

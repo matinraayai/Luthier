@@ -23,7 +23,7 @@
 #ifndef LUTHIER_TOOLING_PHYSICAL_REG_ACCESS_VIRTUALIZATION_PASS_H
 #define LUTHIER_TOOLING_PHYSICAL_REG_ACCESS_VIRTUALIZATION_PASS_H
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
-#include "luthier/Tooling/AMDGPURegisterLiveness.h"
+//#include "luthier/Tooling/AMDGPURegisterLiveness.h"
 #include "luthier/Tooling/LRCallgraph.h"
 #include "luthier/Tooling/LegacyPassSupport.h"
 #include "luthier/Tooling/LiftedRepresentation.h"

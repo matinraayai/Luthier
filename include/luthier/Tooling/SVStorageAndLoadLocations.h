@@ -30,9 +30,10 @@
 #include "luthier/Tooling/MMISlotIndexesAnalysis.h"
 #include "luthier/Tooling/PrePostAmbleEmitter.h"
 #include "luthier/Tooling/StateValueArrayStorage.h"
-#include "luthier/Tooling/VectorRegLiveness.h"
+#include "luthier/Tooling/IPVectorRegLiveness.h"
 #include <llvm/CodeGen/SlotIndexes.h>
 #include <llvm/IR/PassManager.h>
+#include <llvm/Support/raw_ostream.h>
 
 namespace luthier {
 
@@ -41,36 +42,36 @@ namespace luthier {
 struct StateValueStorageSegment {
 private:
   /// Start point of the interval (inclusive)
-  llvm::SlotIndex Start;
+  SlotIndex Start;
   /// End point of the interval (exclusive)
-  llvm::SlotIndex End;
+  SlotIndex End;
   /// Where and how the state value is stored
   std::shared_ptr<StateValueArrayStorage> SVS;
 
 public:
-  StateValueStorageSegment(llvm::SlotIndex S, llvm::SlotIndex E,
+  StateValueStorageSegment(SlotIndex S, SlotIndex E,
                            std::shared_ptr<StateValueArrayStorage> SVAS)
       : Start(S), End(E), SVS(std::move(SVAS)) {
     if (S > E)
       llvm::report_fatal_error("Cannot create empty or backwards segment");
   }
 
-  [[nodiscard]] llvm::SlotIndex begin() const { return Start; }
+  [[nodiscard]] SlotIndex begin() const { return Start; }
 
-  [[nodiscard]] llvm::SlotIndex end() const { return End; }
+  [[nodiscard]] SlotIndex end() const { return End; }
 
   /// \returns the state value array storage of this MBB interval
   [[nodiscard]] const StateValueArrayStorage &getSVS() const { return *SVS; }
 
   /// \return true if the index is covered by this segment, false otherwise
-  [[nodiscard]] bool contains(llvm::SlotIndex I) const {
+  [[nodiscard]] bool contains(SlotIndex I) const {
     return Start <= I && I < End;
   }
 
   /// \return true if the given interval, [S, E), is covered by this segment,
   /// false otherwise
-  [[nodiscard]] bool containsInterval(llvm::SlotIndex S,
-                                      llvm::SlotIndex E) const {
+  [[nodiscard]] bool containsInterval(SlotIndex S,
+                                      SlotIndex E) const {
     if (S > E)
       llvm::report_fatal_error("Backwards interval");
     return (Start <= S && S < End) && (Start < E && E <= End);
@@ -110,7 +111,7 @@ class SVStorageAndLoadLocations {
 private:
   /// Keeps track of how and where the state value array is stored in each
   /// function inside in the \c LR
-  llvm::DenseMap<const llvm::MachineBasicBlock *,
+  llvm::DenseMap<const PredicatedMachineBasicBlock *,
                  llvm::SmallVector<StateValueStorageSegment>>
       StateValueStorageIntervals{};
 
@@ -127,11 +128,13 @@ public:
   /// \return an \c llvm::Error indication the success of failure of the
   /// operation
   llvm::Error calculate(
-      const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
+      const llvm::MachineModuleInfo &TargetMMI,  llvm::Module &TargetM,
       const MMISlotIndexesAnalysis::Result &SlotIndexes,
-      const VectorRegLiveness &RegLiveness,
-      const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
-      const llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns);
+      const IPVectorRegLiveness &RegLiveness,
+      const InjectedPayloadAndInstPoint &IPIP,
+      llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
+      const IPPredicatedCFG &IPCFG,
+      llvm::FunctionAnalysisManager& FAM);
 
   /// Given the \p MBB of the \c LiftedRepresentation being worked on by this
   /// analysis, returns the state value array storage of every instruction
@@ -142,7 +145,7 @@ public:
   /// interval inside the \p MBB or an empty \c llvm::ArrayRef if the \p MBB
   /// is not part of the \c LiftedRepresentation being analyzed
   [[nodiscard]] llvm::ArrayRef<StateValueStorageSegment>
-  getStorageIntervals(const llvm::MachineBasicBlock &MBB) const;
+  getStorageIntervals(const PredicatedMachineBasicBlock &MBB) const;
 
   /// \return state value array load plan associated with instrumentation
   /// point \p MI or \c nullptr if the passed \p MI is not an instrumentation
@@ -167,6 +170,15 @@ public:
   using Result = SVStorageAndLoadLocations;
 
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &);
+};
+
+class LRStateValueStorageAndLoadLocationsPrinterPass : public llvm::PassInfoMixin<LRStateValueStorageAndLoadLocationsPrinterPass>{
+  llvm::raw_ostream &OS;
+  public:
+    explicit LRStateValueStorageAndLoadLocationsPrinterPass(llvm::raw_ostream &OS) : OS(OS){}
+    llvm::PreservedAnalyses run(llvm::Module &M,
+                                   llvm::ModuleAnalysisManager &MAM);
+    static bool isRequired() { return true; }
 };
 
 } // namespace luthier

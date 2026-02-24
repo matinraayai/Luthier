@@ -22,10 +22,10 @@
 #include "luthier/HSA/LoadedCodeObject.h"
 #include "luthier/HSA/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/HSA/LoadedCodeObjectKernel.h"
-#include "luthier/Tooling/AMDGPURegisterLiveness.h"
 #include "luthier/Tooling/LiftedRepresentation.h"
 #include "luthier/Tooling/PrePostAmbleEmitter.h"
 #include <llvm/CodeGen/SlotIndexes.h>
+#include <llvm/Support/raw_ostream.h>
 
 namespace llvm {
 class GCNSubtarget;
@@ -164,6 +164,9 @@ public:
   bool isSupportedOnSubTarget(const llvm::GCNSubtarget &ST) const {
     return isSupportedOnSubTarget(Kind, ST);
   }
+  virtual void print(llvm::raw_ostream& OS) const{
+    OS << "Unknown storage kind";
+  }
 };
 
 /// \brief describes the state value array when stored in a free VGPR
@@ -203,6 +206,10 @@ public:
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
     Regs.push_back(StorageVGPR);
   }
+
+  void print(llvm::raw_ostream& OS)const override{
+    OS << "SVS_SINGLE_VGPR";
+  }
 };
 
 /// \brief describes the state value array when stored in a Single free AGPR for
@@ -213,7 +220,7 @@ public:
 
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
-    return S->getScheme() == SVS_SINGLE_VGPR;
+    return S->getScheme() == SVS_ONE_AGPR_post_gfx908;
   }
 
   /// Constructor
@@ -243,6 +250,10 @@ public:
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
     Regs.push_back(StorageAGPR);
+  }
+  
+  void print(llvm::raw_ostream& OS) const override {
+    OS << "SVS_ONE_AGPR_post_gfx908";
   }
 };
 
@@ -288,6 +299,10 @@ public:
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
     Regs.push_back(StorageAGPR);
     Regs.push_back(TempAGPR);
+  }
+
+  void print(llvm::raw_ostream& OS) const override {
+    OS << "SVS_TWO_AGPRs_pre_gfx908";
   }
 };
 
@@ -348,6 +363,10 @@ public:
     Regs.push_back(FlatScratchSGPRLow);
     Regs.push_back(EmergencyVGPRSpillSlotOffset);
   }
+
+  void print(llvm::raw_ostream& OS) const override {
+    OS << "SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908";
+  }
 };
 
 /// \brief State value array storage scheme where the SVA is spilled in
@@ -400,6 +419,10 @@ public:
     Regs.push_back(FlatScratchSGPRLow);
     Regs.push_back(EmergencyVGPRSpillSlotOffset);
   }
+
+  void print(llvm::raw_ostream& OS) const override {
+    OS << "SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs";
+  }
 };
 
 /// \brief State value array storage scheme for targets with architected
@@ -442,6 +465,10 @@ public:
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
     Regs.push_back(EmergencyVGPRSpillSlotOffset);
+  }
+
+  void print(llvm::raw_ostream& OS) const override {
+    OS << "SVS_SPILLED_WITH_ONE_SGPR_architected_fs";
   }
 };
 

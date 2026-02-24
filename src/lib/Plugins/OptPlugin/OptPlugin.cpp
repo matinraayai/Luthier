@@ -26,17 +26,17 @@
 // #include "luthier/Tooling/InstrumentationPMDriver.h"
 #include "luthier/Tooling/IntrinsicMIRLoweringPass.h"
 // #include "luthier/Tooling/LRCallgraph.h"
-// #include "luthier/Tooling/MMISlotIndexesAnalysis.h"
+#include "luthier/Tooling/MMISlotIndexesAnalysis.h"
 #include "luthier/Tooling/MachineFunctionEntryPoint.h"
 #include "luthier/Tooling/MemoryAllocationAccessor.h"
 #include "luthier/Tooling/MetadataParserAnalysis.h"
 #include "luthier/Tooling/MockAMDGPULoader.h"
 #include "luthier/Tooling/MockLoadAMDGPUCodeObjects.h"
 #include "luthier/Tooling/MockLoaderMemoryAccessor.h"
-// #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
+#include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
 // #include "luthier/Tooling/PrePostAmbleEmitter.h"
 #include "luthier/Tooling/IPVectorRegLiveness.h"
-// #include "luthier/Tooling/SVStorageAndLoadLocations.h"
+#include "luthier/Tooling/SVStorageAndLoadLocations.h"
 #include "luthier/Tooling/IPPredicatedCFG.h"
 #include "luthier/Tooling/IPReachingDefAnalysis.h"
 #include "luthier/Tooling/NewPMAsmPrinter.h"
@@ -188,10 +188,10 @@ llvmGetPassPluginInfo() {
       });
       MAM.registerPass([]() { return luthier::CodeObjectManagerAnalysis(); });
       // MAM.registerPass([]() { return luthier::LRCallGraphAnalysis(); });
-      // MAM.registerPass([]() { return luthier::MMISlotIndexesAnalysis(); });
-      // MAM.registerPass([]() {
-      //   return luthier::LRStateValueStorageAndLoadLocationsAnalysis();
-      // });
+      MAM.registerPass([]() { return luthier::MMISlotIndexesAnalysis(); });
+      MAM.registerPass([]() {
+        return luthier::LRStateValueStorageAndLoadLocationsAnalysis();
+      });
       // MAM.registerPass(
       //     []() { return luthier::FunctionPreambleDescriptorAnalysis(); });
       MAM.registerPass(
@@ -237,6 +237,14 @@ llvmGetPassPluginInfo() {
           }
           if (Name == "luthier-ip-vector-cfg-printer") {
             MPM.addPass(luthier::IPPredCFGPrinter(llvm::outs()));
+            return true;
+          }
+          if(Name == "luthier-slot-indexes-printer") {
+            MPM.addPass(luthier::MMISlotIndexesPrinterPass(llvm::outs()));
+            return true;
+          }
+          if(Name == "luthier-svstorage-and-load-locations-printer"){
+            MPM.addPass(luthier::LRStateValueStorageAndLoadLocationsPrinterPass(llvm::outs()));
             return true;
           }
           if (Name == "luthier-ip-vector-reg-liveness-printer") {
