@@ -19,6 +19,7 @@
 #ifndef LUTHIER_TOOLING_ENTRY_POINT_H
 #define LUTHIER_TOOLING_ENTRY_POINT_H
 #include <cassert>
+#include <llvm/ADT/DenseMapInfo.h>
 #include <llvm/Support/AMDHSAKernelDescriptor.h>
 #include <variant>
 
@@ -95,5 +96,30 @@ public:
 };
 
 } // namespace luthier
+
+template <> struct llvm::DenseMapInfo<luthier::EntryPoint> {
+  static luthier::EntryPoint getEmptyKey() {
+    return luthier::EntryPoint(DenseMapInfo<uint64_t>::getEmptyKey());
+  }
+
+  static luthier::EntryPoint getTombstoneKey() {
+    return luthier::EntryPoint(DenseMapInfo<uint64_t>::getTombstoneKey());
+  }
+
+  static unsigned getHashValue(const luthier::EntryPoint &EP) {
+    if (const amdhsa::kernel_descriptor_t *KD = EP.getKernelDescriptor()) {
+      return DenseMapInfo<llvm::amdhsa::kernel_descriptor_t *>::getHashValue(
+          KD);
+    } else {
+      return DenseMapInfo<uint64_t>::getHashValue(EP.getEntryPointAddress());
+    }
+  }
+
+  static bool isEqual(const luthier::EntryPoint &Lhs,
+                      const luthier::EntryPoint &Rhs) {
+    return (Lhs.getEntryPointAddress() == Rhs.getEntryPointAddress()) &&
+           (Lhs.isKernel() == Rhs.isKernel());
+  }
+};
 
 #endif

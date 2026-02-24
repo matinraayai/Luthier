@@ -151,7 +151,8 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
   llvm::MachineFunctionAnalysisManager IMFAM;
 
   llvm::PassInstrumentationCallbacks PIC;
-  llvm::StandardInstrumentations SI(IModule->getContext(), true);
+  llvm::StandardInstrumentations SI(IModule->getContext(),
+                                    Options.EnableSIDebugLogging);
 
   // Create a PM Builder for the IR pipeline
   llvm::PassBuilder PB(ITM.get(), llvm::PipelineTuningOptions(), std::nullopt,

@@ -30,37 +30,37 @@ class MachineInstr;
 } // namespace llvm
 
 namespace luthier {
-class IPVectorRegLiveness;
+class IPPredRegLiveness;
 /// Thin wrapper around "int" used to store reaching definitions,
 /// using an encoding that makes it compatible with TinyPtrVector.
 /// The 0th LSB is forced zero (and will be used for pointer union tagging),
 /// The 1st LSB is forced one (to make sure the value is non-zero).
-class ReachingDef {
+class IPReachingDef {
   uintptr_t Encoded;
-  friend struct llvm::PointerLikeTypeTraits<ReachingDef>;
-  explicit ReachingDef(uintptr_t Encoded) : Encoded(Encoded) {}
+  friend struct llvm::PointerLikeTypeTraits<IPReachingDef>;
+  explicit IPReachingDef(uintptr_t Encoded) : Encoded(Encoded) {}
 
 public:
-  ReachingDef(std::nullptr_t) : Encoded(0) {}
-  ReachingDef(int Instr) : Encoded(((uintptr_t)Instr << 2) | 2) {}
+  IPReachingDef(std::nullptr_t) : Encoded(0) {}
+  IPReachingDef(int Instr) : Encoded(((uintptr_t)Instr << 2) | 2) {}
   operator int() const { return ((int)Encoded) >> 2; }
 };
 } // namespace luthier
 
 namespace llvm {
-template <> struct PointerLikeTypeTraits<luthier::ReachingDef> {
+template <> struct PointerLikeTypeTraits<luthier::IPReachingDef> {
   static constexpr int NumLowBitsAvailable = 1;
 
-  static inline void *getAsVoidPointer(const luthier::ReachingDef &RD) {
+  static inline void *getAsVoidPointer(const luthier::IPReachingDef &RD) {
     return reinterpret_cast<void *>(RD.Encoded);
   }
 
-  static inline luthier::ReachingDef getFromVoidPointer(void *P) {
-    return luthier::ReachingDef(reinterpret_cast<uintptr_t>(P));
+  static inline luthier::IPReachingDef getFromVoidPointer(void *P) {
+    return luthier::IPReachingDef(reinterpret_cast<uintptr_t>(P));
   }
 
-  static inline luthier::ReachingDef getFromVoidPointer(const void *P) {
-    return luthier::ReachingDef(reinterpret_cast<uintptr_t>(P));
+  static inline luthier::IPReachingDef getFromVoidPointer(const void *P) {
+    return luthier::IPReachingDef(reinterpret_cast<uintptr_t>(P));
   }
 };
 } // namespace llvm
@@ -68,7 +68,7 @@ template <> struct PointerLikeTypeTraits<luthier::ReachingDef> {
 namespace luthier {
 
 // The storage for all reaching definitions.
-class MBBReachingDefsInfo {
+class PredMBBReachingDefsInfo {
 public:
   void init(unsigned NumBlockIDs) { AllReachingDefs.resize(NumBlockIDs); }
 
@@ -94,17 +94,17 @@ public:
 
   void clear() { AllReachingDefs.clear(); }
 
-  llvm::ArrayRef<ReachingDef> defs(unsigned MBBNumber,
-                                   llvm::MCRegUnit Unit) const {
+  llvm::ArrayRef<IPReachingDef> defs(unsigned MBBNumber,
+                                     llvm::MCRegUnit Unit) const {
     if (AllReachingDefs[MBBNumber].empty())
       // Block IDs are not necessarily dense.
-      return llvm::ArrayRef<ReachingDef>();
+      return llvm::ArrayRef<IPReachingDef>();
     return AllReachingDefs[MBBNumber][static_cast<unsigned>(Unit)];
   }
 
 private:
   /// All reaching defs of a given RegUnit for a given MBB.
-  using MBBRegUnitDefs = llvm::TinyPtrVector<ReachingDef>;
+  using MBBRegUnitDefs = llvm::TinyPtrVector<IPReachingDef>;
   /// All reaching defs of all reg units for a given MBB
   using MBBDefsInfo = std::vector<MBBRegUnitDefs>;
 
@@ -113,11 +113,11 @@ private:
 };
 
 /// This class provides the reaching def analysis.
-class ReachingDefInfo {
+class IPReachingDefInfo {
 private:
   IPPredicatedLoopTraversal::IPTraversalOrder TraversedMBBOrder;
   const IPPredicatedCFG *IPVecCFG;
-  const IPVectorRegLiveness *IPRegLiveness;
+  const IPPredRegLiveness *IPRegLiveness;
   unsigned NumRegUnits = 0;
   int ObjectIndexBegin = 0;
   /// Instruction that defined each register, relative to the beginning of the
@@ -141,7 +141,7 @@ private:
   /// their basic blocks.
   llvm::DenseMap<const llvm::MachineInstr *, int> InstIds;
 
-  MBBReachingDefsInfo MBBReachingDefs;
+  PredMBBReachingDefsInfo MBBReachingDefs;
 
   /// MBBFrameObjsReachingDefs[{i, j}] is a list of instruction indices
   /// (relative to begining of MBB i) that define frame index j in MBB i. This
@@ -157,9 +157,9 @@ private:
   using BlockSet = llvm::SmallPtrSetImpl<const PredicatedMachineBasicBlock *>;
 
 public:
-  ReachingDefInfo();
-  ReachingDefInfo(ReachingDefInfo &&) noexcept;
-  ~ReachingDefInfo();
+  IPReachingDefInfo();
+  IPReachingDefInfo(IPReachingDefInfo &&) noexcept;
+  ~IPReachingDefInfo();
   /// Handle invalidation explicitly.
   bool invalidate(llvm::Module &Module, const llvm::PreservedAnalyses &PA,
                   llvm::ModuleAnalysisManager::Invalidator &);
@@ -172,11 +172,10 @@ public:
 
   /// Initialize data structures.
   void init(const IPPredicatedCFG &IPPredCFG,
-            const IPVectorRegLiveness &IPRegLiveness);
+            const IPPredRegLiveness &IPRegLiveness);
 
   /// Traverse the machine function, mapping definitions.
-  void traverse(const IPPredicatedCFG &IPPredCFG,
-                const IPVectorRegLiveness &IPRegLiveness);
+  void traverse();
 
   /// Provides the instruction id of the closest reaching def instruction of
   /// Reg that reaches MI, relative to the begining of MI's basic block.
@@ -293,17 +292,14 @@ public:
 
 private:
   /// Set up LiveRegs by merging predecessor live-out values.
-  void enterBasicBlock(
-      const PredicatedMachineBasicBlock &MBB,
-      llvm::ArrayRef<llvm::MachineBasicBlock::RegisterMaskPair> LiveIns);
+  void enterBasicBlock(const PredicatedMachineBasicBlock &MBB);
 
   /// Update live-out values.
   void leaveBasicBlock(const PredicatedMachineBasicBlock &MBB);
 
   /// Process he given basic block.
   void processBasicBlock(
-      const IPPredicatedLoopTraversal::TraversedPredMBBInfo &TraversedMBB,
-      llvm::ArrayRef<llvm::MachineBasicBlock::RegisterMaskPair> LiveIns);
+      const IPPredicatedLoopTraversal::TraversedPredMBBInfo &TraversedMBB);
 
   /// Process block that is part of a loop again.
   void reprocessBasicBlock(const PredicatedMachineBasicBlock &MBB);
@@ -335,13 +331,13 @@ private:
                                                   llvm::Register Reg) const;
 };
 
-class ReachingDefAnalysis
-    : public llvm::AnalysisInfoMixin<ReachingDefAnalysis> {
-  friend AnalysisInfoMixin<ReachingDefAnalysis>;
+class IPReachingDefAnalysis
+    : public llvm::AnalysisInfoMixin<IPReachingDefAnalysis> {
+  friend AnalysisInfoMixin<IPReachingDefAnalysis>;
   static llvm::AnalysisKey Key;
 
 public:
-  using Result = ReachingDefInfo;
+  using Result = IPReachingDefInfo;
 
   Result run(llvm::Module &TargetModule,
              llvm::ModuleAnalysisManager &TargetMAM);

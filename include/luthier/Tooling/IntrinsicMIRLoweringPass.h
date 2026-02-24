@@ -24,25 +24,34 @@
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include "luthier/Tooling/LegacyPassSupport.h"
 #include "luthier/Tooling/PrePostAmbleEmitter.h"
-#include <llvm/CodeGen/MachineFunctionPass.h>
 
 namespace luthier {
 
 class IntrinsicMIRLoweringPass;
 
+class StateValueArraySpecs;
+
 LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(IntrinsicMIRLoweringPass);
 
-class IntrinsicMIRLoweringPass : public llvm::MachineFunctionPass {
+class IntrinsicMIRLoweringPass : public llvm::ModulePass {
+private:
+  bool lowerIntrinsics(llvm::Module &IModule,
+                       llvm::DenseMap<llvm::Register, ScalarValueArgument>
+                           &ScalarSVAArgumentVirtualPlaceHolders,
+                       llvm::DenseMap<llvm::Register, llvm::MCRegister>
+                           &PhysicalRegisterPlaceHolders,
+                       std::unique_ptr<StateValueArraySpecs> &SVASpecs);
+
 public:
   static char ID;
 
-  IntrinsicMIRLoweringPass() : llvm::MachineFunctionPass(ID) {};
+  IntrinsicMIRLoweringPass() : llvm::ModulePass(ID) {};
 
   [[nodiscard]] llvm::StringRef getPassName() const override {
     return "Luthier Intrinsic MIR Lowering";
   }
 
-  bool runOnMachineFunction(llvm::MachineFunction &MF) override;
+  bool runOnModule(llvm::Module &IModule) override;
 
   void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
 };

@@ -1,5 +1,5 @@
 //===-- StateValueArraySpecs.h ----------------------------------*- C++ -*-===//
-// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2026 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,45 +14,115 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file
-/// This file provides functions used to query specifications of the state
-/// value array (e.g. frame spill slots, where the kernel arguments are
-/// stored, etc).
+/// \file StateValueArraySpecs.h
+/// Defines the \c StateValueArraySpecs class used to set up and read named
+/// metadata used in a \c llvm::Module to express the specifications of the
+/// state value array used across all functions.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_STATE_VALUE_ARRAY_SPECS_H
 #define LUTHIER_TOOLING_STATE_VALUE_ARRAY_SPECS_H
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
-#include <llvm/Support/Error.h>
+#include <llvm/CodeGen/Register.h>
 
-namespace luthier::stateValueArray {
+namespace llvm {
+class GCNSubtarget;
+}
 
-/// \return \c true if \p Reg belongs to a spill slot on the state value array,
-/// \c false otherwise
-bool isFrameSpillSlot(llvm::MCRegister Reg);
+namespace luthier {
 
-llvm::iterator_range<
-    llvm::SmallDenseMap<llvm::MCRegister, unsigned short, 8>::const_iterator>
-getFrameSpillSlots();
+class StateValueArraySpecs {
+  llvm::DenseMap<llvm::Register, uint8_t> FrameSpillLanes{};
 
-/// \param Reg SGPRs that clobber the frame of an AMD GPU device function with
-/// the C-calling convention, i.e. s0, s1, s2, s3, s32, s33, FS_LO, and FS_HI
-/// \return the lane ID in the state value array where the SGPR is spilled, or
-/// 255 if the register doesn't get clobbered by a device function's stack frame
-unsigned short getFrameSpillSlotLaneId(llvm::MCRegister Reg);
+  llvm::DenseMap<llvm::Register, uint8_t> InstrumentationFrameLanes{};
 
-unsigned short
-getInstrumentationStackFrameLaneIdStoreSlot(llvm::MCRegister Reg);
+  llvm::DenseMap<ScalarValueArgument, uint8_t> ScalarArguments{};
 
-llvm::iterator_range<
-    llvm::SmallDenseMap<llvm::MCRegister, unsigned short, 8>::const_iterator>
-getFrameStoreSlots();
+  StateValueArraySpecs() = default;
 
-llvm::Expected<unsigned short>
-getKernelArgumentLaneIdStoreSlotBeginForWave64(KernelArgumentType Arg);
+public:
+  using const_frame_spill_iterator = decltype(FrameSpillLanes)::const_iterator;
 
-llvm::Expected<unsigned short>
-getKernelArgumentStoreSlotSizeForWave64(KernelArgumentType Arg);
+  [[nodiscard]] const_frame_spill_iterator frame_spill_begin() const {
+    return FrameSpillLanes.begin();
+  }
 
-} // namespace luthier::stateValueArray
+  [[nodiscard]] const_frame_spill_iterator frame_spill_end() const {
+    return FrameSpillLanes.end();
+  }
+
+  [[nodiscard]] unsigned frame_spill_size() const {
+    return FrameSpillLanes.size();
+  }
+
+  [[nodiscard]] bool frame_spill_contains(llvm::Register Reg) const {
+    return FrameSpillLanes.contains(Reg);
+  }
+
+  [[nodiscard]] const_frame_spill_iterator
+  findFrameSpillLane(llvm::Register Reg) const {
+    return FrameSpillLanes.find(Reg);
+  }
+
+  using const_instrumentation_frame_iterator =
+      decltype(InstrumentationFrameLanes)::const_iterator;
+
+  [[nodiscard]] const_instrumentation_frame_iterator
+  instrumentation_frame_begin() const {
+    return InstrumentationFrameLanes.begin();
+  }
+
+  [[nodiscard]] const_instrumentation_frame_iterator
+  instrumentation_frame_end() const {
+    return InstrumentationFrameLanes.end();
+  }
+
+  [[nodiscard]] unsigned instrumentation_frame_size() const {
+    return InstrumentationFrameLanes.size();
+  }
+
+  [[nodiscard]] bool instrumentation_frame_contains(llvm::Register Reg) const {
+    return InstrumentationFrameLanes.contains(Reg);
+  }
+
+  [[nodiscard]] const_instrumentation_frame_iterator
+  findInstrumentationFrameLane(llvm::Register Reg) const {
+    return InstrumentationFrameLanes.find(Reg);
+  }
+
+  using const_argument_lane_iterator =
+      decltype(ScalarArguments)::const_iterator;
+
+  [[nodiscard]] const_argument_lane_iterator argument_lane_begin() const {
+    return ScalarArguments.begin();
+  }
+
+  [[nodiscard]] const_argument_lane_iterator argument_lane_end() const {
+    return ScalarArguments.end();
+  }
+
+  [[nodiscard]] unsigned argument_lane_size() const {
+    return ScalarArguments.size();
+  }
+
+  [[nodiscard]] bool argument_lane_contains(ScalarValueArgument SA) const {
+    return ScalarArguments.contains(SA);
+  }
+
+  [[nodiscard]] const_argument_lane_iterator
+  findArgumentLane(ScalarValueArgument SA) const {
+    return ScalarArguments.find(SA);
+  }
+
+  static unsigned getArgumentLaneSize(ScalarValueArgument SA);
+
+  static std::unique_ptr<StateValueArraySpecs>
+  getSVASpecs(const llvm::Module &M, const llvm::GCNSubtarget &STI);
+
+  static std::unique_ptr<StateValueArraySpecs> setModuleSVASpec(
+      llvm::Module &M, const llvm::GCNSubtarget &STI,
+      const llvm::SmallDenseSet<ScalarValueArgument> &RequestedSVArgs);
+};
+
+} // namespace luthier
 
 #endif

@@ -1,5 +1,5 @@
-//===-- InstructionTracesAnalysis.cpp -------------------------------------===//
-// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+//===-- IndirectBranchResolverAnalysis.cpp --------------------------------===//
+// Copyright 2026 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,15 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file
-/// Implements the \c InstructionTracesAnalysis class.
+/// \file IndirectBranchResolverAnalysis.cpp
+/// Implements the \c IndirectBranchResolverAnalysis class.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/IndirectBranchResolverAnalysis.h"
+#include "luthier/Tooling/IPPredicatedCFG.h"
+#include "luthier/Tooling/IPReachingDefAnalysis.h"
+#include "luthier/Tooling/IPVectorRegLiveness.h"
 #include "luthier/Tooling/MachineFunctionEntryPoint.h"
 #include <llvm/Support/GenericDomTree.h>
-// #include <luthier/Tooling/IPReachingDefAnalysis.h>
-// #include <luthier/Tooling/IPVectorCFG.h>
-// #include <luthier/Tooling/IPVectorRegLiveness.h>
 
 namespace luthier {
 
@@ -39,22 +39,20 @@ IndirectBranchResolverAnalysis::Result
 IndirectBranchResolverAnalysis::run(llvm::Module &TargetModule,
                                     llvm::ModuleAnalysisManager &TargetMAM) {
   // /// Get the IP Vector CFG; calculate the liveness and reaching definitions
-  // auto &IPVecCFG =
-  //     TargetMAM.getResult<IPVectorCFGAnalysis>(TargetModule).getVecCFG();
-  // auto &IPReachingDefs =
-  // TargetMAM.getResult<ReachingDefAnalysis>(TargetModule);
-  // IPReachingDefs.print(llvm::outs());
-  // /// Iterate over the IPVectorCFG in the post dom order and locate the
-  // /// indirect branch and all call instructions
-  // llvm::DominatorTreeBase<VectorMBB, false> DOM;
-  //
-  // DOM.recalculate(IPVecCFG);
+  auto &IPVecCFG =
+      TargetMAM.getResult<IPPredCFGAnalysis>(TargetModule).getVecCFG();
+  auto &IPReachingDefs =
+      TargetMAM.getResult<IPReachingDefAnalysis>(TargetModule);
+  /// Iterate over the IPVectorCFG in the dom order and locate the
+  /// indirect branch and all call instructions
+  llvm::DominatorTreeBase<PredicatedMachineBasicBlock, false> DOM;
 
-  // for (const VectorMBB *VecMBB : DOM.roots()) {
-  //   for (const llvm::MachineInstr &MI : *VecMBB) {
-  //     if (MI.isCall() || MI.isIndirectBranch()) {
-  //     }
-  //   }
-  // }
+  DOM.recalculate(IPVecCFG);
+  for (const PredicatedMachineBasicBlock *PredMBB : DOM.roots()) {
+    for (const llvm::MachineInstr &MI : *PredMBB) {
+      if (MI.isCall() || MI.isIndirectBranch()) {
+      }
+    }
+  }
 }
 } // namespace luthier

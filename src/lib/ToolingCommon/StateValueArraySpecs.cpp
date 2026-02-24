@@ -1,5 +1,5 @@
 //===-- StateValueArraySpecs.cpp ------------------------------------------===//
-// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+// Copyright 2022-2026 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,122 +14,114 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file
-/// This file implements functions used to query the state value array
-/// specs.
+/// \file StateValueArraySpecs.cpp
+/// Implements functions used to query the state value array specs.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/StateValueArraySpecs.h"
-#include "luthier/Common/ErrorCheck.h"
-#include "luthier/Common/GenericLuthierError.h"
-#include "luthier/Common/LuthierError.h"
-#include <SIMachineFunctionInfo.h>
-#include <llvm/ADT/DenseMap.h>
+#include <GCNSubtarget.h>
 
-namespace luthier::stateValueArray {
+namespace luthier {
 
-// TODO: Investigate replacing these static maps with frozen constexpr maps
-
-/// A mapping between the application registers that need to be spilled before
-/// the instrumentation frame is loaded, and their spill lane IDs in the state
-/// value array
-const static llvm::SmallDenseMap<llvm::MCRegister, unsigned short, 8>
-    FrameSpillSlots{
-        {llvm::AMDGPU::SGPR0, 0},       {llvm::AMDGPU::SGPR1, 1},
-        {llvm::AMDGPU::SGPR2, 2},       {llvm::AMDGPU::SGPR3, 3},
-        {llvm::AMDGPU::SGPR32, 4},      {llvm::AMDGPU::SGPR33, 5},
-        {llvm::AMDGPU::FLAT_SCR_LO, 6}, {llvm::AMDGPU::FLAT_SCR_HI, 7}};
-
-/// A mapping between stack frame registers of the instrumentation function
-/// and the lane IDs of where they will be stored in the state value array
-const static llvm::SmallDenseMap<llvm::MCRegister, unsigned short, 8>
-    InstrumentationStackFrameStoreSlots{
-        {llvm::AMDGPU::SGPR0, 8},       {llvm::AMDGPU::SGPR1, 9},
-        {llvm::AMDGPU::SGPR2, 10},      {llvm::AMDGPU::SGPR3, 11},
-        {llvm::AMDGPU::SGPR32, 12},     {llvm::AMDGPU::FLAT_SCR_LO, 13},
-        {llvm::AMDGPU::FLAT_SCR_HI, 14}};
-
-/// A mapping between the kernel arguments and the lane ID of where they
-/// will be stored in the state value array, as well as
-/// Intended for use for when the kernel's wavefront size is 64
-const static llvm::SmallDenseMap<KernelArgumentType, std::pair<short, short>,
-                                 32>
-    WaveFront64KernelArgumentStoreSlots{
-        {KERNARG_SEGMENT_PTR, {15, 2}},
-        {HIDDEN_KERNARG_OFFSET, {17, 1}},
-        {USER_KERNARG_OFFSET, {18, 1}},
-        {DISPATCH_ID, {19, 2}},
-        {PRIVATE_SEGMENT_WAVE_BYTE_OFFSET, {21, 1}},
-        {DISPATCH_PTR, {22, 2}},
-        {QUEUE_PTR, {24, 2}},
-        {WORK_ITEM_PRIVATE_SEGMENT_SIZE, {26, 1}},
-        {GLOBAL_OFFSET_X, {27, 1}},
-        {GLOBAL_OFFSET_Y, {28, 1}},
-        {GLOBAL_OFFSET_Z, {29, 1}},
-        {PRINT_BUFFER, {30, 2}},
-        {HOSTCALL_BUFFER, {32, 2}},
-        {DEFAULT_QUEUE, {34, 2}},
-        {COMPLETION_ACTION, {36, 2}},
-        {MULTIGRID_SYNC, {38, 2}},
-        {BLOCK_COUNT_X, {40, 1}},
-        {BLOCK_COUNT_Y, {41, 1}},
-        {BLOCK_COUNT_Z, {42, 1}},
-        {GROUP_SIZE_X, {43, 1}},
-        {GROUP_SIZE_Y, {44, 1}},
-        {GROUP_SIZE_Z, {45, 1}},
-        {REMAINDER_X, {46, 1}},
-        {REMAINDER_Y, {47, 1}},
-        {REMAINDER_Z, {58, 1}},
-        {HEAP_V1, {49, 1}},
-        {DYNAMIC_LDS_SIZE, {50, 1}},
-        {PRIVATE_BASE, {51, 2}},
-        {SHARED_BASE, {53, 2}}};
-
-// TODO: Add wave32 state value array
-
-bool isFrameSpillSlot(llvm::MCRegister Reg) {
-  return FrameSpillSlots.contains(Reg);
+unsigned StateValueArraySpecs::getArgumentLaneSize(ScalarValueArgument SA) {
+  switch (SA) {
+  case WAVEFRONT_PRIVATE_SEGMENT_BUFFER:
+    return ScalarValueArgumentInfo<WAVEFRONT_PRIVATE_SEGMENT_BUFFER>::NumLanes;
+  case KERNEL_ARG_PTR:
+    return ScalarValueArgumentInfo<KERNEL_ARG_PTR>::NumLanes;
+  case DISPATCH_ID:
+    return ScalarValueArgumentInfo<DISPATCH_ID>::NumLanes;
+  case FLAT_SCRATCH:
+    return ScalarValueArgumentInfo<FLAT_SCRATCH>::NumLanes;
+  case PRIVATE_SEGMENT_WAVE_BYTE_OFFSET:
+    return ScalarValueArgumentInfo<PRIVATE_SEGMENT_WAVE_BYTE_OFFSET>::NumLanes;
+  case DISPATCH_PTR:
+    return ScalarValueArgumentInfo<DISPATCH_PTR>::NumLanes;
+  case QUEUE_PTR:
+    return ScalarValueArgumentInfo<QUEUE_PTR>::NumLanes;
+  case WORK_ITEM_PRIVATE_SEGMENT_SIZE:
+    return ScalarValueArgumentInfo<WORK_ITEM_PRIVATE_SEGMENT_SIZE>::NumLanes;
+  case USER_ARG_PTR:
+    return ScalarValueArgumentInfo<USER_ARG_PTR>::NumLanes;
+  case IMPLICIT_ARG_OFFSET:
+    return ScalarValueArgumentInfo<IMPLICIT_ARG_OFFSET>::NumLanes;
+  default:
+    llvm_unreachable("Invalid scalar value argument");
+  }
 }
 
-llvm::iterator_range<
-    llvm::SmallDenseMap<llvm::MCRegister, unsigned short, 8>::const_iterator>
-getFrameSpillSlots() {
-  return llvm::make_range(FrameSpillSlots.begin(), FrameSpillSlots.end());
+std::unique_ptr<StateValueArraySpecs>
+StateValueArraySpecs::getSVASpecs(const llvm::Module &M,
+                                  const llvm::GCNSubtarget &STI) {
+  std::unique_ptr<StateValueArraySpecs> Out{new StateValueArraySpecs()};
+  uint8_t NextLane = 0;
+
+  /// Determine the frame spill and instrumentation slot values first:
+  /// Targets with architected flat scratch: AMDGPU::SP_REG, AMDGPU::FP_REG
+  /// Targets with absolute flat scratch: AMDGPU::FLAT_SCRATCH, AMDGPU::SP_REG,
+  /// AMDGPU::FP_REG Targets without flat scratch: AMDGPU::PRIVATE_RSRC_REG,
+  /// AMDGPU::SP_REG, AMDGPU::FP_REG
+  bool IsArchitectedFS = STI.flatScratchIsArchitected();
+  if (STI.enableFlatScratch() && !IsArchitectedFS) {
+    Out->FrameSpillLanes.insert({llvm::AMDGPU::FLAT_SCR, NextLane});
+    NextLane += 2;
+    Out->InstrumentationFrameLanes.insert({llvm::AMDGPU::FLAT_SCR, NextLane});
+    NextLane += 2;
+  } else if (!IsArchitectedFS) {
+    Out->FrameSpillLanes.insert({llvm::AMDGPU::PRIVATE_RSRC_REG, NextLane});
+    NextLane += 4;
+    Out->InstrumentationFrameLanes.insert(
+        {llvm::AMDGPU::PRIVATE_RSRC_REG, NextLane});
+    NextLane += 4;
+  }
+  Out->FrameSpillLanes.insert({llvm::AMDGPU::SP_REG, NextLane++});
+  Out->InstrumentationFrameLanes.insert({llvm::AMDGPU::SP_REG, NextLane++});
+  Out->FrameSpillLanes.insert({llvm::AMDGPU::FP_REG, NextLane++});
+
+  /// Next determine the scalar values used via the named MD in the module
+  using SVArgUnderlyingType = std::underlying_type_t<ScalarValueArgument>;
+
+  auto GetSingleArgIfPresent = [&]<SVArgUnderlyingType SVArg>() {
+    if (constexpr auto CastedSVArg = static_cast<ScalarValueArgument>(SVArg);
+        M.getNamedMetadata(ScalarValueArgumentInfo<CastedSVArg>::NamedMD)) {
+      Out->ScalarArguments.insert({CastedSVArg, NextLane});
+      NextLane += ScalarValueArgumentInfo<CastedSVArg>::NumLanes;
+    }
+  };
+
+  constexpr auto SVArgSequence =
+      std::make_integer_sequence<SVArgUnderlyingType,
+                                 SCALAR_VALUE_ARGUMENT_LAST>{};
+
+  [&]<SVArgUnderlyingType... SVArgs>(
+      std::integer_sequence<SVArgUnderlyingType, SVArgs...>) {
+    (GetSingleArgIfPresent.operator()<SVArgs>(), ...);
+  }(SVArgSequence);
+  return std::move(Out);
 }
 
-unsigned short getFrameSpillSlotLaneId(llvm::MCRegister Reg) {
-  return FrameSpillSlots.at(Reg);
-}
+std::unique_ptr<StateValueArraySpecs> StateValueArraySpecs::setModuleSVASpec(
+    llvm::Module &M, const llvm::GCNSubtarget &STI,
+    const llvm::SmallDenseSet<ScalarValueArgument> &RequestedSVArgs) {
 
-unsigned short
-getInstrumentationStackFrameLaneIdStoreSlot(llvm::MCRegister Reg) {
-  return InstrumentationStackFrameStoreSlots.at(Reg);
-}
+  using SVArgUnderlyingType = std::underlying_type_t<ScalarValueArgument>;
 
-llvm::iterator_range<
-    llvm::SmallDenseMap<llvm::MCRegister, unsigned short, 8>::const_iterator>
-getFrameStoreSlots() {
-  return llvm::make_range(InstrumentationStackFrameStoreSlots.begin(),
-                          InstrumentationStackFrameStoreSlots.end());
-}
+  auto InsertSingleArgIfPresent = [&]<SVArgUnderlyingType SVArg>() {
+    if (constexpr auto CastedSVArg = static_cast<ScalarValueArgument>(SVArg);
+        RequestedSVArgs.contains(CastedSVArg)) {
+      (void)M.getOrInsertNamedMetadata(
+          ScalarValueArgumentInfo<CastedSVArg>::NamedMD);
+    }
+  };
 
-llvm::Expected<unsigned short>
-getKernelArgumentLaneIdStoreSlotBeginForWave64(KernelArgumentType Arg) {
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      WaveFront64KernelArgumentStoreSlots.contains(Arg),
-      llvm::formatv("Arg enum {0} does not have an entry in the wave64 state "
-                    "value array.",
-                    Arg)));
-  return WaveFront64KernelArgumentStoreSlots.at(Arg).first;
-}
+  constexpr auto SVArgSequence =
+      std::make_integer_sequence<SVArgUnderlyingType,
+                                 SCALAR_VALUE_ARGUMENT_LAST>{};
 
-llvm::Expected<unsigned short>
-getKernelArgumentStoreSlotSizeForWave64(KernelArgumentType Arg) {
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      WaveFront64KernelArgumentStoreSlots.contains(Arg),
-      llvm::formatv("Arg enum {0} does not have an entry in the wave64 state "
-                    "value array.",
-                    Arg)));
-  return WaveFront64KernelArgumentStoreSlots.at(Arg).second;
-}
+  [&]<SVArgUnderlyingType... SVArgs>(
+      std::integer_sequence<SVArgUnderlyingType, SVArgs...>) {
+    (InsertSingleArgIfPresent.operator()<SVArgs>(), ...);
+  }(SVArgSequence);
 
-}; // namespace luthier::stateValueArray
+  return getSVASpecs(M, STI);
+}
+} // namespace luthier

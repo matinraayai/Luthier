@@ -55,21 +55,21 @@ static void sortUniqueLiveIns(
   LiveIns.erase(Out, LiveIns.end());
 }
 
-void IPVectorRegLiveness::addBlockLiveOuts(
+void IPPredRegLiveness::addBlockLiveOuts(
     const PredicatedMachineBasicBlock &MBB,
     llvm::LiveRegUnits &LiveUnits) const {
   for (const auto &LO : getPredMBBLiveOuts(MBB))
     LiveUnits.addRegMasked(LO.PhysReg, LO.LaneMask);
 }
 
-void IPVectorRegLiveness::addBlockLiveIns(
+void IPPredRegLiveness::addBlockLiveIns(
     const PredicatedMachineBasicBlock &MBB,
     llvm::LiveRegUnits &LiveUnits) const {
   for (const auto &LI : getPredMBBLiveIns(MBB))
     LiveUnits.addRegMasked(LI.PhysReg, LI.LaneMask);
 }
 
-void IPVectorRegLiveness::addBlockLiveIns(
+void IPPredRegLiveness::addBlockLiveIns(
     llvm::LivePhysRegs &LPR, const PredicatedMachineBasicBlock &PredMBB) const {
   for (const auto &LI : PredMBBLivenessMap.at(PredMBB)) {
     llvm::MCPhysReg Reg = LI.PhysReg;
@@ -93,7 +93,7 @@ void IPVectorRegLiveness::addBlockLiveIns(
   }
 }
 
-void IPVectorRegLiveness::addLiveOutsNoPristines(
+void IPPredRegLiveness::addLiveOutsNoPristines(
     llvm::LivePhysRegs &LPR, const PredicatedMachineBasicBlock &MBB) const {
   // To get the live-outs we simply merge the live-ins of all successors.
   for (const auto &Succ : MBB.successors())
@@ -119,7 +119,7 @@ static void addLiveIns(
   }
 }
 
-void IPVectorRegLiveness::computeLiveIns(
+void IPPredRegLiveness::computeLiveIns(
     llvm::LivePhysRegs &LiveRegs, const PredicatedMachineBasicBlock &MBB) {
   addLiveOutsNoPristines(LiveRegs, MBB);
   for (const llvm::MachineInstr &MI : llvm::reverse(MBB)) {
@@ -128,7 +128,7 @@ void IPVectorRegLiveness::computeLiveIns(
 }
 
 std::vector<llvm::MachineBasicBlock::RegisterMaskPair>
-IPVectorRegLiveness::computeAndAddLiveIns(
+IPPredRegLiveness::computeAndAddLiveIns(
     llvm::LivePhysRegs &LiveRegs, const PredicatedMachineBasicBlock &MBB) {
   auto &TRI =
       *MBB.getParent().getParent().getMF().getSubtarget().getRegisterInfo();
@@ -147,7 +147,7 @@ IPVectorRegLiveness::computeAndAddLiveIns(
 
 /// Convenience function for recomputing live-in's for a MBB
 /// \return \c true if any changes were made.
-bool IPVectorRegLiveness::recomputeLiveIns(
+bool IPPredRegLiveness::recomputeLiveIns(
     const PredicatedMachineBasicBlock &PredMBB) {
   llvm::LivePhysRegs LPR;
   auto OldLiveIns = computeAndAddLiveIns(LPR, PredMBB);
@@ -158,7 +158,7 @@ bool IPVectorRegLiveness::recomputeLiveIns(
   return OldLiveIns != NewLiveIns;
 }
 
-void IPVectorRegLiveness::recomputePredMBBLiveIns(
+void IPPredRegLiveness::recomputePredMBBLiveIns(
     const IPPredicatedCFG &IPPredCFG) {
   while (true) {
     bool AnyChange = false;
@@ -175,7 +175,7 @@ void IPVectorRegLiveness::recomputePredMBBLiveIns(
   }
 }
 
-bool IPVectorRegLiveness::isLiveIn(const PredicatedMachineBasicBlock &PredMBB,
+bool IPPredRegLiveness::isLiveIn(const PredicatedMachineBasicBlock &PredMBB,
                                    llvm::MCRegister Reg,
                                    llvm::LaneBitmask LaneMask) const {
   auto LiveIns = getPredMBBLiveIns(PredMBB);
@@ -186,18 +186,18 @@ bool IPVectorRegLiveness::isLiveIn(const PredicatedMachineBasicBlock &PredMBB,
   return I != LiveIns.end() && (I->LaneMask & LaneMask).any();
 }
 
-void IPVectorRegLiveness::addLiveIns(const PredicatedMachineBasicBlock &PredMBB,
+void IPPredRegLiveness::addLiveIns(const PredicatedMachineBasicBlock &PredMBB,
                                      llvm::LiveRegUnits &LRU) const {
   addBlockLiveIns(PredMBB, LRU);
 }
 
-void IPVectorRegLiveness::addLiveOuts(
+void IPPredRegLiveness::addLiveOuts(
     const PredicatedMachineBasicBlock &PredMBB, llvm::LiveRegUnits &LRU) const {
   addBlockLiveOuts(PredMBB, LRU);
 }
 
 std::vector<llvm::MachineBasicBlock::RegisterMaskPair>
-IPVectorRegLiveness::getPredMBBLiveOuts(
+IPPredRegLiveness::getPredMBBLiveOuts(
     const PredicatedMachineBasicBlock &PredMBB) const {
   std::vector<llvm::MachineBasicBlock::RegisterMaskPair> LiveOuts;
   llvm::LivePhysRegs LPR;
@@ -211,7 +211,7 @@ IPVectorRegLiveness::getPredMBBLiveOuts(
   return LiveOuts;
 }
 
-IPVectorRegLiveness::IPVectorRegLiveness(llvm::Module &M,
+IPPredRegLiveness::IPPredRegLiveness(llvm::Module &M,
                                          llvm::ModuleAnalysisManager &MAM) {
   llvm::TimeTraceScope Scope("Liveness Analysis Computation");
   const IPPredicatedCFG &IPPredGFG =
@@ -226,7 +226,7 @@ IPVectorRegLiveness::IPVectorRegLiveness(llvm::Module &M,
   recomputePredMBBLiveIns(IPPredGFG);
 }
 
-bool IPVectorRegLiveness::invalidate(
+bool IPPredRegLiveness::invalidate(
     llvm::Module &M, const llvm::PreservedAnalyses &PA,
     llvm::ModuleAnalysisManager::Invalidator &Inv) {
   // Check whether the analysis, all analyses on machine functions, or the
@@ -250,7 +250,7 @@ IPVectorRegLivenessPrinter::run(llvm::Module &M,
                                 llvm::ModuleAnalysisManager &MAM) {
   const IPPredicatedCFG &IPPredCFG =
       MAM.getResult<IPPredCFGAnalysis>(M).getVecCFG();
-  const IPVectorRegLiveness &IPRegLiveness =
+  const IPPredRegLiveness &IPRegLiveness =
       MAM.getResult<IPVectorRegLivenessAnalysis>(M);
   for (const PredicatedMachineFunction &PredMF : IPPredCFG) {
     const llvm::MachineFunction &MF = PredMF.getMF();

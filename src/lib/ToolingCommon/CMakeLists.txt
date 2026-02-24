@@ -46,7 +46,7 @@ add_library(LuthierToolingCommon OBJECT
         #BranchRelaxationPass.cpp
         IntrinsicProcessorRegistry.cpp
         IntrinsicProcessorsAnalysis.cpp
-        #        InstrumentationPMDriver.cpp
+        InstrumentationPMDriver.cpp
         MockLoadAMDGPUCodeObjects.cpp
         CodeObjectManagerAnalysis.cpp
         InitialEntryPointAnalysis.cpp

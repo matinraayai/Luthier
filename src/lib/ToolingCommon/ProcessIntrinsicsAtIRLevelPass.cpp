@@ -1,5 +1,5 @@
-//===-- ProcessIntrinsicUsersAtIRLevelPass.cpp ----------------------------===//
-// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+//===-- ProcessIntrinsicsAtIRLevelPass.cpp --------------------------------===//
+// Copyright 2022-2026 @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,14 +14,15 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file
-/// This file implements the <tt>ProcessIntrinsicsAtIRLevelPass</tt>.
+/// \file ProcessIntrinsicsAtIRLevelPass.cpp
+/// Implements the \c ProcessIntrinsicsAtIRLevelPass class.
 //===----------------------------------------------------------------------===//
-
 #include "luthier/Tooling/ProcessIntrinsicsAtIRLevelPass.h"
+#include "luthier/Tooling/FunctionAnnotations.h"
 #include "luthier/Tooling/IntrinsicProcessorsAnalysis.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
 
+#include <llvm/IR/MDBuilder.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/ScopedPrinter.h>
 
@@ -31,12 +32,12 @@
 
 llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
     llvm::Module &IModule, llvm::ModuleAnalysisManager &IMAM) {
-  auto &IntrinsicLoweringInfoVec =
-      IMAM.getResult<IntrinsicIRLoweringInfoMapAnalysis>(IModule)
-          .getLoweringInfo();
 
   const auto &IntrinsicsProcessors =
       IMAM.getResult<IntrinsicsProcessorsAnalysis>(IModule);
+
+  llvm::LLVMContext &Ctx = IModule.getContext();
+  llvm::MDBuilder MDB{Ctx};
 
   // Iterate over all functions and find the ones marked as a Luthier
   // intrinsic
@@ -90,36 +91,32 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
           return llvm::PreservedAnalyses::all();
         }
         // Call the IR processor of the intrinsic on the user
-        auto IRLoweringInfo = Processor->IRProcessor(F, *CallInst, TM);
-        if (auto Err = IRLoweringInfo.takeError()) {
-          IModule.getContext().emitError(toString(std::move(Err)));
+        llvm::Expected<IntrinsicIRLoweringInfo> IRLoweringInfoOrErr =
+            Processor->IRProcessor(F, *CallInst, TM);
+        if (auto Err = IRLoweringInfoOrErr.takeError()) {
+          IModule.getContext().emitError(llvm::toString(std::move(Err)));
         }
 
         // Set up the input/output value constraints
 
         // Add the output operand constraint, if the output is not void
-        auto ReturnValInfo = IRLoweringInfo->getReturnValueInfo();
-        std::string Constraint;
+        const auto &ReturnValInfo = IRLoweringInfoOrErr->getReturnValueInfo();
+        std::stringstream ConstraintSS;
+
         if (!ReturnValInfo.Val->getType()->isVoidTy())
-          Constraint += "=" + ReturnValInfo.Constraint;
+          ConstraintSS << "=" << ReturnValInfo.Constraint;
         // Construct argument type vector
         llvm::SmallVector<llvm::Type *, 4> ArgTypes;
         llvm::SmallVector<llvm::Value *, 4> ArgValues;
-        ArgTypes.reserve(IRLoweringInfo->getArgsInfo().size());
-        ArgValues.reserve(IRLoweringInfo->getArgsInfo().size());
-        //        llvm::interleave(IRLoweringInfo->getArgsInfo(), [&](const
-        //        IntrinsicValueLoweringInfo & ArgInfo) {
-        //          ArgTypes.push_back(ArgInfo.Val->getType());
-        //          ArgValues.push_back(const_cast<llvm::Value *>(ArgInfo.Val));
-        //          Constraint += ArgInfo.Constraint;
-        //        }, [&]() {Constraint += ",";});
+        ArgTypes.reserve(IRLoweringInfoOrErr->getArgsInfo().size());
+        ArgValues.reserve(IRLoweringInfoOrErr->getArgsInfo().size());
         for (const auto &[I, ArgInfo] :
-             llvm::enumerate(IRLoweringInfo->getArgsInfo())) {
+             llvm::enumerate(IRLoweringInfoOrErr->getArgsInfo())) {
           if (I != 0 || (I == 0 && !ReturnValInfo.Val->getType()->isVoidTy()))
-            Constraint += ",";
+            ConstraintSS << ",";
           ArgTypes.push_back(ArgInfo.Val->getType());
           ArgValues.push_back(const_cast<llvm::Value *>(ArgInfo.Val));
-          Constraint += ArgInfo.Constraint;
+          ConstraintSS << ArgInfo.Constraint;
         }
         // Now that we have created the input/output argument constraints,
         // create a call to a placeholder inline assembly instruction in the
@@ -127,7 +124,7 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
         auto *PlaceHolderInlineAsm = llvm::InlineAsm::get(
             llvm::FunctionType::get(ReturnValInfo.Val->getType(), ArgTypes,
                                     false),
-            llvm::to_string(IntrinsicLoweringInfoVec.size()), Constraint, true);
+            IntrinsicName, ConstraintSS.str(), true);
         auto *InlineAsmPlaceholderCall =
             llvm::CallInst::Create(PlaceHolderInlineAsm, ArgValues);
         InlineAsmPlaceholderCall->insertBefore(*CallInst->getParent(),
@@ -140,37 +137,6 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
         InlineAsmPlaceholderCall->setDebugLoc(CallInst->getDebugLoc());
         // Remove the original user from its parent function
         CallInst->eraseFromParent();
-        auto *ParentFunction =
-            InlineAsmPlaceholderCall->getParent()->getParent();
-        // If the function using the intrinsic is not an injected payload and a
-        // hook (i.e a device function called from a hook), check if it's not
-        // requesting access to a physical register or a kernel argument
-        if (!ParentFunction->hasFnAttribute(HookAttribute) &&
-            !ParentFunction->hasFnAttribute(InjectedPayloadAttribute)) {
-          if (!IRLoweringInfo->accessed_phys_regs_empty()) {
-            IModule.getContext().emitError(
-                llvm::formatv("Intrinsic {0} used in function {1} requested "
-                              "access to physical "
-                              "registers, which is not allowed.",
-                              IntrinsicName, ParentFunction->getName()));
-            return llvm::PreservedAnalyses::all();
-          }
-
-          if (!IRLoweringInfo->accessed_kernargs_empty()) {
-            IModule.getContext().emitError(
-                llvm::formatv("Intrinsic {0} used in non-hook function {1} "
-                              "requested access to kernel arguments"
-                              " , which is not allowed.",
-                              IntrinsicName, ParentFunction->getName()));
-            return llvm::PreservedAnalyses::all();
-          }
-        }
-
-        // Record the name of the intrinsic as well as the inline assembly
-        // placeholder instruction used to keep track of it inside the
-        // Module/MMI
-        IRLoweringInfo->setIntrinsicName(IntrinsicName);
-        IRLoweringInfo->setPlaceHolderInlineAsm(*PlaceHolderInlineAsm);
 
         LLVM_DEBUG(
 
@@ -178,9 +144,14 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
             InlineAsmPlaceholderCall->print(llvm::dbgs());
 
         );
-        // Finally, push back the IR lowering info of the intrinsic that
-        // we just processed
-        IntrinsicLoweringInfoVec.emplace_back(*IRLoweringInfo);
+        // Encode the extra info into the PC sections of the instruction
+        // we just processed so that we can retrieve it later in the MIR
+        // processing
+        CallInst->setMetadata(
+            llvm::LLVMContext::MD_pcsections,
+            MDB.createPCSections(llvm::MDBuilder::PCSection{
+                IntrinsicExtraInfoHeader,
+                IRLoweringInfoOrErr->getExtraLoweringValues()}));
       }
       // Remove the intrinsic function once all its users has been processed
       F.dropAllReferences();

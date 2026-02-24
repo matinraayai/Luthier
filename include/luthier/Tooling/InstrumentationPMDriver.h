@@ -44,6 +44,10 @@ struct InstrumentationPMDriverOptions {
           "For targets that support it , forces use of scratch instructions "
           "instead of buffer instructions to access scratch memory."),
       llvm::cl::NotHidden, llvm::cl::cat(InstrumentationPMDriverOptionsCat)};
+  llvm::cl::opt<bool> EnableSIDebugLogging{
+      "enable-si-debug-logging", llvm::cl::init(false),
+      "Enable/Disable debug logging of standard instrumentation in the "
+      "instrumentation PM Driver."};
 };
 
 class InstrumentationPMDriver

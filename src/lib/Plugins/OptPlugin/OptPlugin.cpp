@@ -203,7 +203,7 @@ llvmGetPassPluginInfo() {
       // MAM.registerPass(
       // []() { return luthier::IndirectBranchResolverAnalysis(); });
       MAM.registerPass([]() { return luthier::IPPredCFGAnalysis(); });
-      MAM.registerPass([]() { return luthier::ReachingDefAnalysis(); });
+      MAM.registerPass([]() { return luthier::IPReachingDefAnalysis(); });
     });
     /// Register Luthier machine function analysis passes
     PB.registerAnalysisRegistrationCallback(

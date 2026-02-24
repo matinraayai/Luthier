@@ -20,33 +20,33 @@
 #define DEBUG_TYPE "luthier-reaching-defs-analysis"
 
 namespace luthier {
-llvm::AnalysisKey ReachingDefAnalysis::Key;
+llvm::AnalysisKey IPReachingDefAnalysis::Key;
 
-ReachingDefAnalysis::Result
-ReachingDefAnalysis::run(llvm::Module &TargetModule,
+IPReachingDefAnalysis::Result
+IPReachingDefAnalysis::run(llvm::Module &TargetModule,
                          llvm::ModuleAnalysisManager &TargetMAM) {
-  ReachingDefInfo RDI;
+  IPReachingDefInfo RDI;
   RDI.run(TargetModule, TargetMAM);
   return RDI;
 }
 
 llvm::PreservedAnalyses
 ReachingDefPrinterPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
-  auto &RDI = MAM.getResult<ReachingDefAnalysis>(M);
+  auto &RDI = MAM.getResult<IPReachingDefAnalysis>(M);
   RDI.print(OS);
   return llvm::PreservedAnalyses::all();
 }
 
-ReachingDefInfo::ReachingDefInfo() = default;
-ReachingDefInfo::ReachingDefInfo(ReachingDefInfo &&) noexcept = default;
-ReachingDefInfo::~ReachingDefInfo() = default;
+IPReachingDefInfo::IPReachingDefInfo() = default;
+IPReachingDefInfo::IPReachingDefInfo(IPReachingDefInfo &&) noexcept = default;
+IPReachingDefInfo::~IPReachingDefInfo() = default;
 
-bool ReachingDefInfo::invalidate(llvm::Module &Module,
+bool IPReachingDefInfo::invalidate(llvm::Module &Module,
                                  const llvm::PreservedAnalyses &PA,
                                  llvm::ModuleAnalysisManager::Invalidator &) {
   // Check whether the analysis, all analyses on machine functions, or the
   // machine function's CFG have been preserved.
-  auto PAC = PA.getChecker<ReachingDefAnalysis>();
+  auto PAC = PA.getChecker<IPReachingDefAnalysis>();
   return !PAC.preserved() &&
          !PAC.preservedSet<llvm::AllAnalysesOn<llvm::MachineFunction>>() &&
          !PAC.preservedSet<llvm::CFGAnalyses>();
@@ -88,9 +88,7 @@ static bool isFIDef(const llvm::MachineInstr &MI, int FrameIndex,
   return false;
 }
 
-void ReachingDefInfo::enterBasicBlock(
-    const PredicatedMachineBasicBlock &MBB,
-    llvm::ArrayRef<llvm::MachineBasicBlock::RegisterMaskPair> LiveIns) {
+void IPReachingDefInfo::enterBasicBlock(const PredicatedMachineBasicBlock &MBB) {
   unsigned MBBNumber = MBB.getGlobalNumber();
   assert(MBBNumber < MBBReachingDefs.numBlockIDs() &&
          "Unexpected basic block number.");
@@ -108,7 +106,7 @@ void ReachingDefInfo::enterBasicBlock(
   if (MBB.preds_empty()) {
     const llvm::TargetRegisterInfo *TRI =
         MBB.getParent().getParent().getMF().getSubtarget().getRegisterInfo();
-    for (const auto &LI : LiveIns) {
+    for (const auto &LI : this->IPRegLiveness->getPredMBBLiveIns(MBB)) {
       for (llvm::MCRegUnit Unit : TRI->regunits(LI.PhysReg)) {
         // Treat function live-ins as if they were defined just before the first
         // instruction.  Usually, function arguments are set up immediately
@@ -119,15 +117,16 @@ void ReachingDefInfo::enterBasicBlock(
         }
       }
     }
-    // LLVM_DEBUG(llvm::dbgs() << printMBBReference(*MBB) << ": entry\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "Pred MBB " << MBB.getGlobalNumber() << ": entry\n");
     return;
   }
 
   // Try to coalesce live-out registers from predecessors.
-  for (const PredicatedMachineBasicBlock &pred : MBB.predecessors()) {
-    assert(unsigned(pred.getGlobalNumber()) < MBBOutRegsInfos.size() &&
+  for (const PredicatedMachineBasicBlock &Pred : MBB.predecessors()) {
+    assert(Pred.getGlobalNumber() < MBBOutRegsInfos.size() &&
            "Should have pre-allocated MBBInfos for all MBBs");
-    const LiveRegsDefInfo &Incoming = MBBOutRegsInfos[pred.getGlobalNumber()];
+    const LiveRegsDefInfo &Incoming = MBBOutRegsInfos[Pred.getGlobalNumber()];
     // Incoming is null if this is a backedge from a BB
     // we haven't processed yet
     if (Incoming.empty())
@@ -145,7 +144,7 @@ void ReachingDefInfo::enterBasicBlock(
                              LiveRegs[Unit]);
 }
 
-void ReachingDefInfo::leaveBasicBlock(const PredicatedMachineBasicBlock &MBB) {
+void IPReachingDefInfo::leaveBasicBlock(const PredicatedMachineBasicBlock &MBB) {
   assert(!LiveRegs.empty() && "Must enter basic block first.");
   unsigned MBBNumber = MBB.getGlobalNumber();
   assert(MBBNumber < MBBOutRegsInfos.size() &&
@@ -163,7 +162,7 @@ void ReachingDefInfo::leaveBasicBlock(const PredicatedMachineBasicBlock &MBB) {
   LiveRegs.clear();
 }
 
-void ReachingDefInfo::processDefs(const llvm::MachineInstr &MI,
+void IPReachingDefInfo::processDefs(const llvm::MachineInstr &MI,
                                   unsigned int VectorMBBIdx) {
   assert(!MI.isDebugInstr() && "Won't process debug instructions");
 
@@ -201,7 +200,7 @@ void ReachingDefInfo::processDefs(const llvm::MachineInstr &MI,
   ++CurInstr;
 }
 
-void ReachingDefInfo::reprocessBasicBlock(
+void IPReachingDefInfo::reprocessBasicBlock(
     const PredicatedMachineBasicBlock &MBB) {
   unsigned MBBNumber = MBB.getGlobalNumber();
   assert(MBBNumber < MBBReachingDefs.numBlockIDs() &&
@@ -209,14 +208,14 @@ void ReachingDefInfo::reprocessBasicBlock(
 
   // Count number of non-debug instructions for end of block adjustment.
   auto NonDbgInsts = llvm::instructionsWithoutDebug(MBB.begin(), MBB.end());
-  int NumInsts = std::distance(NonDbgInsts.begin(), NonDbgInsts.end());
+  unsigned int NumInsts = std::distance(NonDbgInsts.begin(), NonDbgInsts.end());
 
   // When reprocessing a block, the only thing we need to do is check whether
   // there is now a more recent incoming reaching definition from a predecessor.
-  for (const PredicatedMachineBasicBlock &pred : MBB.predecessors()) {
-    assert(unsigned(pred.getGlobalNumber()) < MBBOutRegsInfos.size() &&
+  for (const PredicatedMachineBasicBlock &Pred : MBB.predecessors()) {
+    assert(Pred.getGlobalNumber() < MBBOutRegsInfos.size() &&
            "Should have pre-allocated MBBInfos for all MBBs");
-    const LiveRegsDefInfo &Incoming = MBBOutRegsInfos[pred.getGlobalNumber()];
+    const LiveRegsDefInfo &Incoming = MBBOutRegsInfos[Pred.getGlobalNumber()];
     // Incoming may be empty for dead predecessors.
     if (Incoming.empty())
       continue;
@@ -249,47 +248,56 @@ void ReachingDefInfo::reprocessBasicBlock(
   }
 }
 
-void ReachingDefInfo::processBasicBlock(
-    const IPPredicatedLoopTraversal::TraversedPredMBBInfo &TraversedMBB,
-    llvm::ArrayRef<llvm::MachineBasicBlock::RegisterMaskPair> LiveIns) {
+void IPReachingDefInfo::processBasicBlock(
+    const IPPredicatedLoopTraversal::TraversedPredMBBInfo &TraversedMBB) {
   const PredicatedMachineBasicBlock *MBB = TraversedMBB.MBB;
-  // LLVM_DEBUG(llvm::dbgs() << printMBBReference(*MBB)
-  //                         << (!TraversedMBB.IsDone ? ": incomplete\n"
-  //                                                  : ": all preds known\n"));
+  LLVM_DEBUG(llvm::dbgs() << "MBB " << MBB->getGlobalNumber()
+                          << (!TraversedMBB.IsDone ? ": incomplete\n"
+                                                   : ": all preds known\n"));
 
   if (!TraversedMBB.PrimaryPass) {
     // Reprocess MBB that is part of a loop.
     reprocessBasicBlock(*MBB);
     return;
   }
-
-  enterBasicBlock(*MBB, LiveIns);
+  enterBasicBlock(*MBB);
   for (const llvm::MachineInstr &MI :
        llvm::instructionsWithoutDebug(MBB->begin(), MBB->end()))
     processDefs(MI, MBB->getGlobalNumber());
   leaveBasicBlock(*MBB);
 }
 
-void ReachingDefInfo::run(llvm::Module &TargetModule,
+void IPReachingDefInfo::run(llvm::Module &TargetModule,
                           llvm::ModuleAnalysisManager &TargetMAM) {
   LLVM_DEBUG(llvm::dbgs() << "********** INTER-PROCEDURAL REACHING DEFINITION "
                              "ANALYSIS **********\n");
   const IPPredicatedCFG &IPPredCFG =
       TargetMAM.getResult<IPPredCFGAnalysis>(TargetModule).getVecCFG();
-  const IPVectorRegLiveness &IPRegLiveness =
+  const IPPredRegLiveness &IPRegLiveness =
       TargetMAM.getResult<IPVectorRegLivenessAnalysis>(TargetModule);
   init(IPPredCFG, IPRegLiveness);
-
-  traverse(IPPredCFG, IPRegLiveness);
+  traverse();
 }
 
-void ReachingDefInfo::print(llvm::raw_ostream &OS) {
+void IPReachingDefInfo::print(llvm::raw_ostream &OS) {
+
+  llvm::DenseMap<std::reference_wrapper<const llvm::MachineInstr>, int>
+      InstToNumMap{};
+  int Num = 0;
+  for (const PredicatedMachineFunction &VecCFG : *IPVecCFG) {
+    for (const llvm::MachineBasicBlock &MBB : VecCFG.getMF()) {
+      for (const llvm::MachineInstr &MI : MBB) {
+        InstToNumMap[MI] = Num;
+        Num++;
+      }
+    }
+  }
+
   for (const auto &VecCFG : *IPVecCFG) {
     const llvm::MachineFunction &MF = VecCFG.getMF();
     const llvm::TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
     OS << "IP Vector RDA results for " << MF.getName() << "\n";
-    int Num = 0;
-    llvm::DenseMap<const llvm::MachineInstr *, int> InstToNumMap;
+
     llvm::SmallPtrSet<const llvm::MachineInstr *, 2> Defs;
     for (const llvm::MachineBasicBlock &MBB : MF) {
       for (const llvm::MachineInstr &MI : MBB) {
@@ -311,22 +319,20 @@ void ReachingDefInfo::print(llvm::raw_ostream &OS) {
           MO.print(OS, TRI);
           llvm::SmallVector<int, 0> Nums;
           for (const llvm::MachineInstr *Def : Defs)
-            Nums.push_back(InstToNumMap[Def]);
+            Nums.push_back(InstToNumMap[*Def]);
           llvm::sort(Nums);
           OS << ":{ ";
-          for (int Num : Nums)
-            OS << Num << " ";
+          for (const int N : Nums)
+            OS << N << " ";
           OS << "}\n";
         }
-        OS << Num << ": " << MI << "\n";
-        InstToNumMap[&MI] = Num;
-        ++Num;
+        OS << InstToNumMap[MI] << ": " << MI << "\n";
       }
     }
   }
 }
 
-void ReachingDefInfo::releaseMemory() {
+void IPReachingDefInfo::releaseMemory() {
   // Clear the internal vectors.
   MBBOutRegsInfos.clear();
   MBBReachingDefs.clear();
@@ -335,8 +341,8 @@ void ReachingDefInfo::releaseMemory() {
   LiveRegs.clear();
 }
 
-void ReachingDefInfo::init(const IPPredicatedCFG &IPPredCFG,
-                           const IPVectorRegLiveness &IPRegLiveness) {
+void IPReachingDefInfo::init(const IPPredicatedCFG &IPPredCFG,
+                           const IPPredRegLiveness &IPRegLiveness) {
   this->IPVecCFG = &IPPredCFG;
   this->IPRegLiveness = &IPRegLiveness;
   NumRegUnits = 0;
@@ -352,16 +358,14 @@ void ReachingDefInfo::init(const IPPredicatedCFG &IPPredCFG,
   TraversedMBBOrder = Traversal.traverse(IPPredCFG);
 }
 
-void ReachingDefInfo::traverse(const IPPredicatedCFG &IPPredCFG,
-                               const IPVectorRegLiveness &IPRegLiveness) {
+void IPReachingDefInfo::traverse() {
   // Traverse the basic blocks.
   for (IPPredicatedLoopTraversal::TraversedPredMBBInfo TraversedMBB :
        TraversedMBBOrder)
-    processBasicBlock(TraversedMBB,
-                      IPRegLiveness.getPredMBBLiveIns(*TraversedMBB.MBB));
+    processBasicBlock(TraversedMBB);
 #ifndef NDEBUG
   // Make sure reaching defs are sorted and unique.
-  for (unsigned MBBNumber = 0, NumBlockIDs = IPPredCFG.getNumVecMBBs();
+  for (unsigned MBBNumber = 0, NumBlockIDs = IPVecCFG->getNumVecMBBs();
        MBBNumber != NumBlockIDs; ++MBBNumber) {
     for (unsigned Unit = 0; Unit != NumRegUnits; ++Unit) {
       int LastDef = ReachingDefDefaultVal;
@@ -375,7 +379,7 @@ void ReachingDefInfo::traverse(const IPPredicatedCFG &IPPredCFG,
 #endif
 }
 
-int ReachingDefInfo::getReachingDef(const llvm::MachineInstr &MI,
+int IPReachingDefInfo::getReachingDef(const llvm::MachineInstr &MI,
                                     llvm::Register Reg) const {
   assert(InstIds.count(&MI) && "Unexpected machine instruction.");
   int InstId = InstIds.lookup(&MI);
@@ -417,14 +421,14 @@ int ReachingDefInfo::getReachingDef(const llvm::MachineInstr &MI,
 }
 
 const llvm::MachineInstr *
-ReachingDefInfo::getReachingLocalMIDef(const llvm::MachineInstr &MI,
+IPReachingDefInfo::getReachingLocalMIDef(const llvm::MachineInstr &MI,
                                        llvm::Register Reg) const {
   return hasLocalDefBefore(MI, Reg)
              ? getInstFromId(IPVecCFG->getPredMBB(MI), getReachingDef(MI, Reg))
              : nullptr;
 }
 
-bool ReachingDefInfo::hasSameReachingDef(const llvm::MachineInstr &A,
+bool IPReachingDefInfo::hasSameReachingDef(const llvm::MachineInstr &A,
                                          const llvm::MachineInstr &B,
                                          llvm::Register Reg) const {
   const PredicatedMachineBasicBlock &ParentA = IPVecCFG->getPredMBB(A);
@@ -436,7 +440,7 @@ bool ReachingDefInfo::hasSameReachingDef(const llvm::MachineInstr &A,
 }
 
 const llvm::MachineInstr *
-ReachingDefInfo::getInstFromId(const PredicatedMachineBasicBlock &MBB,
+IPReachingDefInfo::getInstFromId(const PredicatedMachineBasicBlock &MBB,
                                int InstId) const {
   assert(static_cast<size_t>(MBB.getGlobalNumber()) <
              MBBReachingDefs.numBlockIDs() &&
@@ -454,18 +458,18 @@ ReachingDefInfo::getInstFromId(const PredicatedMachineBasicBlock &MBB,
   return nullptr;
 }
 
-int ReachingDefInfo::getClearance(const llvm::MachineInstr &MI,
+int IPReachingDefInfo::getClearance(const llvm::MachineInstr &MI,
                                   llvm::Register Reg) const {
   assert(InstIds.count(&MI) && "Unexpected machine instruction.");
   return InstIds.lookup(&MI) - getReachingDef(MI, Reg);
 }
 
-bool ReachingDefInfo::hasLocalDefBefore(const llvm::MachineInstr &MI,
+bool IPReachingDefInfo::hasLocalDefBefore(const llvm::MachineInstr &MI,
                                         llvm::Register Reg) const {
   return getReachingDef(MI, Reg) >= 0;
 }
 
-void ReachingDefInfo::getReachingLocalUses(const llvm::MachineInstr &Def,
+void IPReachingDefInfo::getReachingLocalUses(const llvm::MachineInstr &Def,
                                            llvm::Register Reg,
                                            InstSet &Uses) const {
   const PredicatedMachineBasicBlock &MBB = IPVecCFG->getPredMBB(Def);
@@ -491,7 +495,7 @@ void ReachingDefInfo::getReachingLocalUses(const llvm::MachineInstr &Def,
   }
 }
 
-bool ReachingDefInfo::getLiveInUses(const PredicatedMachineBasicBlock &MBB,
+bool IPReachingDefInfo::getLiveInUses(const PredicatedMachineBasicBlock &MBB,
                                     llvm::Register Reg, InstSet &Uses) const {
   const llvm::TargetRegisterInfo *TRI =
       MBB.getParent().getParent().getMF().getSubtarget().getRegisterInfo();
@@ -511,7 +515,7 @@ bool ReachingDefInfo::getLiveInUses(const PredicatedMachineBasicBlock &MBB,
   return isReachingDefLiveOut(*Last, Reg);
 }
 
-void ReachingDefInfo::getGlobalUses(const llvm::MachineInstr &MI,
+void IPReachingDefInfo::getGlobalUses(const llvm::MachineInstr &MI,
                                     llvm::Register Reg, InstSet &Uses) const {
   const PredicatedMachineBasicBlock &ParentMBB = IPVecCFG->getPredMBB(MI);
 
@@ -538,47 +542,75 @@ void ReachingDefInfo::getGlobalUses(const llvm::MachineInstr &MI,
   }
 }
 
-void ReachingDefInfo::getGlobalReachingDefs(const llvm::MachineInstr &MI,
+void IPReachingDefInfo::getGlobalReachingDefs(const llvm::MachineInstr &MI,
                                             llvm::Register Reg,
                                             InstSet &Defs) const {
+  LLVM_DEBUG(
+      llvm::dbgs()
+      << "Starting to find global reaching defs for reg "
+      << llvm::printReg(
+             Reg, MI.getParent()->getParent()->getSubtarget().getRegisterInfo())
+      << " in instruction " << MI << ".\n");
   if (auto *Def = getUniqueReachingMIDef(MI, Reg)) {
+    LLVM_DEBUG(llvm::dbgs() << "Found def at :" << MI << "\n";);
     Defs.insert(Def);
     return;
   }
-
+  LLVM_DEBUG(
+      llvm::dbgs()
+          << "Didn't find any defs for reg "
+          << llvm::printReg(
+                 Reg,
+                 MI.getParent()->getParent()->getSubtarget().getRegisterInfo())
+          << ". Searching in preds.\n";);
   for (auto &MBB : IPVecCFG->getPredMBB(MI).predecessors())
     getLiveOuts(MBB, Reg, Defs);
 }
 
-void ReachingDefInfo::getLiveOuts(const PredicatedMachineBasicBlock &MBB,
+void IPReachingDefInfo::getLiveOuts(const PredicatedMachineBasicBlock &MBB,
                                   llvm::Register Reg, InstSet &Defs) const {
   llvm::SmallPtrSet<const PredicatedMachineBasicBlock *, 2> VisitedBBs;
   getLiveOuts(MBB, Reg, Defs, VisitedBBs);
 }
 
-void ReachingDefInfo::getLiveOuts(const PredicatedMachineBasicBlock &MBB,
+void IPReachingDefInfo::getLiveOuts(const PredicatedMachineBasicBlock &MBB,
                                   llvm::Register Reg, InstSet &Defs,
                                   BlockSet &VisitedBBs) const {
   const llvm::TargetRegisterInfo *TRI =
       MBB.getParent().getParent().getMF().getSubtarget().getRegisterInfo();
-  if (VisitedBBs.count(&MBB))
+  LLVM_DEBUG(llvm::dbgs() << "Looking at MBB: " << MBB.getName()
+                          << " to find definition of "
+                          << llvm::printReg(Reg, TRI) << ".\n";);
+
+  if (VisitedBBs.count(&MBB)) {
+    LLVM_DEBUG(llvm::dbgs() << "Already visited\n";);
     return;
+  }
 
   VisitedBBs.insert(&MBB);
   llvm::LiveRegUnits LR(*TRI);
   IPRegLiveness->addLiveOuts(MBB, LR);
-  if (Reg.isPhysical() && LR.available(Reg))
+  if (Reg.isPhysical() && LR.available(Reg)) {
+    LLVM_DEBUG(llvm::dbgs()
+                   << "Reg is available and not defined in this MBB\n";);
     return;
+  }
 
-  if (auto *Def = getLocalLiveOutMIDef(MBB, Reg))
+  if (auto *Def = getLocalLiveOutMIDef(MBB, Reg)) {
+    LLVM_DEBUG(llvm::dbgs() << "Found def at " << *Def << "\n";);
     Defs.insert(Def);
-  else
-    for (auto &Pred : MBB.predecessors())
+  } else {
+    LLVM_DEBUG(
+        llvm::dbgs()
+            << "Didn't find anything in the current block; searching preds\n";);
+    for (auto &Pred : MBB.predecessors()) {
       getLiveOuts(Pred, Reg, Defs, VisitedBBs);
+    }
+  }
 }
 
 const llvm::MachineInstr *
-ReachingDefInfo::getUniqueReachingMIDef(const llvm::MachineInstr &MI,
+IPReachingDefInfo::getUniqueReachingMIDef(const llvm::MachineInstr &MI,
                                         llvm::Register Reg) const {
   // If there's a local def before MI, return it.
   const llvm::MachineInstr *LocalDef = getReachingLocalMIDef(MI, Reg);
@@ -600,20 +632,20 @@ ReachingDefInfo::getUniqueReachingMIDef(const llvm::MachineInstr &MI,
 }
 
 const llvm::MachineInstr *
-ReachingDefInfo::getMIOperand(const llvm::MachineInstr &MI,
+IPReachingDefInfo::getMIOperand(const llvm::MachineInstr &MI,
                               unsigned Idx) const {
   assert(MI.getOperand(Idx).isReg() && "Expected register operand");
   return getUniqueReachingMIDef(MI, MI.getOperand(Idx).getReg());
 }
 
 const llvm::MachineInstr *
-ReachingDefInfo::getMIOperand(const llvm::MachineInstr &MI,
+IPReachingDefInfo::getMIOperand(const llvm::MachineInstr &MI,
                               const llvm::MachineOperand &MO) const {
   assert(MO.isReg() && "Expected register operand");
   return getUniqueReachingMIDef(MI, MO.getReg());
 }
 
-bool ReachingDefInfo::isRegUsedAfter(const llvm::MachineInstr &MI,
+bool IPReachingDefInfo::isRegUsedAfter(const llvm::MachineInstr &MI,
                                      llvm::Register Reg) const {
   const PredicatedMachineBasicBlock &MBB = IPVecCFG->getPredMBB(MI);
   const llvm::TargetRegisterInfo *TRI =
@@ -636,7 +668,7 @@ bool ReachingDefInfo::isRegUsedAfter(const llvm::MachineInstr &MI,
   return false;
 }
 
-bool ReachingDefInfo::isRegDefinedAfter(const llvm::MachineInstr &MI,
+bool IPReachingDefInfo::isRegDefinedAfter(const llvm::MachineInstr &MI,
                                         llvm::Register Reg) const {
   const PredicatedMachineBasicBlock &MBB = IPVecCFG->getPredMBB(MI);
   auto Last = MBB.getLastNonDebugInstr();
@@ -650,7 +682,7 @@ bool ReachingDefInfo::isRegDefinedAfter(const llvm::MachineInstr &MI,
   return false;
 }
 
-bool ReachingDefInfo::isReachingDefLiveOut(const llvm::MachineInstr &MI,
+bool IPReachingDefInfo::isReachingDefLiveOut(const llvm::MachineInstr &MI,
                                            llvm::Register Reg) const {
   const PredicatedMachineBasicBlock &MBB = IPVecCFG->getPredMBB(MI);
   const llvm::TargetRegisterInfo *TRI =
@@ -674,7 +706,7 @@ bool ReachingDefInfo::isReachingDefLiveOut(const llvm::MachineInstr &MI,
 }
 
 const llvm::MachineInstr *
-ReachingDefInfo::getLocalLiveOutMIDef(const PredicatedMachineBasicBlock &MBB,
+IPReachingDefInfo::getLocalLiveOutMIDef(const PredicatedMachineBasicBlock &MBB,
                                       llvm::Register Reg) const {
   const llvm::TargetRegisterInfo *TRI =
       MBB.getParent().getParent().getMF().getSubtarget().getRegisterInfo();
@@ -714,7 +746,7 @@ static bool mayHaveSideEffects(const llvm::MachineInstr &MI) {
 // not define a register that is used by any instructions, after and including,
 // 'To'. These instructions also must not redefine any of Froms operands.
 template <typename Iterator>
-bool ReachingDefInfo::isSafeToMove(const llvm::MachineInstr &From,
+bool IPReachingDefInfo::isSafeToMove(const llvm::MachineInstr &From,
                                    const llvm::MachineInstr &To) const {
   if (&IPVecCFG->getPredMBB(From) != &IPVecCFG->getPredMBB(To) || &From == &To)
     return false;
@@ -744,7 +776,7 @@ bool ReachingDefInfo::isSafeToMove(const llvm::MachineInstr &From,
   return true;
 }
 
-bool ReachingDefInfo::isSafeToMoveForwards(const llvm::MachineInstr &From,
+bool IPReachingDefInfo::isSafeToMoveForwards(const llvm::MachineInstr &From,
                                            const llvm::MachineInstr &To) const {
   using Iterator = PredicatedMachineBasicBlock::const_iterator;
   // Walk forwards until we find the instruction.
@@ -755,7 +787,7 @@ bool ReachingDefInfo::isSafeToMoveForwards(const llvm::MachineInstr &From,
   return false;
 }
 
-bool ReachingDefInfo::isSafeToMoveBackwards(
+bool IPReachingDefInfo::isSafeToMoveBackwards(
     const llvm::MachineInstr &From, const llvm::MachineInstr &To) const {
   using Iterator = PredicatedMachineBasicBlock::const_reverse_iterator;
   // Walk backwards until we find the instruction.
@@ -767,20 +799,20 @@ bool ReachingDefInfo::isSafeToMoveBackwards(
   return false;
 }
 
-bool ReachingDefInfo::isSafeToRemove(const llvm::MachineInstr &MI,
+bool IPReachingDefInfo::isSafeToRemove(const llvm::MachineInstr &MI,
                                      InstSet &ToRemove) const {
   llvm::SmallPtrSet<const llvm::MachineInstr *, 1> Ignore;
   llvm::SmallPtrSet<const llvm::MachineInstr *, 2> Visited;
   return isSafeToRemove(MI, Visited, ToRemove, Ignore);
 }
 
-bool ReachingDefInfo::isSafeToRemove(const llvm::MachineInstr &MI,
+bool IPReachingDefInfo::isSafeToRemove(const llvm::MachineInstr &MI,
                                      InstSet &ToRemove, InstSet &Ignore) const {
   llvm::SmallPtrSet<const llvm::MachineInstr *, 2> Visited;
   return isSafeToRemove(MI, Visited, ToRemove, Ignore);
 }
 
-bool ReachingDefInfo::isSafeToRemove(const llvm::MachineInstr &MI,
+bool IPReachingDefInfo::isSafeToRemove(const llvm::MachineInstr &MI,
                                      InstSet &Visited, InstSet &ToRemove,
                                      InstSet &Ignore) const {
   if (Visited.count(&MI) || Ignore.count(&MI))
@@ -810,7 +842,7 @@ bool ReachingDefInfo::isSafeToRemove(const llvm::MachineInstr &MI,
   return true;
 }
 
-void ReachingDefInfo::collectKilledOperands(const llvm::MachineInstr &MI,
+void IPReachingDefInfo::collectKilledOperands(const llvm::MachineInstr &MI,
                                             InstSet &Dead) const {
   Dead.insert(&MI);
   auto IsDead = [this, &Dead](const llvm::MachineInstr *Def,
@@ -843,13 +875,13 @@ void ReachingDefInfo::collectKilledOperands(const llvm::MachineInstr &MI,
   }
 }
 
-bool ReachingDefInfo::isSafeToDefRegAt(const llvm::MachineInstr &MI,
+bool IPReachingDefInfo::isSafeToDefRegAt(const llvm::MachineInstr &MI,
                                        llvm::Register Reg) const {
   llvm::SmallPtrSet<const llvm::MachineInstr *, 1> Ignore;
   return isSafeToDefRegAt(MI, Reg, Ignore);
 }
 
-bool ReachingDefInfo::isSafeToDefRegAt(const llvm::MachineInstr &MI,
+bool IPReachingDefInfo::isSafeToDefRegAt(const llvm::MachineInstr &MI,
                                        llvm::Register Reg,
                                        InstSet &Ignore) const {
   const llvm::TargetRegisterInfo *TRI =

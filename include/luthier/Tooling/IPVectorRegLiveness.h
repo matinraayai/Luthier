@@ -28,7 +28,7 @@
 
 namespace luthier {
 
-class IPVectorRegLiveness {
+class IPPredRegLiveness {
 private:
   llvm::DenseMap<std::reference_wrapper<const PredicatedMachineBasicBlock>,
                  std::vector<llvm::MachineBasicBlock::RegisterMaskPair>>
@@ -79,7 +79,7 @@ public:
   [[nodiscard]] std::vector<llvm::MachineBasicBlock::RegisterMaskPair>
   getPredMBBLiveOuts(const PredicatedMachineBasicBlock &PredMBB) const;
 
-  IPVectorRegLiveness(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
+  IPPredRegLiveness(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
 
   bool invalidate(llvm::Module &M, const llvm::PreservedAnalyses &PA,
                   llvm::ModuleAnalysisManager::Invalidator &Inv);
@@ -94,7 +94,7 @@ private:
   static llvm::AnalysisKey Key;
 
 public:
-  using Result = IPVectorRegLiveness;
+  using Result = IPPredRegLiveness;
 
   IPVectorRegLivenessAnalysis() = default;
 
