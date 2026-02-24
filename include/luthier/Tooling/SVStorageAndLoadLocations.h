@@ -132,7 +132,7 @@ public:
       const MMISlotIndexesAnalysis::Result &SlotIndexes,
       const IPVectorRegLiveness &RegLiveness,
       const InjectedPayloadAndInstPoint &IPIP,
-      /*const*/ llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
+      llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
       const IPPredicatedCFG &IPCFG,
       llvm::FunctionAnalysisManager& FAM);
 

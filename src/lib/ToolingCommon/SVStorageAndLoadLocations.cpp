@@ -426,16 +426,17 @@ SVStorageAndLoadLocations::getStateValueArrayLoadPlanForInstPoint(
   else
     return &It->second;
 }
-
+// FIXME: AccessedPhysicalRegistersNotInLiveIns is not valid anymore and should change, as should IPIP
 llvm::Error SVStorageAndLoadLocations::calculate(
     const llvm::MachineModuleInfo &TargetMMI,  llvm::Module &TargetM,
     const MMISlotIndexesAnalysis::Result &SlotIndexes,
     const IPVectorRegLiveness &RegLiveness,
     const InjectedPayloadAndInstPoint &IPIP, 
-  /*const*/llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
+    llvm::LivePhysRegs &AccessedPhysicalRegistersNotInLiveIns,
     const IPPredicatedCFG &IPCFG,
     llvm::FunctionAnalysisManager& FAM){
   llvm::SmallVector<const PredicatedMachineFunction*, 4> MFs;
+  // We need FAM to get MF, MAM doesn't work
   for (auto &F : TargetM) {
     llvm::MachineFunction &MF =
           FAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
@@ -664,7 +665,6 @@ llvm::PreservedAnalyses LRStateValueStorageAndLoadLocationsPrinterPass::run(llvm
   const auto &SVS = MAM.getResult<LRStateValueStorageAndLoadLocationsAnalysis>(M);
   const auto &IPCFG = MAM.getResult<IPPredCFGAnalysis>(M).getVecCFG();
   const auto &ModuleSI = MAM.getResult<MMISlotIndexesAnalysis>(M);
-  //const auto &IPIP = MAM.getResult<InjectedPayloadAndInstPointAnalysis>(M);
   int Indent = 2;
   for(const auto& F : M){
     const auto& MF = IPCFG.at(*(MMI.getMachineFunction(F)));
@@ -675,38 +675,30 @@ llvm::PreservedAnalyses LRStateValueStorageAndLoadLocationsPrinterPass::run(llvm
     for(const auto& LMBB : MF){
       for(const auto& PMBB : LMBB){
         auto Segments = SVS.getStorageIntervals(PMBB);
-        const auto* CurrentSegment = Segments.begin();
+        const auto* NextSegment = Segments.begin();
+        OS << "Load Plan for segment [";
+        NextSegment->begin().print(OS);
+        OS << ", ";
+        NextSegment->end().print(OS);
+        OS << ") -> ";
+        NextSegment->getSVS().print(OS);
+        OS << "\n";
+        ++NextSegment;
         if(!PMBB.empty()){
           for(const auto& MI : PMBB){
             SlotIndex MIIdx = MFSI.getInstructionIndex(MI);
-            if (CurrentSegment != Segments.end() && !CurrentSegment->contains(MIIdx)) {
+            if (NextSegment && NextSegment != Segments.end() && NextSegment->contains(MIIdx)) {
               OS << "Load Plan for segment [";
-              CurrentSegment->begin().print(OS);
+              NextSegment->begin().print(OS);
               OS << ", ";
-              CurrentSegment->end().print(OS);
+              NextSegment->end().print(OS);
               OS << ") -> ";
-              CurrentSegment->getSVS().print(OS);
+              NextSegment->getSVS().print(OS);
               OS << "\n";
-              ++CurrentSegment;
+              ++NextSegment;
             }
-            // if(IPIP.contains(MI)){
-            //   const auto InstPointSVA =  SVS.getStateValueArrayLoadPlanForInstPoint(MI);
-            //   OS << "Instrumented MI\n";
-            //   OS << "SVA Register-> " << TRI->getName(InstPointSVA->StateValueArrayLoadVGPR) << "\n";
-            //   OS << "LoadDestClobbersAppVGPR->" << InstPointSVA->LoadDestClobbersAppVGPR << "\n";
-            //   OS << "SVA Storage-> ";
-            //   InstPointSVA->StateValueStorageLocation.print(OS); 
-            //   OS << "\n";
-            // }
+            MI.print(OS.indent(Indent + 2), true, false, false, true, TII);
           }
-          // Make sure we print the final segment of the PMBB 
-          OS << "Load Plan for segment [";
-          CurrentSegment->begin().print(OS);
-          OS << ", ";
-          CurrentSegment->end().print(OS);
-          OS << ") -> ";
-          CurrentSegment->getSVS().print(OS);
-          OS << "\n";
         }
       }
     }
