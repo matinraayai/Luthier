@@ -5,12 +5,11 @@
 #include "luthier/Tooling/EntryPoint.h"
 #include "luthier/Tooling/FunctionAnnotations.h"
 // #include "luthier/Tooling/IPVectorRegLiveness.h"
+#include "../../../include/luthier/IRTranslator/PseudoOpcodeAnRegMapper.h"
 #include "luthier/Tooling/InitialEntryPointAnalysis.h"
 #include "luthier/Tooling/InstructionTracesAnalysis.h"
-#include "luthier/Tooling/MachineFunctionEntryPoint.h"
 #include "luthier/Tooling/MemoryAllocationAccessor.h"
 #include "luthier/Tooling/MetadataParserAnalysis.h"
-#include "luthier/Tooling/PseudoOpcodeAnRegMapper.h"
 #include "luthier/Tooling/TargetMachineInstrMDNode.h"
 #include <MCTargetDesc/AMDGPUMCExpr.h>
 #include <SIMachineFunctionInfo.h>
@@ -230,7 +229,7 @@ parseKDRsrc2(const llvm::amdhsa::kernel_descriptor_t &KD,
   /// ENABLE_TRAP_HANDLER is not set in HSA; For other OSes, it should be set
   /// when creating the target
 
-  /// ENABLE_DYNAMIC_VGPR is not seem to have a handle neither in MIR or MC
+  /// ENABLE_DYNAMIC_VGPR does not seem to have a handle neither in MIR or MC
 
   /// Lift ENABLE_SGPR_WORKGROUP_ID_X, Y and Z
   if (AMDHSA_BITS_GET(
@@ -453,7 +452,9 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
     KDSymbolIfPresent = *KDSymbolOrErr;
   }
 
-  /// Get the kernel's name
+  /// If we have an object symbol associated with the kernel descriptor, then
+  /// we find its name from its kernel symbol; Otherwise, give it a name
+  /// based on its load address
   std::string KernelName;
   if (KDSymbolIfPresent.has_value()) {
     llvm::Expected<llvm::StringRef> KernelNameOrErr =
@@ -464,49 +465,24 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
     KernelName = llvm::formatv("kernel-{0:x}", KDLoadAddr);
   }
 
-  std::unique_ptr<amdgpu::hsamd::Kernel::Metadata> KernelMetadata{nullptr};
-
-  /// Parse the kernel's metadata if we have an object available
-  if (ObjFile) {
-    llvm::Expected<std::unique_ptr<llvm::msgpack::Document>> MDDocOrErr =
-        ObjFile->getMetadataDocument();
-    LUTHIER_RETURN_ON_ERROR(MDDocOrErr.takeError());
-    LUTHIER_RETURN_ON_ERROR(
-        MDParser.parseKernelMetadata(**MDDocOrErr, KernelName + ".kd")
-            .moveInto(KernelMetadata));
-  }
-
-  // Populate the Arguments
-  // ==================================================
-
-  // Kernel's return type is always void
+  /// Kernel's return type is always void
+  /// We also do not attempt to recover the kernel's prototype from the metadata
+  /// because the raised LLVM IR version of the kernel has to translate
+  /// low-level argument buffer loading instructions not present in the
+  /// high-level prototype of the original kernel (assuming the kernel was
+  /// written in a high-level language); For example, if the kernarg buffer is
+  /// passed in s[4:5], the raised IR instruction of s_load_dword s[4:5], s[4:5]
+  /// 0x0 will be raised to a load, not "read from the first kernel function's
+  /// argument"
+  /// Also there is no guarantee if a kernel written in assembly tries
+  /// to conform with the LLVM IR convention of "explicit args first, implicit
+  /// arg after" i.e. it might mix implicit and explicit arguments together
   llvm::Type *const ReturnType = llvm::Type::getVoidTy(LLVMContext);
 
-  // Create the Kernel's FunctionType with appropriate kernel Arguments
-  // (if any)
-  llvm::SmallVector<llvm::Type *> Params;
-  unsigned int ExplicitArgsOffset = 0;
-  unsigned int ImplicitArgsOffset = 0;
-  if (KernelMetadata != nullptr && KernelMetadata->Args.has_value()) {
-    // Reserve the number of arguments in the Params vector
-    Params.reserve(KernelMetadata->Args->size());
-    // For now, we only rely on required argument metadata
-    // This should be updated as new cases are encountered
-    for (const auto &ArgMD : *(KernelMetadata)->Args) {
-      if (ArgMD.ValKind >= amdgpu::hsamd::ValueKind::HiddenArgKindBegin)
-        break;
-      else {
-        Params.push_back(processExplicitKernelArg(ArgMD, LLVMContext));
-        if (ArgMD.Offset > ExplicitArgsOffset)
-          ExplicitArgsOffset = ArgMD.Offset;
-      }
-    }
-  }
-
   llvm::FunctionType *FunctionType =
-      llvm::FunctionType::get(ReturnType, Params, false);
+      llvm::FunctionType::get(ReturnType, {}, false);
 
-  auto *F =
+  llvm::Function *F =
       llvm::Function::Create(FunctionType, llvm::GlobalValue::WeakAnyLinkage,
                              KernelName, TargetModule);
   F->setVisibility(llvm::GlobalValue::ProtectedVisibility);
@@ -529,26 +505,19 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   LUTHIER_RETURN_ON_ERROR(parseKDRsrc1(KDOnHost, TM, *F));
   LUTHIER_RETURN_ON_ERROR(parseKDRsrc2(KDOnHost, TM, *F));
 
-  // Add dummy IR instructions ===============================================
-  // Very important to have a dummy IR BasicBlock; Otherwise MachinePasses
-  // won't run
-  llvm::BasicBlock *BB =
-      llvm::BasicBlock::Create(TargetModule.getContext(), "", F);
-  new llvm::UnreachableInst(TargetModule.getContext(), BB);
-
-  // Populate the MFI ========================================================
+  // Populate the MFI ==========================================================
 
   llvm::MachineFunction &MF =
       FAM.getResult<llvm::MachineFunctionAnalysis>(*F).getMF();
 
-  /// Parse kernel code
+  /// Parse the kernel code field of the kernel
   LUTHIER_RETURN_ON_ERROR(parseKDKernelCode(KDOnHost, TM, MF));
 
-  auto MFI = MF.getInfo<llvm::SIMachineFunctionInfo>();
+  auto *MFI = MF.getInfo<llvm::SIMachineFunctionInfo>();
   auto &ST = TM.getSubtarget<llvm::GCNSubtarget>(*F);
 
   /// Set pre-loaded kernel argument field for targets that support it
-  if (ST.hasKernargPreload()) {
+  if (ST.kernargPreload()) {
     /// TODO: It seems the AMDGPU backend doesn't support the offset field of
     /// kernarg_preload for now. Fix it once it is added to LLVM upstream
     MFI->getUserSGPRInfo().allocKernargPreloadSGPRs(KDOnHost.kernarg_preload);
@@ -557,31 +526,10 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   /// Kernel functions are 2^8 byte aligned
   MF.setAlignment(llvm::Align(256));
 
-  // Process the hidden args now that MFI and MF has been created
-  if (KernelMetadata != nullptr && KernelMetadata->Args.has_value()) {
-    // Add absence of all hidden arguments; As we iterate over all the
-    // hidden arguments, we get rid of them if we detect their presence
-    F->addFnAttr("amdgpu-no-hostcall-ptr");
-    F->addFnAttr("amdgpu-no-default-queue");
-    F->addFnAttr("amdgpu-no-completion-action");
-    F->addFnAttr("amdgpu-no-multigrid-sync-arg");
-    F->addFnAttr("amdgpu-no-heap-ptr");
-    for (const auto &ArgMD : *KernelMetadata->Args) {
-      if (ArgMD.ValKind >= amdgpu::hsamd::ValueKind::HiddenArgKindBegin &&
-          ArgMD.ValKind <= amdgpu::hsamd::ValueKind::HiddenArgKindEnd) {
-        processHiddenKernelArg(
-            ArgMD, *F, *MFI,
-            *MF.getSubtarget<llvm::GCNSubtarget>().getRegisterInfo());
-        if (ArgMD.Offset > ImplicitArgsOffset)
-          ImplicitArgsOffset = ArgMD.Offset;
-      }
-    }
-  }
-
-  // Number of implicit arg bytes is the difference between the last hidden
-  // arg offset and the last explicit arg offset
-  F->addFnAttr("amdgpu-implicitarg-num-bytes",
-               llvm::to_string(ImplicitArgsOffset - ExplicitArgsOffset));
+  /// We do not define any implicit arguments to be present since at the binary
+  /// level we don't care whether an argument is implicit or explicit and we
+  /// treat them the same
+  F->addFnAttr("amdgpu-implicitarg-num-bytes", "0");
 
   return std::make_pair(std::ref(MF), KDSymbolIfPresent);
 }
@@ -632,21 +580,14 @@ initLiftedDeviceFunctionEntry(uint64_t DeviceEntryPointAddr,
     FuncName = llvm::formatv("x{0:x}", DeviceEntryPointAddr);
   }
 
-  llvm::Type *const ReturnType = llvm::Type::getVoidTy(LLVMContext);
+  llvm::Type *ReturnType = llvm::Type::getVoidTy(LLVMContext);
   llvm::FunctionType *FunctionType =
       llvm::FunctionType::get(ReturnType, {}, false);
 
-  auto *F = llvm::Function::Create(
+  llvm::Function *F = llvm::Function::Create(
       FunctionType, llvm::GlobalValue::PrivateLinkage, FuncName, TargetModule);
   F->setCallingConv(llvm::CallingConv::C);
-  // Add dummy IR instructions ===============================================
-  // Very important to have a dummy IR BasicBlock; Otherwise MachinePasses
-  // won't run
-  llvm::BasicBlock *BB = llvm::BasicBlock::Create(LLVMContext, "", F);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      BB != nullptr,
-      "Failed to create a dummy IR basic block during code lifting."));
-  new llvm::UnreachableInst(LLVMContext, BB);
+
   llvm::MachineFunction &MF =
       FAM.getResult<llvm::MachineFunctionAnalysis>(*F).getMF();
 
@@ -654,7 +595,7 @@ initLiftedDeviceFunctionEntry(uint64_t DeviceEntryPointAddr,
   return std::make_pair(std::ref(MF), FuncSymRef);
 }
 
-static bool shouldReadExec(const llvm::MachineInstr &MI) {
+static bool shouldImplictReadExec(const llvm::MachineInstr &MI) {
   if (llvm::SIInstrInfo::isVALU(MI)) {
     switch (MI.getOpcode()) {
     case llvm::AMDGPU::V_READLANE_B32:
@@ -667,64 +608,182 @@ static bool shouldReadExec(const llvm::MachineInstr &MI) {
     }
   }
 
-  if (MI.isPreISelOpcode() ||
-      llvm::SIInstrInfo::isGenericOpcode(MI.getOpcode()) ||
-      llvm::SIInstrInfo::isSALU(MI) || llvm::SIInstrInfo::isSMRD(MI))
+  if (llvm::SIInstrInfo::isSALU(MI) || llvm::SIInstrInfo::isSMRD(MI))
     return false;
 
   return true;
 }
 
-static llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder) {
-  auto &MI = *Builder.getInstr();
-  if (shouldReadExec(MI) &&
-      !MI.hasRegisterImplicitUseOperand(llvm::AMDGPU::EXEC)) {
-    MI.addOperand(
-        llvm::MachineOperand::CreateReg(llvm::AMDGPU::EXEC, false, true));
-  }
-  return llvm::Error::success();
-}
+/// Walks over the \p MCOperands and converts them to \c llvm::MachineOperand
+/// instances before adding them to the \c llvm::MachineInstr instance managed
+/// by the \p MIBuilder
+/// Does not convert direct branch target immediate operands to a machine
+/// basic block
+/// \return \c llvm::Error indicating the success or failure of the operation
+static llvm::Error
+convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
+                            llvm::MachineInstrBuilder &MIBuilder) {
+  const unsigned Opcode = MIBuilder->getOpcode();
+  const llvm::MCInstrDesc &MCID = MIBuilder->getDesc();
+  llvm::MachineBasicBlock *MBB = MIBuilder->getParent();
+  assert(MBB && "MI is not part of a machine basic block");
+  llvm::MachineFunction *MF = MBB->getParent();
+  assert(MF && "MI is not part of a machine function");
+  const bool IsDirectBranch =
+      MIBuilder->isBranch() && !MIBuilder->isIndirectBranch();
+  for (auto [MCOpIdx, MCOp] : llvm::enumerate(MCOperands)) {
+    if (MCOp.isReg()) {
+      LLVM_DEBUG(llvm::dbgs() << "Converting MC register operand.\n");
+      unsigned RegNum = RealToPseudoRegisterMapTable(MCOp.getReg());
+      const bool IsDef = MCOpIdx < MCID.getNumDefs();
+      auto Flags = llvm::RegState::NoFlags;
+      const llvm::MCOperandInfo &OpInfo = MCID.operands().begin()[MCOpIdx];
+      if (IsDef && !OpInfo.isOptionalDef()) {
+        Flags |= llvm::RegState::Define;
+      }
+      LLVM_DEBUG(llvm::dbgs()
+                     << "Adding register "
+                     << llvm::printReg(RegNum,
+                                       MF->getSubtarget().getRegisterInfo())
+                     << " with flags " << Flags << "\n";);
+      (void)MIBuilder.addReg(RegNum, Flags);
+    } else if (MCOp.isImm()) {
+      LLVM_DEBUG(llvm::dbgs() << "Resolving an immediate operand.\n");
 
-static llvm::Error fixupBitsetInst(llvm::MachineInstr &MI) {
-  unsigned int Opcode = MI.getOpcode();
+      if (!IsDirectBranch) {
+        LLVM_DEBUG(llvm::dbgs()
+                       << "Relocation was not applied for the "
+                          "immediate operand, and it is not a direct branch.\n";
+                   llvm::dbgs()
+                   << "Adding the immediate operand directly to the "
+                      "instruction\n");
+        /// SOPK needs some special attention to be converted correctly
+        if (llvm::SIInstrInfo::isSOPK(*MIBuilder)) {
+          LLVM_DEBUG(llvm::dbgs() << "Instruction is in SOPK format\n");
+          if (llvm::SIInstrInfo::sopkIsZext()) {
+            auto Imm = static_cast<uint16_t>(MCOp.getImm());
+            LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                           "Adding truncated imm value: {0}\n", Imm));
+            (void)MIBuilder.addImm(Imm);
+          } else {
+            auto Imm = static_cast<int16_t>(MCOp.getImm());
+            LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
+                           "Adding truncated imm value: {0}\n", Imm));
+            (void)MIBuilder.addImm(Imm);
+          }
+        } else {
+          LLVM_DEBUG(llvm::dbgs()
+                     << llvm::formatv("Adding Imm: {0}\n", MCOp.getImm()));
+          (void)MIBuilder.addImm(MCOp.getImm());
+        }
+      }
+    } else if (MCOp.isExpr() && llvm::isa<llvm::AMDGPUMCExpr>(MCOp.getExpr())) {
+      const auto *TargetExpr = llvm::cast<llvm::AMDGPUMCExpr>(MCOp.getExpr());
+
+      switch (TargetExpr->getKind()) {
+      case llvm::AMDGPUMCExpr::AGVK_Lit:
+      case llvm::AMDGPUMCExpr::AGVK_Lit64:
+        LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+            TargetExpr->getArgs().size() == 1 &&
+                llvm::isa<llvm::MCConstantExpr>(TargetExpr->getSubExpr(0)),
+            "Literal expr operands should only have one constant sub "
+            "expression"));
+        (void)MIBuilder.addImm(
+            llvm::cast<llvm::MCConstantExpr>(TargetExpr->getSubExpr(0))
+                ->getValue());
+        break;
+      default:
+        return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+            "Unexpected expression type: {0}", TargetExpr->getKind()));
+      }
+    } else {
+      return LUTHIER_MAKE_GENERIC_ERROR(
+          llvm::formatv("Unexpected MC operand: ", MCOp));
+    }
+  }
+  // Create a (fake) memory operand to keep the machine verifier happy
+  // when encountering image instructions
+  if (llvm::SIInstrInfo::isImage(*MIBuilder)) {
+    llvm::MachinePointerInfo PtrInfo =
+        llvm::MachinePointerInfo::getConstantPool(*MF);
+    llvm::MachineMemOperand *MMO = MF->getMachineMemOperand(
+        PtrInfo,
+        MCID.mayLoad() ? llvm::MachineMemOperand::MOLoad
+                       : llvm::MachineMemOperand::MOStore,
+        16, llvm::Align(8));
+    MIBuilder->addMemOperand(*MF, MMO);
+  }
+
+  if (size_t NumMCOps = MCOperands.size(); NumMCOps < MCID.NumOperands) {
+    LLVM_DEBUG(llvm::dbgs() << "Must fixup instruction ";
+               MIBuilder->print(llvm::dbgs()); llvm::dbgs() << "\n";
+               llvm::dbgs()
+               << "Num explicit operands added so far: " << NumMCOps << "\n";
+               llvm::dbgs()
+               << "Num explicit operands according to Machine Instr Info: "
+               << MCID.NumOperands << "\n";);
+    // Loop over missing explicit operands (if any) and fixup any missing
+    // immediate operands; We ignore any other missing operand kinds here and
+    // fix it later
+    for (unsigned int MissingExpOpIdx = NumMCOps;
+         MissingExpOpIdx < MCID.NumOperands; MissingExpOpIdx++) {
+      LLVM_DEBUG(llvm::dbgs()
+                     << "Fixing up operand no " << MissingExpOpIdx << "\n";);
+      auto OpType = MCID.operands()[MissingExpOpIdx].OperandType;
+      if (OpType == llvm::MCOI::OPERAND_IMMEDIATE ||
+          OpType == llvm::AMDGPU::OPERAND_KIMM32) {
+        LLVM_DEBUG(llvm::dbgs() << "Added a 0-immediate operand.\n";);
+        (void)MIBuilder.addImm(0);
+      }
+    }
+  }
+
   if (Opcode == llvm::AMDGPU::S_BITSET0_B32 ||
       Opcode == llvm::AMDGPU::S_BITSET0_B64 ||
       Opcode == llvm::AMDGPU::S_BITSET1_B32 ||
       Opcode == llvm::AMDGPU::S_BITSET1_B64) {
     // bitset instructions have a tied def/use that is not reflected in the
     // MC version
-    if (MI.getNumOperands() < MI.getNumExplicitOperands()) {
+    if (MIBuilder->getNumOperands() < MIBuilder->getNumExplicitOperands()) {
+      const llvm::MachineOperand &DefMachineOp = MIBuilder->getOperand(0);
       // Check if the first operand is a register
       LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-          MI.getOperand(0).isReg(),
+          DefMachineOp.isReg(),
           "The first operand of a bitset instruction is not a register."));
       // Add the output reg also as the first input, and tie the first and
       // second operands together
-      MI.addOperand(
-          llvm::MachineOperand::CreateReg(MI.getOperand(0).getReg(), false));
-      MI.tieOperands(0, 2);
-    } else {
-      return llvm::Error::success();
+      MIBuilder->addOperand(
+          llvm::MachineOperand::CreateReg(DefMachineOp.getReg(), false));
+      MIBuilder->tieOperands(0, 2);
     }
   }
+
+  /// Add implicit use of the execute mask if it's not already reflected in
+  /// the machine instruction
+  if (MCID.hasImplicitUseOfPhysReg(llvm::AMDGPU::EXEC) &&
+      !MIBuilder->hasRegisterImplicitUseOperand(llvm::AMDGPU::EXEC)) {
+    MIBuilder->addOperand(
+        llvm::MachineOperand::CreateReg(llvm::AMDGPU::EXEC, false, true));
+  }
+
   return llvm::Error::success();
 }
 
 static llvm::Error populateMF(const InstructionTraces &MFTrace,
                               llvm::MachineFunction &MF) {
   llvm::LLVMContext &Ctx = MF.getFunction().getContext();
-  llvm::MachineBasicBlock *MBB = MF.CreateMachineBasicBlock();
+  llvm::MachineBasicBlock *CurrentMBB = MF.CreateMachineBasicBlock();
 
   const auto &TM =
       *reinterpret_cast<const llvm::GCNTargetMachine *>(&MF.getTarget());
 
-  MF.push_back(MBB);
+  MF.push_back(CurrentMBB);
 
   const llvm::MCRegisterInfo &MRI = *TM.getMCRegisterInfo();
-  auto IP =
-      std::unique_ptr<llvm::MCInstPrinter>(TM.getTarget().createMCInstPrinter(
-          TM.getTargetTriple(), TM.getMCAsmInfo()->getAssemblerDialect(),
-          *TM.getMCAsmInfo(), *TM.getMCInstrInfo(), MRI));
+
+  std::unique_ptr<llvm::MCInstPrinter> IP(TM.getTarget().createMCInstPrinter(
+      TM.getTargetTriple(), TM.getMCAsmInfo()->getAssemblerDialect(),
+      *TM.getMCAsmInfo(), *TM.getMCInstrInfo(), MRI));
 
   llvm::MCContext &MCContext = MF.getContext();
 
@@ -742,13 +801,12 @@ static llvm::Error populateMF(const InstructionTraces &MFTrace,
       BranchTargetMBBs; // < Set of MBBs that will be the target of the
                         // UnresolvedBranchMIs
 
-  llvm::SmallVector<llvm::MachineBasicBlock *, 4> MBBs;
-  MBBs.push_back(MBB);
-
   /// The start address of the first trace
-  uint64_t FirstTraceStartAddr = MFTrace.traces_begin()->first.first;
+  const uint64_t FirstTraceStartAddr = MFTrace.traces_begin()->first.first;
   /// The end address of the last trace
-  uint64_t LastTraceEndAddr = MFTrace.traces_rbegin()->first.second;
+  const uint64_t LastTraceEndAddr = MFTrace.traces_rbegin()->first.second;
+
+  const llvm::TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
 
   llvm::MachineInstr *EntryInst{nullptr};
 
@@ -767,11 +825,11 @@ static llvm::Error populateMF(const InstructionTraces &MFTrace,
       bool IsDirectBranch = MCID.isBranch() && !IsIndirectBranch;
       bool IsDirectBranchTarget =
           MFTrace.isAddressDirectBranchTarget(Inst.getLoadedDeviceAddress());
-      LLVM_DEBUG(llvm::dbgs() << "Lifting and adding MC Inst: ";
+      LLVM_DEBUG(llvm::dbgs() << "Processing MCInst: ";
                  MCInst.dump_pretty(llvm::dbgs(), IP.get(), " ", &MCContext);
                  llvm::dbgs() << "\n";
                  llvm::dbgs()
-                 << llvm::formatv("Loaded address of the instruction: {0:x}\n",
+                 << llvm::formatv("Device address of the instruction: {0:x}\n",
                                   Inst.getLoadedDeviceAddress());
                  llvm::dbgs()
                  << llvm::formatv("Is branch? {0}\n", MCID.isBranch());
@@ -780,15 +838,14 @@ static llvm::Error populateMF(const InstructionTraces &MFTrace,
 
       if (IsDirectBranchTarget) {
         LLVM_DEBUG(llvm::dbgs() << "Instruction is a branch target.\n";);
-        if (!MBB->empty()) {
+        if (!CurrentMBB->empty()) {
           LLVM_DEBUG(
               llvm::dbgs()
               << "Current MBB is not empty; Creating a new basic block\n");
-          auto OldMBB = MBB;
-          MBB = MF.CreateMachineBasicBlock();
-          MF.push_back(MBB);
-          MBBs.push_back(MBB);
-          OldMBB->addSuccessor(MBB);
+          llvm::MachineBasicBlock *OldMBB = CurrentMBB;
+          CurrentMBB = MF.CreateMachineBasicBlock();
+          MF.push_back(CurrentMBB);
+          OldMBB->addSuccessor(CurrentMBB);
           // Branch targets mark the beginning of an MBB
           LLVM_DEBUG(llvm::dbgs()
                      << "*********************************************"
@@ -798,13 +855,14 @@ static llvm::Error populateMF(const InstructionTraces &MFTrace,
                      << "Current MBB is empty; No new block created "
                         "for the branch target.\n");
         }
-        BranchTargetMBBs.insert({Inst.getLoadedDeviceAddress(), MBB});
+        BranchTargetMBBs.insert({Inst.getLoadedDeviceAddress(), CurrentMBB});
         LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
                        "Address {0:x} marks the beginning of MBB idx {1}.\n",
-                       Inst.getLoadedDeviceAddress(), MBB->getNumber()););
+                       Inst.getLoadedDeviceAddress(),
+                       CurrentMBB->getNumber()););
       }
       llvm::MachineInstrBuilder Builder =
-          llvm::BuildMI(MBB, llvm::DebugLoc(), MCID);
+          llvm::BuildMI(CurrentMBB, llvm::DebugLoc(), MCID);
       auto MDNodeOrErr = TargetMachineInstrMDNode::initializeMDNode(*Builder);
       LUTHIER_RETURN_ON_ERROR(MDNodeOrErr.takeError());
       MDNodeOrErr->setTraceInstrAddress(Ctx, CurrentInstrAddr);
@@ -812,117 +870,18 @@ static llvm::Error populateMF(const InstructionTraces &MFTrace,
       LLVM_DEBUG(llvm::dbgs() << "Number of operands according to MCID: "
                               << MCID.operands().size() << "\n";
                  llvm::dbgs() << "Populating operands\n";);
-      for (unsigned OpIndex = 0, E = MCInst.getNumOperands(); OpIndex < E;
-           ++OpIndex) {
-        const llvm::MCOperand &Op = MCInst.getOperand(OpIndex);
-        if (Op.isReg()) {
-          LLVM_DEBUG(llvm::dbgs() << "Resolving reg operand.\n");
-          unsigned RegNum = RealToPseudoRegisterMapTable(Op.getReg());
-          const bool IsDef = OpIndex < MCID.getNumDefs();
-          unsigned Flags = 0;
-          const llvm::MCOperandInfo &OpInfo = MCID.operands().begin()[OpIndex];
-          if (IsDef && !OpInfo.isOptionalDef()) {
-            Flags |= llvm::RegState::Define;
-          }
-          LLVM_DEBUG(llvm::dbgs()
-                         << "Adding register "
-                         << llvm::printReg(RegNum,
-                                           MF.getSubtarget().getRegisterInfo())
-                         << " with flags " << Flags << "\n";);
-          (void)Builder.addReg(RegNum, Flags);
-        } else if (Op.isImm()) {
-          LLVM_DEBUG(llvm::dbgs() << "Resolving an immediate operand.\n");
-          uint64_t InstAddr = Inst.getLoadedDeviceAddress();
-          size_t InstSize = Inst.getSize();
-          if (!IsDirectBranch) {
-            LLVM_DEBUG(
-                llvm::dbgs()
-                    << "Relocation was not applied for the "
-                       "immediate operand, and it is not a direct branch.\n";
-                llvm::dbgs() << "Adding the immediate operand directly to the "
-                                "instruction\n");
-            if (llvm::SIInstrInfo::isSOPK(*Builder)) {
-              LLVM_DEBUG(llvm::dbgs() << "Instruction is in SOPK format\n");
-              if (llvm::SIInstrInfo::sopkIsZext(Opcode)) {
-                auto Imm = static_cast<uint16_t>(Op.getImm());
-                LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
-                               "Adding truncated imm value: {0}\n", Imm));
-                (void)Builder.addImm(Imm);
-              } else {
-                auto Imm = static_cast<int16_t>(Op.getImm());
-                LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
-                               "Adding truncated imm value: {0}\n", Imm));
-                (void)Builder.addImm(Imm);
-              }
-            } else {
-              LLVM_DEBUG(llvm::dbgs()
-                         << llvm::formatv("Adding Imm: {0}\n", Op.getImm()));
-              (void)Builder.addImm(Op.getImm());
-            }
-          }
-        } else if (Op.isExpr() && llvm::isa<llvm::AMDGPUMCExpr>(Op.getExpr())) {
-          const auto *TargetExpr = llvm::cast<llvm::AMDGPUMCExpr>(Op.getExpr());
+      LUTHIER_RETURN_ON_ERROR(
+          convertAndAddMCOperandsToMI(MCInst.getOperands(), Builder));
 
-          switch (TargetExpr->getKind()) {
-          case llvm::AMDGPUMCExpr::AGVK_Lit:
-          case llvm::AMDGPUMCExpr::AGVK_Lit64:
-            LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-                TargetExpr->getArgs().size() == 1 &&
-                    llvm::isa<llvm::MCConstantExpr>(TargetExpr->getSubExpr(0)),
-                "Literal expr operands should only have one constant sub "
-                "expression"));
-            (void)Builder.addImm(
-                llvm::cast<llvm::MCConstantExpr>(TargetExpr->getSubExpr(0))
-                    ->getValue());
-            break;
-          default:
-            llvm_unreachable("Unexpected expression type");
-          }
-        } else {
-          llvm_unreachable("Unexpected operand type");
-        }
-      }
-      // Create a (fake) memory operand to keep the machine verifier happy
-      // when encountering image instructions
-      if (llvm::SIInstrInfo::isImage(*Builder)) {
-        llvm::MachinePointerInfo PtrInfo =
-            llvm::MachinePointerInfo::getConstantPool(MF);
-        auto *MMO = MF.getMachineMemOperand(
-            PtrInfo,
-            MCInstInfo.get(Builder->getOpcode()).mayLoad()
-                ? llvm::MachineMemOperand::MOLoad
-                : llvm::MachineMemOperand::MOStore,
-            16, llvm::Align(8));
-        Builder->addMemOperand(MF, MMO);
-      }
-
-      if (MCInst.getNumOperands() < MCID.NumOperands) {
-        LLVM_DEBUG(llvm::dbgs() << "Must fixup instruction ";
-                   Builder->print(llvm::dbgs()); llvm::dbgs() << "\n";
-                   llvm::dbgs() << "Num explicit operands added so far: "
-                                << MCInst.getNumOperands() << "\n";
-                   llvm::dbgs() << "Num explicit operands according to MCID: "
-                                << MCID.NumOperands << "\n";);
-        // Loop over missing explicit operands (if any) and fixup any missing
-        for (unsigned int MissingExpOpIdx = MCInst.getNumOperands();
-             MissingExpOpIdx < MCID.NumOperands; MissingExpOpIdx++) {
-          LLVM_DEBUG(llvm::dbgs() << "Fixing up operand no " << MissingExpOpIdx
-                                  << "\n";);
-          auto OpType = MCID.operands()[MissingExpOpIdx].OperandType;
-          if (OpType == llvm::MCOI::OPERAND_IMMEDIATE ||
-              OpType == llvm::AMDGPU::OPERAND_KIMM32) {
-            LLVM_DEBUG(llvm::dbgs() << "Added a 0-immediate operand.\n";);
-            (void)Builder.addImm(0);
-          }
-        }
-      }
-
-      LUTHIER_RETURN_ON_ERROR(fixupBitsetInst(*Builder));
-      LUTHIER_RETURN_ON_ERROR(verifyInstruction(Builder));
       LLVM_DEBUG(llvm::dbgs() << "Final form of the instruction (not final if "
                                  "it's a direct branch): ";
                  Builder->print(llvm::dbgs()); llvm::dbgs() << "\n");
-      // Basic Block resolving
+      if (Inst.getLoadedDeviceAddress() ==
+          MFTrace.getInitialEntryPoint().getEntryPointAddress()) {
+        EntryInst = Builder.getInstr();
+      }
+      // Basic Block resolving; We also split blocks further down to "vector"
+      // and scalar block to make it easier to deal with predication calculation
       if (MCID.isTerminator()) {
         LLVM_DEBUG(llvm::dbgs()
                    << "Instruction is a terminator; Finishing basic block.\n");
@@ -947,25 +906,36 @@ static llvm::Error populateMF(const InstructionTraces &MFTrace,
         // creating a new basic block
         if (CurrentInstrAddr != LastTraceEndAddr) {
           LLVM_DEBUG(llvm::dbgs() << "Creating a new basic block.\n");
-          auto OldMBB = MBB;
-          MBB = MF.CreateMachineBasicBlock();
-          MBBs.push_back(MBB);
-          MF.push_back(MBB);
+          llvm::MachineBasicBlock *OldMBB = CurrentMBB;
+          CurrentMBB = MF.CreateMachineBasicBlock();
+          MF.push_back(CurrentMBB);
           // Don't add the next block to the list of successors if the
           // terminator is an unconditional branch
           if (!MCID.isUnconditionalBranch())
-            OldMBB->addSuccessor(MBB);
+            OldMBB->addSuccessor(CurrentMBB);
           LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
                          "Address {0:x} marks the beginning of MBB idx {1}.\n",
-                         Inst.getLoadedDeviceAddress(), MBB->getNumber()););
+                         Inst.getLoadedDeviceAddress(),
+                         CurrentMBB->getNumber()););
         }
         LLVM_DEBUG(llvm::dbgs()
                    << "*********************************************"
                       "***************************\n");
-      }
-      if (Inst.getLoadedDeviceAddress() ==
-          MFTrace.getInitialEntryPoint().getEntryPointAddress()) {
-        EntryInst = Builder.getInstr();
+      } else if (llvm::MachineInstr *PrevMI = Builder->getPrevNode()) {
+        bool IsCurrentMIVector = shouldImplictReadExec(*Builder);
+        bool IsFormerMIVector = shouldImplictReadExec(*PrevMI);
+        bool CurrentMIWritesExecMask =
+            Builder->modifiesRegister(llvm::AMDGPU::EXEC, TRI);
+        /// TODO: WQM instructions
+        bool ShouldSplitCurrentMBB =
+            CurrentMIWritesExecMask || IsCurrentMIVector ^ IsFormerMIVector;
+        if (ShouldSplitCurrentMBB) {
+          llvm::MachineBasicBlock *OldMBB = CurrentMBB;
+          CurrentMBB = OldMBB->splitAt(*PrevMI);
+          LLVM_DEBUG(llvm::dbgs()
+                     << "*********************************************"
+                        "***************************\n");
+        }
       }
       CurrentInstrAddr += Inst.getSize();
     }
@@ -976,32 +946,31 @@ static llvm::Error populateMF(const InstructionTraces &MFTrace,
     LLVM_DEBUG(
         llvm::dbgs() << llvm::formatv(
             "Resolving MIs jumping to target address {0:x}.\n", TargetAddress));
-    MBB = BranchTargetMBBs[TargetAddress];
+    CurrentMBB = BranchTargetMBBs[TargetAddress];
     LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        MBB != nullptr,
+        CurrentMBB != nullptr,
         llvm::formatv("Failed to find the MachineBasicBlock associated with "
                       "the branch target address {0:x}.",
                       TargetAddress)));
     for (auto &MI : BranchMIs) {
       LLVM_DEBUG(llvm::dbgs() << "Resolving branch for the instruction ";
                  MI->print(llvm::dbgs()); llvm::dbgs() << "\n");
-      MI->addOperand(llvm::MachineOperand::CreateMBB(MBB));
-      MI->getParent()->addSuccessor(MBB);
+      MI->addOperand(llvm::MachineOperand::CreateMBB(CurrentMBB));
+      MI->getParent()->addSuccessor(CurrentMBB);
       LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
                      "MBB {0:x} {1} was set as the target of the branch.\n",
-                     MBB, MBB->getName()));
+                     CurrentMBB, CurrentMBB->getName()));
       LLVM_DEBUG(llvm::dbgs() << "Final branch instruction: ";
                  MI->print(llvm::dbgs()); llvm::dbgs() << "\n");
     }
   }
 
   /// If the entry address of the trace group is not equal to the address of the
-  /// first trace then add a new basic block in the beginning of the MF, and
+  /// first trace then add a new basic block in the beginning of the MF,
   /// put a jump to the entry instruction
   if (MFTrace.getInitialEntryPoint().getEntryPointAddress() !=
       FirstTraceStartAddr) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        EntryInst != nullptr, "the entry instruction is not nullptr"));
+    assert(EntryInst != nullptr && "the entry instruction is nullptr");
     llvm::MachineBasicBlock *EntryMBB = MF.CreateMachineBasicBlock();
     MF.push_front(EntryMBB);
 
@@ -1018,9 +987,11 @@ static llvm::Error populateMF(const InstructionTraces &MFTrace,
   LLVM_DEBUG(llvm::dbgs() << "*********************************************"
                              "***************************\n");
 
+  /// Freeze the set of reserved register because we will not do any register
+  /// allocations here
   MF.getRegInfo().freezeReservedRegs();
 
-  // Populate the properties of MF
+  /// Populate the properties of MF
   llvm::MachineFunctionProperties &Properties = MF.getProperties();
   Properties.set(llvm::MachineFunctionProperties::Property::NoVRegs);
   Properties.reset(llvm::MachineFunctionProperties::Property::IsSSA);
@@ -1120,14 +1091,14 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
     PA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
     TargetMAM.invalidate(TargetModule, PA);
 
-    /// Check if the last instruction in the trace is a call; If so, check
-    /// if there is a function symbol associated with it. If so, see if the
-    /// size of the function indicates there is more code after
+    /// Check if there are call instruction in return blocks of the
+    /// machine function; If so, check if there is a function symbol associated
+    /// with it. If so, see if the size of the function indicates there is more
+    /// code after each call instruction, and add them to the list of
+    /// entry points to be visited
 
-    /// Reform the IP-Vector CFG
-
-    /// Check if we have discovered anything there are any other trace entry
-    /// points that are left for us to discover; If so
+    /// Form the Predicated CFG for the current Machine Function and
+    /// raise the discovered code to LLVM IR
 
     /// Re-calculate IP-liveness and IP-reaching definitions
     // (void)TargetMAM.getResult<IndirectBranchResolverAnalysis>(TargetModule);
