@@ -80,6 +80,9 @@ public:
     }
   };
 
+  /// Given \p Op returns its equivalent \c llvm::Value
+  /// Register operands are returned as unsigned integers with the same
+  /// size as the register
   llvm::Value &getOperandAsValue(const llvm::MachineOperand &Op);
 
   void setRegOperandValue(const llvm::MachineOperand &Op, llvm::Value &Val);
@@ -320,13 +323,13 @@ using MBBToBBMapTy =
 
 template <uint16_t Opcode, typename... Operands>
 void raiseMachineInstr(const llvm::MachineInstr &MI,
-                       llvm::IRBuilderBase &Builder, MBBToBBMapTy &MBBToBBMap,
+                       llvm::IRBuilderBase &Builder,
                        MBBOperandTracker &RegisterValueMap);
 
 template <>
 void raiseMachineInstr<llvm::AMDGPU::S_ADD_U32>(
     const llvm::MachineInstr &MI, llvm::IRBuilderBase &Builder,
-    MBBToBBMapTy &MBBToBBMap, MBBOperandTracker &RegisterValueMap) {
+    MBBOperandTracker &RegisterValueMap) {
   /// D.u = S0.u + S1.u;
   /// SCC = (S0.u + S1.u >= 0x100000000ULL ? 1 : 0). // unsigned
   /// overflow/carry-out
@@ -350,25 +353,51 @@ void raiseMachineInstr<llvm::AMDGPU::S_ADD_U32>(
 
 template <>
 void raiseMachineInstr<llvm::AMDGPU::S_SUB_U32>(
-    llvm::IRBuilderBase &Builder, MBBToBBMapTy &,
-    BasicBlockMCRegisterValueMap &RegisterValueMap,
-    const llvm::MachineOperand &Op0, const llvm::MachineOperand &Op1,
-    const llvm::MachineOperand &Op2) {
+    const llvm::MachineInstr &MI, llvm::IRBuilderBase &Builder,
+    MBBOperandTracker &RegisterValueMap) {
   /// D.u = S0.u - S1.u;
   /// SCC = (S1.u > S0.u ? 1 : 0). // unsigned overflow or carry-out for
   /// S_SUBB_U32.
-  llvm::Value *Op1Val = Op1.isImm() ? Builder.getInt32(Op1.getImm())
-                                    : RegisterValueMap.getValue(Op1.getReg());
-  llvm::Value *Op2Val = Op2.isImm() ? Builder.getInt32(Op2.getImm())
-                                    : RegisterValueMap.getValue(Op2.getReg());
-  assert(Op1Val && "Failed to create the first operand");
-  assert(Op2Val && "Failed to create the second operand");
-  llvm::Value *D = Builder.CreateSub(Op1Val, Op2Val);
-  llvm::Value *SCCVal = Builder.CreateSelect(
-      Builder.CreateCmp(llvm::CmpInst::ICMP_UGT, Op2Val, Op1Val),
-      Builder.getInt1(true), Builder.getInt1(false));
-  RegisterValueMap.setValue(Op0.getReg(), *D);
-  RegisterValueMap.setValue(llvm::AMDGPU::SCC, *SCCVal);
+  const llvm::MachineOperand &D = MI.getOperand(0);
+  const llvm::MachineOperand &S0 = MI.getOperand(1);
+  const llvm::MachineOperand &S1 = MI.getOperand(2);
+  llvm::Value &S0Val = RegisterValueMap.getOperandAsValue(S0);
+  llvm::Value &S1Val = RegisterValueMap.getOperandAsValue(S1);
+  llvm::Value *DVal = Builder.CreateSub(&S0Val, &S1Val);
+  llvm::Value *SCCVal =
+      Builder.CreateCmp(llvm::CmpInst::ICMP_UGT, &S1Val, &S0Val);
+  RegisterValueMap.setRegOperandValue(D, *DVal);
+  assert(MI.getNumImplicitOperands() == 1 &&
+         "Incorrect number of implicit operands");
+  const llvm::MachineOperand &SCCOp = *MI.implicit_operands().begin();
+  assert(SCCOp.isReg() && SCCOp.getReg() == llvm::AMDGPU::SCC &&
+         "SCC is not the implicit operand of the instruction");
+  RegisterValueMap.setRegOperandValue(SCCOp, *SCCVal);
+}
+
+template <>
+void raiseMachineInstr<llvm::AMDGPU::S_ADD_I32>(
+    const llvm::MachineInstr &MI, llvm::IRBuilderBase &Builder,
+    MBBOperandTracker &RegisterValueMap) {
+  /// tmp = S0.i32 + S1.i32;
+  /// SCC = ((S0.u32[31] == S1.u32[31]) && (S0.u32[31] != tmp.u32[31]));
+  /// // signed overflow.
+  /// D0.i32 = tmp.i32
+  const llvm::MachineOperand &D = MI.getOperand(0);
+  const llvm::MachineOperand &S0 = MI.getOperand(1);
+  const llvm::MachineOperand &S1 = MI.getOperand(2);
+  llvm::Value &S0Val = RegisterValueMap.getOperandAsValue(S0);
+  llvm::Value &S1Val = RegisterValueMap.getOperandAsValue(S1);
+  llvm::Value *DVal = Builder.CreateSub(&S0Val, &S1Val);
+  llvm::Value *SCCVal =
+      Builder.CreateCmp(llvm::CmpInst::ICMP_UGT, &S1Val, &S0Val);
+  RegisterValueMap.setRegOperandValue(D, *DVal);
+  assert(MI.getNumImplicitOperands() == 1 &&
+         "Incorrect number of implicit operands");
+  const llvm::MachineOperand &SCCOp = *MI.implicit_operands().begin();
+  assert(SCCOp.isReg() && SCCOp.getReg() == llvm::AMDGPU::SCC &&
+         "SCC is not the implicit operand of the instruction");
+  RegisterValueMap.setRegOperandValue(SCCOp, *SCCVal);
 }
 
 llvm::Expected<llvm::Value &>
