@@ -13,89 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-include "AMDGPU.td"
-
-/// Superclass for all operations used in the semantics
-class SISemOp;
-
-//------------------------------------------------------------------------------
-// Constant values
-//------------------------------------------------------------------------------
-
-class ConstantInt<VTInt valueType, int val> {
-  LLVMType Type = LLVMType<valueType>;
-  int Val = val;
-}
-
-class ConstantFP<VTFP valueType, int val> {
-  LLVMType Type = LLVMType<valueType>;
-  int Val = val;
-}
-
-//------------------------------------------------------------------------------
-// LLVM IR Operation Definitions
-//------------------------------------------------------------------------------
-
-
-/// Represents LLVM operations used to describe the SI instruction semantics
-/// records
-class LLVMOp<string iRBuilderFunc = ""> : SISemOp {
-  /// The llvm::IRBuilder function used to construct the operation
-  string IRBuilderFunc = iRBuilderFunc;
-}
-
-def LLVMAdd : LLVMOp<"CreateAdd">;
-
-def LLVMSub : LLVMOp<"CreateSub">;
-
-def LLVMMul : LLVMOp<"CreateMul">;
-
-def LLVMZExt : LLVMOp<"CreateZExt">;
-
-def LLVMSExt : LLVMOp<"CreateSExt">;
-
-def LLVMSelect : LLVMOp<"CreateSelect">;
-
-def LLVMCmp : LLVMOp<"CreateCmp">;
-
-def LLVMTrunc : LLVMOp<"CreateTrunc">;
-
-def LLVMIntToPtr : LLVMOp<"CreateIntToPtr">;
-
-def LLVMPtrAdd : LLVMOp<"CreatePtrAdd">;
-
-def LLVMLoad : LLVMOp<"CreateLoad">;
-
-def LLVMStore : LLVMOp<"CreateStore">;
-
-//------------------------------------------------------------------------------
-// Complex LLVM IR Operation Definitions (i.e. low-level binary operations that
-// require multiple LLVM IR operations and have a native generic MIR opcode)
-//------------------------------------------------------------------------------
-
-class LLVM_ComplexOp;
-
-class LLVM_MergeValues : LLVM_ComplexOp;
-
-class LLVMExtractValue : LLVM_ComplexOp;
-
-//------------------------------------------------------------------------------
-// InstSI-specific semantic operations
-//------------------------------------------------------------------------------
-
-///
-def GetNamedOperand : SISemOp;
-
-def SetNamedOperand : SISemOp;
-
-def SetReg : SISemOp;
-
-def SelectVal;
-
-def hasModifierSet;
-
-///
-def region_ptr_type : LLVMQualPointerType<2>;
+include "SISemOps.td"
 
 //------------------------------------------------------------------------------
 // Convenience Functions
@@ -136,7 +54,8 @@ def S_ADD_U32_sem : InstSISemantic<S_ADD_U32> {
      (LLVMAdd:$tmp (LLVMZExt (GetNamedOperand $src0), llvm_i64_ty),
                     (LLVMZExt (GetNamedOperand $src1), llvm_i64_ty)
      ),
-     (SetReg SCC, (LLVMCmp SETUGE, $tmp, 0x100000000)),
+     (ImplicitDef SCC, (LLVMCmp SETUGE, $tmp,
+                                        ConstantInt<i32, 0x100000000>)),
      (SetNamedOperand $sdst, (LLVMTrunc $tmp, llvm_i32_ty))
    ];
 }
@@ -146,7 +65,8 @@ def S_SUB_U32_sem : InstSISemantic<S_SUB_U32> {
      (SetNamedOperand $sdst, (LLVMSub (GetNamedOperand $src0),
                                        (GetNamedOperand $src0))
      ),
-     (SetReg SCC, (LLVMCmp SETGE, $src1, $src0))
+     (ImplicitDef SCC, (LLVMCmp SETGE, (GetNamedOperand $src1),
+                                       (GetNamedOperand $src0)))
    ];
 }
 
@@ -238,7 +158,7 @@ def DS_ADD_U32_sem : InstSISemantic<DS_ADD_U32> {
      (LLVMLoad:$tmp llvm_i32_ty,
        CalculateSingleOffsetDSAddr<(GetNamedOperand $addr),
                                    (GetNamedOperand $offset),
-                                   (SelectVal (hasModifierSet $gds), region_ptr_type, local_ptr_ty)>.ret),
+                                   (SelectOperand (hasModifierSet $gds), region_ptr_type, local_ptr_ty)>.ret),
      (LLVMStore (LLVMAdd $tmp, (GetNamedOperand $data0)))
   ];
 }
