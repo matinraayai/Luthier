@@ -16,7 +16,7 @@ find_program(LLVM_TABLEGEN_EXE "llvm-tblgen" ${LLVM_TOOLS_BINARY_DIR} NO_DEFAULT
 # Re-generates the required AMDGPU tablegen files in the current binary directory and make them accessible publicly to
 # tool writers
 set(LuthierSIInstrSemantics_TABLEGEN_EXE ${LLVM_TABLEGEN_EXE})
-set(LLVM_TARGET_DEFINITIONS "SIInstrSemantics.td")
+set(LLVM_TARGET_DEFINITIONS "InstSISemantics.td")
 tablegen(LuthierSIInstrSemantics --print-detailed-records EXTRA_INCLUDES
         "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
 

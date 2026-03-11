@@ -49,107 +49,159 @@ class InstSIIntrinsic<InstSI inst, Intrinsic intrinsic> {
   Intrinsic Intrinsic = intrinsic;
 }
 
+//------------------------------------------------------------------------------
+// SOP2 Instructions
+//------------------------------------------------------------------------------
+
 def S_ADD_U32_sem : InstSISemantic<S_ADD_U32> {
    let Semantic = [
-     (LLVMAdd:$tmp (LLVMZExt (GetNamedOperand $src0), llvm_i64_ty),
-                    (LLVMZExt (GetNamedOperand $src1), llvm_i64_ty)
-     ),
-     (ImplicitDef SCC, (LLVMCmp SETUGE, $tmp,
-                                        ConstantInt<i32, 0x100000000>)),
+     (DefVal $tmp,
+       (LLVMAdd (LLVMZExt (GetNamedOperand $src0), llvm_i64_ty),
+                (LLVMZExt (GetNamedOperand $src1), llvm_i64_ty))),
+     (ImplicitDef SCC, (LLVMCmp SETUGE, $tmp, (ConstantInt llvm_i64_ty, 0x100000000))),
      (SetNamedOperand $sdst, (LLVMTrunc $tmp, llvm_i32_ty))
    ];
 }
 
 def S_SUB_U32_sem : InstSISemantic<S_SUB_U32> {
-   let Semantic = [
-     (SetNamedOperand $sdst, (LLVMSub (GetNamedOperand $src0),
-                                       (GetNamedOperand $src0))
-     ),
-     (ImplicitDef SCC, (LLVMCmp SETGE, (GetNamedOperand $src1),
-                                       (GetNamedOperand $src0)))
-   ];
+  let Semantic = [
+    (DefVal $tmp, (LLVMSub (GetNamedOperand $src0), (GetNamedOperand $src0))),
+    (ImplicitDef SCC, (LLVMCmp SETUGT, (GetNamedOperand $src1),
+                                       (GetNamedOperand $src0))),
+    (SetNamedOperand $sdst, $tmp)
+  ];
 }
 
 def S_ADD_I32_sem : InstSISemantic<S_ADD_I32> {
-    let Semantic = [
-        (set i32:$sdst, (add i32:$src0, i32:$src1)),
-        (set v32i1:$src0_v32i1, (bitconvert i32:$src0, llvm_v32i1_ty)),
-        (set i1:$src0_31, (extractelt v32i1:$src0_v32i1, 31)),
-        (set v32i1:$src1_v32i1, (bitconvert i32:$src1, llvm_v32i1_ty)),
-        (set i1:$src1_31, (extractelt v32i1:$src0_v32i1, 31)),
-        (set v32i1:$sdst_v32i1, (bitconvert i32:$sdst, llvm_v32i1_ty)),
-        (set i1:$sdst_31, (extractelt v32i1:$sdst_v32i1, 31)),
-        (set SCC, (and (scmp SETEQ, i1:$src0_31, i1:$src1_31),
-                  (scmp SETEQ, i1:$src0_31, i1:$dst_31)))
-    ];
-    let Doc = [
-        "tmp = S0.i32 + S1.i32;",
-        "SCC = ((S0.u32[31] == S1.u32[31]) && (S0.u32[31] != tmp.u32[31]));",
-        "// signed overflow."
-        "D0.i32 = tmp.i32"
-    ];
+  let Semantic = [
+    (DefVal $tmp, (LLVMAdd (GetNamedOperand $src0), (GetNamedOperand $src1))),
+    (DefVal $src0_31, LLVMExtractValueConstIdx<(GetNamedOperand $src0), llvm_v32i1_ty, 31>.Op),
+    (DefVal $src1_31, LLVMExtractValueConstIdx<(GetNamedOperand $src1), llvm_v32i1_ty, 31>.Op),
+    (DefVal $sdst_31, LLVMExtractValueConstIdx<(GetNamedOperand $sdst), llvm_v32i1_ty, 31>.Op),
+    (ImplicitDef SCC, (LLVMAnd (LLVMCmp SETEQ, $src0_31, $src1_31),
+                               (LLVMCmp SETNE, $src0_31, $sdst_31))
+    ),
+    (SetNamedOperand $sdst, $tmp)
+  ];
 }
 
 def S_SUB_I32_sem : InstSISemantic<S_SUB_I32> {
-    let Semantic = [
-        (set i32:$sdst, (sub i32:$src0, i32:$src1)),
-        (set v32i1:$src0_v32i1, (bitconvert i32:$src0, llvm_v32i1_ty)),
-        (set i1:$src0_31, (extractelt v32i1:$src0_v32i1, 31)),
-        (set v32i1:$src1_v32i1, (bitconvert i32:$src1, llvm_v32i1_ty)),
-        (set i1:$src1_31, (extractelt v32i1:$src0_v32i1, 31)),
-        (set v32i1:$sdst_v32i1, (bitconvert i32:$sdst, llvm_v32i1_ty)),
-        (set i1:$sdst_31, (extractelt v32i1:$sdst_v32i1, 31)),
-        (set SCC, (and (scmp SETEQ, i1:$src0_31, i1:$src1_31),
-                  (scmp SETEQ, i1:$src0_31, i1:$dst_31)))
-    ];
-    let Doc = [
-        "tmp = S0.i32 - S1.i32;"
-        "SCC = ((S0.u32[31] != S1.u32[31]) && (S0.u32[31] != tmp.u32[31]));"
-        "// signed overflow."
-        "D0.i32 = tmp.i32"
-    ];
+  let Semantic = [
+    (DefVal $tmp, (LLVMSub (GetNamedOperand $src0), (GetNamedOperand $src1))),
+    (DefVal $src0_31, LLVMExtractValueConstIdx<(GetNamedOperand $src0), llvm_v32i1_ty, 31>.Op),
+    (DefVal $src1_31, LLVMExtractValueConstIdx<(GetNamedOperand $src1), llvm_v32i1_ty, 31>.Op),
+    (DefVal $sdst_31, LLVMExtractValueConstIdx<(GetNamedOperand $sdst), llvm_v32i1_ty, 31>.Op),
+    (ImplicitDef SCC, (LLVMAnd (LLVMCmp SETNE, $src0_31, $src1_31),
+                               (LLVMCmp SETNE, $src0_31, $sdst_31))),
+    (SetNamedOperand $sdst, $tmp)
+  ];
 }
 
 def S_ADDC_U32_sem : InstSISemantic<S_ADDC_U32> {
-    let Semantic = [
-       (set i64:$tmp, (add (zext i32:$src0, llvm_i64_ty), (zext i32:$src1, llvm_i64_ty))),
-       (set i64:$tmp1, (add i64:$tmp, (zext SCC, llvm_i64_ty))),
-       (set SCC, (ucmp SETUGE, i64:$tmp1, 0x100000000)),
-       (set i32:$sdst, (trunc i64:$tmp1, i32))
-    ];
-
-    let Doc = [
-        "tmp = 64'U(S0.u32) + 64'U(S1.u32) + SCC.u64;"
-        "SCC = tmp >= 0x100000000ULL ? 1'1U : 1'0U;"
-        "// unsigned overflow or carry-out for S_ADDC_U32."
-        "D0.u32 = tmp.u32"
-    ];
+  let Semantic = [
+    (DefVal $tmp, (LLVMAdd (LLVMAdd (LLVMZExt (GetNamedOperand $src0), llvm_i64_ty),
+                                    (LLVMZExt (GetNamedOperand $src1), llvm_i64_ty)),
+                                    (LLVMZExt (ImplicitUse SCC), llvm_i64_ty))),
+    (ImplicitDef SCC, (LLVMCmp SETUGE, $tmp,
+                                       (ConstantInt llvm_i64_ty, 0x100000000))),
+    (SetNamedOperand $sdst, (LLVMTrunc $tmp, llvm_i32_ty))
+  ];
 }
 
-def S_SUBB_U32 : InstSISemantic<S_SUBB_U32> {
+def S_SUBB_U32_sem : InstSISemantic<S_SUBB_U32> {
+  let Semantic = [
+    (DefVal $tmp, (LLVMSub (LLVMSub (GetNamedOperand $src0),
+                                    (GetNamedOperand $src1)),
+                                    (LLVMZExt (ImplicitUse SCC), llvm_i32_ty))),
+    (ImplicitDef SCC, (LLVMCmp SETUGT, (LLVMAdd (LLVMZExt (GetNamedOperand $src1), llvm_i64_ty),
+                                                (LLVMZExt (ImplicitUse SCC), llvm_i64_ty)),
+                                       (LLVMZExt (GetNamedOperand $src0), llvm_i64_ty))),
+    (SetNamedOperand $sdst, $tmp)
+  ];
+}
+
+foreach i = 0-3 in {
+  defvar op = ["S_MIN_I32", "S_MIN_U32", "S_MAX_I32", "S_MAX_U32"][i];
+  defvar cmpSgn = [SETLT, SETULT, SETGE, SETUGE][i];
+
+  def op#_sem : InstSISemantic<op> {
     let Semantic = [
-        (set i32:$sdst, (sub i32:$src0, (sub i32:$src1, (zext SCC, llvm_i32_ty)))),
-        (set SCC, (ucmp SETUGT,  ((zext )), 0x100000000)),
-        (set i32:$sdst, (trunc i64:$tmp1, i32))
+      (ImplicitDef SCC, (LLVMCmp cmpSgn, (GetNamedOperand $src0), (GetNamedOperand $src1))),
+      (SetNamedOperand $sdst, (LLVMZExt (ImplicitUse SCC), llvm_i32_ty))
     ];
-    let Doc = [
-        "tmp = S0.u32 - S1.u32 - SCC.u32;"
-        "SCC = 64'U(S1.u32) + SCC.u64 > 64'U(S0.u32) ? 1'1U : 1'0U;"
-        "// unsigned overflow or carry-out for S_SUBB_U32."
-        "D0.u32 = tmp.u32"
-    ];
+  }
+}
+
+foreach size = ["32", "64"] in {
+  def S_CSELECT_B#size#_sem : InstSISemantic<S_CSELECT_B#size> {
+    let Semantic = [(SetNamedOperand $sdst,
+                    (LLVMSelect (ImplicitUse SCC), (GetNamedOperand $src0), (GetNamedOperand $src1)))];
+  }
+}
+
+foreach op = ["And", "Or", "Xor"] in {
+  foreach size = ["32", "64"] in {
+    def S_#!toupper(op)#_B#size#_sem : InstSISemantic<S_#!toupper(op)#_B#size> {
+      let Semantic =
+        [(SetNamedOperand $sdst, (LLVM#op (GetNamedOperand $src0), (GetNamedOperand $src1))),
+         (ImplicitDef SCC, (LLVMCmp SETNE, (GetNamedOperand $sdst), (ConstantInt llvm_i#size#_ty, 0)))
+        ];
+    }
+  }
+}
+
+foreach op = ["And", "Or"] in {
+  foreach size = ["32", "64"] in {
+    def S_#!toupper(op)#N2_B#size#_sem : InstSISemantic<S_#!toupper(op)#N2_B#size> {
+      let Semantic = [
+        (SetNamedOperand $sdst, (LLVM#op (GetNamedOperand $src0), (LLVMNot<(GetNamedOperand $src1)>.ret))),
+        (ImplicitDef SCC, (LLVMCmp SETNE, (GetNamedOperand $sdst), (ConstantInt llvm_i#size#_ty, 0)))
+      ];
+    }
+  }
+}
+
+foreach op = ["And", "Or", "Xor"] in {
+  foreach size = ["32", "64"] in {
+    def S_N#!toupper(op)#_B#size#_sem : InstSISemantic<S_N#!toupper(op)#_B#size> {
+      let Semantic = [
+        (SetNamedOperand $sdst, (LLVM#op (GetNamedOperand $src0), (LLVMNot<(GetNamedOperand $src1)>.ret))),
+        (ImplicitDef SCC, (LLVMCmp SETNE, (GetNamedOperand $sdst), (ConstantInt llvm_i#size#_ty, 0)))
+      ];
+    }
+  }
 }
 
 
-def S_MIN_I32_sem : InstSISemantic<S_MIN_I32> {
+foreach op = ["LShl", "LShr", "AShr"] in {
+  foreach sizeIdx = 0-1 in {
+    defvar size = ["32", "64"][sizeIdx];
+    defvar bitSet = [0xF, 0x3F][sizeIdx];
+    defvar shouldSignExtendSrc0 = !eq(op, "AShr");
+    def S_#!toupper(op)#_B#size#_sem : InstSISemantic<S_N#!toupper(op)#_B#size> {
+      let Semantic = [
+        (SetNamedOperand $sdst, (LLVM#op
+                                         !if(shouldSignExtendSrc0,
+                                            (LLVMSExt (GetNamedOperand $src0), llvm_i32_ty),
+                                            (GetNamedOperand $src0)),
+                                         (LLVMAnd (GetNamedOperand $src1), (ConstantInt llvm_i#size_ty, bitSet)))),
+        (ImplicitDef SCC, (LLVMCmp SETNE, (GetNamedOperand $sdst), (ConstantInt llvm_i#size#_ty, 0)))
+      ];
+    }
+  }
+}
+
+foreach size = [32, 64] in {
+  defvar bitSet = !sub(size, 1);
+  def S_BFMB_#size#_sem : InstSISemantic<S_BFMB_#size> {
     let Semantic = [
-        (set SCC, (scmp SETLT, i32:$src0, i32:$src1)),
-        (set i32:$sdst, (select SCC, i32:$src0, i32:$src1))
+      (DefVal $src0_bits_lo, (LLVMAnd (GetNamedOperand $src0), (ConstantInt llvm_i#size_ty, bitSet))),
+      (DefVal $src1_bits_lo, (LLVMAnd (GetNamedOperand $src1), (ConstantInt llvm_i#size_ty, bitSet))),
+      (SetNamedOperand $sdts, (LLVMLShr
+                                (LLVMSub (LLVMLShr (ConstantInt llvm_i32_ty, 1), $src0_bits_lo),
+                                $src1_bits_lo)))
     ];
-    let Doc = [
-        "SCC = S0.i32 < S1.i32;",
-        "D0.i32 = SCC ? S0.i32 : S1.i32"
-    ];
+  }
 }
 
 
@@ -159,12 +211,6 @@ def DS_ADD_U32_sem : InstSISemantic<DS_ADD_U32> {
        CalculateSingleOffsetDSAddr<(GetNamedOperand $addr),
                                    (GetNamedOperand $offset),
                                    (SelectOperand (hasModifierSet $gds), region_ptr_type, local_ptr_ty)>.ret),
-     (LLVMStore (LLVMAdd $tmp, (GetNamedOperand $data0)))
+     (LLVMStore $tmp, (GetNamedOperand $data))
   ];
 }
-////  let Semantic = [(set addr, (.call CalcDsAddr:B.32, (.cast ADDR:U.32, B.32, B.32), (.cast OFFSET0, B.32, B.32), (.cast OFFSET1, B.32, B.32), U.32),
-////z                  (set tmp, (.cast MEM:B.32[addr:U.32], U.32, U.32),
-////                  (+= (.cast MEM:B.32[addr:U.32], U.32, U.32), (.cast DATA, U.32, U.32), U.32),
-////                  (set (.cast RETURN_DATA, U.32, U.32), tmp:U.32,
-////                  	U.32]
-//}

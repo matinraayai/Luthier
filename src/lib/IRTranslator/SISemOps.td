@@ -67,6 +67,26 @@ def LLVMSub : LLVMOp<"CreateSub">;
 
 def LLVMMul : LLVMOp<"CreateMul">;
 
+def LLVMUDiv : LLVMOp<"CreateUDiv">;
+
+def LLVMSDiv : LLVMOp<"CreateSDiv">;
+
+def LLVMURem : LLVMOp<"CreateURem">;
+
+def LLVMSRem : LLVMOp<"CreateSRem">;
+
+def LLVMXor : LLVMOp<"CreateXor">;
+
+def LLVMOr : LLVMOp<"CreateOr">;
+
+def LLVMAnd : LLVMOp<"CreateAnd">;
+
+def LLVMLShr : LLVMOp<"CreateLShr">;
+
+def LLVMShl : LLVMOp<"CreateShl">;
+
+def LLVMAshl : LLVMOp<"CreateAshl">;
+
 def LLVMZExt : LLVMOp<"CreateZExt">;
 
 def LLVMSExt : LLVMOp<"CreateSExt">;
@@ -110,8 +130,13 @@ def ImplicitDef;
 def ImplicitUse;
 
 /// Used to select an operand based on a boolean predicate (different from
-/// the LLVMSelect operation)
+/// the LLVMSelect operation). Does not translate into an IR operation
 def SelectOperand;
+
+/// Used to indicate definition of an intermediate value to be used by
+/// Later operations inside the semantic
+/// The second operand should be a name (e.g., (DefVal $tmp (...)))
+def DefVal;
 
 /// Used to check if the MI has a modifier set (checked via
 /// SIInstrInfo::hasModifierSet). Does not translate into an IR
@@ -125,6 +150,11 @@ def region_ptr_type : LLVMQualPointerType<2>;
 // Complex LLVM IR Operation Definitions (i.e. low-level binary operations that
 // require multiple LLVM IR operations)
 //------------------------------------------------------------------------------
+
+/// Performs a bit-wise inversion operation on the value
+class LLVMNot<dag val> {
+  dag ret = (LLVMXor val, ConstantTrue);
+}
 
 /// Breaks down an input value of type inputType into a set of
 /// sub values
@@ -185,11 +215,11 @@ class LLVMExtractValueConstIdx<dag val, LLVMType subValType, int idx> {
          "Index cannot be greater than number of elements";
   assert !gt(idx, 0), "Index must be greater than zero";
   dag Op =
-    (LLVMExtractElement (LLVMBitCast:$tempVal val, subValType), idx);
+    (LLVMExtractElement (LLVMBitCast val, subValType), idx);
 }
 
 class LLVMExtractValueVarIdx<dag val, LLVMType subValType, dag idx> {
   assert !gt(subValType.VT.nElem, 1), "subValType must be a vector type";
   dag Op =
-    (LLVMExtractElement (LLVMBitCast:$tempVal val, subValType), idx);
+    (LLVMExtractElement (LLVMBitCast val, subValType), idx);
 }
