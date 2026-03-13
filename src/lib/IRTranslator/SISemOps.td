@@ -138,6 +138,8 @@ def SelectOperand;
 /// The second operand should be a name (e.g., (DefVal $tmp (...)))
 def DefVal;
 
+def GetVal;
+
 /// Used to check if the MI has a modifier set (checked via
 /// SIInstrInfo::hasModifierSet). Does not translate into an IR
 /// operation
@@ -151,9 +153,9 @@ def region_ptr_type : LLVMQualPointerType<2>;
 // require multiple LLVM IR operations)
 //------------------------------------------------------------------------------
 
-/// Performs a bit-wise inversion operation on the value
+/// Performs a bit-wise inversion operation on a 1bit value
 class LLVMNot<dag val> {
-  dag ret = (LLVMXor val, ConstantTrue);
+  dag ret = (LLVMXor val, (ConstantTrue llvm_i1_ty));
 }
 
 /// Breaks down an input value of type inputType into a set of
@@ -177,7 +179,7 @@ class LLVMBreakdownValue<dag input, LLVMType inputType, int numEls> {
 /// Input values must be the same type (scalar integer or
 /// floating point)
 /// For merging two types that are not the same, they must be
-/// broken down into a common type first
+/// broken down into a common type first manually
 class LLVMMergeValue<list<dag> ins, LLVMType type> {
   assert !not(!empty(ins)), "argument list shouldn't be empty";
   assert !eq(type.VT.nElem, 1), "type must be a scalar";
@@ -222,4 +224,50 @@ class LLVMExtractValueVarIdx<dag val, LLVMType subValType, dag idx> {
   assert !gt(subValType.VT.nElem, 1), "subValType must be a vector type";
   dag Op =
     (LLVMExtractElement (LLVMBitCast val, subValType), idx);
+}
+
+class LLVMExtractSignBit<dag val, LLVMType type> {
+  dag Op = LLVMExtractValueConstIdx<val, type, !sub(type.VT.Size, 1)>.Op;
+}
+
+class LLVMSetSignBit<dag val, LLVMType type, dag sgn> {
+  dag Op = (LLVMAnd val, (LLVMShl sgn, !sub(type.VT.Size, 1)));
+}
+
+class LLVMExtractBitsIntStartIntNumBits<dag val,
+                                        LLVMType inputType,
+                                        bit isSigned, int startIdx,
+                                        int numBits = 1> {
+  assert !lt(inputType.VT.nElem, startIdx), "Start index must be less than the size of the element type";
+  assert !eq(type.VT.nElem, 1), "type must be a scalar";
+  assert !lt(inputType.VT.nElem, !add(startIdx, numBits)), "Total number of bits requested is out of range";
+  defvar rightShiftOp = !if(isSigned, LLVMAShr, LLVMLShr);
+
+  dag Op = !if(!eq(numBits, 1),
+             (LLVMAnd (rightShiftOp val, (ConstantInt inputType, startIdx)),
+                      (ConstantInt inputType, !sub(!shl(1, numBits), 1))),
+             (LLVMAnd (rightShiftOp val, (ConstantInt inputType, startIdx))));
+}
+
+class LLVMExtractBitsDagStartDagNumBits<dag val, LLVMType inputType, bit isSigned, dag startIdx, dag numBits> {
+  defvar rightShiftOp = !if(isSigned, LLVMAShr, LLVMLShr);
+  dag Op = (LLVMAnd (rightShiftOp val, startIdx),
+                    (LLVMSub (LLVMShl (ConstantInt inputType, 1), numBits), (ConstantInt inputType, 1)));
+}
+
+class LLVMExtractBitsIntStartDagNumBits<dag val, LLVMType inputType, bit isSigned, int startIdx, dag numBits> {
+  assert !eq(type.VT.nElem, 1), "type must be a scalar";
+  defvar rightShiftOp = !if(isSigned, LLVMAShr, LLVMLShr);
+  dag Op = (LLVMAnd (rightShiftOp val, (ConstantInt inputType, startIdx)),
+                    (LLVMSub (LLVMShl (ConstantInt inputType, 1), numBits),
+                                      (ConstantInt inputType, 1)));
+}
+
+class LLVMExtractBitsDagStartIntNumBits<dag val, LLVMType inputType, dag startIdx, int numBits = 1> {
+  assert !eq(type.VT.nElem, 1), "type must be a scalar";
+  defvar rightShiftOp = !if(isSigned, LLVMAShr, LLVMLShr);
+  dag Op = !if(!eq(numBits, 1),
+             (LLVMAnd (rightShiftOp val, (ConstantInt inputType, startIdx)),
+                                         (ConstantInt inputType, !sub(!shl(1, numBits), 1))),
+             (LLVMAnd (rightShiftOp val, (ConstantInt inputType, startIdx))));
 }
