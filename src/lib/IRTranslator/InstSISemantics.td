@@ -25,5 +25,17 @@ class InstSIIntrinsic<InstSI inst, Intrinsic intrinsic> {
   Intrinsic Intrinsic = intrinsic;
 }
 
+include "SOP1Sem.td"
 include "SOP2Sem.td"
+include "SOPCSem.td"
+include "SOPKSem.td"
+include "SOPPSem.td"
+include "SMEMSem.td"
+include "FLATSem.td"
+include "VINTRPSem.td"
+include "VOPSem.td"
+include "VOP3Sem.td"
+include "VOP3CSem.td"
+include "VOP3PSem.td"
+include "VOPCSem.td"
 include "DSSem.td"

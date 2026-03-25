@@ -27,7 +27,6 @@
 // V_INTERP_P2_F16) exist from GCN3 through RDNA2. In RDNA3+, V_INTERP_P2_F16
 // is available in new VINTERP encoding; P1LL/P1LV are removed.
 //===----------------------------------------------------------------------===//
-include "SISemOps.td"
 
 //==============================================================================
 // VINTRP Legacy Interpolation Instructions (GCN3–RDNA2)

@@ -105,11 +105,111 @@ def LLVMLoad : LLVMOp<"CreateLoad">;
 
 def LLVMStore : LLVMOp<"CreateStore">;
 
+def LLVMAtomicRMW : LLVMOp<"CreateAtomicRMW">;
+
+//------------------------------------------------------------------------------
+// AtomicRMW Operation Enum Values
+//------------------------------------------------------------------------------
+
+class AtomicRMWOp<string op> {
+  string Op = op;
+}
+
+def AtomicRMWAdd : AtomicRMWOp<"Add">;
+def AtomicRMWSub : AtomicRMWOp<"Sub">;
+def AtomicRMWAnd : AtomicRMWOp<"And">;
+def AtomicRMWOr : AtomicRMWOp<"Or">;
+def AtomicRMWXor : AtomicRMWOp<"Xor">;
+def AtomicRMWXchg : AtomicRMWOp<"Xchg">;
+def AtomicRMWMin : AtomicRMWOp<"Min">;
+def AtomicRMWUMin : AtomicRMWOp<"UMin">;
+def AtomicRMWMax : AtomicRMWOp<"Max">;
+def AtomicRMWUMax : AtomicRMWOp<"UMax">;
+def AtomicRMWNand : AtomicRMWOp<"Nand">;
+
 def LLVMBitCast : LLVMOp<"CreateBitCast">;
 
 def LLVMInsertElement : LLVMOp<"CreateInsertElement">;
 
 def LLVMExtractElement : LLVMOp<"CreateExtractElement">;
+
+def LLVMFAdd : LLVMOp<"CreateFAdd">;
+
+def LLVMFSub : LLVMOp<"CreateFSub">;
+
+def LLVMFMul : LLVMOp<"CreateFMul">;
+
+def LLVMFDiv : LLVMOp<"CreateFDiv">;
+
+def LLVMFRem : LLVMOp<"CreateFRem">;
+
+def LLVMFMA : LLVMOp<"CreateFMA">;
+
+def LLVMFNeg : LLVMOp<"CreateFNeg">;
+
+def LLVMFPTrunc : LLVMOp<"CreateFPTrunc">;
+
+def LLVMFPExt : LLVMOp<"CreateFPExt">;
+
+def LLVMFCmp : LLVMOp<"CreateFCmp">;
+
+def LLVMSIToFP : LLVMOp<"CreateSIToFP">;
+
+def LLVMUIToFP : LLVMOp<"CreateUIToFP">;
+
+def LLVMFPToSI : LLVMOp<"CreateFPToSI">;
+
+def LLVMFPToUI : LLVMOp<"CreateFPToUI">;
+
+def LLVMAShr : LLVMOp<"CreateAShr">;
+
+/// IEEE 754-2008 maxNum: max(x, y) with NaN handling (NaN → other operand)
+/// Maps to IRBuilder::CreateMaxNum (Intrinsic::maxnum)
+def LLVMMaxNum : LLVMOp<"CreateMaxNum">;
+
+/// IEEE 754-2008 minNum: min(x, y) with NaN handling (NaN → other operand)
+/// Maps to IRBuilder::CreateMinNum (Intrinsic::minnum)
+def LLVMMinNum : LLVMOp<"CreateMinNum">;
+
+/// Counts the number of 1 bits in the input value
+/// Maps to IRBuilder::CreateUnaryIntrinsic(Intrinsic::ctpop, val)
+def LLVMCtPop : LLVMOp<"CreateCtPop">;
+
+/// C math library ldexp: ldexp(x, exp) = x * 2^exp
+/// Maps to IRBuilder::CreateBinaryIntrinsic(Intrinsic::ldexp, x, exp)
+def LLVMLdexp : LLVMOp<"CreateLdexp">;
+
+/// Floating-point ceiling: ceil(x) = smallest integer >= x
+/// Maps to IRBuilder::CreateUnaryIntrinsic(Intrinsic::ceil, val)
+def LLVMFCeil : LLVMOp<"CreateFCeil">;
+
+/// Floating-point floor: floor(x) = largest integer <= x
+/// Maps to IRBuilder::CreateUnaryIntrinsic(Intrinsic::floor, val)
+def LLVMFFloor : LLVMOp<"CreateFFloor">;
+
+/// Floating-point truncation toward zero (NOT integer truncation)
+/// Maps to IRBuilder::CreateUnaryIntrinsic(Intrinsic::trunc, val)
+def LLVMFTrunc : LLVMOp<"CreateFTrunc">;
+
+/// Round to nearest even (banker's rounding)
+/// Maps to IRBuilder::CreateUnaryIntrinsic(Intrinsic::roundeven, val)
+def LLVMRoundEven : LLVMOp<"CreateRoundEven">;
+
+/// Reverses the bit order of an integer value
+/// Maps to IRBuilder::CreateUnaryIntrinsic(Intrinsic::bitreverse, val)
+def LLVMBitReverse : LLVMOp<"CreateBitReverse">;
+
+/// Count leading zeros. Returns the input bitwidth if the input is zero.
+/// Maps to IRBuilder::CreateBinaryIntrinsic(Intrinsic::ctlz, val, is_zero_poison)
+def LLVMCtlz : LLVMOp<"CreateCtlz">;
+
+/// Count trailing zeros. Returns the input bitwidth if the input is zero.
+/// Maps to IRBuilder::CreateBinaryIntrinsic(Intrinsic::cttz, val, is_zero_poison)
+def LLVMCttz : LLVMOp<"CreateCttz">;
+
+/// Floating-point square root
+/// Maps to IRBuilder::CreateUnaryIntrinsic(Intrinsic::sqrt, val)
+def LLVMFSqrt : LLVMOp<"CreateFSqrt">;
 
 //------------------------------------------------------------------------------
 // InstSI-specific semantic operations
@@ -148,14 +248,29 @@ def hasModifierSet;
 /// Defined here because AMDGPU.td records don't define it
 def region_ptr_type : LLVMQualPointerType<2>;
 
+/// Flat address space (generic pointer)
+def flat_ptr_type : LLVMQualPointerType<0>;
+
+/// Buffer address space (resource pointer)
+def buffer_ptr_type : LLVMQualPointerType<8>;
+
+/// Buffer fat pointer address space
+def buffer_fat_ptr_type : LLVMQualPointerType<9>;
+
+/// Global address space
+def global_ptr_type : LLVMQualPointerType<1>;
+
+/// Scratch address space
+def scratch_ptr_type : LLVMQualPointerType<5>;
+
 //------------------------------------------------------------------------------
 // Complex LLVM IR Operation Definitions (i.e. low-level binary operations that
 // require multiple LLVM IR operations)
 //------------------------------------------------------------------------------
 
-/// Performs a bit-wise inversion operation on a 1bit value
-class LLVMNot<dag val> {
-  dag ret = (LLVMXor val, (ConstantTrue llvm_i1_ty));
+/// Performs a bit-wise inversion operation on any integer value
+class LLVMNot<dag val, LLVMType type> {
+  dag ret = (LLVMXor val, (LLVMSExt (ConstantTrue llvm_i1_ty), type));
 }
 
 /// Breaks down an input value of type inputType into a set of
