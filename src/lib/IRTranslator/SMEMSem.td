@@ -1,4 +1,4 @@
-//===- SMEMSem.td -----------------------------------------------------*- tblgen -*-===//
+//===- SMEMSem.td --------------------------------------------*- tblgen -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,23 +18,28 @@
 // Convenience Functions
 //------------------------------------------------------------------------------
 
-class CalculateBufferSmemAddr<dag sbase, dag offset, dag soffset> {
-  dag ret = (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $offset), buffer_ptr_type),
-                         (GetNamedOperand $soffset));
+/// TODO: Address calculation functions need to be verified; The AMDGPU backend
+/// does not support direct load/stores instructions with the buffer address
+/// space, so we need to convert buffer addresses to flat address before
+/// performing any operations on them
+/// Scratch and global address calculations must also be verified
+
+
+class CalculateBufferSOffsetImmAddr<dag sbase, dag offset, dag soffset> {
+  dag ret = (LLVMPtrAdd (LLVMPtrAdd (LLVMIntToPtr sbase, buffer_ptr_ty),
+                         offset), soffset);
 }
 
-class CalculateBufferSmemAddrImm<dag sbase, dag offset> {
-  dag ret = (LLVMIntToPtr (GetNamedOperand $offset), buffer_ptr_type);
+class CalculateBufferSmemAddrOffset<dag sbase, dag offset> {
+  dag ret = (LLVMPtrAdd (LLVMIntToPtr sbase, buffer_ptr_ty), offset);
 }
 
-class CalculateFlatSmemAddrImm<dag sbase, dag offset> {
-  dag ret = (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), flat_ptr_type),
-                         (GetNamedOperand $offset));
+class CalculateBufferSmemAddrSOffset<dag sbase, dag soffset> {
+  dag ret = (LLVMPtrAdd (LLVMIntToPtr sbase, buffer_ptr_ty), soffset);
 }
 
-class CalculateFlatSmemAddrSgpr<dag sbase, dag soffset> {
-  dag ret = (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), flat_ptr_type),
-                         (GetNamedOperand $soffset));
+class CalculateGlobalSmemAddrSgpr<dag sbase, dag soffset> {
+  dag ret = (LLVMPtrAdd (LLVMIntToPtr sbase, global_ptr_ty), soffset);
 }
 
 class CalculateFlatSmemAddr<dag sbase, dag offset, dag soffset> {
@@ -61,6 +66,8 @@ class CalculateScratchSmemAddr<dag sbase, dag offset, dag soffset> {
 // S_BUFFER_LOAD Instructions
 // S_BUFFER_LOAD_DWORD: Load dword(s) from buffer descriptor + offset into SGPRs.
 // Sources:
+//   southern-islands-instruction-set-architecture.pdf, pages 140-142.
+//   sea-islands-instruction-set-architecture_0.pdf, pages 142-144.
 //   gcn3-instruction-set-architecture.pdf, page 154.
 //   vega-7nm-shader-instruction-set-architecture.pdf, page 123.
 //   instinct-mi100-cdna1-shader-instruction-set-architecture.pdf, page 120.
@@ -75,16 +82,15 @@ class CalculateScratchSmemAddr<dag sbase, dag offset, dag soffset> {
 
 def S_BUFFER_LOAD_DWORD_IMM_sem : InstSISemantic<S_BUFFER_LOAD_DWORD_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddrImm<(GetNamedOperand $sbase),
-                                                  (GetNamedOperand $offset)>.ret)),
+    (DefVal $tmp_addr, (CalculateBufferSmemAddrOffset<(GetNamedOperand $sbase),
+                                                      (GetNamedOperand $offset)>.ret)),
     (SetNamedOperand $sdst, (LLVMLoad llvm_i32_ty, $tmp_addr))
   ];
 }
 
 def S_BUFFER_LOAD_DWORD_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_DWORD_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
-                                                (GetNamedOperand $offset),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMLoad llvm_i32_ty, $tmp_addr))
   ];
@@ -92,9 +98,9 @@ def S_BUFFER_LOAD_DWORD_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_DWORD_SGPR> {
 
 def S_BUFFER_LOAD_DWORD_SGPR_IMM_sem : InstSISemantic<S_BUFFER_LOAD_DWORD_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
-                                                (GetNamedOperand $offset),
-                                                (GetNamedOperand $soffset)>.ret)),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
+                                                      (GetNamedOperand $offset),
+                                                      (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMLoad llvm_i32_ty, $tmp_addr))
   ];
 }
@@ -110,7 +116,7 @@ def S_BUFFER_LOAD_DWORDX2_IMM_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX2_IMM> {
 
 def S_BUFFER_LOAD_DWORDX2_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v2i32_ty, $tmp_addr)),
@@ -120,7 +126,7 @@ def S_BUFFER_LOAD_DWORDX2_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX2_SGPR> 
 
 def S_BUFFER_LOAD_DWORDX2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v2i32_ty, $tmp_addr)),
@@ -139,7 +145,7 @@ def S_BUFFER_LOAD_DWORDX3_IMM_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX3_IMM> {
 
 def S_BUFFER_LOAD_DWORDX3_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX3_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v3i32_ty, $tmp_addr)),
@@ -149,7 +155,7 @@ def S_BUFFER_LOAD_DWORDX3_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX3_SGPR> 
 
 def S_BUFFER_LOAD_DWORDX3_SGPR_IMM_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX3_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v3i32_ty, $tmp_addr)),
@@ -168,7 +174,7 @@ def S_BUFFER_LOAD_DWORDX4_IMM_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX4_IMM> {
 
 def S_BUFFER_LOAD_DWORDX4_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX4_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v4i32_ty, $tmp_addr)),
@@ -178,7 +184,7 @@ def S_BUFFER_LOAD_DWORDX4_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX4_SGPR> 
 
 def S_BUFFER_LOAD_DWORDX4_SGPR_IMM_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX4_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v4i32_ty, $tmp_addr)),
@@ -197,7 +203,7 @@ def S_BUFFER_LOAD_DWORDX8_IMM_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX8_IMM> {
 
 def S_BUFFER_LOAD_DWORDX8_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX8_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v8i32_ty, $tmp_addr)),
@@ -207,7 +213,7 @@ def S_BUFFER_LOAD_DWORDX8_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX8_SGPR> 
 
 def S_BUFFER_LOAD_DWORDX8_SGPR_IMM_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX8_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v8i32_ty, $tmp_addr)),
@@ -226,7 +232,7 @@ def S_BUFFER_LOAD_DWORDX16_IMM_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX16_IMM> 
 
 def S_BUFFER_LOAD_DWORDX16_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX16_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v16i32_ty, $tmp_addr)),
@@ -236,7 +242,7 @@ def S_BUFFER_LOAD_DWORDX16_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX16_SGPR
 
 def S_BUFFER_LOAD_DWORDX16_SGPR_IMM_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX16_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v16i32_ty, $tmp_addr)),
@@ -244,6 +250,12 @@ def S_BUFFER_LOAD_DWORDX16_SGPR_IMM_sem : InstSISemantic<S_BUFFER_LOAD_DWORDX16_
   ];
 }
 
+// S_BUFFER_LOAD_U8: Load 8 bits of unsigned data from a scalar buffer surface,
+// zero extend to 32 bits and store the result into a scalar register.
+// SDATA.u32 = 32'U({ 24'0U, MEM[ADDR].u8 })
+// Sources (RDNA4 only; not present in SI, CI, GCN3, Vega, Vega7nm,
+//          CDNA1, CDNA2, CDNA3, CDNA4, RDNA1, RDNA2, or RDNA3):
+//   rdna4-instruction-set-architecture.pdf, page 295 (opcode 25).
 def S_BUFFER_LOAD_U8_IMM_sem : InstSISemantic<S_BUFFER_LOAD_U8_IMM> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateBufferSmemAddrImm<(GetNamedOperand $sbase),
@@ -255,7 +267,7 @@ def S_BUFFER_LOAD_U8_IMM_sem : InstSISemantic<S_BUFFER_LOAD_U8_IMM> {
 
 def S_BUFFER_LOAD_U8_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_U8_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i8_ty, $tmp_addr)),
@@ -265,7 +277,7 @@ def S_BUFFER_LOAD_U8_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_U8_SGPR> {
 
 def S_BUFFER_LOAD_U8_SGPR_IMM_sem : InstSISemantic<S_BUFFER_LOAD_U8_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i8_ty, $tmp_addr)),
@@ -273,6 +285,12 @@ def S_BUFFER_LOAD_U8_SGPR_IMM_sem : InstSISemantic<S_BUFFER_LOAD_U8_SGPR_IMM> {
   ];
 }
 
+// S_BUFFER_LOAD_I8: Load 8 bits of signed data from a scalar buffer surface,
+// sign extend to 32 bits and store the result into a scalar register.
+// SDATA.i32 = 32'I(signext(MEM[ADDR].i8))
+// Sources (RDNA4 only; not present in SI, CI, GCN3, Vega, Vega7nm,
+//          CDNA1, CDNA2, CDNA3, CDNA4, RDNA1, RDNA2, or RDNA3):
+//   rdna4-instruction-set-architecture.pdf, page 295 (opcode 24).
 def S_BUFFER_LOAD_I8_IMM_sem : InstSISemantic<S_BUFFER_LOAD_I8_IMM> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateBufferSmemAddrImm<(GetNamedOperand $sbase),
@@ -284,7 +302,7 @@ def S_BUFFER_LOAD_I8_IMM_sem : InstSISemantic<S_BUFFER_LOAD_I8_IMM> {
 
 def S_BUFFER_LOAD_I8_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_I8_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i8_ty, $tmp_addr)),
@@ -294,7 +312,7 @@ def S_BUFFER_LOAD_I8_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_I8_SGPR> {
 
 def S_BUFFER_LOAD_I8_SGPR_IMM_sem : InstSISemantic<S_BUFFER_LOAD_I8_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i8_ty, $tmp_addr)),
@@ -302,6 +320,12 @@ def S_BUFFER_LOAD_I8_SGPR_IMM_sem : InstSISemantic<S_BUFFER_LOAD_I8_SGPR_IMM> {
   ];
 }
 
+// S_BUFFER_LOAD_U16: Load 16 bits of unsigned data from a scalar buffer surface,
+// zero extend to 32 bits and store the result into a scalar register.
+// SDATA.u32 = 32'U({ 16'0U, MEM[ADDR].u16 })
+// Sources (RDNA4 only; not present in SI, CI, GCN3, Vega, Vega7nm,
+//          CDNA1, CDNA2, CDNA3, CDNA4, RDNA1, RDNA2, or RDNA3):
+//   rdna4-instruction-set-architecture.pdf, page 295 (opcode 27).
 def S_BUFFER_LOAD_U16_IMM_sem : InstSISemantic<S_BUFFER_LOAD_U16_IMM> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateBufferSmemAddrImm<(GetNamedOperand $sbase),
@@ -313,7 +337,7 @@ def S_BUFFER_LOAD_U16_IMM_sem : InstSISemantic<S_BUFFER_LOAD_U16_IMM> {
 
 def S_BUFFER_LOAD_U16_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_U16_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i16_ty, $tmp_addr)),
@@ -323,7 +347,7 @@ def S_BUFFER_LOAD_U16_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_U16_SGPR> {
 
 def S_BUFFER_LOAD_U16_SGPR_IMM_sem : InstSISemantic<S_BUFFER_LOAD_U16_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i16_ty, $tmp_addr)),
@@ -331,6 +355,12 @@ def S_BUFFER_LOAD_U16_SGPR_IMM_sem : InstSISemantic<S_BUFFER_LOAD_U16_SGPR_IMM> 
   ];
 }
 
+// S_BUFFER_LOAD_I16: Load 16 bits of signed data from a scalar buffer surface,
+// sign extend to 32 bits and store the result into a scalar register.
+// SDATA.i32 = 32'I(signext(MEM[ADDR].i16))
+// Sources (RDNA4 only; not present in SI, CI, GCN3, Vega, Vega7nm,
+//          CDNA1, CDNA2, CDNA3, CDNA4, RDNA1, RDNA2, or RDNA3):
+//   rdna4-instruction-set-architecture.pdf, page 295 (opcode 26).
 def S_BUFFER_LOAD_I16_IMM_sem : InstSISemantic<S_BUFFER_LOAD_I16_IMM> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateBufferSmemAddrImm<(GetNamedOperand $sbase),
@@ -342,7 +372,7 @@ def S_BUFFER_LOAD_I16_IMM_sem : InstSISemantic<S_BUFFER_LOAD_I16_IMM> {
 
 def S_BUFFER_LOAD_I16_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_I16_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i16_ty, $tmp_addr)),
@@ -352,7 +382,7 @@ def S_BUFFER_LOAD_I16_SGPR_sem : InstSISemantic<S_BUFFER_LOAD_I16_SGPR> {
 
 def S_BUFFER_LOAD_I16_SGPR_IMM_sem : InstSISemantic<S_BUFFER_LOAD_I16_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i16_ty, $tmp_addr)),
@@ -374,7 +404,7 @@ def S_BUFFER_STORE_DWORD_IMM_sem : InstSISemantic<S_BUFFER_STORE_DWORD_IMM> {
 
 def S_BUFFER_STORE_DWORD_SGPR_sem : InstSISemantic<S_BUFFER_STORE_DWORD_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMStore (GetNamedOperand $sdata), $tmp_addr)
@@ -383,7 +413,7 @@ def S_BUFFER_STORE_DWORD_SGPR_sem : InstSISemantic<S_BUFFER_STORE_DWORD_SGPR> {
 
 def S_BUFFER_STORE_DWORD_SGPR_IMM_sem : InstSISemantic<S_BUFFER_STORE_DWORD_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMStore (GetNamedOperand $sdata), $tmp_addr)
@@ -400,7 +430,7 @@ def S_BUFFER_STORE_DWORDX2_IMM_sem : InstSISemantic<S_BUFFER_STORE_DWORDX2_IMM> 
 
 def S_BUFFER_STORE_DWORDX2_SGPR_sem : InstSISemantic<S_BUFFER_STORE_DWORDX2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMStore (GetNamedOperand $sdata), $tmp_addr)
@@ -409,7 +439,7 @@ def S_BUFFER_STORE_DWORDX2_SGPR_sem : InstSISemantic<S_BUFFER_STORE_DWORDX2_SGPR
 
 def S_BUFFER_STORE_DWORDX2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_STORE_DWORDX2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMStore (GetNamedOperand $sdata), $tmp_addr)
@@ -426,7 +456,7 @@ def S_BUFFER_STORE_DWORDX4_IMM_sem : InstSISemantic<S_BUFFER_STORE_DWORDX4_IMM> 
 
 def S_BUFFER_STORE_DWORDX4_SGPR_sem : InstSISemantic<S_BUFFER_STORE_DWORDX4_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMStore (GetNamedOperand $sdata), $tmp_addr)
@@ -435,7 +465,7 @@ def S_BUFFER_STORE_DWORDX4_SGPR_sem : InstSISemantic<S_BUFFER_STORE_DWORDX4_SGPR
 
 def S_BUFFER_STORE_DWORDX4_SGPR_IMM_sem : InstSISemantic<S_BUFFER_STORE_DWORDX4_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMStore (GetNamedOperand $sdata), $tmp_addr)
@@ -464,7 +494,7 @@ def S_BUFFER_ATOMIC_ADD_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_IMM_RTN
 
 def S_BUFFER_ATOMIC_ADD_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (GetNamedOperand $sdata))
@@ -473,7 +503,7 @@ def S_BUFFER_ATOMIC_ADD_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_SGPR> {
 
 def S_BUFFER_ATOMIC_ADD_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (GetNamedOperand $sdata)))
@@ -482,7 +512,7 @@ def S_BUFFER_ATOMIC_ADD_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_SGPR_R
 
 def S_BUFFER_ATOMIC_ADD_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (GetNamedOperand $sdata))
@@ -491,7 +521,7 @@ def S_BUFFER_ATOMIC_ADD_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_SGPR_I
 
 def S_BUFFER_ATOMIC_ADD_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (GetNamedOperand $sdata)))
@@ -516,7 +546,7 @@ def S_BUFFER_ATOMIC_ADD_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_X2_I
 
 def S_BUFFER_ATOMIC_ADD_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (GetNamedOperand $sdata))
@@ -525,7 +555,7 @@ def S_BUFFER_ATOMIC_ADD_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_X2_SGPR
 
 def S_BUFFER_ATOMIC_ADD_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (GetNamedOperand $sdata)))
@@ -534,7 +564,7 @@ def S_BUFFER_ATOMIC_ADD_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_X2_
 
 def S_BUFFER_ATOMIC_ADD_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_X2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (GetNamedOperand $sdata))
@@ -543,7 +573,7 @@ def S_BUFFER_ATOMIC_ADD_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_X2_
 
 def S_BUFFER_ATOMIC_ADD_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_ADD_X2_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (GetNamedOperand $sdata)))
@@ -572,7 +602,7 @@ def S_BUFFER_ATOMIC_AND_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_IMM_RTN
 
 def S_BUFFER_ATOMIC_AND_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAnd, $tmp_addr, (GetNamedOperand $sdata))
@@ -581,7 +611,7 @@ def S_BUFFER_ATOMIC_AND_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_SGPR> {
 
 def S_BUFFER_ATOMIC_AND_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAnd, $tmp_addr, (GetNamedOperand $sdata)))
@@ -590,7 +620,7 @@ def S_BUFFER_ATOMIC_AND_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_SGPR_R
 
 def S_BUFFER_ATOMIC_AND_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAnd, $tmp_addr, (GetNamedOperand $sdata))
@@ -599,7 +629,7 @@ def S_BUFFER_ATOMIC_AND_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_SGPR_I
 
 def S_BUFFER_ATOMIC_AND_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAnd, $tmp_addr, (GetNamedOperand $sdata)))
@@ -624,7 +654,7 @@ def S_BUFFER_ATOMIC_AND_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_X2_I
 
 def S_BUFFER_ATOMIC_AND_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAnd, $tmp_addr, (GetNamedOperand $sdata))
@@ -633,7 +663,7 @@ def S_BUFFER_ATOMIC_AND_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_X2_SGPR
 
 def S_BUFFER_ATOMIC_AND_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAnd, $tmp_addr, (GetNamedOperand $sdata)))
@@ -642,7 +672,7 @@ def S_BUFFER_ATOMIC_AND_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_X2_
 
 def S_BUFFER_ATOMIC_AND_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_X2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAnd, $tmp_addr, (GetNamedOperand $sdata))
@@ -651,7 +681,7 @@ def S_BUFFER_ATOMIC_AND_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_X2_
 
 def S_BUFFER_ATOMIC_AND_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_AND_X2_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAnd, $tmp_addr, (GetNamedOperand $sdata)))
@@ -680,7 +710,7 @@ def S_BUFFER_ATOMIC_OR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_IMM_RTN> 
 
 def S_BUFFER_ATOMIC_OR_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWOr, $tmp_addr, (GetNamedOperand $sdata))
@@ -689,7 +719,7 @@ def S_BUFFER_ATOMIC_OR_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_SGPR> {
 
 def S_BUFFER_ATOMIC_OR_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWOr, $tmp_addr, (GetNamedOperand $sdata)))
@@ -698,7 +728,7 @@ def S_BUFFER_ATOMIC_OR_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_SGPR_RTN
 
 def S_BUFFER_ATOMIC_OR_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWOr, $tmp_addr, (GetNamedOperand $sdata))
@@ -707,7 +737,7 @@ def S_BUFFER_ATOMIC_OR_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_SGPR_IMM
 
 def S_BUFFER_ATOMIC_OR_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWOr, $tmp_addr, (GetNamedOperand $sdata)))
@@ -732,7 +762,7 @@ def S_BUFFER_ATOMIC_OR_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_X2_IMM
 
 def S_BUFFER_ATOMIC_OR_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWOr, $tmp_addr, (GetNamedOperand $sdata))
@@ -741,7 +771,7 @@ def S_BUFFER_ATOMIC_OR_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_X2_SGPR> 
 
 def S_BUFFER_ATOMIC_OR_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWOr, $tmp_addr, (GetNamedOperand $sdata)))
@@ -750,7 +780,7 @@ def S_BUFFER_ATOMIC_OR_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_X2_SG
 
 def S_BUFFER_ATOMIC_OR_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_X2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWOr, $tmp_addr, (GetNamedOperand $sdata))
@@ -759,7 +789,7 @@ def S_BUFFER_ATOMIC_OR_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_X2_SG
 
 def S_BUFFER_ATOMIC_OR_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_OR_X2_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWOr, $tmp_addr, (GetNamedOperand $sdata)))
@@ -788,7 +818,7 @@ def S_BUFFER_ATOMIC_XOR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_IMM_RTN
 
 def S_BUFFER_ATOMIC_XOR_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWXor, $tmp_addr, (GetNamedOperand $sdata))
@@ -797,7 +827,7 @@ def S_BUFFER_ATOMIC_XOR_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_SGPR> {
 
 def S_BUFFER_ATOMIC_XOR_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWXor, $tmp_addr, (GetNamedOperand $sdata)))
@@ -806,7 +836,7 @@ def S_BUFFER_ATOMIC_XOR_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_SGPR_R
 
 def S_BUFFER_ATOMIC_XOR_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWXor, $tmp_addr, (GetNamedOperand $sdata))
@@ -815,7 +845,7 @@ def S_BUFFER_ATOMIC_XOR_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_SGPR_I
 
 def S_BUFFER_ATOMIC_XOR_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWXor, $tmp_addr, (GetNamedOperand $sdata)))
@@ -840,7 +870,7 @@ def S_BUFFER_ATOMIC_XOR_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_X2_I
 
 def S_BUFFER_ATOMIC_XOR_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWXor, $tmp_addr, (GetNamedOperand $sdata))
@@ -849,7 +879,7 @@ def S_BUFFER_ATOMIC_XOR_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_X2_SGPR
 
 def S_BUFFER_ATOMIC_XOR_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWXor, $tmp_addr, (GetNamedOperand $sdata)))
@@ -858,7 +888,7 @@ def S_BUFFER_ATOMIC_XOR_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_X2_
 
 def S_BUFFER_ATOMIC_XOR_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_X2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWXor, $tmp_addr, (GetNamedOperand $sdata))
@@ -867,7 +897,7 @@ def S_BUFFER_ATOMIC_XOR_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_X2_
 
 def S_BUFFER_ATOMIC_XOR_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_XOR_X2_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWXor, $tmp_addr, (GetNamedOperand $sdata)))
@@ -896,7 +926,7 @@ def S_BUFFER_ATOMIC_SUB_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_IMM_RTN
 
 def S_BUFFER_ATOMIC_SUB_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (GetNamedOperand $sdata))
@@ -905,7 +935,7 @@ def S_BUFFER_ATOMIC_SUB_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_SGPR> {
 
 def S_BUFFER_ATOMIC_SUB_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (GetNamedOperand $sdata)))
@@ -914,7 +944,7 @@ def S_BUFFER_ATOMIC_SUB_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_SGPR_R
 
 def S_BUFFER_ATOMIC_SUB_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (GetNamedOperand $sdata))
@@ -923,7 +953,7 @@ def S_BUFFER_ATOMIC_SUB_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_SGPR_I
 
 def S_BUFFER_ATOMIC_SUB_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (GetNamedOperand $sdata)))
@@ -948,7 +978,7 @@ def S_BUFFER_ATOMIC_SUB_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_X2_I
 
 def S_BUFFER_ATOMIC_SUB_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (GetNamedOperand $sdata))
@@ -957,7 +987,7 @@ def S_BUFFER_ATOMIC_SUB_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_X2_SGPR
 
 def S_BUFFER_ATOMIC_SUB_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (GetNamedOperand $sdata)))
@@ -966,7 +996,7 @@ def S_BUFFER_ATOMIC_SUB_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_X2_
 
 def S_BUFFER_ATOMIC_SUB_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_X2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (GetNamedOperand $sdata))
@@ -975,7 +1005,7 @@ def S_BUFFER_ATOMIC_SUB_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_X2_
 
 def S_BUFFER_ATOMIC_SUB_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SUB_X2_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1004,7 +1034,7 @@ def S_BUFFER_ATOMIC_SWAP_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_IMM_R
 
 def S_BUFFER_ATOMIC_SWAP_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata))
@@ -1013,7 +1043,7 @@ def S_BUFFER_ATOMIC_SWAP_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_SGPR> {
 
 def S_BUFFER_ATOMIC_SWAP_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1022,7 +1052,7 @@ def S_BUFFER_ATOMIC_SWAP_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_SGPR
 
 def S_BUFFER_ATOMIC_SWAP_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata))
@@ -1031,7 +1061,7 @@ def S_BUFFER_ATOMIC_SWAP_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_SGPR
 
 def S_BUFFER_ATOMIC_SWAP_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1056,7 +1086,7 @@ def S_BUFFER_ATOMIC_SWAP_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_X2
 
 def S_BUFFER_ATOMIC_SWAP_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata))
@@ -1065,7 +1095,7 @@ def S_BUFFER_ATOMIC_SWAP_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_X2_SG
 
 def S_BUFFER_ATOMIC_SWAP_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1074,7 +1104,7 @@ def S_BUFFER_ATOMIC_SWAP_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_X
 
 def S_BUFFER_ATOMIC_SWAP_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_X2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata))
@@ -1083,7 +1113,7 @@ def S_BUFFER_ATOMIC_SWAP_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_X
 
 def S_BUFFER_ATOMIC_SWAP_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SWAP_X2_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1112,7 +1142,7 @@ def S_BUFFER_ATOMIC_SMAX_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_IMM_R
 
 def S_BUFFER_ATOMIC_SMAX_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWMax, $tmp_addr, (GetNamedOperand $sdata))
@@ -1121,7 +1151,7 @@ def S_BUFFER_ATOMIC_SMAX_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_SGPR> {
 
 def S_BUFFER_ATOMIC_SMAX_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWMax, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1130,7 +1160,7 @@ def S_BUFFER_ATOMIC_SMAX_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_SGPR
 
 def S_BUFFER_ATOMIC_SMAX_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWMax, $tmp_addr, (GetNamedOperand $sdata))
@@ -1139,7 +1169,7 @@ def S_BUFFER_ATOMIC_SMAX_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_SGPR
 
 def S_BUFFER_ATOMIC_SMAX_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWMax, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1164,7 +1194,7 @@ def S_BUFFER_ATOMIC_SMAX_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_X2
 
 def S_BUFFER_ATOMIC_SMAX_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWMax, $tmp_addr, (GetNamedOperand $sdata))
@@ -1173,7 +1203,7 @@ def S_BUFFER_ATOMIC_SMAX_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_X2_SG
 
 def S_BUFFER_ATOMIC_SMAX_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWMax, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1182,7 +1212,7 @@ def S_BUFFER_ATOMIC_SMAX_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_X
 
 def S_BUFFER_ATOMIC_SMAX_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_X2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWMax, $tmp_addr, (GetNamedOperand $sdata))
@@ -1191,7 +1221,7 @@ def S_BUFFER_ATOMIC_SMAX_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_X
 
 def S_BUFFER_ATOMIC_SMAX_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMAX_X2_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWMax, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1220,7 +1250,7 @@ def S_BUFFER_ATOMIC_SMIN_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_IMM_R
 
 def S_BUFFER_ATOMIC_SMIN_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWMin, $tmp_addr, (GetNamedOperand $sdata))
@@ -1229,7 +1259,7 @@ def S_BUFFER_ATOMIC_SMIN_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_SGPR> {
 
 def S_BUFFER_ATOMIC_SMIN_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWMin, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1238,7 +1268,7 @@ def S_BUFFER_ATOMIC_SMIN_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_SGPR
 
 def S_BUFFER_ATOMIC_SMIN_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWMin, $tmp_addr, (GetNamedOperand $sdata))
@@ -1247,7 +1277,7 @@ def S_BUFFER_ATOMIC_SMIN_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_SGPR
 
 def S_BUFFER_ATOMIC_SMIN_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWMin, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1272,7 +1302,7 @@ def S_BUFFER_ATOMIC_SMIN_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_X2
 
 def S_BUFFER_ATOMIC_SMIN_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWMin, $tmp_addr, (GetNamedOperand $sdata))
@@ -1281,7 +1311,7 @@ def S_BUFFER_ATOMIC_SMIN_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_X2_SG
 
 def S_BUFFER_ATOMIC_SMIN_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWMin, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1290,7 +1320,7 @@ def S_BUFFER_ATOMIC_SMIN_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_X
 
 def S_BUFFER_ATOMIC_SMIN_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_X2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWMin, $tmp_addr, (GetNamedOperand $sdata))
@@ -1299,7 +1329,7 @@ def S_BUFFER_ATOMIC_SMIN_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_X
 
 def S_BUFFER_ATOMIC_SMIN_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_SMIN_X2_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWMin, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1328,7 +1358,7 @@ def S_BUFFER_ATOMIC_UMAX_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_IMM_R
 
 def S_BUFFER_ATOMIC_UMAX_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWUMax, $tmp_addr, (GetNamedOperand $sdata))
@@ -1337,7 +1367,7 @@ def S_BUFFER_ATOMIC_UMAX_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_SGPR> {
 
 def S_BUFFER_ATOMIC_UMAX_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWUMax, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1346,7 +1376,7 @@ def S_BUFFER_ATOMIC_UMAX_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_SGPR
 
 def S_BUFFER_ATOMIC_UMAX_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWUMax, $tmp_addr, (GetNamedOperand $sdata))
@@ -1355,7 +1385,7 @@ def S_BUFFER_ATOMIC_UMAX_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_SGPR
 
 def S_BUFFER_ATOMIC_UMAX_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWUMax, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1380,7 +1410,7 @@ def S_BUFFER_ATOMIC_UMAX_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_X2
 
 def S_BUFFER_ATOMIC_UMAX_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWUMax, $tmp_addr, (GetNamedOperand $sdata))
@@ -1389,7 +1419,7 @@ def S_BUFFER_ATOMIC_UMAX_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_X2_SG
 
 def S_BUFFER_ATOMIC_UMAX_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWUMax, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1398,7 +1428,7 @@ def S_BUFFER_ATOMIC_UMAX_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_X
 
 def S_BUFFER_ATOMIC_UMAX_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_X2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWUMax, $tmp_addr, (GetNamedOperand $sdata))
@@ -1407,7 +1437,7 @@ def S_BUFFER_ATOMIC_UMAX_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_X
 
 def S_BUFFER_ATOMIC_UMAX_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMAX_X2_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWUMax, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1436,7 +1466,7 @@ def S_BUFFER_ATOMIC_UMIN_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_IMM_R
 
 def S_BUFFER_ATOMIC_UMIN_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWUMin, $tmp_addr, (GetNamedOperand $sdata))
@@ -1445,7 +1475,7 @@ def S_BUFFER_ATOMIC_UMIN_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_SGPR> {
 
 def S_BUFFER_ATOMIC_UMIN_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWUMin, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1454,7 +1484,7 @@ def S_BUFFER_ATOMIC_UMIN_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_SGPR
 
 def S_BUFFER_ATOMIC_UMIN_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWUMin, $tmp_addr, (GetNamedOperand $sdata))
@@ -1463,7 +1493,7 @@ def S_BUFFER_ATOMIC_UMIN_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_SGPR
 
 def S_BUFFER_ATOMIC_UMIN_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWUMin, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1488,7 +1518,7 @@ def S_BUFFER_ATOMIC_UMIN_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_X2
 
 def S_BUFFER_ATOMIC_UMIN_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWUMin, $tmp_addr, (GetNamedOperand $sdata))
@@ -1497,7 +1527,7 @@ def S_BUFFER_ATOMIC_UMIN_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_X2_SG
 
 def S_BUFFER_ATOMIC_UMIN_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWUMin, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1506,7 +1536,7 @@ def S_BUFFER_ATOMIC_UMIN_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_X
 
 def S_BUFFER_ATOMIC_UMIN_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_X2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWUMin, $tmp_addr, (GetNamedOperand $sdata))
@@ -1515,7 +1545,7 @@ def S_BUFFER_ATOMIC_UMIN_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_X
 
 def S_BUFFER_ATOMIC_UMIN_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_UMIN_X2_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWUMin, $tmp_addr, (GetNamedOperand $sdata)))
@@ -1544,7 +1574,7 @@ def S_BUFFER_ATOMIC_INC_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_IMM_RTN
 
 def S_BUFFER_ATOMIC_INC_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (ConstantInt llvm_i32_ty, 1))
@@ -1553,7 +1583,7 @@ def S_BUFFER_ATOMIC_INC_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_SGPR> {
 
 def S_BUFFER_ATOMIC_INC_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (ConstantInt llvm_i32_ty, 1)))
@@ -1562,7 +1592,7 @@ def S_BUFFER_ATOMIC_INC_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_SGPR_R
 
 def S_BUFFER_ATOMIC_INC_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (ConstantInt llvm_i32_ty, 1))
@@ -1571,7 +1601,7 @@ def S_BUFFER_ATOMIC_INC_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_SGPR_I
 
 def S_BUFFER_ATOMIC_INC_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (ConstantInt llvm_i32_ty, 1)))
@@ -1596,7 +1626,7 @@ def S_BUFFER_ATOMIC_INC_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_X2_I
 
 def S_BUFFER_ATOMIC_INC_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (ConstantInt llvm_i64_ty, 1))
@@ -1605,7 +1635,7 @@ def S_BUFFER_ATOMIC_INC_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_X2_SGPR
 
 def S_BUFFER_ATOMIC_INC_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (ConstantInt llvm_i64_ty, 1)))
@@ -1614,7 +1644,7 @@ def S_BUFFER_ATOMIC_INC_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_X2_
 
 def S_BUFFER_ATOMIC_INC_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_X2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (ConstantInt llvm_i64_ty, 1))
@@ -1623,7 +1653,7 @@ def S_BUFFER_ATOMIC_INC_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_X2_
 
 def S_BUFFER_ATOMIC_INC_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_INC_X2_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (ConstantInt llvm_i64_ty, 1)))
@@ -1652,7 +1682,7 @@ def S_BUFFER_ATOMIC_DEC_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_IMM_RTN
 
 def S_BUFFER_ATOMIC_DEC_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (ConstantInt llvm_i32_ty, 1))
@@ -1661,7 +1691,7 @@ def S_BUFFER_ATOMIC_DEC_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_SGPR> {
 
 def S_BUFFER_ATOMIC_DEC_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (ConstantInt llvm_i32_ty, 1)))
@@ -1670,7 +1700,7 @@ def S_BUFFER_ATOMIC_DEC_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_SGPR_R
 
 def S_BUFFER_ATOMIC_DEC_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (ConstantInt llvm_i32_ty, 1))
@@ -1679,7 +1709,7 @@ def S_BUFFER_ATOMIC_DEC_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_SGPR_I
 
 def S_BUFFER_ATOMIC_DEC_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (ConstantInt llvm_i32_ty, 1)))
@@ -1704,7 +1734,7 @@ def S_BUFFER_ATOMIC_DEC_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_X2_I
 
 def S_BUFFER_ATOMIC_DEC_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (ConstantInt llvm_i64_ty, 1))
@@ -1713,7 +1743,7 @@ def S_BUFFER_ATOMIC_DEC_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_X2_SGPR
 
 def S_BUFFER_ATOMIC_DEC_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (ConstantInt llvm_i64_ty, 1)))
@@ -1722,7 +1752,7 @@ def S_BUFFER_ATOMIC_DEC_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_X2_
 
 def S_BUFFER_ATOMIC_DEC_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_X2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (ConstantInt llvm_i64_ty, 1))
@@ -1731,7 +1761,7 @@ def S_BUFFER_ATOMIC_DEC_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_X2_
 
 def S_BUFFER_ATOMIC_DEC_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_DEC_X2_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (ConstantInt llvm_i64_ty, 1)))
@@ -1769,7 +1799,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWAP
 
 def S_BUFFER_ATOMIC_CMPSWAP_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWAP_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i32_ty, $tmp_addr)),
@@ -1782,7 +1812,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWAP_SG
 
 def S_BUFFER_ATOMIC_CMPSWAP_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWAP_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i32_ty, $tmp_addr)),
@@ -1796,7 +1826,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWA
 
 def S_BUFFER_ATOMIC_CMPSWAP_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWAP_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i32_ty, $tmp_addr)),
@@ -1809,7 +1839,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWA
 
 def S_BUFFER_ATOMIC_CMPSWAP_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWAP_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i32_ty, $tmp_addr)),
@@ -1848,7 +1878,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPS
 
 def S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i64_ty, $tmp_addr)),
@@ -1861,7 +1891,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWAP
 
 def S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i64_ty, $tmp_addr)),
@@ -1875,7 +1905,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMP
 
 def S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_IMM> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i64_ty, $tmp_addr)),
@@ -1888,7 +1918,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_IMM_sem : InstSISemantic<S_BUFFER_ATOMIC_CMP
 
 def S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_IMM_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateBufferSmemAddr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateBufferSOffsetImmAddr<(GetNamedOperand $sbase),
                                                 (GetNamedOperand $offset),
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i64_ty, $tmp_addr)),
@@ -1904,10 +1934,11 @@ def S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC
 // S_LOAD Instructions
 //------------------------------------------------------------------------------
 
---------------------------------------------------------
 // S_LOAD Instructions
 // S_LOAD_DWORD: Load dword(s) from flat address (sbase + offset) into SGPRs.
 // Sources:
+//   southern-islands-instruction-set-architecture.pdf, pages 138-139.
+//   sea-islands-instruction-set-architecture_0.pdf, pages 145-146.
 //   gcn3-instruction-set-architecture.pdf, page 159.
 //   vega-7nm-shader-instruction-set-architecture.pdf, page 122.
 //   instinct-mi100-cdna1-shader-instruction-set-architecture.pdf, page 120.
@@ -1920,7 +1951,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC
 //   rdna4-instruction-set-architecture.pdf, page 289 (as S_LOAD_B32).
 //------------------------------------------------------------------------------
 
-def S_LOAD_DWORD_IMM_semdef S_LOAD_DWORD_IMM_sem : InstSISemantic<S_LOAD_DWORD_IMM> {
+def S_LOAD_DWORD_IMM_sem : InstSISemantic<S_LOAD_DWORD_IMM> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatSmemAddrImm<(GetNamedOperand $sbase),
                                                   (GetNamedOperand $offset)>.ret)),
@@ -1930,7 +1961,7 @@ def S_LOAD_DWORD_IMM_semdef S_LOAD_DWORD_IMM_sem : InstSISemantic<S_LOAD_DWORD_I
 
 def S_LOAD_DWORD_SGPR_sem : InstSISemantic<S_LOAD_DWORD_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                   (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMLoad llvm_i32_ty, $tmp_addr))
   ];
@@ -1956,7 +1987,7 @@ def S_LOAD_DWORDX2_IMM_sem : InstSISemantic<S_LOAD_DWORDX2_IMM> {
 
 def S_LOAD_DWORDX2_SGPR_sem : InstSISemantic<S_LOAD_DWORDX2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                   (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v2i32_ty, $tmp_addr)),
     (SetNamedOperand $sdst, $tmp)
@@ -1984,7 +2015,7 @@ def S_LOAD_DWORDX3_IMM_sem : InstSISemantic<S_LOAD_DWORDX3_IMM> {
 
 def S_LOAD_DWORDX3_SGPR_sem : InstSISemantic<S_LOAD_DWORDX3_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                   (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v3i32_ty, $tmp_addr)),
     (SetNamedOperand $sdst, $tmp)
@@ -2012,7 +2043,7 @@ def S_LOAD_DWORDX4_IMM_sem : InstSISemantic<S_LOAD_DWORDX4_IMM> {
 
 def S_LOAD_DWORDX4_SGPR_sem : InstSISemantic<S_LOAD_DWORDX4_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                   (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v4i32_ty, $tmp_addr)),
     (SetNamedOperand $sdst, $tmp)
@@ -2040,7 +2071,7 @@ def S_LOAD_DWORDX8_IMM_sem : InstSISemantic<S_LOAD_DWORDX8_IMM> {
 
 def S_LOAD_DWORDX8_SGPR_sem : InstSISemantic<S_LOAD_DWORDX8_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                   (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v8i32_ty, $tmp_addr)),
     (SetNamedOperand $sdst, $tmp)
@@ -2068,7 +2099,7 @@ def S_LOAD_DWORDX16_IMM_sem : InstSISemantic<S_LOAD_DWORDX16_IMM> {
 
 def S_LOAD_DWORDX16_SGPR_sem : InstSISemantic<S_LOAD_DWORDX16_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                   (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v16i32_ty, $tmp_addr)),
     (SetNamedOperand $sdst, $tmp)
@@ -2082,118 +2113,6 @@ def S_LOAD_DWORDX16_SGPR_IMM_sem : InstSISemantic<S_LOAD_DWORDX16_SGPR_IMM> {
                                                 (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_v16i32_ty, $tmp_addr)),
     (SetNamedOperand $sdst, $tmp)
-  ];
-}
-
-def S_LOAD_SBYTE_IMM_sem : InstSISemantic<S_LOAD_SBYTE_IMM> {
-  let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrImm<(GetNamedOperand $sbase),
-                                                  (GetNamedOperand $offset)>.ret)),
-    (DefVal $tmp, (LLVMLoad llvm_i8_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, (LLVMSExt $tmp, llvm_i32_ty))
-  ];
-}
-
-def S_LOAD_SBYTE_SGPR_sem : InstSISemantic<S_LOAD_SBYTE_SGPR> {
-  let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
-                                                  (GetNamedOperand $soffset)>.ret)),
-    (DefVal $tmp, (LLVMLoad llvm_i8_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, (LLVMSExt $tmp, llvm_i32_ty))
-  ];
-}
-
-def S_LOAD_SBYTE_SGPR_IMM_sem : InstSISemantic<S_LOAD_SBYTE_SGPR_IMM> {
-  let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddr<(GetNamedOperand $sbase),
-                                                (GetNamedOperand $offset),
-                                                (GetNamedOperand $soffset)>.ret)),
-    (DefVal $tmp, (LLVMLoad llvm_i8_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, (LLVMSExt $tmp, llvm_i32_ty))
-  ];
-}
-
-def S_LOAD_UBYTE_IMM_sem : InstSISemantic<S_LOAD_UBYTE_IMM> {
-  let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrImm<(GetNamedOperand $sbase),
-                                                  (GetNamedOperand $offset)>.ret)),
-    (DefVal $tmp, (LLVMLoad llvm_i8_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, (LLVMZExt $tmp, llvm_i32_ty))
-  ];
-}
-
-def S_LOAD_UBYTE_SGPR_sem : InstSISemantic<S_LOAD_UBYTE_SGPR> {
-  let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
-                                                  (GetNamedOperand $soffset)>.ret)),
-    (DefVal $tmp, (LLVMLoad llvm_i8_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, (LLVMZExt $tmp, llvm_i32_ty))
-  ];
-}
-
-def S_LOAD_UBYTE_SGPR_IMM_sem : InstSISemantic<S_LOAD_UBYTE_SGPR_IMM> {
-  let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddr<(GetNamedOperand $sbase),
-                                                (GetNamedOperand $offset),
-                                                (GetNamedOperand $soffset)>.ret)),
-    (DefVal $tmp, (LLVMLoad llvm_i8_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, (LLVMZExt $tmp, llvm_i32_ty))
-  ];
-}
-
-def S_LOAD_SSHORT_IMM_sem : InstSISemantic<S_LOAD_SSHORT_IMM> {
-  let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrImm<(GetNamedOperand $sbase),
-                                                  (GetNamedOperand $offset)>.ret)),
-    (DefVal $tmp, (LLVMLoad llvm_i16_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, (LLVMSExt $tmp, llvm_i32_ty))
-  ];
-}
-
-def S_LOAD_SSHORT_SGPR_sem : InstSISemantic<S_LOAD_SSHORT_SGPR> {
-  let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
-                                                  (GetNamedOperand $soffset)>.ret)),
-    (DefVal $tmp, (LLVMLoad llvm_i16_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, (LLVMSExt $tmp, llvm_i32_ty))
-  ];
-}
-
-def S_LOAD_SSHORT_SGPR_IMM_sem : InstSISemantic<S_LOAD_SSHORT_SGPR_IMM> {
-  let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddr<(GetNamedOperand $sbase),
-                                                (GetNamedOperand $offset),
-                                                (GetNamedOperand $soffset)>.ret)),
-    (DefVal $tmp, (LLVMLoad llvm_i16_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, (LLVMSExt $tmp, llvm_i32_ty))
-  ];
-}
-
-def S_LOAD_USHORT_IMM_sem : InstSISemantic<S_LOAD_USHORT_IMM> {
-  let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrImm<(GetNamedOperand $sbase),
-                                                  (GetNamedOperand $offset)>.ret)),
-    (DefVal $tmp, (LLVMLoad llvm_i16_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, (LLVMZExt $tmp, llvm_i32_ty))
-  ];
-}
-
-def S_LOAD_USHORT_SGPR_sem : InstSISemantic<S_LOAD_USHORT_SGPR> {
-  let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
-                                                  (GetNamedOperand $soffset)>.ret)),
-    (DefVal $tmp, (LLVMLoad llvm_i16_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, (LLVMZExt $tmp, llvm_i32_ty))
-  ];
-}
-
-def S_LOAD_USHORT_SGPR_IMM_sem : InstSISemantic<S_LOAD_USHORT_SGPR_IMM> {
-  let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddr<(GetNamedOperand $sbase),
-                                                (GetNamedOperand $offset),
-                                                (GetNamedOperand $soffset)>.ret)),
-    (DefVal $tmp, (LLVMLoad llvm_i16_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, (LLVMZExt $tmp, llvm_i32_ty))
   ];
 }
 
@@ -2211,7 +2130,7 @@ def S_STORE_DWORD_IMM_sem : InstSISemantic<S_STORE_DWORD_IMM> {
 
 def S_STORE_DWORD_SGPR_sem : InstSISemantic<S_STORE_DWORD_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                   (GetNamedOperand $soffset)>.ret)),
     (LLVMStore (GetNamedOperand $sdata), $tmp_addr)
   ];
@@ -2236,7 +2155,7 @@ def S_STORE_DWORDX2_IMM_sem : InstSISemantic<S_STORE_DWORDX2_IMM> {
 
 def S_STORE_DWORDX2_SGPR_sem : InstSISemantic<S_STORE_DWORDX2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                   (GetNamedOperand $soffset)>.ret)),
     (LLVMStore (GetNamedOperand $sdata), $tmp_addr)
   ];
@@ -2261,7 +2180,7 @@ def S_STORE_DWORDX4_IMM_sem : InstSISemantic<S_STORE_DWORDX4_IMM> {
 
 def S_STORE_DWORDX4_SGPR_sem : InstSISemantic<S_STORE_DWORDX4_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                   (GetNamedOperand $soffset)>.ret)),
     (LLVMStore (GetNamedOperand $sdata), $tmp_addr)
   ];
@@ -2955,7 +2874,7 @@ def S_ATOMIC_CMPSWAP_X2_SGPR_IMM_sem : InstSISemantic<S_ATOMIC_CMPSWAP_X2_SGPR_I
 
 def S_ATOMIC_ADD_SGPR_sem : InstSISemantic<S_ATOMIC_ADD_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -2980,7 +2899,7 @@ def S_ATOMIC_ADD_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_ADD_SGPR_IMM_RTN> {
 
 def S_ATOMIC_ADD_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_ADD_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -2988,7 +2907,7 @@ def S_ATOMIC_ADD_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_ADD_SGPR_RTN> {
 
 def S_ATOMIC_ADD_X2_SGPR_sem : InstSISemantic<S_ATOMIC_ADD_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3013,7 +2932,7 @@ def S_ATOMIC_ADD_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_ADD_X2_SGPR_IMM_R
 
 def S_ATOMIC_ADD_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_ADD_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAdd, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3021,7 +2940,7 @@ def S_ATOMIC_ADD_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_ADD_X2_SGPR_RTN> {
 
 def S_ATOMIC_SUB_SGPR_sem : InstSISemantic<S_ATOMIC_SUB_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3046,7 +2965,7 @@ def S_ATOMIC_SUB_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_SUB_SGPR_IMM_RTN> {
 
 def S_ATOMIC_SUB_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SUB_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3054,7 +2973,7 @@ def S_ATOMIC_SUB_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SUB_SGPR_RTN> {
 
 def S_ATOMIC_SUB_X2_SGPR_sem : InstSISemantic<S_ATOMIC_SUB_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3079,7 +2998,7 @@ def S_ATOMIC_SUB_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_SUB_X2_SGPR_IMM_R
 
 def S_ATOMIC_SUB_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SUB_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWSub, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3087,7 +3006,7 @@ def S_ATOMIC_SUB_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SUB_X2_SGPR_RTN> {
 
 def S_ATOMIC_AND_SGPR_sem : InstSISemantic<S_ATOMIC_AND_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAnd, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3112,7 +3031,7 @@ def S_ATOMIC_AND_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_AND_SGPR_IMM_RTN> {
 
 def S_ATOMIC_AND_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_AND_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAnd, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3120,7 +3039,7 @@ def S_ATOMIC_AND_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_AND_SGPR_RTN> {
 
 def S_ATOMIC_AND_X2_SGPR_sem : InstSISemantic<S_ATOMIC_AND_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWAnd, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3145,7 +3064,7 @@ def S_ATOMIC_AND_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_AND_X2_SGPR_IMM_R
 
 def S_ATOMIC_AND_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_AND_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWAnd, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3153,7 +3072,7 @@ def S_ATOMIC_AND_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_AND_X2_SGPR_RTN> {
 
 def S_ATOMIC_OR_SGPR_sem : InstSISemantic<S_ATOMIC_OR_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWOr, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3178,7 +3097,7 @@ def S_ATOMIC_OR_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_OR_SGPR_IMM_RTN> {
 
 def S_ATOMIC_OR_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_OR_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWOr, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3186,7 +3105,7 @@ def S_ATOMIC_OR_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_OR_SGPR_RTN> {
 
 def S_ATOMIC_OR_X2_SGPR_sem : InstSISemantic<S_ATOMIC_OR_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWOr, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3211,7 +3130,7 @@ def S_ATOMIC_OR_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_OR_X2_SGPR_IMM_RTN
 
 def S_ATOMIC_OR_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_OR_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWOr, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3219,7 +3138,7 @@ def S_ATOMIC_OR_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_OR_X2_SGPR_RTN> {
 
 def S_ATOMIC_XOR_SGPR_sem : InstSISemantic<S_ATOMIC_XOR_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWXor, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3244,7 +3163,7 @@ def S_ATOMIC_XOR_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_XOR_SGPR_IMM_RTN> {
 
 def S_ATOMIC_XOR_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_XOR_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWXor, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3252,7 +3171,7 @@ def S_ATOMIC_XOR_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_XOR_SGPR_RTN> {
 
 def S_ATOMIC_XOR_X2_SGPR_sem : InstSISemantic<S_ATOMIC_XOR_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWXor, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3277,7 +3196,7 @@ def S_ATOMIC_XOR_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_XOR_X2_SGPR_IMM_R
 
 def S_ATOMIC_XOR_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_XOR_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWXor, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3285,7 +3204,7 @@ def S_ATOMIC_XOR_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_XOR_X2_SGPR_RTN> {
 
 def S_ATOMIC_SMIN_SGPR_sem : InstSISemantic<S_ATOMIC_SMIN_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWMin, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3310,7 +3229,7 @@ def S_ATOMIC_SMIN_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_SMIN_SGPR_IMM_RTN> 
 
 def S_ATOMIC_SMIN_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SMIN_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWMin, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3318,7 +3237,7 @@ def S_ATOMIC_SMIN_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SMIN_SGPR_RTN> {
 
 def S_ATOMIC_SMIN_X2_SGPR_sem : InstSISemantic<S_ATOMIC_SMIN_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWMin, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3343,7 +3262,7 @@ def S_ATOMIC_SMIN_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_SMIN_X2_SGPR_IMM
 
 def S_ATOMIC_SMIN_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SMIN_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWMin, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3351,7 +3270,7 @@ def S_ATOMIC_SMIN_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SMIN_X2_SGPR_RTN> {
 
 def S_ATOMIC_SMAX_SGPR_sem : InstSISemantic<S_ATOMIC_SMAX_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWMax, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3376,7 +3295,7 @@ def S_ATOMIC_SMAX_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_SMAX_SGPR_IMM_RTN> 
 
 def S_ATOMIC_SMAX_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SMAX_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWMax, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3384,7 +3303,7 @@ def S_ATOMIC_SMAX_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SMAX_SGPR_RTN> {
 
 def S_ATOMIC_SMAX_X2_SGPR_sem : InstSISemantic<S_ATOMIC_SMAX_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWMax, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3409,7 +3328,7 @@ def S_ATOMIC_SMAX_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_SMAX_X2_SGPR_IMM
 
 def S_ATOMIC_SMAX_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SMAX_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWMax, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3417,7 +3336,7 @@ def S_ATOMIC_SMAX_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SMAX_X2_SGPR_RTN> {
 
 def S_ATOMIC_UMIN_SGPR_sem : InstSISemantic<S_ATOMIC_UMIN_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWUMin, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3442,7 +3361,7 @@ def S_ATOMIC_UMIN_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_UMIN_SGPR_IMM_RTN> 
 
 def S_ATOMIC_UMIN_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_UMIN_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWUMin, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3450,7 +3369,7 @@ def S_ATOMIC_UMIN_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_UMIN_SGPR_RTN> {
 
 def S_ATOMIC_UMIN_X2_SGPR_sem : InstSISemantic<S_ATOMIC_UMIN_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWUMin, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3475,7 +3394,7 @@ def S_ATOMIC_UMIN_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_UMIN_X2_SGPR_IMM
 
 def S_ATOMIC_UMIN_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_UMIN_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWUMin, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3483,7 +3402,7 @@ def S_ATOMIC_UMIN_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_UMIN_X2_SGPR_RTN> {
 
 def S_ATOMIC_UMAX_SGPR_sem : InstSISemantic<S_ATOMIC_UMAX_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWUMax, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3508,7 +3427,7 @@ def S_ATOMIC_UMAX_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_UMAX_SGPR_IMM_RTN> 
 
 def S_ATOMIC_UMAX_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_UMAX_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWUMax, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3516,7 +3435,7 @@ def S_ATOMIC_UMAX_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_UMAX_SGPR_RTN> {
 
 def S_ATOMIC_UMAX_X2_SGPR_sem : InstSISemantic<S_ATOMIC_UMAX_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWUMax, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3541,7 +3460,7 @@ def S_ATOMIC_UMAX_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_UMAX_X2_SGPR_IMM
 
 def S_ATOMIC_UMAX_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_UMAX_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWUMax, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3549,7 +3468,7 @@ def S_ATOMIC_UMAX_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_UMAX_X2_SGPR_RTN> {
 
 def S_ATOMIC_SWAP_SGPR_sem : InstSISemantic<S_ATOMIC_SWAP_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3574,7 +3493,7 @@ def S_ATOMIC_SWAP_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_SWAP_SGPR_IMM_RTN> 
 
 def S_ATOMIC_SWAP_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SWAP_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3582,7 +3501,7 @@ def S_ATOMIC_SWAP_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SWAP_SGPR_RTN> {
 
 def S_ATOMIC_SWAP_X2_SGPR_sem : InstSISemantic<S_ATOMIC_SWAP_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3607,7 +3526,7 @@ def S_ATOMIC_SWAP_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_SWAP_X2_SGPR_IMM
 
 def S_ATOMIC_SWAP_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SWAP_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3615,7 +3534,7 @@ def S_ATOMIC_SWAP_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_SWAP_X2_SGPR_RTN> {
 
 def S_ATOMIC_CMPSWAP_SGPR_sem : InstSISemantic<S_ATOMIC_CMPSWAP_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3640,7 +3559,7 @@ def S_ATOMIC_CMPSWAP_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_CMPSWAP_SGPR_IMM
 
 def S_ATOMIC_CMPSWAP_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_CMPSWAP_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3648,7 +3567,7 @@ def S_ATOMIC_CMPSWAP_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_CMPSWAP_SGPR_RTN> {
 
 def S_ATOMIC_CMPSWAP_X2_SGPR_sem : InstSISemantic<S_ATOMIC_CMPSWAP_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata))
   ];
@@ -3673,7 +3592,7 @@ def S_ATOMIC_CMPSWAP_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_CMPSWAP_X2_SG
 
 def S_ATOMIC_CMPSWAP_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_CMPSWAP_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMAtomicRMW AtomicRMWXchg, $tmp_addr, (GetNamedOperand $sdata)))
   ];
@@ -3681,7 +3600,7 @@ def S_ATOMIC_CMPSWAP_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_CMPSWAP_X2_SGPR_R
 
 def S_ATOMIC_INC_SGPR_sem : InstSISemantic<S_ATOMIC_INC_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp_val, (LLVMLoad llvm_i32_ty, $tmp_addr)),
     (DefVal $new_val, (LLVMSelect (LLVMCmp SETUGE, $tmp_val, (GetNamedOperand $sdata)),
@@ -3720,7 +3639,7 @@ def S_ATOMIC_INC_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_INC_SGPR_IMM_RTN> {
 
 def S_ATOMIC_INC_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_INC_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp_val, (LLVMLoad llvm_i32_ty, $tmp_addr)),
     (DefVal $new_val, (LLVMSelect (LLVMCmp SETUGE, $tmp_val, (GetNamedOperand $sdata)),
@@ -3733,7 +3652,7 @@ def S_ATOMIC_INC_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_INC_SGPR_RTN> {
 
 def S_ATOMIC_INC_X2_SGPR_sem : InstSISemantic<S_ATOMIC_INC_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp_val, (LLVMLoad llvm_i64_ty, $tmp_addr)),
     (DefVal $new_val, (LLVMSelect (LLVMCmp SETUGE, $tmp_val, (GetNamedOperand $sdata)),
@@ -3772,7 +3691,7 @@ def S_ATOMIC_INC_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_INC_X2_SGPR_IMM_R
 
 def S_ATOMIC_INC_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_INC_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp_val, (LLVMLoad llvm_i64_ty, $tmp_addr)),
     (DefVal $new_val, (LLVMSelect (LLVMCmp SETUGE, $tmp_val, (GetNamedOperand $sdata)),
@@ -3785,7 +3704,7 @@ def S_ATOMIC_INC_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_INC_X2_SGPR_RTN> {
 
 def S_ATOMIC_DEC_SGPR_sem : InstSISemantic<S_ATOMIC_DEC_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp_val, (LLVMLoad llvm_i32_ty, $tmp_addr)),
     (DefVal $new_val, (LLVMSelect (LLVMOr (LLVMCmp SETEQ, $tmp_val, (ConstantInt llvm_i32_ty, 0)),
@@ -3827,7 +3746,7 @@ def S_ATOMIC_DEC_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_DEC_SGPR_IMM_RTN> {
 
 def S_ATOMIC_DEC_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_DEC_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp_val, (LLVMLoad llvm_i32_ty, $tmp_addr)),
     (DefVal $new_val, (LLVMSelect (LLVMOr (LLVMCmp SETEQ, $tmp_val, (ConstantInt llvm_i32_ty, 0)),
@@ -3841,7 +3760,7 @@ def S_ATOMIC_DEC_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_DEC_SGPR_RTN> {
 
 def S_ATOMIC_DEC_X2_SGPR_sem : InstSISemantic<S_ATOMIC_DEC_X2_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp_val, (LLVMLoad llvm_i64_ty, $tmp_addr)),
     (DefVal $new_val, (LLVMSelect (LLVMOr (LLVMCmp SETEQ, $tmp_val, (ConstantInt llvm_i64_ty, 0)),
@@ -3883,7 +3802,7 @@ def S_ATOMIC_DEC_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_ATOMIC_DEC_X2_SGPR_IMM_R
 
 def S_ATOMIC_DEC_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_DEC_X2_SGPR_RTN> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (DefVal $tmp_val, (LLVMLoad llvm_i64_ty, $tmp_addr)),
     (DefVal $new_val, (LLVMSelect (LLVMOr (LLVMCmp SETEQ, $tmp_val, (ConstantInt llvm_i64_ty, 0)),
@@ -3897,11 +3816,14 @@ def S_ATOMIC_DEC_X2_SGPR_RTN_sem : InstSISemantic<S_ATOMIC_DEC_X2_SGPR_RTN> {
 
 //------------------------------------------------------------------------------
 // S_LOAD Sub-word (byte/short) Instructions
-// Sources (introduced in GFX12):
-//   amd-instinct-cdna4-instruction-set-architecture.pdf, page 158.
-//   rdna4-instruction-set-architecture.pdf, page 289.
 //------------------------------------------------------------------------------
 
+// S_LOAD_U8: Load 8 bits of unsigned data from the scalar memory,
+// zero extend to 32 bits and store the result into a scalar register.
+// SDATA.u32 = 32'U({ 24'0U, MEM[ADDR].u8 })
+// Sources (RDNA4 only; not present in SI, CI, GCN3, Vega, Vega7nm,
+//          CDNA1, CDNA2, CDNA3, CDNA4, RDNA1, RDNA2, or RDNA3):
+//   rdna4-instruction-set-architecture.pdf, page 291 (opcode 9).
 def S_LOAD_U8_IMM_sem : InstSISemantic<S_LOAD_U8_IMM> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatSmemAddrImm<(GetNamedOperand $sbase),
@@ -3912,7 +3834,7 @@ def S_LOAD_U8_IMM_sem : InstSISemantic<S_LOAD_U8_IMM> {
 
 def S_LOAD_U8_SGPR_sem : InstSISemantic<S_LOAD_U8_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMZExt (LLVMLoad llvm_i8_ty, $tmp_addr), llvm_i32_ty))
   ];
@@ -3927,6 +3849,12 @@ def S_LOAD_U8_SGPR_IMM_sem : InstSISemantic<S_LOAD_U8_SGPR_IMM> {
   ];
 }
 
+// S_LOAD_I8: Load 8 bits of signed data from the scalar memory,
+// sign extend to 32 bits and store the result into a scalar register.
+// SDATA.i32 = 32'I(signext(MEM[ADDR].i8))
+// Sources (RDNA4 only; not present in SI, CI, GCN3, Vega, Vega7nm,
+//          CDNA1, CDNA2, CDNA3, CDNA4, RDNA1, RDNA2, or RDNA3):
+//   rdna4-instruction-set-architecture.pdf, page 291 (opcode 8).
 def S_LOAD_I8_IMM_sem : InstSISemantic<S_LOAD_I8_IMM> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatSmemAddrImm<(GetNamedOperand $sbase),
@@ -3937,7 +3865,7 @@ def S_LOAD_I8_IMM_sem : InstSISemantic<S_LOAD_I8_IMM> {
 
 def S_LOAD_I8_SGPR_sem : InstSISemantic<S_LOAD_I8_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMSExt (LLVMLoad llvm_i8_ty, $tmp_addr), llvm_i32_ty))
   ];
@@ -3952,6 +3880,12 @@ def S_LOAD_I8_SGPR_IMM_sem : InstSISemantic<S_LOAD_I8_SGPR_IMM> {
   ];
 }
 
+// S_LOAD_U16: Load 16 bits of unsigned data from the scalar memory,
+// zero extend to 32 bits and store the result into a scalar register.
+// SDATA.u32 = 32'U({ 16'0U, MEM[ADDR].u16 })
+// Sources (RDNA4 only; not present in SI, CI, GCN3, Vega, Vega7nm,
+//          CDNA1, CDNA2, CDNA3, CDNA4, RDNA1, RDNA2, or RDNA3):
+//   rdna4-instruction-set-architecture.pdf, page 292 (opcode 11).
 def S_LOAD_U16_IMM_sem : InstSISemantic<S_LOAD_U16_IMM> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatSmemAddrImm<(GetNamedOperand $sbase),
@@ -3962,7 +3896,7 @@ def S_LOAD_U16_IMM_sem : InstSISemantic<S_LOAD_U16_IMM> {
 
 def S_LOAD_U16_SGPR_sem : InstSISemantic<S_LOAD_U16_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMZExt (LLVMLoad llvm_i16_ty, $tmp_addr), llvm_i32_ty))
   ];
@@ -3977,6 +3911,12 @@ def S_LOAD_U16_SGPR_IMM_sem : InstSISemantic<S_LOAD_U16_SGPR_IMM> {
   ];
 }
 
+// S_LOAD_I16: Load 16 bits of signed data from the scalar memory,
+// sign extend to 32 bits and store the result into a scalar register.
+// SDATA.i32 = 32'I(signext(MEM[ADDR].i16))
+// Sources (RDNA4 only; not present in SI, CI, GCN3, Vega, Vega7nm,
+//          CDNA1, CDNA2, CDNA3, CDNA4, RDNA1, RDNA2, or RDNA3):
+//   rdna4-instruction-set-architecture.pdf, page 292 (opcode 10).
 def S_LOAD_I16_IMM_sem : InstSISemantic<S_LOAD_I16_IMM> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatSmemAddrImm<(GetNamedOperand $sbase),
@@ -3987,7 +3927,7 @@ def S_LOAD_I16_IMM_sem : InstSISemantic<S_LOAD_I16_IMM> {
 
 def S_LOAD_I16_SGPR_sem : InstSISemantic<S_LOAD_I16_SGPR> {
   let Semantic = [
-    (DefVal $tmp_addr, (CalculateFlatSmemAddrSgpr<(GetNamedOperand $sbase),
+    (DefVal $tmp_addr, (CalculateGlobalSmemAddrSgpr<(GetNamedOperand $sbase),
                                                    (GetNamedOperand $soffset)>.ret)),
     (SetNamedOperand $sdst, (LLVMSExt (LLVMLoad llvm_i16_ty, $tmp_addr), llvm_i32_ty))
   ];
@@ -4005,6 +3945,8 @@ def S_LOAD_I16_SGPR_IMM_sem : InstSISemantic<S_LOAD_I16_SGPR_IMM> {
 //------------------------------------------------------------------------------
 // Cache Management Instructions
 // Sources:
+//   southern-islands-instruction-set-architecture.pdf, page 142.
+//   sea-islands-instruction-set-architecture_0.pdf, page 144.
 //   gcn3-instruction-set-architecture.pdf, page 157.
 //   vega-7nm-shader-instruction-set-architecture.pdf, page 124.
 //   instinct-mi100-cdna1-shader-instruction-set-architecture.pdf, page 121.
@@ -4034,6 +3976,8 @@ def S_GL1_INV_sem : InstSISemantic<S_GL1_INV>;
 
 // S_MEMTIME: Return 64-bit timestamp (deprecated in RDNA2+).
 // Sources:
+//   southern-islands-instruction-set-architecture.pdf, page 142.
+//   sea-islands-instruction-set-architecture_0.pdf, page 146.
 //   gcn3-instruction-set-architecture.pdf, page 162.
 //   vega-7nm-shader-instruction-set-architecture.pdf, page 124.
 //   rdna-shader-instruction-set-architecture.pdf, page 139.
@@ -4043,7 +3987,8 @@ def S_MEMTIME_sem : InstSIIntrinsic<S_MEMTIME, int_amdgcn_s_memtime>;
 def S_MEMREALTIME_sem : InstSIIntrinsic<S_MEMREALTIME, int_amdgcn_s_memrealtime>;
 
 // S_GET_WAVEID_IN_WORKGROUP: Get wave ID within workgroup (GFX10+).
-def S_GET_WAVEID_IN_WORKGROUP_sem : InstSIIntrinsic<S_GET_WAVEID_IN_WORKGROUP, int_amdgcn_s_get_waveid_in_workgroup>;
+def S_GET_WAVEID_IN_WORKGROUP_sem : InstSIIntrinsic<S_GET_WAVEID_IN_WORKGROUP,
+                                                    int_amdgcn_s_get_waveid_in_workgroup>;
 
 //------------------------------------------------------------------------------
 // Prefetch Instructions (performance hints - no semantic effect)

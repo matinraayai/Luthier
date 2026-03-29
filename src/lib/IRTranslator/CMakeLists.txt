@@ -22,6 +22,13 @@ tablegen(LuthierSIInstrSemantics --print-detailed-records EXTRA_INCLUDES
 
 add_public_tablegen_target(LuthierSIInstrSemantics)
 
+# Generate raiseMachineInstr<> specializations from InstSISemantic/InstSIIntrinsic records
+set(LuthierSIInstrSemanticsGen_TABLEGEN_EXE luthier-tblgen)
+set(LLVM_TARGET_DEFINITIONS "InstSISemantics.td")
+tablegen(LuthierSIInstrSemanticsGen SIInstrSemantics.inc -gen-si-instr-semantics EXTRA_INCLUDES
+        "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
+add_public_tablegen_target(LuthierSIInstrSemanticsGen)
+
 add_library(LuthierIRTranslator OBJECT
         InstructionModel.cpp
         PseudoOpcodeAndRegMapper.cpp
@@ -30,6 +37,7 @@ add_library(LuthierIRTranslator OBJECT
 add_dependencies(LuthierIRTranslator LuthierRealToPseudoOpcodeMap)
 add_dependencies(LuthierIRTranslator LuthierRealToPseudoRegEnumMap)
 add_dependencies(LuthierIRTranslator LuthierSIInstrSemantics)
+add_dependencies(LuthierIRTranslator LuthierSIInstrSemanticsGen)
 
 target_compile_definitions(LuthierIRTranslator PRIVATE ${LLVM_DEFINITIONS})
 

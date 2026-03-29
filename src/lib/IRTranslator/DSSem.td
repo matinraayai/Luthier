@@ -46,7 +46,7 @@ class CalculateDoubleOffsetDSAddr<dag addr, dag offset0, dag offset1,
 /// based on the gds modifier.
 class DSAddr<dag addr, dag offset> {
   dag ret = CalculateSingleOffsetDSAddr<addr, offset,
-    (SelectOperand (hasModifierSet $gds), region_ptr_type, local_ptr_ty)>.ret;
+    (SelectOperand (hasModifierSet $gds), region_ptr_ty, local_ptr_ty)>.ret;
 }
 
 //------------------------------------------------------------------------------

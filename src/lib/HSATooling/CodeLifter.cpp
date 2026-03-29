@@ -597,7 +597,7 @@ llvm::Error CodeLifter::initLiftedDeviceFunctionEntry(
   return llvm::Error::success();
 }
 
-static bool shouldReadExec(const llvm::MachineInstr &MI) {
+static bool shouldImplicitReadExec(const llvm::MachineInstr &MI) {
   if (llvm::SIInstrInfo::isVALU(MI)) {
     switch (MI.getOpcode()) {
     case llvm::AMDGPU::V_READLANE_B32:
@@ -620,7 +620,7 @@ static bool shouldReadExec(const llvm::MachineInstr &MI) {
 
 static llvm::Error verifyInstruction(llvm::MachineInstrBuilder &Builder) {
   auto &MI = *Builder.getInstr();
-  if (shouldReadExec(MI) &&
+  if (shouldImplicitReadExec(MI) &&
       !MI.hasRegisterImplicitUseOperand(llvm::AMDGPU::EXEC)) {
     MI.addOperand(
         llvm::MachineOperand::CreateReg(llvm::AMDGPU::EXEC, false, true));

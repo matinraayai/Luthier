@@ -38,8 +38,6 @@ private:
   bool lowerIntrinsics(llvm::Module &IModule,
                        llvm::DenseMap<llvm::Register, ScalarValueArgument>
                            &ScalarSVAArgumentVirtualPlaceHolders,
-                       llvm::DenseMap<llvm::Register, llvm::MCRegister>
-                           &PhysicalRegisterPlaceHolders,
                        std::unique_ptr<StateValueArraySpecs> &SVASpecs);
 
 public:

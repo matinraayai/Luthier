@@ -2,7 +2,6 @@ add_library(LuthierIntrinsic OBJECT
         ReadReg.cpp
         WriteReg.cpp
         WriteExec.cpp
-        IntrinsicProcessor.cpp
         ImplicitArgPtr.cpp
         SAtomicAdd.cpp
 )

@@ -27,6 +27,7 @@
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
 #include <AMDGPU.h>
 #include <SIInstrInfo.h>
+#include <llvm/ADT/BreadthFirstIterator.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineDominators.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
@@ -97,8 +98,6 @@ bool IntrinsicMIRLoweringPass::lowerIntrinsics(
     llvm::Module &IModule,
     llvm::DenseMap<llvm::Register, ScalarValueArgument>
         &ScalarSVAArgumentVirtualPlaceHolders,
-    llvm::DenseMap<llvm::Register, llvm::MCRegister>
-        &PhysicalRegisterPlaceHolders,
     std::unique_ptr<StateValueArraySpecs> &SVASpecs) {
   bool Changed{false};
 
@@ -168,11 +167,14 @@ bool IntrinsicMIRLoweringPass::lowerIntrinsics(
       /// merge the register units together
       llvm::DenseMap<llvm::MCRegister, std::unique_ptr<llvm::MachineSSAUpdater>>
           PhysRegValueSSAUpdaters;
-      /// TODO: switch to using the machine dom tree analysis once the new PM's
-      /// TPC works
-      for (llvm::MachineBasicBlock *MBB :
-           llvm::MachineDominatorTree(*MF).roots()) {
-        for (llvm::MachineInstr &MI : llvm::make_early_inc_range(*MBB)) {
+
+      llvm::MachineDominatorTree &DOMTree =
+          getAnalysis<llvm::MachineDominatorTreeWrapperPass>(F).getDomTree();
+
+      for (auto *MBBNode : llvm::breadth_first(DOMTree.getRootNode())) {
+        llvm::MachineBasicBlock *MBB = MBBNode->getBlock();
+        for (llvm::MachineInstr &MI :
+             llvm::make_early_inc_range(*MBB)) {
           if (MI.isInlineAsm()) {
             llvm::StringRef IntrinsicName =
                 MI.getOperand(llvm::InlineAsm::MIOp_AsmString).getSymbolName();
@@ -238,14 +240,23 @@ bool IntrinsicMIRLoweringPass::lowerIntrinsics(
                     EntryBlock.addLiveIn(*Root);
                     const llvm::TargetRegisterClass *RootRegClass =
                         TRI->getPhysRegBaseClass(*Root);
+
                     if (!RootRegClass)
                       LUTHIER_CTX_EMIT_ON_ERROR(
                           Ctx,
                           LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
                               "Physical register {0} doesn't have a reg class",
                               llvm::printReg(*Root, TRI))));
+                    const llvm::TargetRegisterClass *RootCrossCopyRegClass =
+                        TRI->getCrossCopyRegClass(RootRegClass);
+                    if (!RootCrossCopyRegClass)
+                      LUTHIER_CTX_EMIT_ON_ERROR(
+                          Ctx, LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+                                   "Physical register {0} doesn't have a copy "
+                                   "reg class",
+                                   llvm::printReg(*Root, TRI))));
                     llvm::Register NewRootVirtReg =
-                        MRI.createVirtualRegister(RootRegClass);
+                        MRI.createVirtualRegister(RootCrossCopyRegClass);
                     (void)llvm::BuildMI(EntryBlock, EntryBlock.begin(),
                                         llvm::MIMetadata(),
                                         TII->get(llvm::AMDGPU::COPY))
@@ -317,13 +328,29 @@ bool IntrinsicMIRLoweringPass::lowerIntrinsics(
                      Root.isValid(); ++Root) {
                   const llvm::TargetRegisterClass *RootRegClass =
                       TRI->getPhysRegBaseClass(*Root);
+
+                  if (!RootRegClass)
+                    LUTHIER_CTX_EMIT_ON_ERROR(
+                        Ctx,
+                        LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+                            "Physical register {0} doesn't have a reg class",
+                            llvm::printReg(*Root, TRI))));
+                  const llvm::TargetRegisterClass *RootCrossCopyRegClass =
+                      TRI->getCrossCopyRegClass(RootRegClass);
+                  if (!RootCrossCopyRegClass)
+                    LUTHIER_CTX_EMIT_ON_ERROR(
+                        Ctx, LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+                                 "Physical register {0} doesn't have a copy "
+                                 "reg class",
+                                 llvm::printReg(*Root, TRI))));
+
                   auto SubIdx = TRI->getSubRegIndex(PhysReg, *Root);
 
                   llvm::Register SubVirtReg =
-                      MRI.createVirtualRegister(RootRegClass);
+                      MRI.createVirtualRegister(RootCrossCopyRegClass);
                   (void)MIBuilder(llvm::AMDGPU::COPY)
                       .addReg(SubVirtReg, llvm::RegState::Define)
-                      .addReg(VirtReg, 0, SubIdx);
+                      .addReg(VirtReg, llvm::RegState::NoFlags, SubIdx);
                   auto RootPhysRegIt = PhysRegValueSSAUpdaters.find(*Root);
                   if (RootPhysRegIt == PhysRegValueSSAUpdaters.end()) {
                     RootPhysRegIt =
@@ -381,8 +408,8 @@ bool IntrinsicMIRLoweringPass::runOnModule(llvm::Module &IModule) {
 
   /// Lower the intrinsics, and get a head count of all scalar args used and the
   /// physical registers used throughout the module
-  bool Changed = lowerIntrinsics(IModule, ScalarSVAArgumentVirtualPlaceHolders,
-                                 PhysicalRegisterPlaceHolders, SVASpecs);
+  bool Changed =
+      lowerIntrinsics(IModule, ScalarSVAArgumentVirtualPlaceHolders, SVASpecs);
   /// Now that we have gotten a head count of all accessed physical registers
   /// and the scalar arguments, we start populating their virtual registers with
   /// their expected values

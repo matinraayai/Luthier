@@ -36,7 +36,7 @@ class CalculateGlobalSAddr<dag saddr, dag vaddr, dag offset> {
 }
 
 class CalculateScratchAddr<dag vaddr, dag offset> {
-  dag ret = (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $vaddr), scratch_ptr_type),
+  dag ret = (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $vaddr), scratch_ptr_ty),
                          (GetNamedOperand $offset));
 }
 

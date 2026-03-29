@@ -17,10 +17,10 @@
 /// Implements the \c InstructionTracesAnalysis class.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/InstructionTracesAnalysis.h"
+#include "../../../include/luthier/IRTranslator/PseudoOpcodeAnRegMapper.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Tooling/MachineFunctionEntryPoint.h"
 #include "luthier/Tooling/MemoryAllocationAccessor.h"
-#include "luthier/Tooling/PseudoOpcodeAnRegMapper.h"
 #include <AMDGPUTargetMachine.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/LLVMContext.h>

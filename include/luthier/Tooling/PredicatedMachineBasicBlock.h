@@ -23,6 +23,7 @@
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFunction.h>
+#include <llvm/CodeGen/MachineInstrBundle.h>
 #include <llvm/Support/GenericDomTree.h>
 
 namespace luthier {
@@ -66,10 +67,8 @@ private:
   /// The scalar MBB this vector MBB belongs to
   LinearMachineBasicBlock &Parent;
 
-  /// The range of instructions in the block; bundles and debug instructions
-  /// are ignored
-  llvm::iterator_range<llvm::MachineBasicBlock::instr_iterator> Instructions{
-      {}, {}};
+  /// The range of instructions in the block
+  llvm::iterator_range<llvm::MachineBasicBlock::iterator> Instructions{{}, {}};
 
   llvm::SmallPtrSet<const llvm::MachineInstr *, 32> MIsSet{};
 
@@ -97,16 +96,30 @@ public:
 
   [[nodiscard]] LinearMachineBasicBlock &getParent() { return Parent; }
 
-  using iterator = llvm::MachineBasicBlock::instr_iterator;
-  using const_iterator = llvm::MachineBasicBlock::const_instr_iterator;
+  using instr_iterator = llvm::MachineBasicBlock::instr_iterator;
+  using const_instr_iterator = llvm::MachineBasicBlock::const_instr_iterator;
+
+  using iterator = llvm::MachineBasicBlock::iterator;
+  using const_iterator = llvm::MachineBasicBlock::const_iterator;
+
+  using reverse_instr_iterator = std::reverse_iterator<instr_iterator>;
+  using const_reverse_instr_iterator =
+      std::reverse_iterator<const_instr_iterator>;
 
   using reverse_iterator = std::reverse_iterator<iterator>;
-
   using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
   iterator begin() { return Instructions.begin(); }
 
   [[nodiscard]] const_iterator begin() const { return Instructions.begin(); }
+
+  instr_iterator instr_begin() {
+    return Instructions.begin().getInstrIterator();
+  }
+
+  const_instr_iterator instr_begin() const {
+    return Instructions.begin().getInstrIterator();
+  }
 
   [[nodiscard]] bool contains(const llvm::MachineInstr &MI) const {
     return MIsSet.contains(&MI);
@@ -116,14 +129,36 @@ public:
 
   [[nodiscard]] const llvm::MachineInstr &front() const { return *begin(); }
 
+  llvm::MachineInstr &instr_front() { return *instr_begin(); }
+
+  [[nodiscard]] const llvm::MachineInstr &instr_front() const {
+    return *instr_begin();
+  }
+
   [[nodiscard]] iterator end() { return Instructions.end(); }
 
   [[nodiscard]] const_iterator end() const { return Instructions.end(); }
+
+  [[nodiscard]] instr_iterator instr_end() {
+    return llvm::getBundleEnd(Instructions.end().getInstrIterator());
+  }
+
+  [[nodiscard]] const_instr_iterator instr_end() const {
+    return llvm::getBundleEnd(Instructions.end().getInstrIterator());
+  }
 
   reverse_iterator rbegin() { return std::make_reverse_iterator(end()); }
 
   [[nodiscard]] const_reverse_iterator rbegin() const {
     return std::make_reverse_iterator(end());
+  }
+
+  reverse_instr_iterator instr_rbegin() {
+    return std::make_reverse_iterator(instr_end());
+  }
+
+  [[nodiscard]] const_reverse_instr_iterator instr_rbegin() const {
+    return std::make_reverse_iterator(instr_end());
   }
 
   reverse_iterator rend() { return std::make_reverse_iterator(begin()); }
@@ -132,14 +167,30 @@ public:
     return std::make_reverse_iterator(begin());
   }
 
+  reverse_instr_iterator instr_rend() {
+    return std::make_reverse_iterator(instr_begin());
+  }
+
+  [[nodiscard]] const_reverse_instr_iterator instr_rend() const {
+    return std::make_reverse_iterator(instr_begin());
+  }
+
   [[nodiscard]] const llvm::MachineInstr &back() const {
     return *(--Instructions.end());
+  }
+
+  [[nodiscard]] const llvm::MachineInstr &instr_back() const {
+    return *(--instr_end());
   }
 
   [[nodiscard]] bool empty() const { return Instructions.empty(); }
 
   [[nodiscard]] unsigned size() const {
     return std::distance(Instructions.begin(), Instructions.end());
+  }
+
+  [[nodiscard]] unsigned instr_size() const {
+    return std::distance(instr_begin(), instr_end());
   }
 
   [[nodiscard]] PredicateValue getExecMaskValue() const { return EMV; }
@@ -298,6 +349,8 @@ public:
     return const_cast<PredicatedMachineBasicBlock *>(this)
         ->getLastNonDebugInstr(SkipPseudoOp);
   }
+
+  [[nodiscard]] bool doesLastInstrModifyPredicate() const;
 
   void print(llvm::raw_ostream &OS, unsigned int Indent) const;
 

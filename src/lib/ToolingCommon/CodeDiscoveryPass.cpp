@@ -595,7 +595,7 @@ initLiftedDeviceFunctionEntry(uint64_t DeviceEntryPointAddr,
   return std::make_pair(std::ref(MF), FuncSymRef);
 }
 
-static bool shouldImplictReadExec(const llvm::MachineInstr &MI) {
+static bool shouldImplicitReadExec(const llvm::MachineInstr &MI) {
   if (llvm::SIInstrInfo::isVALU(MI)) {
     switch (MI.getOpcode()) {
     case llvm::AMDGPU::V_READLANE_B32:
@@ -615,9 +615,9 @@ static bool shouldImplictReadExec(const llvm::MachineInstr &MI) {
 }
 
 /// Walks over the \p MCOperands and converts them to \c llvm::MachineOperand
-/// instances before adding them to the \c llvm::MachineInstr instance managed
+/// instances before adding them to the \c llvm::MachineInstr managed
 /// by the \p MIBuilder
-/// Does not convert direct branch target immediate operands to a machine
+/// \note Does not convert direct branch target immediate operands to a machine
 /// basic block
 /// \return \c llvm::Error indicating the success or failure of the operation
 static llvm::Error
@@ -660,7 +660,7 @@ convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
         /// SOPK needs some special attention to be converted correctly
         if (llvm::SIInstrInfo::isSOPK(*MIBuilder)) {
           LLVM_DEBUG(llvm::dbgs() << "Instruction is in SOPK format\n");
-          if (llvm::SIInstrInfo::sopkIsZext()) {
+          if (llvm::SIInstrInfo::sopkIsZext(MIBuilder->getOpcode())) {
             auto Imm = static_cast<uint16_t>(MCOp.getImm());
             LLVM_DEBUG(llvm::dbgs() << llvm::formatv(
                            "Adding truncated imm value: {0}\n", Imm));
@@ -922,8 +922,8 @@ static llvm::Error populateMF(const InstructionTraces &MFTrace,
                    << "*********************************************"
                       "***************************\n");
       } else if (llvm::MachineInstr *PrevMI = Builder->getPrevNode()) {
-        bool IsCurrentMIVector = shouldImplictReadExec(*Builder);
-        bool IsFormerMIVector = shouldImplictReadExec(*PrevMI);
+        bool IsCurrentMIVector = shouldImplicitReadExec(*Builder);
+        bool IsFormerMIVector = shouldImplicitReadExec(*PrevMI);
         bool CurrentMIWritesExecMask =
             Builder->modifiesRegister(llvm::AMDGPU::EXEC, TRI);
         /// TODO: WQM instructions

@@ -886,7 +886,7 @@ def V_BFM_B32_e32_sem : InstSISemantic<V_BFM_B32_e32> {
 def V_BCNT_U32_B32_e32_sem : InstSISemantic<V_BCNT_U32_B32_e32> {
   let Semantic = [
     (SetNamedOperand $vdst,
-      (LLVMAdd (LLVMCtPop (GetNamedOperand $src0)),
+      (LLVMAdd (LLVMUnaryIntrinsic int_ctpop, (GetNamedOperand $src0)),
                (GetNamedOperand $src1)))
   ];
 }
@@ -2382,7 +2382,7 @@ def V_CVT_FLR_I32_F32_e32_sem : InstSISemantic<V_CVT_FLR_I32_F32_e32> {
   let Semantic = [
     (SetNamedOperand $vdst,
       (LLVMFPToSI
-        (LLVMFFloor (LLVMBitCast (GetNamedOperand $src0), llvm_float_ty)),
+        (LLVMUnaryIntrinsic int_floor, (LLVMBitCast (GetNamedOperand $src0), llvm_float_ty)),
         llvm_i32_ty))
   ];
 }
@@ -2402,7 +2402,7 @@ def V_CVT_RPI_I32_F32_e32_sem : InstSISemantic<V_CVT_RPI_I32_F32_e32> {
   let Semantic = [
     (SetNamedOperand $vdst,
       (LLVMFPToSI
-        (LLVMFFloor
+        (LLVMUnaryIntrinsic int_floor,
           (LLVMFAdd (LLVMBitCast (GetNamedOperand $src0), llvm_float_ty),
                     (ConstantFP llvm_float_ty, 0.5))),
         llvm_i32_ty))
@@ -2630,7 +2630,7 @@ def V_CVT_PK_F32_FP8_OP_SEL_e32_sem : InstSIIntrinsic<V_CVT_PK_F32_FP8_OP_SEL_e3
 def V_CEIL_F32_e32_sem : InstSISemantic<V_CEIL_F32_e32> {
   let Semantic = [
     (SetNamedOperand $vdst,
-      (LLVMBitCast (LLVMFCeil (LLVMBitCast (GetNamedOperand $src0),
+      (LLVMBitCast (LLVMUnaryIntrinsic int_fceil, (LLVMBitCast (GetNamedOperand $src0),
                                             llvm_float_ty)),
                    llvm_i32_ty))
   ];
@@ -2639,7 +2639,7 @@ def V_CEIL_F32_e32_sem : InstSISemantic<V_CEIL_F32_e32> {
 def V_CEIL_F64_e32_sem : InstSISemantic<V_CEIL_F64_e32> {
   let Semantic = [
     (SetNamedOperand $vdst,
-      (LLVMBitCast (LLVMFCeil (LLVMBitCast (GetNamedOperand $src0),
+      (LLVMBitCast (LLVMUnaryIntrinsic int_fceil, (LLVMBitCast (GetNamedOperand $src0),
                                             llvm_double_ty)),
                    llvm_i64_ty))
   ];
@@ -2652,7 +2652,7 @@ foreach inst = [V_CEIL_F16_e32, V_CEIL_F16_t16_e32,
       (SetNamedOperand $vdst,
         (LLVMZExt
           (LLVMBitCast
-            (LLVMFCeil (LLVMBitCast (LLVMTrunc (GetNamedOperand $src0),
+            (LLVMUnaryIntrinsic int_fceil, (LLVMBitCast (LLVMTrunc (GetNamedOperand $src0),
                                                 llvm_i16_ty),
                                     llvm_half_ty)),
             llvm_i16_ty),
@@ -2677,7 +2677,7 @@ foreach inst = [V_CEIL_F16_e32, V_CEIL_F16_t16_e32,
 def V_FLOOR_F32_e32_sem : InstSISemantic<V_FLOOR_F32_e32> {
   let Semantic = [
     (SetNamedOperand $vdst,
-      (LLVMBitCast (LLVMFFloor (LLVMBitCast (GetNamedOperand $src0),
+      (LLVMBitCast (LLVMUnaryIntrinsic int_floor, (LLVMBitCast (GetNamedOperand $src0),
                                              llvm_float_ty)),
                    llvm_i32_ty))
   ];
@@ -2686,7 +2686,7 @@ def V_FLOOR_F32_e32_sem : InstSISemantic<V_FLOOR_F32_e32> {
 def V_FLOOR_F64_e32_sem : InstSISemantic<V_FLOOR_F64_e32> {
   let Semantic = [
     (SetNamedOperand $vdst,
-      (LLVMBitCast (LLVMFFloor (LLVMBitCast (GetNamedOperand $src0),
+      (LLVMBitCast (LLVMUnaryIntrinsic int_floor, (LLVMBitCast (GetNamedOperand $src0),
                                              llvm_double_ty)),
                    llvm_i64_ty))
   ];
@@ -2699,7 +2699,7 @@ foreach inst = [V_FLOOR_F16_e32, V_FLOOR_F16_t16_e32,
       (SetNamedOperand $vdst,
         (LLVMZExt
           (LLVMBitCast
-            (LLVMFFloor (LLVMBitCast (LLVMTrunc (GetNamedOperand $src0),
+            (LLVMUnaryIntrinsic int_floor, (LLVMBitCast (LLVMTrunc (GetNamedOperand $src0),
                                                  llvm_i16_ty),
                                      llvm_half_ty)),
             llvm_i16_ty),
@@ -2724,7 +2724,7 @@ foreach inst = [V_FLOOR_F16_e32, V_FLOOR_F16_t16_e32,
 def V_TRUNC_F32_e32_sem : InstSISemantic<V_TRUNC_F32_e32> {
   let Semantic = [
     (SetNamedOperand $vdst,
-      (LLVMBitCast (LLVMFTrunc (LLVMBitCast (GetNamedOperand $src0),
+      (LLVMBitCast (LLVMTrunc (LLVMBitCast (GetNamedOperand $src0),
                                              llvm_float_ty)),
                    llvm_i32_ty))
   ];
@@ -2733,7 +2733,7 @@ def V_TRUNC_F32_e32_sem : InstSISemantic<V_TRUNC_F32_e32> {
 def V_TRUNC_F64_e32_sem : InstSISemantic<V_TRUNC_F64_e32> {
   let Semantic = [
     (SetNamedOperand $vdst,
-      (LLVMBitCast (LLVMFTrunc (LLVMBitCast (GetNamedOperand $src0),
+      (LLVMBitCast (LLVMTrunc (LLVMBitCast (GetNamedOperand $src0),
                                              llvm_double_ty)),
                    llvm_i64_ty))
   ];
@@ -2746,7 +2746,7 @@ foreach inst = [V_TRUNC_F16_e32, V_TRUNC_F16_t16_e32,
       (SetNamedOperand $vdst,
         (LLVMZExt
           (LLVMBitCast
-            (LLVMFTrunc (LLVMBitCast (LLVMTrunc (GetNamedOperand $src0),
+            (LLVMTrunc (LLVMBitCast (LLVMTrunc (GetNamedOperand $src0),
                                                   llvm_i16_ty),
                                       llvm_half_ty)),
             llvm_i16_ty),
@@ -2771,7 +2771,7 @@ foreach inst = [V_TRUNC_F16_e32, V_TRUNC_F16_t16_e32,
 def V_RNDNE_F32_e32_sem : InstSISemantic<V_RNDNE_F32_e32> {
   let Semantic = [
     (SetNamedOperand $vdst,
-      (LLVMBitCast (LLVMRoundEven (LLVMBitCast (GetNamedOperand $src0),
+      (LLVMBitCast (LLVMUnaryIntrinsic in_roundeven, (LLVMBitCast (GetNamedOperand $src0),
                                                 llvm_float_ty)),
                    llvm_i32_ty))
   ];
@@ -2780,7 +2780,7 @@ def V_RNDNE_F32_e32_sem : InstSISemantic<V_RNDNE_F32_e32> {
 def V_RNDNE_F64_e32_sem : InstSISemantic<V_RNDNE_F64_e32> {
   let Semantic = [
     (SetNamedOperand $vdst,
-      (LLVMBitCast (LLVMRoundEven (LLVMBitCast (GetNamedOperand $src0),
+      (LLVMBitCast (LLVMUnaryIntrinsic in_roundeven, (LLVMBitCast (GetNamedOperand $src0),
                                                 llvm_double_ty)),
                    llvm_i64_ty))
   ];
@@ -2793,7 +2793,7 @@ foreach inst = [V_RNDNE_F16_e32, V_RNDNE_F16_t16_e32,
       (SetNamedOperand $vdst,
         (LLVMZExt
           (LLVMBitCast
-            (LLVMRoundEven (LLVMBitCast (LLVMTrunc (GetNamedOperand $src0),
+            (LLVMUnaryIntrinsic in_roundeven, (LLVMBitCast (LLVMTrunc (GetNamedOperand $src0),
                                                      llvm_i16_ty),
                                          llvm_half_ty)),
             llvm_i16_ty),
@@ -3107,7 +3107,7 @@ def V_LOG_LEGACY_F32_e32_sem : InstSIIntrinsic<V_LOG_LEGACY_F32_e32,
 //   rdna4-instruction-set-architecture.pdf, page 329.
 def V_BFREV_B32_e32_sem : InstSISemantic<V_BFREV_B32_e32> {
   let Semantic = [
-    (SetNamedOperand $vdst, (LLVMBitReverse (GetNamedOperand $src0)))
+    (SetNamedOperand $vdst, (LLVMUnaryIntrinsic int_bitreverse, (GetNamedOperand $src0)))
   ];
 }
 
@@ -3166,7 +3166,7 @@ foreach inst = [V_NOT_B16_e32, V_NOT_B16_t16_e32,
 //   rdna2-shader-instruction-set-architecture.pdf, page 151.
 def V_FFBH_U32_e32_sem : InstSISemantic<V_FFBH_U32_e32> {
   let Semantic = [
-    (DefVal $clz, (LLVMCtlz (GetNamedOperand $src0),
+    (DefVal $clz, (LLVMBinaryIntrinsic int_ctlz, (GetNamedOperand $src0),
                              (ConstantFalse llvm_i1_ty))),
     // ctlz returns 32 when input is 0; FFBH returns 0xFFFFFFFF
     (SetNamedOperand $vdst,
@@ -3195,7 +3195,7 @@ def V_FFBH_I32_e32_sem : InstSISemantic<V_FFBH_I32_e32> {
     (DefVal $xored, (LLVMXor (GetNamedOperand $src0),
                               (LLVMAShr (GetNamedOperand $src0),
                                         (ConstantInt llvm_i32_ty, 31)))),
-    (DefVal $clz, (LLVMCtlz (GetVal $xored), (ConstantFalse llvm_i1_ty))),
+    (DefVal $clz, (LLVMBinaryIntrinsic int_ctlz, (GetVal $xored), (ConstantFalse llvm_i1_ty))),
     (SetNamedOperand $vdst,
       (LLVMSelect (LLVMCmp SETEQ, (GetVal $xored),
                                    (ConstantInt llvm_i32_ty, 0)),
@@ -3218,7 +3218,7 @@ def V_FFBH_I32_e32_sem : InstSISemantic<V_FFBH_I32_e32> {
 //   rdna2-shader-instruction-set-architecture.pdf, page 151.
 def V_FFBL_B32_e32_sem : InstSISemantic<V_FFBL_B32_e32> {
   let Semantic = [
-    (DefVal $ctz, (LLVMCttz (GetNamedOperand $src0),
+    (DefVal $ctz, (LLVMBinaryIntrinsic int_cttz, (GetNamedOperand $src0),
                              (ConstantFalse llvm_i1_ty))),
     // cttz returns 32 when input is 0; FFBL returns 0xFFFFFFFF
     (SetNamedOperand $vdst,

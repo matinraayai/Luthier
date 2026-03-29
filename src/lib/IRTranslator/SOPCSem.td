@@ -32,8 +32,8 @@
 //   rdna4-instruction-set-architecture.pdf, pages 267-269.
 
 foreach i = 0-5 in {
-  defvar op = ["S_CMP_EQ_I32", "S_CMP_LG_I32", "S_CMP_GT_I32",
-               "S_CMP_GE_I32", "S_CMP_LT_I32", "S_CMP_LE_I32"][i];
+  defvar op = [S_CMP_EQ_I32, S_CMP_LG_I32, S_CMP_GT_I32,
+               S_CMP_GE_I32, S_CMP_LT_I32, S_CMP_LE_I32][i];
   defvar cmpPred = [SETEQ, SETNE, SETGT, SETGE, SETLT, SETLE][i];
 
   def op#_sem : InstSISemantic<op> {
@@ -45,8 +45,8 @@ foreach i = 0-5 in {
 }
 
 foreach i = 0-5 in {
-  defvar op = ["S_CMP_EQ_U32", "S_CMP_LG_U32", "S_CMP_GT_U32",
-               "S_CMP_GE_U32", "S_CMP_LT_U32", "S_CMP_LE_U32"][i];
+  defvar op = [S_CMP_EQ_U32, S_CMP_LG_U32, S_CMP_GT_U32,
+               S_CMP_GE_U32, S_CMP_LT_U32, S_CMP_LE_U32][i];
   defvar cmpPred = [SETEQ, SETNE, SETUGT, SETUGE, SETULT, SETULE][i];
 
   def op#_sem : InstSISemantic<op> {
@@ -166,8 +166,8 @@ def S_BITCMP1_B64_sem : InstSISemantic<S_BITCMP1_B64> {
 
 // Ordered float comparisons: SCC = S0 <cmp> S1 (f32).
 foreach i = 0-5 in {
-  defvar op = ["S_CMP_EQ_F32", "S_CMP_LG_F32", "S_CMP_GT_F32",
-               "S_CMP_GE_F32", "S_CMP_LT_F32", "S_CMP_LE_F32"][i];
+  defvar op = [S_CMP_EQ_F32, S_CMP_LG_F32, S_CMP_GT_F32,
+               S_CMP_GE_F32, S_CMP_LT_F32, S_CMP_LE_F32][i];
   defvar cmpPred = [SETOEQ, SETONE, SETOGT, SETOGE, SETOLT, SETOLE][i];
 
   def op#_sem : InstSISemantic<op> {
@@ -181,8 +181,8 @@ foreach i = 0-5 in {
 
 // Ordered float comparisons: SCC = S0 <cmp> S1 (f16).
 foreach i = 0-5 in {
-  defvar op = ["S_CMP_EQ_F16", "S_CMP_LG_F16", "S_CMP_GT_F16",
-               "S_CMP_GE_F16", "S_CMP_LT_F16", "S_CMP_LE_F16"][i];
+  defvar op = [S_CMP_EQ_F16, S_CMP_LG_F16, S_CMP_GT_F16,
+               S_CMP_GE_F16, S_CMP_LT_F16, S_CMP_LE_F16][i];
   defvar cmpPred = [SETOEQ, SETONE, SETOGT, SETOGE, SETOLT, SETOLE][i];
 
   def op#_sem : InstSISemantic<op> {
@@ -197,8 +197,8 @@ foreach i = 0-5 in {
 // Unordered float comparisons: SCC = !(S0 <cmp> S1) (f32).
 // NEQ = unordered not equal, NGE = unordered less than, etc.
 foreach i = 0-5 in {
-  defvar op = ["S_CMP_NEQ_F32", "S_CMP_NLG_F32", "S_CMP_NGT_F32",
-               "S_CMP_NGE_F32", "S_CMP_NLT_F32", "S_CMP_NLE_F32"][i];
+  defvar op = [S_CMP_NEQ_F32, S_CMP_NLG_F32, S_CMP_NGT_F32,
+               S_CMP_NGE_F32, S_CMP_NLT_F32, S_CMP_NLE_F32][i];
   defvar cmpPred = [SETUNE, SETUEQ, SETULE, SETULT, SETUGE, SETUGT][i];
 
   def op#_sem : InstSISemantic<op> {
@@ -212,8 +212,8 @@ foreach i = 0-5 in {
 
 // Unordered float comparisons: SCC = !(S0 <cmp> S1) (f16).
 foreach i = 0-5 in {
-  defvar op = ["S_CMP_NEQ_F16", "S_CMP_NLG_F16", "S_CMP_NGT_F16",
-               "S_CMP_NGE_F16", "S_CMP_NLT_F16", "S_CMP_NLE_F16"][i];
+  defvar op = [S_CMP_NEQ_F16, S_CMP_NLG_F16, S_CMP_NGT_F16,
+               S_CMP_NGE_F16, S_CMP_NLT_F16, S_CMP_NLE_F16][i];
   defvar cmpPred = [SETUNE, SETUEQ, SETULE, SETULT, SETUGE, SETUGT][i];
 
   def op#_sem : InstSISemantic<op> {

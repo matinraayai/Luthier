@@ -18,6 +18,8 @@
 /// Implements functions used to query the state value array specs.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/StateValueArraySpecs.h"
+
+#include <AMDGPUTargetMachine.h>
 #include <GCNSubtarget.h>
 
 namespace luthier {
@@ -51,56 +53,59 @@ unsigned StateValueArraySpecs::getArgumentLaneSize(ScalarValueArgument SA) {
 
 std::unique_ptr<StateValueArraySpecs>
 StateValueArraySpecs::getSVASpecs(const llvm::Module &M,
-                                  const llvm::GCNSubtarget &STI) {
+                                  const llvm::TargetMachine &TM) {
   std::unique_ptr<StateValueArraySpecs> Out{new StateValueArraySpecs()};
-  uint8_t NextLane = 0;
+  uint8_t NextLane = StackPointerStoreLane;
 
-  /// Determine the frame spill and instrumentation slot values first:
-  /// Targets with architected flat scratch: AMDGPU::SP_REG, AMDGPU::FP_REG
-  /// Targets with absolute flat scratch: AMDGPU::FLAT_SCRATCH, AMDGPU::SP_REG,
-  /// AMDGPU::FP_REG Targets without flat scratch: AMDGPU::PRIVATE_RSRC_REG,
-  /// AMDGPU::SP_REG, AMDGPU::FP_REG
-  bool IsArchitectedFS = STI.flatScratchIsArchitected();
-  if (STI.enableFlatScratch() && !IsArchitectedFS) {
-    Out->FrameSpillLanes.insert({llvm::AMDGPU::FLAT_SCR, NextLane});
-    NextLane += 2;
-    Out->InstrumentationFrameLanes.insert({llvm::AMDGPU::FLAT_SCR, NextLane});
-    NextLane += 2;
-  } else if (!IsArchitectedFS) {
-    Out->FrameSpillLanes.insert({llvm::AMDGPU::PRIVATE_RSRC_REG, NextLane});
-    NextLane += 4;
-    Out->InstrumentationFrameLanes.insert(
-        {llvm::AMDGPU::PRIVATE_RSRC_REG, NextLane});
-    NextLane += 4;
-  }
-  Out->FrameSpillLanes.insert({llvm::AMDGPU::SP_REG, NextLane++});
-  Out->InstrumentationFrameLanes.insert({llvm::AMDGPU::SP_REG, NextLane++});
-  Out->FrameSpillLanes.insert({llvm::AMDGPU::FP_REG, NextLane++});
-
-  /// Next determine the scalar values used via the named MD in the module
-  using SVArgUnderlyingType = std::underlying_type_t<ScalarValueArgument>;
-
-  auto GetSingleArgIfPresent = [&]<SVArgUnderlyingType SVArg>() {
-    if (constexpr auto CastedSVArg = static_cast<ScalarValueArgument>(SVArg);
-        M.getNamedMetadata(ScalarValueArgumentInfo<CastedSVArg>::NamedMD)) {
-      Out->ScalarArguments.insert({CastedSVArg, NextLane});
-      NextLane += ScalarValueArgumentInfo<CastedSVArg>::NumLanes;
+  if (!M.empty()) {
+    const auto &ST = TM.getSubtarget<llvm::GCNSubtarget>(*M.begin());
+    bool IsArchitectedFS = ST.flatScratchIsArchitected();
+    bool HasFS = ST.enableFlatScratch();
+#ifdef _DEBUG
+    /// Check if all functions have the same scratch accessing instructions
+    /// enabled in their subtargets. This is an assertion because this operation
+    /// is more of a sanity check than something that can happen in Luthier
+    for (const llvm::Function &F : M) {
+      const auto &FuncST = TM.getSubtarget<llvm::GCNSubtarget>(*M.begin());
+      bool FuncHasArchitectedFS = FuncST.flatScratchIsArchitected();
+      bool FuncHasFS = FuncST.enableFlatScratch();
+      assert(FuncHasArchitectedFS == IsArchitectedFS && FuncHasFS == HasFS &&
+             "Functions has different scratch access requirements");
     }
-  };
+#endif
 
-  constexpr auto SVArgSequence =
-      std::make_integer_sequence<SVArgUnderlyingType,
-                                 SCALAR_VALUE_ARGUMENT_LAST>{};
+    if (HasFS && !IsArchitectedFS) {
+      Out->BufferRsrcOrScratchSpillLane = llvm::AMDGPU::FLAT_SCR;
+      NextLane += 2;
+    } else if (!IsArchitectedFS) {
+      Out->BufferRsrcOrScratchSpillLane = llvm::AMDGPU::PRIVATE_RSRC_REG;
+      NextLane += 4;
+    }
+    /// Next determine the scalar values used via the named MD in the module
+    using SVArgUnderlyingType = std::underlying_type_t<ScalarValueArgument>;
 
-  [&]<SVArgUnderlyingType... SVArgs>(
-      std::integer_sequence<SVArgUnderlyingType, SVArgs...>) {
-    (GetSingleArgIfPresent.operator()<SVArgs>(), ...);
-  }(SVArgSequence);
-  return std::move(Out);
+    auto GetSingleArgIfPresent = [&]<SVArgUnderlyingType SVArg>() {
+      if (constexpr auto CastedSVArg = static_cast<ScalarValueArgument>(SVArg);
+          M.getNamedMetadata(ScalarValueArgumentInfo<CastedSVArg>::NamedMD)) {
+        Out->ScalarArguments.insert({CastedSVArg, NextLane});
+        NextLane += ScalarValueArgumentInfo<CastedSVArg>::NumLanes;
+      }
+    };
+
+    constexpr auto SVArgSequence =
+        std::make_integer_sequence<SVArgUnderlyingType,
+                                   SCALAR_VALUE_ARGUMENT_LAST>{};
+
+    [&]<SVArgUnderlyingType... SVArgs>(
+        std::integer_sequence<SVArgUnderlyingType, SVArgs...>) {
+      (GetSingleArgIfPresent.operator()<SVArgs>(), ...);
+    }(SVArgSequence);
+    return std::move(Out);
+  }
 }
 
 std::unique_ptr<StateValueArraySpecs> StateValueArraySpecs::setModuleSVASpec(
-    llvm::Module &M, const llvm::GCNSubtarget &STI,
+    llvm::Module &M, const llvm::TargetMachine &TM,
     const llvm::SmallDenseSet<ScalarValueArgument> &RequestedSVArgs) {
 
   using SVArgUnderlyingType = std::underlying_type_t<ScalarValueArgument>;
@@ -122,6 +127,6 @@ std::unique_ptr<StateValueArraySpecs> StateValueArraySpecs::setModuleSVASpec(
     (InsertSingleArgIfPresent.operator()<SVArgs>(), ...);
   }(SVArgSequence);
 
-  return getSVASpecs(M, STI);
+  return getSVASpecs(M, TM);
 }
 } // namespace luthier

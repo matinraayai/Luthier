@@ -26,6 +26,7 @@
 #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
 #include "luthier/Tooling/ProcessIntrinsicsAtIRLevelPass.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
+#include <AMDGPUTargetMachine.h>
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/LoopAnalysisManager.h>
 #include <llvm/Analysis/RuntimeLibcallInfo.h>

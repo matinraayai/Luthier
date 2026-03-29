@@ -22,7 +22,7 @@
 #ifndef LUTHIER_TOOLING_STATE_VALUE_ARRAY_SPECS_H
 #define LUTHIER_TOOLING_STATE_VALUE_ARRAY_SPECS_H
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
-#include <llvm/CodeGen/Register.h>
+#include <SIRegisterInfo.h>
 
 namespace llvm {
 class GCNSubtarget;
@@ -31,62 +31,36 @@ class GCNSubtarget;
 namespace luthier {
 
 class StateValueArraySpecs {
-  llvm::DenseMap<llvm::Register, uint8_t> FrameSpillLanes{};
+  static constexpr uint8_t StackPointerRegSpillLane{0};
 
-  llvm::DenseMap<llvm::Register, uint8_t> InstrumentationFrameLanes{};
+  static constexpr uint8_t FramePointerRegSSpillLane{1};
+
+  static constexpr uint8_t StackPointerStoreLane{2};
+
+  llvm::MCRegister BufferRsrcOrScratchSpillLane = llvm::MCRegister::NoRegister;
 
   llvm::DenseMap<ScalarValueArgument, uint8_t> ScalarArguments{};
 
   StateValueArraySpecs() = default;
 
 public:
-  using const_frame_spill_iterator = decltype(FrameSpillLanes)::const_iterator;
-
-  [[nodiscard]] const_frame_spill_iterator frame_spill_begin() const {
-    return FrameSpillLanes.begin();
+  [[nodiscard]] constexpr uint8_t getStackPointerRegSpillLane() const {
+    return StackPointerRegSpillLane;
   }
 
-  [[nodiscard]] const_frame_spill_iterator frame_spill_end() const {
-    return FrameSpillLanes.end();
+  [[nodiscard]] constexpr uint8_t getFramePointerRegSpillLane() const {
+    return FramePointerRegSSpillLane;
   }
 
-  [[nodiscard]] unsigned frame_spill_size() const {
-    return FrameSpillLanes.size();
+  [[nodiscard]] constexpr uint8_t getStackPointerStoreLane() const {
+    return StackPointerStoreLane;
   }
 
-  [[nodiscard]] bool frame_spill_contains(llvm::Register Reg) const {
-    return FrameSpillLanes.contains(Reg);
-  }
-
-  [[nodiscard]] const_frame_spill_iterator
-  findFrameSpillLane(llvm::Register Reg) const {
-    return FrameSpillLanes.find(Reg);
-  }
-
-  using const_instrumentation_frame_iterator =
-      decltype(InstrumentationFrameLanes)::const_iterator;
-
-  [[nodiscard]] const_instrumentation_frame_iterator
-  instrumentation_frame_begin() const {
-    return InstrumentationFrameLanes.begin();
-  }
-
-  [[nodiscard]] const_instrumentation_frame_iterator
-  instrumentation_frame_end() const {
-    return InstrumentationFrameLanes.end();
-  }
-
-  [[nodiscard]] unsigned instrumentation_frame_size() const {
-    return InstrumentationFrameLanes.size();
-  }
-
-  [[nodiscard]] bool instrumentation_frame_contains(llvm::Register Reg) const {
-    return InstrumentationFrameLanes.contains(Reg);
-  }
-
-  [[nodiscard]] const_instrumentation_frame_iterator
-  findInstrumentationFrameLane(llvm::Register Reg) const {
-    return InstrumentationFrameLanes.find(Reg);
+  [[nodiscard]] std::optional<uint8_t>
+  getFrameRsrcOrScratchStoreLaneIfExists() const {
+    return BufferRsrcOrScratchSpillLane != llvm::MCRegister::NoRegister
+               ? std::optional{3}
+               : std::nullopt;
   }
 
   using const_argument_lane_iterator =
@@ -116,10 +90,10 @@ public:
   static unsigned getArgumentLaneSize(ScalarValueArgument SA);
 
   static std::unique_ptr<StateValueArraySpecs>
-  getSVASpecs(const llvm::Module &M, const llvm::GCNSubtarget &STI);
+  getSVASpecs(const llvm::Module &M, const llvm::TargetMachine &TM);
 
   static std::unique_ptr<StateValueArraySpecs> setModuleSVASpec(
-      llvm::Module &M, const llvm::GCNSubtarget &STI,
+      llvm::Module &M, const llvm::TargetMachine &TM,
       const llvm::SmallDenseSet<ScalarValueArgument> &RequestedSVArgs);
 };
 

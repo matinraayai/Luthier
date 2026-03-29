@@ -18,10 +18,11 @@
 /// Implements the \c ProcessIntrinsicsAtIRLevelPass class.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/ProcessIntrinsicsAtIRLevelPass.h"
+#include "luthier/Common/ErrorCheck.h"
+#include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Tooling/FunctionAnnotations.h"
 #include "luthier/Tooling/IntrinsicProcessorsAnalysis.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
-
 #include <llvm/IR/MDBuilder.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/ScopedPrinter.h>
@@ -52,15 +53,14 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
       std::optional<IntrinsicProcessor> Processor =
           IntrinsicsProcessors.getProcessorIfRegistered(IntrinsicName);
       if (!Processor.has_value()) {
-        IModule.getContext().emitError(
-            "Intrinsic " + llvm::Twine(IntrinsicName) +
-            " is not registered with the code generator.");
-        return llvm::PreservedAnalyses::all();
+        LUTHIER_CTX_EMIT_ON_ERROR(
+            Ctx, LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+                     "Intrinsic {0} is not registered", IntrinsicName)));
       }
 
       LLVM_DEBUG(
 
-          llvm::dbgs() << "Intrinsic function being processed: " << F << "\n";
+          llvm::dbgs() << "Intrinsic being processed: " << F << "\n";
           llvm::dbgs() << "Base name of the intrinsic: " << IntrinsicName
                        << "\n";
           llvm::dbgs() << "Num uses of the intrinsic function : "
@@ -83,7 +83,7 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
         // illegal
         auto *CallInst = llvm::dyn_cast<llvm::CallInst>(User);
 
-        if (CallInst == nullptr) {
+        if (!CallInst) {
           IModule.getContext().emitError(
               llvm::formatv("Found a user of intrinsic {0} which is not a "
                             "call instruction: {1}.",
@@ -94,7 +94,8 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
         llvm::Expected<IntrinsicIRLoweringInfo> IRLoweringInfoOrErr =
             Processor->IRProcessor(F, *CallInst, TM);
         if (auto Err = IRLoweringInfoOrErr.takeError()) {
-          IModule.getContext().emitError(llvm::toString(std::move(Err)));
+          IModule.getContext().emitError(CallInst,
+                                         llvm::toString(std::move(Err)));
         }
 
         // Set up the input/output value constraints

@@ -6,6 +6,8 @@ add_tablegen(luthier-tblgen luthier
         RealToPseudoOpcodeMapBackend.cpp
         RealToPseudoRegisterMapBackend.hpp
         RealToPseudoRegisterMapBackend.cpp
+        SIInstrSemanticsEmitter.hpp
+        SIInstrSemanticsEmitter.cpp
         Main.cpp
 )
 

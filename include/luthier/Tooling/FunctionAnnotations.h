@@ -54,7 +54,9 @@ namespace luthier {
 /// that its device module can be easily identified at runtime
 #define LUTHIER_RESERVED_MANAGED_VAR __luthier_builtin_reserved
 
-/// All bindings to Luthier intrinsics must have this attribute
+/// All bindings to Luthier intrinsics must have this attribute. The
+/// value of this attribute must be the base name of the intrinsic e.g.
+/// \c luthier::readReg
 #define LUTHIER_INTRINSIC_ATTRIBUTE luthier.intrinsic
 
 /// Prefix of the CUID symbol inside a HIP module

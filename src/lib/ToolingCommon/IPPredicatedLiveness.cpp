@@ -16,9 +16,10 @@
 /// \file IPVectorRegLiveness.cpp
 /// Implements the \c IPVectorRegLiveness class and its analysis pass.
 //===----------------------------------------------------------------------===//
-#include "luthier/Tooling/IPVectorRegLiveness.h"
 #include "luthier/Tooling/IPPredicatedCFG.h"
-#include "luthier/Tooling/LiftedRepresentation.h"
+#include "luthier/Tooling/IPVectorRegLiveness.h"
+#include <llvm/CodeGen/LiveRegUnits.h>
+#include <llvm/CodeGen/TargetSubtargetInfo.h>
 #include <llvm/Support/TimeProfiler.h>
 
 #undef DEBUG_TYPE
@@ -55,22 +56,20 @@ static void sortUniqueLiveIns(
   LiveIns.erase(Out, LiveIns.end());
 }
 
-void IPPredRegLiveness::addBlockLiveOuts(
-    const PredicatedMachineBasicBlock &MBB,
-    llvm::LiveRegUnits &LiveUnits) const {
+void IPPredRegLiveness::addBlockLiveOuts(const PredicatedMachineBasicBlock &MBB,
+                                         llvm::LiveRegUnits &LiveUnits) const {
   for (const auto &LO : getPredMBBLiveOuts(MBB))
     LiveUnits.addRegMasked(LO.PhysReg, LO.LaneMask);
 }
 
-void IPPredRegLiveness::addBlockLiveIns(
-    const PredicatedMachineBasicBlock &MBB,
-    llvm::LiveRegUnits &LiveUnits) const {
+void IPPredRegLiveness::addBlockLiveIns(const PredicatedMachineBasicBlock &MBB,
+                                        llvm::LiveRegUnits &LiveUnits) const {
   for (const auto &LI : getPredMBBLiveIns(MBB))
     LiveUnits.addRegMasked(LI.PhysReg, LI.LaneMask);
 }
 
 void IPPredRegLiveness::addBlockLiveIns(
-    llvm::LivePhysRegs &LPR, const PredicatedMachineBasicBlock &PredMBB) const {
+    const PredicatedMachineBasicBlock &PredMBB, llvm::LivePhysRegs &LPR) const {
   for (const auto &LI : PredMBBLivenessMap.at(PredMBB)) {
     llvm::MCPhysReg Reg = LI.PhysReg;
     llvm::LaneBitmask Mask = LI.LaneMask;
@@ -96,8 +95,8 @@ void IPPredRegLiveness::addBlockLiveIns(
 void IPPredRegLiveness::addLiveOutsNoPristines(
     llvm::LivePhysRegs &LPR, const PredicatedMachineBasicBlock &MBB) const {
   // To get the live-outs we simply merge the live-ins of all successors.
-  for (const auto &Succ : MBB.successors())
-    addBlockLiveIns(LPR, Succ);
+  for (const PredicatedMachineBasicBlock &Succ : MBB.successors())
+    addBlockLiveIns(Succ, LPR);
 }
 
 static void addLiveIns(
@@ -119,8 +118,8 @@ static void addLiveIns(
   }
 }
 
-void IPPredRegLiveness::computeLiveIns(
-    llvm::LivePhysRegs &LiveRegs, const PredicatedMachineBasicBlock &MBB) {
+void IPPredRegLiveness::computeLiveIns(llvm::LivePhysRegs &LiveRegs,
+                                       const PredicatedMachineBasicBlock &MBB) {
   addLiveOutsNoPristines(LiveRegs, MBB);
   for (const llvm::MachineInstr &MI : llvm::reverse(MBB)) {
     LiveRegs.stepBackward(MI);
@@ -176,8 +175,8 @@ void IPPredRegLiveness::recomputePredMBBLiveIns(
 }
 
 bool IPPredRegLiveness::isLiveIn(const PredicatedMachineBasicBlock &PredMBB,
-                                   llvm::MCRegister Reg,
-                                   llvm::LaneBitmask LaneMask) const {
+                                 llvm::MCRegister Reg,
+                                 llvm::LaneBitmask LaneMask) const {
   auto LiveIns = getPredMBBLiveIns(PredMBB);
   auto I = llvm::find_if(
       LiveIns, [Reg](const llvm::MachineBasicBlock::RegisterMaskPair &LI) {
@@ -187,12 +186,12 @@ bool IPPredRegLiveness::isLiveIn(const PredicatedMachineBasicBlock &PredMBB,
 }
 
 void IPPredRegLiveness::addLiveIns(const PredicatedMachineBasicBlock &PredMBB,
-                                     llvm::LiveRegUnits &LRU) const {
+                                   llvm::LiveRegUnits &LRU) const {
   addBlockLiveIns(PredMBB, LRU);
 }
 
-void IPPredRegLiveness::addLiveOuts(
-    const PredicatedMachineBasicBlock &PredMBB, llvm::LiveRegUnits &LRU) const {
+void IPPredRegLiveness::addLiveOuts(const PredicatedMachineBasicBlock &PredMBB,
+                                    llvm::LiveRegUnits &LRU) const {
   addBlockLiveOuts(PredMBB, LRU);
 }
 
@@ -212,7 +211,7 @@ IPPredRegLiveness::getPredMBBLiveOuts(
 }
 
 IPPredRegLiveness::IPPredRegLiveness(llvm::Module &M,
-                                         llvm::ModuleAnalysisManager &MAM) {
+                                     llvm::ModuleAnalysisManager &MAM) {
   llvm::TimeTraceScope Scope("Liveness Analysis Computation");
   const IPPredicatedCFG &IPPredGFG =
       MAM.getResult<IPPredCFGAnalysis>(M).getVecCFG();

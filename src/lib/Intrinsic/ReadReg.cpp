@@ -67,18 +67,16 @@ readRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
   else if (llvm::SIRegisterInfo::isSGPRClass(PhysRegClass))
     Constraint = "s";
   else
-    return llvm::make_error<GenericLuthierError>(
+    return LUTHIER_MAKE_GENERIC_ERROR(
         llvm::formatv("Unable to find a suitable register class for reading "
                       "the MC Register {0}.",
                       Reg.id()));
 
-  luthier::IntrinsicIRLoweringInfo Out;
+  IntrinsicIRLoweringInfo Out;
   // Set the output's constraint
   Out.setReturnValueInfo(&User, Constraint);
   // Save the MCReg to be encoded during MIR processing
   Out.setLoweringData(Reg);
-
-  Out.requestAccessToPhysicalRegister(Reg);
 
   return Out;
 }
@@ -88,7 +86,7 @@ llvm::Error readRegMIRProcessor(
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
     const std::function<llvm::Register(const llvm::TargetRegisterClass *)>
         &VirtRegBuilder,
-    const std::function<llvm::Register(KernelArgumentType)> &,
+    const std::function<llvm::Register(ScalarValueArgument)> &,
     const llvm::MachineFunction &MF,
     const std::function<llvm::Register(llvm::MCRegister)> &PhysRegAccessor,
     llvm::DenseMap<llvm::MCRegister, llvm::Register> &PhysRegsToBeOverwritten) {
@@ -118,27 +116,27 @@ llvm::Error readRegMIRProcessor(
     auto Builder = MIBuilder(llvm::AMDGPU::REG_SEQUENCE);
 
     auto MergedReg = VirtRegBuilder(TRI->getPhysRegBaseClass(Src));
-    Builder.addReg(MergedReg, llvm::RegState::Define);
+    (void)Builder.addReg(MergedReg, llvm::RegState::Define);
 
     // Split the src reg into 32-bit regs, and merge them in the
     size_t NumChannels = SrcRegSize / 32;
     for (int i = 0; i < NumChannels; i++) {
       auto SubIdx = llvm::SIRegisterInfo::getSubRegFromChannel(i);
       auto Reg = TRI->getSubReg(Src, SubIdx);
-      Builder.addReg(PhysRegAccessor(Reg)).addImm(SubIdx);
+      (void)Builder.addReg(PhysRegAccessor(Reg)).addImm(SubIdx);
     }
     // Do the copy
-    MIBuilder(llvm::AMDGPU::COPY)
+    (void)MIBuilder(llvm::AMDGPU::COPY)
         .addReg(Output, llvm::RegState::Define)
         .addReg(MergedReg);
   } else if (SrcRegSize == 32 || SrcRegSize == 1) {
-    MIBuilder(llvm::AMDGPU::COPY)
+    (void)MIBuilder(llvm::AMDGPU::COPY)
         .addReg(Output, llvm::RegState::Define)
         .addReg(PhysRegAccessor(Src));
   } else {
     auto SuperReg = TRI->get32BitRegister(Src);
     auto SubIdx = TRI->getSubRegIndex(SuperReg, Src);
-    MIBuilder(llvm::AMDGPU::COPY)
+    (void)MIBuilder(llvm::AMDGPU::COPY)
         .addReg(Output, llvm::RegState::Define)
         .addReg(PhysRegAccessor(SuperReg), 0, SubIdx);
   }

@@ -44,11 +44,9 @@ implicitArgPtrIRProcessor(const llvm::Function &Intrinsic,
 
   luthier::IntrinsicIRLoweringInfo Out;
   // The kernarg hidden address will be returned in an SGPR
-  Out.setReturnValueInfo(&User, "s");
+  Out.setReturnValueInfo(User, "s");
   // We need access to the base of the kernel argument buffer, and the offset
   // from where the hidden kernel argument starts
-  Out.requestAccessToKernelArgument(HIDDEN_KERNARG_OFFSET);
-  Out.requestAccessToKernelArgument(KERNARG_SEGMENT_PTR);
 
   return Out;
 }
@@ -59,7 +57,7 @@ llvm::Error implicitArgPtrMIRProcessor(
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
     const std::function<llvm::Register(const llvm::TargetRegisterClass *)>
         &VirtRegBuilder,
-    const std::function<llvm::Register(KernelArgumentType)> &KernArgAccessor,
+    const std::function<llvm::Register(ScalarValueArgument)> &KernArgAccessor,
     const llvm::MachineFunction &MF,
     const std::function<llvm::Register(llvm::MCRegister)> &PhysRegAccessor,
     llvm::DenseMap<llvm::MCRegister, llvm::Register> &PhysRegsToBeOverwritten) {

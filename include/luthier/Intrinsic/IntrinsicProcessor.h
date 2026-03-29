@@ -68,6 +68,8 @@ enum ScalarValueArgument : uint8_t {
   /// Wavefront's private segment buffer; Only applies to targets with
   /// absolute flat scratch or offset flat scratch
   WAVEFRONT_PRIVATE_SEGMENT_BUFFER = 0,
+  /// Marks the first defined scalar value argument
+  SCALAR_VALUE_ARGUMENT_FIRST = WAVEFRONT_PRIVATE_SEGMENT_BUFFER,
   /// 64-bit address of the kernel's argument buffer
   KERNEL_ARG_PTR = 1,
   /// 64-bit Dispatch ID of the kernel

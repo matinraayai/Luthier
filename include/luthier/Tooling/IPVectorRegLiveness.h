@@ -30,8 +30,36 @@ namespace luthier {
 
 class IPPredRegLiveness {
 private:
+  /// \brief Convenience struct to hold on to both pred = 1 and pred = 0 live
+  /// reg sets
+  struct PredLiveRegSet {
+    PredLiveRegSet(const PredLiveRegSet &Other) = delete;
+
+    PredLiveRegSet(PredLiveRegSet &&Other) noexcept = default;
+
+    PredLiveRegSet &operator=(const PredLiveRegSet &Other) = delete;
+
+    PredLiveRegSet &operator=(PredLiveRegSet &&Other) noexcept = default;
+
+    PredLiveRegSet() = default;
+
+    bool operator==(const PredLiveRegSet &Other) const {
+      return ActiveLaneLiveRegs == Other.ActiveLaneLiveRegs &&
+             InactiveLaneLiveRegs == Other.InactiveLaneLiveRegs;
+    }
+
+    bool operator!=(const PredLiveRegSet &Other) const {
+      return !operator==(Other);
+    }
+
+    std::vector<llvm::MachineBasicBlock::RegisterMaskPair> ActiveLaneLiveRegs{};
+
+    std::vector<llvm::MachineBasicBlock::RegisterMaskPair>
+        InactiveLaneLiveRegs{};
+  };
+
   llvm::DenseMap<std::reference_wrapper<const PredicatedMachineBasicBlock>,
-                 std::vector<llvm::MachineBasicBlock::RegisterMaskPair>>
+                 PredLiveRegSet>
       PredMBBLivenessMap{};
 
   /// Add live-out registers of basic block \p MBB to \p LiveUnits.
@@ -41,8 +69,8 @@ private:
   void addBlockLiveIns(const PredicatedMachineBasicBlock &MBB,
                        llvm::LiveRegUnits &LiveUnits) const;
 
-  void addBlockLiveIns(llvm::LivePhysRegs &LPR,
-                       const PredicatedMachineBasicBlock &PredMBB) const;
+  void addBlockLiveIns(const PredicatedMachineBasicBlock &PredMBB,
+                       llvm::LivePhysRegs &LPR) const;
 
   void addLiveOutsNoPristines(llvm::LivePhysRegs &LPR,
                               const PredicatedMachineBasicBlock &MBB) const;

@@ -14,12 +14,11 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file
+/// \file CodeDiscoveryPass.h
 /// Defines the \c CodeDiscoveryPass class.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_CODE_DISCOVERY_PASS_H
 #define LUTHIER_TOOLING_CODE_DISCOVERY_PASS_H
-#include "luthier/Tooling/MachineFunctionEntryPoint.h"
 #include <llvm/IR/PassManager.h>
 
 namespace luthier {

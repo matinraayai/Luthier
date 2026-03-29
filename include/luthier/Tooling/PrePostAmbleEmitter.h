@@ -36,8 +36,6 @@ namespace luthier {
 
 class SVStorageAndLoadLocations;
 
-class LiftedRepresentation;
-
 /// \brief a struct which aggregates information about the preamble code
 /// required to be emitted for each function inside a \c LiftedRepresentation
 struct FunctionPreambleDescriptor {
@@ -57,7 +55,7 @@ struct FunctionPreambleDescriptor {
     unsigned int RequestedAdditionalStackSizeInBytes{0};
     /// A set of kernel arguments that are accessed by the injected payload
     /// functions
-    llvm::SmallDenseSet<KernelArgumentType, 8> RequestedKernelArguments{};
+    llvm::SmallDenseSet<ScalarValueArgument, 8> RequestedKernelArguments{};
   } KernelPreambleSpecs;
 
   /// \brief struct describing the specifications of the preamble code for
@@ -74,7 +72,7 @@ struct FunctionPreambleDescriptor {
     bool RequiresScratchAndStackSetup{false};
     /// A set of kernel arguments accessed by the device function injected
     /// payloads
-    llvm::SmallDenseSet<KernelArgumentType, 8> RequestedKernelArguments{};
+    llvm::SmallDenseSet<ScalarValueArgument, 8> RequestedKernelArguments{};
   } DeviceFunctionPreambleSpecs;
 
   FunctionPreambleDescriptor(const llvm::MachineModuleInfo &TargetMMI,

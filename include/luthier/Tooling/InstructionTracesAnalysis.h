@@ -15,10 +15,9 @@
 //===----------------------------------------------------------------------===//
 /// \file InstructionTracesAnalysis.h
 /// Describes the \c InstructionTracesAnalysis class, a machine function
-/// analysis pass on target modules that provides the list of instructions
+/// analysis pass for target modules that provides the list of instructions
 /// traces discovered for a lifted machine function's entry point, as well as
-/// the address for direct/indirect branches, call instructions, and the direct
-/// branch targets.
+/// the address for the direct branch targets.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_INSTRUCTION_TRACES_ANALYSIS_H
 #define LUTHIER_TOOLING_INSTRUCTION_TRACES_ANALYSIS_H
@@ -107,7 +106,7 @@ private:
   /// trace
   InstructionAddrSet DirectBranchTargets{};
 
-  /// The initial entry point of the trace
+  /// The entry point of the trace
   EntryPoint EP;
 
   explicit InstructionTraces(EntryPoint EP) : EP(EP) {};

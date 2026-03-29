@@ -61,6 +61,12 @@ PredicatedMachineBasicBlock::getLastNonDebugInstr(bool SkipPseudoOp) {
   return end();
 }
 
+bool PredicatedMachineBasicBlock::doesLastInstrModifyPredicate() const {
+  const llvm::TargetRegisterInfo *TRI =
+      getParent().getParent().getMF().getSubtarget().getRegisterInfo();
+  return back().modifiesRegister(llvm::AMDGPU::EXEC, TRI);
+}
+
 void PredicatedMachineBasicBlock::print(llvm::raw_ostream &OS,
                                         unsigned int Indent) const {
   const auto &ST = getParent().getParent().getMF().getSubtarget();
@@ -114,28 +120,61 @@ PredMBBBuilder::BreakDownToPredicatedMBBs(LinearMachineBasicBlock &Parent,
   // The current block being processed in the MBB
   std::reference_wrapper<PredMBBBuilder> CurrentBlock =
       PredMBBAllocator(PredicatedMachineBasicBlock::One);
-  // Set of VectorMBBs that are waiting to be connected to the next non-taken
+  // Set of PredMBBs that are waiting to be connected to the next non-taken
   // block or joined into the next block that starts with a scalar instruction
   llvm::SmallDenseSet<std::reference_wrapper<PredMBBBuilder>>
       BlocksWithHangingEdges{
           PredMBBAllocator(PredicatedMachineBasicBlock::ZeroOrOne)};
 
-  for (auto MI = MBB.instr_begin(), PrevMI = MBB.instr_end(),
-            NextMI = ++MBB.instr_begin();
-       MI != MBB.instr_end(); PrevMI = MI, ++MI,
-            NextMI = NextMI != MBB.instr_end() ? ++NextMI : MBB.instr_end()) {
-    // Include debug instruction in the current block regardless of the
-    // predicate value
+  for (auto MI = MBB.begin(), PrevMI = MBB.end(), NextMI = ++MBB.begin();
+       MI != MBB.end();
+       PrevMI = MI, ++MI, NextMI = NextMI != MBB.end() ? ++NextMI : MBB.end()) {
+    // Include debug and pseudo probe instruction in the current block
+    // regardless of the predicate value
+    // TODO: Do pseudo instructions also need to be ignored here?
     if (MI->isDebugInstr())
       continue;
     // Check if the MI is vector (i.e. not scalar nor lane access),
     // whether it writes to the exec mask, and whether the last MI
     // (if exists) was a scalar instruction
 
-    bool IsVector = isVector(*MI);
+    /// If the current instruction is a bundle, we count it as a vector
+    /// instruction if all instructions in the bundle are vector instructions
+    /// Bundles must either have all scalar/lane access instructions or all
+    /// vector instructions
+
+    auto QueryAllInBundle = [](llvm::MachineBasicBlock::iterator I,
+                               const auto &Query) {
+      llvm::MachineBasicBlock::instr_iterator InstrI = I.getInstrIterator();
+      if (InstrI->isBundle()) {
+        return llvm::all_of(
+            llvm::make_range(++InstrI, llvm::getBundleEnd(InstrI)), Query);
+      }
+      return Query(*InstrI);
+    };
+
+    assert(
+        QueryAllInBundle(MI,
+                         [](const llvm::MachineInstr &I) {
+                           return isVector(I) || I.isDebugInstr();
+                         }) ||
+        QueryAllInBundle(MI,
+                         [](const llvm::MachineInstr &I) {
+                           return isScalar(I) || isLaneAccess(I) ||
+                                  I.isDebugInstr();
+                         }) &&
+            "Instructions in a bundle must either be all vector or all scalar");
+
+    bool IsVector = QueryAllInBundle(MI, [](const llvm::MachineInstr &I) {
+      return isVector(I) || I.isDebugInstr();
+    });
+
     bool WritesExecMask = MI->modifiesRegister(llvm::AMDGPU::EXEC, TRI);
-    bool IsFormerMIScalar = PrevMI != MBB.instr_end() &&
-                            (isScalar(*PrevMI) || isLaneAccess(*PrevMI));
+    bool IsFormerMIScalar =
+        PrevMI != MBB.instr_end() &&
+        QueryAllInBundle(PrevMI, [](const llvm::MachineInstr &I) {
+          return isScalar(I) || isLaneAccess(I) || I.isDebugInstr();
+        });
     if (IsVector && (WritesExecMask || IsFormerMIScalar)) {
       // If the current instruction is a vector inst, and if it writes
       // to the exec mask or if the last instruction was a scalar inst,
@@ -155,9 +194,9 @@ PredMBBBuilder::BreakDownToPredicatedMBBs(LinearMachineBasicBlock &Parent,
       else
         CurrentBlock.get().Out.Instructions = {
             CurrentBlock.get().Out.Instructions.begin(), MI};
-    } else if (!IsVector && !IsFormerMIScalar) {
+    } else if (!IsVector && (!IsFormerMIScalar || WritesExecMask)) {
       // Otherwise, if we observe a scalar instruction, we have to do a "join"
-      // operation: Create a new VectorMBB to replace the current taken block,
+      // operation: Create a new PredMBB to replace the current taken block,
       // and make it the successor of the current taken block. Also make
       // all not taken blocks with hanging edges the predecessor of the new
       // taken block, and then clear the not-taken set
@@ -177,18 +216,6 @@ PredMBBBuilder::BreakDownToPredicatedMBBs(LinearMachineBasicBlock &Parent,
     else
       CurrentBlock.get().Out.Instructions = {
           CurrentBlock.get().Out.Instructions.begin(), NextMI};
-
-    /// If the current MI is a call, create a new block and set it to the
-    /// current taken block
-    /// Since calls are scalar, there aren't any not taken blocks with hanging
-    /// edges we have to worry about here
-    /// We let the IPVectorCFG take care of linking the successors of this
-    /// block according to the MI's metadata
-    if (MI->isCall() && NextMI != MBB.instr_end()) {
-      CurrentBlock = PredMBBAllocator(
-          isVector(*NextMI) ? PredicatedMachineBasicBlock::One
-                            : PredicatedMachineBasicBlock::ZeroOrOne);
-    }
   }
 
   PredMBBBuilder &ExitVectorBlock =

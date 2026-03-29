@@ -43,7 +43,6 @@ public:
 } // namespace
 
 namespace luthier {
-
 /// \brief set of target machine instruction annotations defined so far
 enum TargetMachineInstrAnnotation : uint8_t {
   Tag = 0,

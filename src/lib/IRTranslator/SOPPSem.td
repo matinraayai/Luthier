@@ -170,7 +170,8 @@ def S_SETPRIO_sem : InstSIIntrinsic<S_SETPRIO, int_amdgcn_s_setprio>;
 //   rdna4-instruction-set-architecture.pdf, page 281.
 def S_TRAP_sem : InstSISemantic<S_TRAP> {
   let Semantic = [
-    (int_amdgcn_s_trap (GetNamedOperand $simm16))
+    /// TODO: Maybe handle trap manually, to make s_trap 3 point to HSA debug trap
+    (int_trap)
   ];
 }
 
@@ -191,8 +192,8 @@ def S_TRAP_sem : InstSISemantic<S_TRAP> {
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 254.
 //   rdna4-instruction-set-architecture.pdf, page 287.
 def S_ICACHE_INV_sem : InstSISemantic<S_ICACHE_INV> {
+  /// TODO: Define a Luthier intrinsic for this
   let Semantic = [
-    (int_amdgcn_s_icache_inv)
   ];
 }
 
@@ -261,9 +262,8 @@ def S_DECPERFLEVEL_sem : InstSIIntrinsic<S_DECPERFLEVEL,
 //   rdna4-instruction-set-architecture.pdf, page 286.
 //   (Not present in GCN3.)
 def S_WAKEUP_sem : InstSISemantic<S_WAKEUP> {
-  let Semantic = [
-    (int_amdgcn_s_wakeup)
-  ];
+  /// TODO: Model with Luthier intrinsic
+  let Semantic = [];
 }
 
 //------------------------------------------------------------------------------
@@ -277,9 +277,8 @@ def S_WAKEUP_sem : InstSISemantic<S_WAKEUP> {
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 248.
 //   rdna4-instruction-set-architecture.pdf, page 282.
 def S_DENORM_MODE_sem : InstSISemantic<S_DENORM_MODE> {
-  let Semantic = [
-    (int_amdgcn_s_denorm_mode (GetNamedOperand $simm16))
-  ];
+  /// TODO: Model with Luthier intrinsic
+  let Semantic = [];
 }
 
 // S_ROUND_MODE: Set float rounding mode register.
@@ -289,7 +288,7 @@ def S_DENORM_MODE_sem : InstSISemantic<S_DENORM_MODE> {
 //   (Introduced in GFX11/RDNA3.)
 def S_ROUND_MODE_sem : InstSISemantic<S_ROUND_MODE> {
   let Semantic = [
-    (int_amdgcn_s_round_mode (GetNamedOperand $simm16))
+    /// TODO use LLVM's floating point control instructions
   ];
 }
 
@@ -327,7 +326,7 @@ def S_WAIT_BVHCNT_sem : InstSIIntrinsic<S_WAIT_BVHCNT,
 //   rdna4-instruction-set-architecture.pdf, page 281.
 def S_WAIT_IDLE_sem : InstSISemantic<S_WAIT_IDLE> {
   let Semantic = [
-    (int_amdgcn_s_wait_idle)
+    /// TODO: possibly model with Luthier intrinsic
   ];
 }
 
