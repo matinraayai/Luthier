@@ -53,6 +53,19 @@ def PoisionVal : LLVMConstant<"llvm::PoisonValue::get">;
 // LLVM IR Operation Definitions
 //------------------------------------------------------------------------------
 
+/// Maps to the llvm::FastMathFlags class constructor
+//def FastMathFlags;
+//
+//def FastMathFlagEnums {
+//  int AllowReassoc    = !shl(1, 0);
+//  int NoNaNs          = !shl(1 , 1);
+//  int NoInfs          = !shl(1, 2);
+//  int NoSignedZeros   = !shl(1, 3);
+//  int AllowReciprocal = !shl(1, 4);
+//  int AllowContract   = !shl(1, 5);
+//  int ApproxFunc      = !shl(1, 6);
+//  int FlagEnd         = !shl(1, 7);
+//}
 
 /// Represents LLVM operations used to describe the SI instruction semantics
 /// records
@@ -105,28 +118,6 @@ def LLVMLoad : LLVMOp<"CreateLoad">;
 
 def LLVMStore : LLVMOp<"CreateStore">;
 
-def LLVMAtomicRMW : LLVMOp<"CreateAtomicRMW">;
-
-//------------------------------------------------------------------------------
-// AtomicRMW Operation Enum Values
-//------------------------------------------------------------------------------
-
-class AtomicRMWOp<string op> {
-  string Op = op;
-}
-
-def AtomicRMWAdd : AtomicRMWOp<"Add">;
-def AtomicRMWSub : AtomicRMWOp<"Sub">;
-def AtomicRMWAnd : AtomicRMWOp<"And">;
-def AtomicRMWOr : AtomicRMWOp<"Or">;
-def AtomicRMWXor : AtomicRMWOp<"Xor">;
-def AtomicRMWXchg : AtomicRMWOp<"Xchg">;
-def AtomicRMWMin : AtomicRMWOp<"Min">;
-def AtomicRMWUMin : AtomicRMWOp<"UMin">;
-def AtomicRMWMax : AtomicRMWOp<"Max">;
-def AtomicRMWUMax : AtomicRMWOp<"UMax">;
-def AtomicRMWNand : AtomicRMWOp<"Nand">;
-
 def LLVMBitCast : LLVMOp<"CreateBitCast">;
 
 def LLVMInsertElement : LLVMOp<"CreateInsertElement">;
@@ -163,53 +154,49 @@ def LLVMFPToUI : LLVMOp<"CreateFPToUI">;
 
 def LLVMAShr : LLVMOp<"CreateAShr">;
 
-/// IEEE 754-2008 maxNum: max(x, y) with NaN handling (NaN → other operand)
-/// Maps to IRBuilder::CreateMaxNum (Intrinsic::maxnum)
 def LLVMMaxNum : LLVMOp<"CreateMaxNum">;
 
-/// IEEE 754-2008 minNum: min(x, y) with NaN handling (NaN → other operand)
-/// Maps to IRBuilder::CreateMinNum (Intrinsic::minnum)
 def LLVMMinNum : LLVMOp<"CreateMinNum">;
 
-/// Counts the number of 1 bits in the input value
-/// Maps to IRBuilder::CreateUnaryIntrinsic(Intrinsic::ctpop, val)
-def LLVMCtPop : LLVMOp<"CreateCtPop">;
+def LLVMUnaryIntrinsic : LLVMOp<"CreateUnaryIntrinsic">;
 
-/// C math library ldexp: ldexp(x, exp) = x * 2^exp
-/// Maps to IRBuilder::CreateBinaryIntrinsic(Intrinsic::ldexp, x, exp)
+def LLVMBinaryIntrinsic : LLVMOp<"CreateBinaryIntrinsic">;
+
+def LLVMIntrinsic : LLVMOp<"CreateIntrinsic">;
+
 def LLVMLdexp : LLVMOp<"CreateLdexp">;
 
-/// Floating-point ceiling: ceil(x) = smallest integer >= x
-/// Maps to IRBuilder::CreateUnaryIntrinsic(Intrinsic::ceil, val)
-def LLVMFCeil : LLVMOp<"CreateFCeil">;
+def LLVMAtomicRMW : LLVMOp<"CreateAtomicRMW">;
 
-/// Floating-point floor: floor(x) = largest integer <= x
-/// Maps to IRBuilder::CreateUnaryIntrinsic(Intrinsic::floor, val)
-def LLVMFFloor : LLVMOp<"CreateFFloor">;
+//------------------------------------------------------------------------------
+// AtomicRMW Operation Enum Values
+//------------------------------------------------------------------------------
 
-/// Floating-point truncation toward zero (NOT integer truncation)
-/// Maps to IRBuilder::CreateUnaryIntrinsic(Intrinsic::trunc, val)
-def LLVMFTrunc : LLVMOp<"CreateFTrunc">;
+class AtomicRMWOp<string op> {
+  string Op = op;
+}
 
-/// Round to nearest even (banker's rounding)
-/// Maps to IRBuilder::CreateUnaryIntrinsic(Intrinsic::roundeven, val)
-def LLVMRoundEven : LLVMOp<"CreateRoundEven">;
+def AtomicRMWAdd : AtomicRMWOp<"Add">;
 
-/// Reverses the bit order of an integer value
-/// Maps to IRBuilder::CreateUnaryIntrinsic(Intrinsic::bitreverse, val)
-def LLVMBitReverse : LLVMOp<"CreateBitReverse">;
+def AtomicRMWSub : AtomicRMWOp<"Sub">;
 
-/// Count leading zeros. Returns the input bitwidth if the input is zero.
-/// Maps to IRBuilder::CreateBinaryIntrinsic(Intrinsic::ctlz, val, is_zero_poison)
-def LLVMCtlz : LLVMOp<"CreateCtlz">;
+def AtomicRMWAnd : AtomicRMWOp<"And">;
 
-/// Count trailing zeros. Returns the input bitwidth if the input is zero.
-/// Maps to IRBuilder::CreateBinaryIntrinsic(Intrinsic::cttz, val, is_zero_poison)
-def LLVMCttz : LLVMOp<"CreateCttz">;
+def AtomicRMWOr : AtomicRMWOp<"Or">;
 
-/// Floating-point square root
-/// Maps to IRBuilder::CreateUnaryIntrinsic(Intrinsic::sqrt, val)
-def LLVMFSqrt : LLVMOp<"CreateFSqrt">;
+def AtomicRMWXor : AtomicRMWOp<"Xor">;
+
+def AtomicRMWXchg : AtomicRMWOp<"Xchg">;
+
+def AtomicRMWMin : AtomicRMWOp<"Min">;
+
+def AtomicRMWUMin : AtomicRMWOp<"UMin">;
+
+def AtomicRMWMax : AtomicRMWOp<"Max">;
+
+def AtomicRMWUMax : AtomicRMWOp<"UMax">;
+
+def AtomicRMWNand : AtomicRMWOp<"Nand">;
 
 //------------------------------------------------------------------------------
 // InstSI-specific semantic operations
@@ -246,22 +233,16 @@ def GetVal;
 def hasModifierSet;
 
 /// Defined here because AMDGPU.td records don't define it
-def region_ptr_type : LLVMQualPointerType<2>;
-
-/// Flat address space (generic pointer)
-def flat_ptr_type : LLVMQualPointerType<0>;
-
-/// Buffer address space (resource pointer)
-def buffer_ptr_type : LLVMQualPointerType<8>;
-
-/// Buffer fat pointer address space
-def buffer_fat_ptr_type : LLVMQualPointerType<9>;
-
-/// Global address space
-def global_ptr_type : LLVMQualPointerType<1>;
+def region_ptr_ty : LLVMQualPointerType<2>;
 
 /// Scratch address space
-def scratch_ptr_type : LLVMQualPointerType<5>;
+def scratch_ptr_ty : LLVMQualPointerType<5>;
+
+/// Buffer address space (resource pointer)
+def buffer_ptr_ty : LLVMQualPointerType<8>;
+
+/// Buffer fat pointer address space
+def buffer_fat_ptr_ty : LLVMQualPointerType<9>;
 
 //------------------------------------------------------------------------------
 // Complex LLVM IR Operation Definitions (i.e. low-level binary operations that
@@ -275,56 +256,56 @@ class LLVMNot<dag val, LLVMType type> {
 
 /// Breaks down an input value of type inputType into a set of
 /// sub values
-class LLVMBreakdownValue<dag input, LLVMType inputType, int numEls> {
-  assert !eq(inputType.VT.nElem, 1), "inputType must be a scalar value";
-  assert !eq(!or(inputType.VT.isFP, inputType.VT.isInteger)),
-         "inputType must either be a floating point or an integer";
-  dag BitcastedVal = (LLVMBitCast:$bitcast input,
-                       !cast<LLVMType>(
-                        llvm_#!if(!head(types).VT.isFP, "f", "i")
-                           #numEls
-                           #_ty
-                        )
-                      );
-  list<dag> BrokenDownVals = !foreach(i, !range(numEls),
-    (LLVMExtractElement $bitcast, i));
-}
+//class LLVMBreakdownValue<dag input, LLVMType inputType, int numEls> {
+//  assert !eq(inputType.VT.nElem, 1), "inputType must be a scalar value";
+//  assert !or(inputType.VT.isFP, inputType.VT.isInteger),
+//         "inputType must either be a floating point or an integer";
+//  dag BitcastedVal = (LLVMBitCast:$bitcast input,
+//                       !cast<LLVMType>(
+//                        llvm_#!if(!head(types).VT.isFP, "f", "i")
+//                           #numEls
+//                           #_ty
+//                        )
+//                      );
+//  list<dag> BrokenDownVals = !foreach(i, !range(numEls),
+//    (LLVMExtractElement $bitcast, i));
+//}
 
 /// Merges a set of dag operands together into a single value
 /// Input values must be the same type (scalar integer or
 /// floating point)
 /// For merging two types that are not the same, they must be
 /// broken down into a common type first manually
-class LLVMMergeValue<list<dag> ins, LLVMType type> {
-  assert !not(!empty(ins)), "argument list shouldn't be empty";
-  assert !eq(type.VT.nElem, 1), "type must be a scalar";
-  assert !or(type.VT.isFP, type.VT.isInteger),
-         "type must be a floating point or scalar";
-
-
-  /// The output type is a floating point or an integer, with its
-  /// size being the aggregate of all input types
-  LLVMType OutputType =
-    !cast<LLVMType>(llvm_#!if(type.VT.isFP, "f", "i")#
-                          !mul(!size(ins), type.VT.Size)#_ty);
-  /// Type of vector the values will be inserted to before being
-  /// casted to the final scalar
-  LLVMType MergeVectorType =
-    !cast<LLVMType>(llvm_v#!size(ins)
-                          #_#
-                          !if(!head(types).VT.isFP, "f", "i")#
-                          type.VT.Size
-                          #_ty
-                    );
-
-  list<dag> Op = !listconcat(
-    [(LLVMInsertElement:$mergevalTmp
-      GreatestCommonValType<types>.ret, !head(ins)), 0],
-    !foreach(idx, !range(1, !size(types)),
-      (LLVMInsertElement:$mergevalTmp $mergevalTmp, ins[idx], idx)),
-    [(LLVMBitCast $mergevalTmp, OutputType)]
-  );
-}
+//class LLVMMergeValue<list<dag> ins, LLVMType type> {
+//  assert !not(!empty(ins)), "argument list shouldn't be empty";
+//  assert !eq(type.VT.nElem, 1), "type must be a scalar";
+//  assert !or(type.VT.isFP, type.VT.isInteger),
+//         "type must be a floating point or scalar";
+//
+//
+//  /// The output type is a floating point or an integer, with its
+//  /// size being the aggregate of all input types
+//  LLVMType OutputType =
+//    !cast<LLVMType>(llvm_#!if(type.VT.isFP, "f", "i")#
+//                          !mul(!size(ins), type.VT.Size)#_ty);
+//  /// Type of vector the values will be inserted to before being
+//  /// casted to the final scalar
+//  LLVMType MergeVectorType =
+//    !cast<LLVMType>(llvm_v#!size(ins)
+//                          #_#
+//                          !if(!head(types).VT.isFP, "f", "i")#
+//                          type.VT.Size
+//                          #_ty
+//                    );
+//
+//  list<dag> Op = !listconcat(
+//    [(LLVMInsertElement:$mergevalTmp
+//      GreatestCommonValType<types>.ret, !head(ins)), 0],
+//    !foreach(idx, !range(1, !size(types)),
+//      (LLVMInsertElement:$mergevalTmp $mergevalTmp, ins[idx], idx)),
+//    [(LLVMBitCast $mergevalTmp, OutputType)]
+//  );
+//}
 
 class LLVMExtractValueConstIdx<dag val, LLVMType subValType, int idx> {
   assert !gt(subValType.VT.nElem, 1), "subValType must be a vector type";
@@ -353,9 +334,9 @@ class LLVMExtractBitsIntStartIntNumBits<dag val,
                                         LLVMType inputType,
                                         bit isSigned, int startIdx,
                                         int numBits = 1> {
-  assert !lt(inputType.VT.nElem, startIdx), "Start index must be less than the size of the element type";
-  assert !eq(type.VT.nElem, 1), "type must be a scalar";
-  assert !lt(inputType.VT.nElem, !add(startIdx, numBits)), "Total number of bits requested is out of range";
+  assert !lt(startIdx, inputType.VT.Size), "Start index must be less than the size of the element type";
+  assert !eq(inputType.VT.nElem, 1), "type must be a scalar";
+  assert !lt(!add(startIdx, numBits), inputType.VT.Size), "Total number of bits requested is out of range";
   defvar rightShiftOp = !if(isSigned, LLVMAShr, LLVMLShr);
 
   dag Op = !if(!eq(numBits, 1),
@@ -371,18 +352,18 @@ class LLVMExtractBitsDagStartDagNumBits<dag val, LLVMType inputType, bit isSigne
 }
 
 class LLVMExtractBitsIntStartDagNumBits<dag val, LLVMType inputType, bit isSigned, int startIdx, dag numBits> {
-  assert !eq(type.VT.nElem, 1), "type must be a scalar";
+  assert !eq(inputType.VT.nElem, 1), "type must be a scalar";
   defvar rightShiftOp = !if(isSigned, LLVMAShr, LLVMLShr);
   dag Op = (LLVMAnd (rightShiftOp val, (ConstantInt inputType, startIdx)),
                     (LLVMSub (LLVMShl (ConstantInt inputType, 1), numBits),
                                       (ConstantInt inputType, 1)));
 }
 
-class LLVMExtractBitsDagStartIntNumBits<dag val, LLVMType inputType, dag startIdx, int numBits = 1> {
-  assert !eq(type.VT.nElem, 1), "type must be a scalar";
-  defvar rightShiftOp = !if(isSigned, LLVMAShr, LLVMLShr);
-  dag Op = !if(!eq(numBits, 1),
-             (LLVMAnd (rightShiftOp val, (ConstantInt inputType, startIdx)),
-                                         (ConstantInt inputType, !sub(!shl(1, numBits), 1))),
-             (LLVMAnd (rightShiftOp val, (ConstantInt inputType, startIdx))));
-}
+//class LLVMExtractBitsDagStartIntNumBits<dag val, LLVMType inputType, dag startIdx, int numBits = 1> {
+//  assert !eq(inputType.VT.nElem, 1), "type must be a scalar";
+//  defvar rightShiftOp = !if(isSigned, LLVMAShr, LLVMLShr);
+//  dag Op = !if(!eq(numBits, 1),
+//             (LLVMAnd (rightShiftOp val, (ConstantInt inputType, startIdx)),
+//                                         (ConstantInt inputType, !sub(!shl(1, numBits), 1))),
+//             (LLVMAnd (rightShiftOp val, (ConstantInt inputType, startIdx))));
+//}
