@@ -33,6 +33,7 @@
 #define LUTHIER_TBLGEN_SI_INSTR_SEMANTICS_EMITTER_HPP
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/StringMap.h>
+#include <llvm/Support/SMLoc.h>
 #include <string>
 
 namespace llvm {
@@ -63,9 +64,6 @@ private:
 
   /// Map from DefVal names to their C++ variable names.
   llvm::StringMap<std::string> DefValMap;
-
-  /// Reset per-function state.
-  void resetFunctionState();
 
   /// Generate a fresh temporary variable name.
   std::string freshTmp();
@@ -99,14 +97,12 @@ private:
 
   /// Emit code for a top-level semantic statement (SetNamedOperand,
   /// ImplicitDef, DefVal, or a bare store/call).
-  void emitSemanticStatement(llvm::raw_ostream &OS, const llvm::DagInit *Dag,
-                             llvm::StringRef Indent);
+  void emitSemanticStatement(llvm::raw_ostream &OS, const llvm::Init *Stmt,
+                             llvm::ArrayRef<llvm::SMLoc> Loc,
+                             unsigned int Indent);
 
   /// Map an LLVMType tablegen name to its C++ IRBuilder type getter.
   static std::string getTypeExpr(llvm::StringRef TypeName);
-
-  /// Map an LLVMOp tablegen name to its IRBuilder method name.
-  static std::string getIRBuilderMethod(llvm::StringRef OpName);
 
   /// Map a CmpInst predicate name to its C++ enum value.
   static std::string getCmpPredicate(llvm::StringRef PredName);

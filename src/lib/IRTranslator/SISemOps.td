@@ -176,27 +176,87 @@ class AtomicRMWOp<string op> {
   string Op = op;
 }
 
-def AtomicRMWAdd : AtomicRMWOp<"Add">;
+def AtomicRMWAdd : AtomicRMWOp<"llvm::AtomicRMWInst::Add">;
 
-def AtomicRMWSub : AtomicRMWOp<"Sub">;
+def AtomicRMWSub : AtomicRMWOp<"llvm::AtomicRMWInst::Sub">;
 
-def AtomicRMWAnd : AtomicRMWOp<"And">;
+def AtomicRMWAnd : AtomicRMWOp<"llvm::AtomicRMWInst::And">;
 
-def AtomicRMWOr : AtomicRMWOp<"Or">;
+def AtomicRMWOr : AtomicRMWOp<"llvm::AtomicRMWInst::Or">;
 
-def AtomicRMWXor : AtomicRMWOp<"Xor">;
+def AtomicRMWXor : AtomicRMWOp<"llvm::AtomicRMWInst::Xor">;
 
-def AtomicRMWXchg : AtomicRMWOp<"Xchg">;
+def AtomicRMWXchg : AtomicRMWOp<"llvm::AtomicRMWInst::Xchg">;
 
-def AtomicRMWMin : AtomicRMWOp<"Min">;
+def AtomicRMWMin : AtomicRMWOp<"llvm::AtomicRMWInst::Min">;
 
-def AtomicRMWUMin : AtomicRMWOp<"UMin">;
+def AtomicRMWUMin : AtomicRMWOp<"llvm::AtomicRMWInst::UMin">;
 
-def AtomicRMWMax : AtomicRMWOp<"Max">;
+def AtomicRMWMax : AtomicRMWOp<"llvm::AtomicRMWInst::Max">;
 
-def AtomicRMWUMax : AtomicRMWOp<"UMax">;
+def AtomicRMWUMax : AtomicRMWOp<"llvm::AtomicRMWInst::UMax">;
 
-def AtomicRMWNand : AtomicRMWOp<"Nand">;
+def AtomicRMWNand : AtomicRMWOp<"llvm::AtomicRMWInst::Nand">;
+
+//------------------------------------------------------------------------------
+// Comparison Predicates
+//------------------------------------------------------------------------------
+
+class LLVMCmpPredicate<string cc> {
+  string Code = cc;
+}
+
+def LLVMFCmpFALSE : LLVMCmpPredicate<"llvm::CmpInst::FCMP_FALSE">;
+
+def LLVMFCmpOEQ : LLVMCmpPredicate<"llvm::CmpInst::FCMP_OEQ">;
+
+def LLVMFCmpOGT : LLVMCmpPredicate<"llvm::CmpInst::FCMP_OGT">;
+
+def LLVMFCmpOGE : LLVMCmpPredicate<"llvm::CmpInst::FCMP_OGE">;
+
+def LLVMFCmpOLT : LLVMCmpPredicate<"llvm::CmpInst::FCMP_OLT">;
+
+def LLVMFCmpOLE : LLVMCmpPredicate<"llvm::CmpInst::FCMP_OLE">;
+
+def LLVMFCmpONE : LLVMCmpPredicate<"llvm::CmpInst::FCMP_ONE">;
+
+def LLVMFCmpORD : LLVMCmpPredicate<"llvm::CmpInst::FCMP_ORD">;
+
+def LLVMFCmpUNO : LLVMCmpPredicate<"llvm::CmpInst::FCMP_UNO">;
+
+def LLVMFCmpUEQ : LLVMCmpPredicate<"llvm::CmpInst::FCMP_UEQ">;
+
+def LLVMFCmpUGT : LLVMCmpPredicate<"llvm::CmpInst::FCMP_UGT">;
+
+def LLVMFCmpUGE : LLVMCmpPredicate<"llvm::CmpInst::FCMP_UGE">;
+
+def LLVMFCmpULT : LLVMCmpPredicate<"llvm::CmpInst::FCMP_ULT">;
+
+def LLVMFCmpULE : LLVMCmpPredicate<"llvm::CmpInst::FCMP_ULE">;
+
+def LLVMFCmpUNE : LLVMCmpPredicate<"llvm::CmpInst::FCMP_UNE">;
+
+def LLVMFCmpTrue : LLVMCmpPredicate<"llvm::CmpInst::FCMP_TRUE">;
+
+def LLVMICmpEQ : LLVMCmpPredicate<"llvm::CmpInst::ICMP_EQ">;
+
+def LLVMICmpNE : LLVMCmpPredicate<"llvm::CmpInst::ICMP_NE">;
+
+def LLVMICmpUGT : LLVMCmpPredicate<"llvm::CmpInst::ICMP_UGT">;
+
+def LLVMICmpUGE : LLVMCmpPredicate<"llvm::CmpInst::ICMP_UGE">;
+
+def LLVMICmpULT : LLVMCmpPredicate<"llvm::CmpInst::ICMP_ULT">;
+
+def LLVMICmpULE : LLVMCmpPredicate<"llvm::CmpInst::ICMP_ULE">;
+
+def LLVMICmpSGT : LLVMCmpPredicate<"llvm::CmpInst::ICMP_SGT">;
+
+def LLVMICmpSGE : LLVMCmpPredicate<"llvm::CmpInst::ICMP_SGE">;
+
+def LLVMICmpSLT : LLVMCmpPredicate<"llvm::CmpInst::ICMP_SLT">;
+
+def LLVMICmpSLE : LLVMCmpPredicate<"llvm::CmpInst::ICMP_SLE">;
 
 //------------------------------------------------------------------------------
 // InstSI-specific semantic operations
@@ -243,6 +303,9 @@ def buffer_ptr_ty : LLVMQualPointerType<8>;
 
 /// Buffer fat pointer address space
 def buffer_fat_ptr_ty : LLVMQualPointerType<9>;
+
+/// 3 x f16 not defined in LLVM
+def llvm_v3f16_ty      : LLVMType<v3f16>;
 
 //------------------------------------------------------------------------------
 // Complex LLVM IR Operation Definitions (i.e. low-level binary operations that

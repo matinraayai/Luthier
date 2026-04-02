@@ -3370,7 +3370,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWAP
       (ConstantInt llvm_i32_ty, 0), (GetNamedOperand $offset),
 
       (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3415,7 +3415,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWA
       (ConstantInt llvm_i32_ty, 0), $total_offset,
 
       (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3460,7 +3460,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CM
       (ConstantInt llvm_i32_ty, 0), $total_offset,
 
       (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3501,7 +3501,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPS
       (ConstantInt llvm_i32_ty, 0), (GetNamedOperand $offset),
 
       (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3546,7 +3546,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMP
       (ConstantInt llvm_i32_ty, 0), $total_offset,
 
       (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3591,7 +3591,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC
       (ConstantInt llvm_i32_ty, 0), $total_offset,
 
       (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3645,7 +3645,7 @@ def S_LOAD_DWORDX2_IMM_sem : InstSISemantic<S_LOAD_DWORDX2_IMM> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (GetNamedOperand $offset))),
     (DefVal $tmp, (LLVMLoad llvm_v2i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3654,7 +3654,7 @@ def S_LOAD_DWORDX2_SGPR_sem : InstSISemantic<S_LOAD_DWORDX2_SGPR> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (GetNamedOperand $soffset))),
     (DefVal $tmp, (LLVMLoad llvm_v2i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3663,7 +3663,7 @@ def S_LOAD_DWORDX2_SGPR_IMM_sem : InstSISemantic<S_LOAD_DWORDX2_SGPR_IMM> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (LLVMAdd (GetNamedOperand $offset), (GetNamedOperand $soffset)))),
     (DefVal $tmp, (LLVMLoad llvm_v2i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3672,7 +3672,7 @@ def S_LOAD_DWORDX3_IMM_sem : InstSISemantic<S_LOAD_DWORDX3_IMM> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (GetNamedOperand $offset))),
     (DefVal $tmp, (LLVMLoad llvm_v3i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3681,7 +3681,7 @@ def S_LOAD_DWORDX3_SGPR_sem : InstSISemantic<S_LOAD_DWORDX3_SGPR> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (GetNamedOperand $soffset))),
     (DefVal $tmp, (LLVMLoad llvm_v3i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3690,7 +3690,7 @@ def S_LOAD_DWORDX3_SGPR_IMM_sem : InstSISemantic<S_LOAD_DWORDX3_SGPR_IMM> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (LLVMAdd (GetNamedOperand $offset), (GetNamedOperand $soffset)))),
     (DefVal $tmp, (LLVMLoad llvm_v3i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3699,7 +3699,7 @@ def S_LOAD_DWORDX4_IMM_sem : InstSISemantic<S_LOAD_DWORDX4_IMM> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (GetNamedOperand $offset))),
     (DefVal $tmp, (LLVMLoad llvm_v4i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3708,7 +3708,7 @@ def S_LOAD_DWORDX4_SGPR_sem : InstSISemantic<S_LOAD_DWORDX4_SGPR> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (GetNamedOperand $soffset))),
     (DefVal $tmp, (LLVMLoad llvm_v4i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3717,7 +3717,7 @@ def S_LOAD_DWORDX4_SGPR_IMM_sem : InstSISemantic<S_LOAD_DWORDX4_SGPR_IMM> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (LLVMAdd (GetNamedOperand $offset), (GetNamedOperand $soffset)))),
     (DefVal $tmp, (LLVMLoad llvm_v4i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3726,7 +3726,7 @@ def S_LOAD_DWORDX8_IMM_sem : InstSISemantic<S_LOAD_DWORDX8_IMM> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (GetNamedOperand $offset))),
     (DefVal $tmp, (LLVMLoad llvm_v8i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3735,7 +3735,7 @@ def S_LOAD_DWORDX8_SGPR_sem : InstSISemantic<S_LOAD_DWORDX8_SGPR> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (GetNamedOperand $soffset))),
     (DefVal $tmp, (LLVMLoad llvm_v8i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3744,7 +3744,7 @@ def S_LOAD_DWORDX8_SGPR_IMM_sem : InstSISemantic<S_LOAD_DWORDX8_SGPR_IMM> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (LLVMAdd (GetNamedOperand $offset), (GetNamedOperand $soffset)))),
     (DefVal $tmp, (LLVMLoad llvm_v8i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3753,7 +3753,7 @@ def S_LOAD_DWORDX16_IMM_sem : InstSISemantic<S_LOAD_DWORDX16_IMM> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (GetNamedOperand $offset))),
     (DefVal $tmp, (LLVMLoad llvm_v16i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3762,7 +3762,7 @@ def S_LOAD_DWORDX16_SGPR_sem : InstSISemantic<S_LOAD_DWORDX16_SGPR> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (GetNamedOperand $soffset))),
     (DefVal $tmp, (LLVMLoad llvm_v16i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3771,7 +3771,7 @@ def S_LOAD_DWORDX16_SGPR_IMM_sem : InstSISemantic<S_LOAD_DWORDX16_SGPR_IMM> {
     (DefVal $tmp_addr, (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $sbase), global_ptr_ty),
                                (LLVMAdd (GetNamedOperand $offset), (GetNamedOperand $soffset)))),
     (DefVal $tmp, (LLVMLoad llvm_v16i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3894,7 +3894,7 @@ def S_SCRATCH_LOAD_DWORDX2_IMM_sem : InstSISemantic<S_SCRATCH_LOAD_DWORDX2_IMM> 
 
                                    (GetNamedOperand $offset))),
     (DefVal $tmp, (LLVMLoad llvm_v2i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3906,7 +3906,7 @@ def S_SCRATCH_LOAD_DWORDX2_SGPR_sem : InstSISemantic<S_SCRATCH_LOAD_DWORDX2_SGPR
 
                                    $soff_scaled)),
     (DefVal $tmp, (LLVMLoad llvm_v2i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3920,7 +3920,7 @@ def S_SCRATCH_LOAD_DWORDX2_SGPR_IMM_sem : InstSISemantic<S_SCRATCH_LOAD_DWORDX2_
 
                                    $total_offset)),
     (DefVal $tmp, (LLVMLoad llvm_v2i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3930,7 +3930,7 @@ def S_SCRATCH_LOAD_DWORDX4_IMM_sem : InstSISemantic<S_SCRATCH_LOAD_DWORDX4_IMM> 
 
                                    (GetNamedOperand $offset))),
     (DefVal $tmp, (LLVMLoad llvm_v4i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3942,7 +3942,7 @@ def S_SCRATCH_LOAD_DWORDX4_SGPR_sem : InstSISemantic<S_SCRATCH_LOAD_DWORDX4_SGPR
 
                                    $soff_scaled)),
     (DefVal $tmp, (LLVMLoad llvm_v4i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -3956,7 +3956,7 @@ def S_SCRATCH_LOAD_DWORDX4_SGPR_IMM_sem : InstSISemantic<S_SCRATCH_LOAD_DWORDX4_
 
                                    $total_offset)),
     (DefVal $tmp, (LLVMLoad llvm_v4i32_ty, $tmp_addr)),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 

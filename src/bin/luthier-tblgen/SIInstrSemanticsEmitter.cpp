@@ -1,6 +1,5 @@
-//===- SIInstrSemanticsEmitter.cpp - SI Instruction Semantics Emitter
-//------===//
-// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+//===- SIInstrSemanticsEmitter.cpp - SI Instruction Semantics Emitter -----===//
+// Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,12 +14,10 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file
-/// Implementation of the TableGen backend that emits C++ code to translate
-/// AMDGPU MachineInstrs into LLVM IR based on InstSISemantic and
-/// InstSIIntrinsic records.
+/// \file SIInstrSemanticsEmitter.cpp
+/// TableGen backend that emits C++ code to translate AMDGPU \c MachineInstr
+/// instances into LLVM IR based on their \c InstSISemantic records.
 //===----------------------------------------------------------------------===//
-
 #include "SIInstrSemanticsEmitter.hpp"
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringExtras.h>
@@ -28,18 +25,16 @@
 #include <llvm/TableGen/Error.h>
 #include <llvm/TableGen/Record.h>
 
-using namespace llvm;
-
 namespace luthier {
 
 //===----------------------------------------------------------------------===//
 // Utility: Map tablegen names to C++ expressions
 //===----------------------------------------------------------------------===//
 
-std::string SIInstrSemanticsEmitter::getTypeExpr(StringRef TypeName) {
+std::string SIInstrSemanticsEmitter::getTypeExpr(llvm::StringRef TypeName) {
   // Strip "llvm_" prefix and "_ty" suffix if present
   // e.g., "llvm_i32_ty" -> "i32", "llvm_float_ty" -> "float"
-  return StringSwitch<std::string>(TypeName)
+  return llvm::StringSwitch<std::string>(TypeName)
       .Case("llvm_i1_ty", "Builder.getInt1Ty()")
       .Case("llvm_i8_ty", "Builder.getInt8Ty()")
       .Case("llvm_i16_ty", "Builder.getInt16Ty()")
@@ -65,60 +60,8 @@ std::string SIInstrSemanticsEmitter::getTypeExpr(StringRef TypeName) {
       .Default(formatv("/* unknown type: {0} */", TypeName));
 }
 
-std::string SIInstrSemanticsEmitter::getIRBuilderMethod(StringRef OpName) {
-  return StringSwitch<std::string>(OpName)
-      .Case("LLVMAdd", "CreateAdd")
-      .Case("LLVMSub", "CreateSub")
-      .Case("LLVMMul", "CreateMul")
-      .Case("LLVMUDiv", "CreateUDiv")
-      .Case("LLVMSDiv", "CreateSDiv")
-      .Case("LLVMURem", "CreateURem")
-      .Case("LLVMSRem", "CreateSRem")
-      .Case("LLVMXor", "CreateXor")
-      .Case("LLVMOr", "CreateOr")
-      .Case("LLVMAnd", "CreateAnd")
-      .Case("LLVMLShr", "CreateLShr")
-      .Case("LLVMShl", "CreateShl")
-      .Case("LLVMAShr", "CreateAShr")
-      .Case("LLVMZExt", "CreateZExt")
-      .Case("LLVMSExt", "CreateSExt")
-      .Case("LLVMTrunc", "CreateTrunc")
-      .Case("LLVMSelect", "CreateSelect")
-      .Case("LLVMBitCast", "CreateBitCast")
-      .Case("LLVMFAdd", "CreateFAdd")
-      .Case("LLVMFSub", "CreateFSub")
-      .Case("LLVMFMul", "CreateFMul")
-      .Case("LLVMFDiv", "CreateFDiv")
-      .Case("LLVMFRem", "CreateFRem")
-      .Case("LLVMFMA", "CreateFMA")
-      .Case("LLVMFNeg", "CreateFNeg")
-      .Case("LLVMFPTrunc", "CreateFPTrunc")
-      .Case("LLVMFPExt", "CreateFPExt")
-      .Case("LLVMSIToFP", "CreateSIToFP")
-      .Case("LLVMUIToFP", "CreateUIToFP")
-      .Case("LLVMFPToSI", "CreateFPToSI")
-      .Case("LLVMFPToUI", "CreateFPToUI")
-      .Case("LLVMIntToPtr", "CreateIntToPtr")
-      .Case("LLVMPtrAdd", "CreatePtrAdd")
-      .Case("LLVMInsertElement", "CreateInsertElement")
-      .Case("LLVMExtractElement", "CreateExtractElement")
-      .Case("LLVMMaxNum", "CreateMaxNum")
-      .Case("LLVMMinNum", "CreateMinNum")
-      .Case("LLVMCtPop", "CreateCtPop")
-      .Case("LLVMLdexp", "CreateLdexp")
-      .Case("LLVMFCeil", "CreateFCeil")
-      .Case("LLVMFFloor", "CreateFFloor")
-      .Case("LLVMFTrunc", "CreateFTrunc")
-      .Case("LLVMRoundEven", "CreateRoundEven")
-      .Case("LLVMBitReverse", "CreateBitReverse")
-      .Case("LLVMCtlz", "CreateCtlz")
-      .Case("LLVMCttz", "CreateCttz")
-      .Case("LLVMFSqrt", "CreateFSqrt")
-      .Default("");
-}
-
-std::string SIInstrSemanticsEmitter::getCmpPredicate(StringRef PredName) {
-  return StringSwitch<std::string>(PredName)
+std::string SIInstrSemanticsEmitter::getCmpPredicate(llvm::StringRef PredName) {
+  return llvm::StringSwitch<std::string>(PredName)
       // Integer predicates
       .Case("SETEQ", "llvm::CmpInst::ICMP_EQ")
       .Case("SETNE", "llvm::CmpInst::ICMP_NE")
@@ -146,11 +89,11 @@ std::string SIInstrSemanticsEmitter::getCmpPredicate(StringRef PredName) {
       .Case("SETUGE", "llvm::CmpInst::FCMP_UGE")
       .Case("SETULT", "llvm::CmpInst::FCMP_ULT")
       .Case("SETULE", "llvm::CmpInst::FCMP_ULE")
-      .Default(formatv("/* unknown predicate: {0} */", PredName));
+      .Default(llvm::formatv("/* unknown predicate: {0} */", PredName));
 }
 
-std::string SIInstrSemanticsEmitter::getAtomicRMWOp(StringRef OpName) {
-  return StringSwitch<std::string>(OpName)
+std::string SIInstrSemanticsEmitter::getAtomicRMWOp(llvm::StringRef OpName) {
+  return llvm::StringSwitch<std::string>(OpName)
       .Case("AtomicRMWAdd", "llvm::AtomicRMWInst::Add")
       .Case("AtomicRMWSub", "llvm::AtomicRMWInst::Sub")
       .Case("AtomicRMWAnd", "llvm::AtomicRMWInst::And")
@@ -162,347 +105,191 @@ std::string SIInstrSemanticsEmitter::getAtomicRMWOp(StringRef OpName) {
       .Case("AtomicRMWMax", "llvm::AtomicRMWInst::Max")
       .Case("AtomicRMWUMax", "llvm::AtomicRMWInst::UMax")
       .Case("AtomicRMWNand", "llvm::AtomicRMWInst::Nand")
-      .Default(formatv("/* unknown AtomicRMWOp: {0} */", OpName));
+      .Default(llvm::formatv("/* unknown AtomicRMWOp: {0} */", OpName));
 }
 
 //===----------------------------------------------------------------------===//
 // Per-function state management
 //===----------------------------------------------------------------------===//
 
-void SIInstrSemanticsEmitter::resetFunctionState() {
-  TmpCounter = 0;
-  DefValMap.clear();
-}
-
 std::string SIInstrSemanticsEmitter::freshTmp() {
-  return formatv("t{0}", TmpCounter++);
+  return llvm::formatv("t{0}", TmpCounter++);
 }
 
 //===----------------------------------------------------------------------===//
 // DAG expression code emitter
 //===----------------------------------------------------------------------===//
 
-std::string SIInstrSemanticsEmitter::emitDagExpr(raw_ostream &OS,
-                                                 const DagInit *Dag,
-                                                 StringRef Indent) {
-  const Init *Op = Dag->getOperator();
-  StringRef OpName;
-  if (const auto *DI = dyn_cast<DefInit>(Op))
-    OpName = DI->getDef()->getName();
-  else
-    PrintFatalError("DAG operator is not a def");
-
-  // --- GetNamedOperand $name ---
-  if (OpName == "GetNamedOperand") {
-    StringRef ArgName = Dag->getArgNameStr(0);
-    std::string Tmp = freshTmp();
-    OS << Indent << "llvm::Value *" << Tmp << " = &Tracker.getOperandAsValue(\n"
-       << Indent
-       << "    *llvm::SIInstrInfo::getNamedOperand(MI, "
-          "llvm::AMDGPU::OpName::"
-       << ArgName << "));\n";
-    return Tmp;
-  }
-
-  // --- GetVal $name ---
-  if (OpName == "GetVal") {
-    StringRef ArgName = Dag->getArgNameStr(0);
-    auto It = DefValMap.find(ArgName);
-    if (It == DefValMap.end())
-      PrintFatalError("GetVal references undefined DefVal: " + ArgName);
-    return It->second;
-  }
-
-  // --- ImplicitUse REG ---
-  if (OpName == "ImplicitUse") {
-    // First arg is a register def (e.g., VCC, EXEC, SCC)
-    const auto *RegDef = dyn_cast<DefInit>(Dag->getArg(0));
-    StringRef RegName = RegDef->getDef()->getName();
-    std::string Tmp = freshTmp();
-    OS << Indent << "llvm::Value *" << Tmp
-       << " = &Tracker.getImplicitRegAsValue(MI, llvm::AMDGPU::" << RegName
-       << ");\n";
-    return Tmp;
-  }
-
-  // --- ConstantInt type, value ---
-  if (OpName == "ConstantInt") {
-    // (ConstantInt type, intval)
-    const auto *TypeDef = dyn_cast<DefInit>(Dag->getArg(0));
-    StringRef TypeName = TypeDef->getDef()->getName();
-    std::string TypeExpr = getTypeExpr(TypeName);
-    const auto *ValInit = Dag->getArg(1);
-    std::string ValStr;
-    if (const auto *II = dyn_cast<IntInit>(ValInit))
-      ValStr = std::to_string(II->getValue());
-    else
-      ValStr = ValInit->getAsString();
-    std::string Tmp = freshTmp();
-    OS << Indent << "llvm::Value *" << Tmp << " = llvm::ConstantInt::get("
-       << TypeExpr << ", " << ValStr << ");\n";
-    return Tmp;
-  }
-
-  // --- ConstantTrue / ConstantFalse ---
-  if (OpName == "ConstantTrue") {
-    std::string Tmp = freshTmp();
-    OS << Indent << "llvm::Value *" << Tmp
-       << " = llvm::ConstantInt::getTrue(Ctx);\n";
-    return Tmp;
-  }
-  if (OpName == "ConstantFalse") {
-    std::string Tmp = freshTmp();
-    OS << Indent << "llvm::Value *" << Tmp
-       << " = llvm::ConstantInt::getFalse(Ctx);\n";
-    return Tmp;
-  }
-
-  // --- LLVMCmp / LLVMFCmp pred, lhs, rhs ---
-  if (OpName == "LLVMCmp" || OpName == "LLVMFCmp") {
-    // First arg is predicate def, rest are value DAGs
-    const auto *PredDef = dyn_cast<DefInit>(Dag->getArg(0));
-    StringRef PredName = PredDef->getDef()->getName();
-    std::string PredExpr = getCmpPredicate(PredName);
-    std::string LHS =
-        emitDagExpr(OS, dyn_cast<DagInit>(Dag->getArg(1)), Indent);
-    std::string RHS =
-        emitDagExpr(OS, dyn_cast<DagInit>(Dag->getArg(2)), Indent);
-    std::string Tmp = freshTmp();
-    std::string Method = (OpName == "LLVMFCmp") ? "CreateFCmp" : "CreateICmp";
-    OS << Indent << "llvm::Value *" << Tmp << " = Builder." << Method << "("
-       << PredExpr << ", " << LHS << ", " << RHS << ");\n";
-    return Tmp;
-  }
-
-  // --- LLVMLoad type, addr ---
-  if (OpName == "LLVMLoad") {
-    const auto *TypeDef = dyn_cast<DefInit>(Dag->getArg(0));
-    StringRef TypeName = TypeDef->getDef()->getName();
-    std::string TypeExpr = getTypeExpr(TypeName);
-    std::string Addr;
-    // Second arg can be a DagInit or a name reference
-    if (const auto *AddrDag = dyn_cast<DagInit>(Dag->getArg(1)))
-      Addr = emitDagExpr(OS, AddrDag, Indent);
-    else {
-      StringRef AddrName = Dag->getArgNameStr(1);
-      auto It = DefValMap.find(AddrName);
-      if (It != DefValMap.end())
-        Addr = It->second;
-      else
-        Addr = formatv("/* unresolved: {0} */", AddrName);
-    }
-    std::string Tmp = freshTmp();
-    OS << Indent << "llvm::Value *" << Tmp << " = Builder.CreateLoad("
-       << TypeExpr << ", " << Addr << ");\n";
-    return Tmp;
-  }
-
-  // --- LLVMStore val, addr ---
-  if (OpName == "LLVMStore") {
-    std::string Val;
-    if (const auto *ValDag = dyn_cast<DagInit>(Dag->getArg(0)))
-      Val = emitDagExpr(OS, ValDag, Indent);
-    else {
-      StringRef ValName = Dag->getArgNameStr(0);
-      auto It = DefValMap.find(ValName);
-      if (It != DefValMap.end())
-        Val = It->second;
-      else
-        Val = formatv("/* unresolved: {0} */", ValName);
-    }
-    std::string Addr;
-    if (const auto *AddrDag = dyn_cast<DagInit>(Dag->getArg(1)))
-      Addr = emitDagExpr(OS, AddrDag, Indent);
-    else {
-      StringRef AddrName = Dag->getArgNameStr(1);
-      auto It = DefValMap.find(AddrName);
-      if (It != DefValMap.end())
-        Addr = It->second;
-      else
-        Addr = formatv("/* unresolved: {0} */", AddrName);
-    }
-    std::string Tmp = freshTmp();
-    OS << Indent << "llvm::Value *" << Tmp << " = Builder.CreateStore(" << Val
-       << ", " << Addr << ");\n";
-    return Tmp;
-  }
-
-  // --- LLVMAtomicRMW op, addr, val ---
-  if (OpName == "LLVMAtomicRMW") {
-    const auto *RMWOpDef = dyn_cast<DefInit>(Dag->getArg(0));
-    StringRef RMWOpName = RMWOpDef->getDef()->getName();
-    std::string RMWOpExpr = getAtomicRMWOp(RMWOpName);
-    std::string Addr;
-    if (const auto *AddrDag = dyn_cast<DagInit>(Dag->getArg(1)))
-      Addr = emitDagExpr(OS, AddrDag, Indent);
-    else {
-      StringRef AddrName = Dag->getArgNameStr(1);
-      auto It = DefValMap.find(AddrName);
-      Addr = (It != DefValMap.end()) ? It->second : "/* unresolved */";
-    }
-    std::string Val;
-    if (const auto *ValDag = dyn_cast<DagInit>(Dag->getArg(2)))
-      Val = emitDagExpr(OS, ValDag, Indent);
-    else {
-      StringRef ValName = Dag->getArgNameStr(2);
-      auto It = DefValMap.find(ValName);
-      Val = (It != DefValMap.end()) ? It->second : "/* unresolved */";
-    }
-    std::string Tmp = freshTmp();
-    OS << Indent << "llvm::Value *" << Tmp << " = Builder.CreateAtomicRMW("
-       << RMWOpExpr << ", " << Addr << ", " << Val << ", llvm::MaybeAlign(), "
-       << "llvm::AtomicOrdering::SequentiallyConsistent);\n";
-    return Tmp;
-  }
-
-  // --- Standard binary/unary LLVMOps (CreateAdd, CreateFAdd, etc.) ---
-  std::string Method = getIRBuilderMethod(OpName);
-  if (!Method.empty()) {
-    unsigned NumArgs = Dag->getNumArgs();
-
-    // Collect all arguments
-    SmallVector<std::string, 4> Args;
-    for (unsigned i = 0; i < NumArgs; ++i) {
-      const Init *Arg = Dag->getArg(i);
-      if (const auto *SubDag = dyn_cast<DagInit>(Arg)) {
-        Args.push_back(emitDagExpr(OS, SubDag, Indent));
-      } else if (const auto *DefArg = dyn_cast<DefInit>(Arg)) {
-        // This is a type argument (for casts like CreateBitCast(val, type))
-        StringRef DefName = DefArg->getDef()->getName();
-        // Check if it's a type
-        if (DefName.starts_with("llvm_") && DefName.ends_with("_ty")) {
-          Args.push_back(getTypeExpr(DefName));
-        } else if (DefName.starts_with("flat_ptr_type") ||
-                   DefName.starts_with("global_ptr_type") ||
-                   DefName.starts_with("scratch_ptr_type") ||
-                   DefName.starts_with("buffer_ptr_type") ||
-                   DefName.starts_with("buffer_fat_ptr_type") ||
-                   DefName.starts_with("region_ptr_type")) {
-          // Pointer types defined in SISemOps.td
-          // Map to llvm::PointerType::get(Ctx, addrspace)
-          std::string AS = StringSwitch<std::string>(DefName)
-                               .Case("flat_ptr_type", "0")
-                               .Case("global_ptr_type", "1")
-                               .Case("region_ptr_type", "2")
-                               .Case("scratch_ptr_type", "5")
-                               .Case("buffer_ptr_type", "8")
-                               .Case("buffer_fat_ptr_type", "9")
-                               .Default("0");
-          Args.push_back(formatv("llvm::PointerType::get(Ctx, {0})", AS));
-        } else {
-          // Could be a predicate or other def — try as-is
-          Args.push_back(DefName.str());
-        }
-      } else if (const auto *IntArg = dyn_cast<IntInit>(Arg)) {
-        Args.push_back(std::to_string(IntArg->getValue()));
-      } else {
-        // Named argument reference (DefVal)
-        StringRef ArgName = Dag->getArgNameStr(i);
-        if (!ArgName.empty()) {
-          auto It = DefValMap.find(ArgName);
-          if (It != DefValMap.end())
-            Args.push_back(It->second);
-          else
-            Args.push_back(formatv("/* unresolved: ${0} */", ArgName));
-        } else {
-          Args.push_back("/* unknown arg */");
-        }
-      }
-    }
-
-    std::string Tmp = freshTmp();
-    OS << Indent << "llvm::Value *" << Tmp << " = Builder." << Method << "(";
-    for (unsigned i = 0; i < Args.size(); ++i) {
-      if (i > 0)
-        OS << ", ";
-      OS << Args[i];
-    }
-    OS << ");\n";
-    return Tmp;
-  }
-
-  // --- Fallback: unknown operator ---
-  std::string Tmp = freshTmp();
-  OS << Indent << "llvm::Value *" << Tmp << " = nullptr; // TODO: unhandled op "
-     << OpName << "\n";
-  return Tmp;
-}
+std::string SIInstrSemanticsEmitter::emitDagExpr(llvm::raw_ostream &OS,
+                                                 const llvm::DagInit *Dag,
+                                                 llvm::StringRef Indent) {}
 
 //===----------------------------------------------------------------------===//
 // Top-level semantic statement emitter
 //===----------------------------------------------------------------------===//
 
-void SIInstrSemanticsEmitter::emitSemanticStatement(raw_ostream &OS,
-                                                    const DagInit *Dag,
-                                                    StringRef Indent) {
-  const Init *Op = Dag->getOperator();
-  StringRef OpName;
-  if (const auto *DI = dyn_cast<DefInit>(Op))
-    OpName = DI->getDef()->getName();
-  else
-    PrintFatalError("DAG operator is not a def");
+void SIInstrSemanticsEmitter::emitSemanticStatement(
+    llvm::raw_ostream &OS, const llvm::Init *Stmt,
+    llvm::ArrayRef<llvm::SMLoc> Loc, unsigned int Indent) {
+  if (const auto *Dag = llvm::dyn_cast<llvm::DagInit>(Stmt)) {
+    Dag->print(llvm::errs());
+    llvm::errs() << "\n";
+    const llvm::Record *Op = Dag->getOperatorAsDef(Loc);
+    llvm::StringRef OpName = Op->getName();
+    const llvm::RecordRecTy *OpClass = Op->getType();
 
-  // --- SetNamedOperand $name, value_dag ---
-  if (OpName == "SetNamedOperand") {
-    StringRef OperandName = Dag->getArgNameStr(0);
-    const auto *ValDag = dyn_cast<DagInit>(Dag->getArg(1));
-    if (!ValDag)
-      PrintFatalError("SetNamedOperand second arg is not a DAG");
-    std::string ValVar = emitDagExpr(OS, ValDag, Indent);
-    OS << Indent << "Tracker.setRegOperandValue(\n"
-       << Indent
-       << "    *llvm::SIInstrInfo::getNamedOperand(MI, "
-          "llvm::AMDGPU::OpName::"
-       << OperandName << "), *" << ValVar << ");\n";
-    return;
+    // --- SetNamedOperand $name, value_dag ---
+    if (OpName == "SetNamedOperand") {
+      if (unsigned NumArgs = Dag->getNumArgs(); NumArgs != 2)
+        llvm::PrintFatalError(
+            Loc, "Expected `SetNamedOperand` to have 2 arguments, got " +
+                     llvm::Twine(NumArgs) + " instead");
+      llvm::StringRef OperandName = Dag->getArgNameStr(0);
+      const auto *AssignmentDag = llvm::dyn_cast<llvm::DagInit>(Dag->getArg(1));
+      if (!AssignmentDag)
+        llvm::PrintFatalError(Loc, "`SetNamedOperand` second arg is not a DAG");
+      OS << "Tracker.setRegOperandValue(";
+      OS << "*llvm::SIInstrInfo::getNamedOperand(MI, "
+            "llvm::AMDGPU::OpName::"
+         << OperandName << "), ";
+      emitSemanticStatement(OS, AssignmentDag, Loc, Indent);
+      OS << ")";
+    }
+    // --- ImplicitDef REG, value_dag ---
+    else if (OpName == "ImplicitDef") {
+      if (unsigned NumArgs = Dag->getNumArgs(); NumArgs != 2)
+        llvm::PrintFatalError(
+            Loc, "Expected `ImplicitDef` to have 2 arguments, got " +
+                     llvm::Twine(NumArgs) + " instead");
+
+      const auto *RegDef = llvm::dyn_cast<llvm::DefInit>(Dag->getArg(0));
+      if (!RegDef)
+        llvm::PrintFatalError(
+            Loc, "First argument of `ImplicitDef` is not a record definition");
+
+      const llvm::Record *RegisterClass =
+          RegDef->getRecordKeeper().getClass("Register");
+      if (!RegisterClass) {
+        llvm::PrintFatalError(Loc, "Failed to get SIReg");
+      }
+      if (!RegDef->getDef()->isSubClassOf(RegisterClass)) {
+        llvm::PrintFatalError(
+            Loc, "First argument of `ImplicitDef` is not an Register");
+      }
+      llvm::StringRef RegName = RegDef->getDef()->getName();
+
+      const auto *ValDag = llvm::dyn_cast<llvm::DagInit>(Dag->getArg(1));
+      if (!ValDag)
+        llvm::PrintFatalError("ImplicitDef second arg is not a DAG");
+      OS << "Tracker.setRegOperandValue(MI, llvm::AMDGPU::" << RegName << ", *";
+      emitSemanticStatement(OS, ValDag, Loc, Indent);
+      OS << ")";
+    }
+    // --- DefVal $name, value_dag ---
+    else if (OpName == "DefVal") {
+      llvm::StringRef ValName = Dag->getArgNameStr(0);
+      const auto *ValDag = llvm::dyn_cast<llvm::DagInit>(Dag->getArg(1));
+      if (!ValDag)
+        llvm::PrintFatalError("DefVal second arg is not a DAG");
+      OS << "llvm::Value *" << ValName << " = ";
+      emitSemanticStatement(OS, ValDag, Loc, Indent);
+    }
+
+    // --- GetNamedOperand $name ---
+    else if (OpName == "GetNamedOperand") {
+      llvm::StringRef ArgName = Dag->getArgNameStr(0);
+      OS << "&Tracker.getOperandAsValue("
+         << "    *llvm::SIInstrInfo::getNamedOperand(MI, "
+            "llvm::AMDGPU::OpName::"
+         << ArgName << "))";
+    }
+
+    // --- GetVal $name ---
+    else if (OpName == "GetVal") {
+      OS << Dag->getArgNameStr(0);
+    }
+
+    // --- ImplicitUse REG ---
+    else if (OpName == "ImplicitUse") {
+      // First arg is a register def (e.g., VCC, EXEC, SCC)
+      const auto *RegDef = llvm::dyn_cast<llvm::DefInit>(Dag->getArg(0));
+      llvm::StringRef RegName = RegDef->getDef()->getName();
+      OS << "&Tracker.getOperandAsValue(MI, llvm::AMDGPU::" << RegName << ")";
+    }
+
+    // --- LLVM Operands ---
+    else if (OpClass->isSubClassOf(Records.getClass("LLVMOp"))) {
+      OS << "Builder." << Op->getValueAsString("IRBuilderFunc") << "(";
+      llvm::interleave(
+          Dag->getArgs(),
+          [&](const llvm::Init *Arg) {
+            emitSemanticStatement(OS, Arg, Loc, Indent);
+          },
+          [&] { OS << ", "; });
+      OS << ")";
+    }
+
+    // --- Constant Values ---
+    else if (OpClass->isSubClassOf(Records.getClass("LLVMConstant"))) {
+      OS << Op->getValueAsString("BuilderFunc") << "(";
+      llvm::interleave(
+          Dag->getArgs(),
+          [&](const llvm::Init *Arg) {
+            emitSemanticStatement(OS, Arg, Loc, Indent);
+          },
+          [&] { OS << ", "; });
+      OS << ");";
+    } else {
+      OS << "Unhandled operand: " << OpName << ",\n";
+      for (const auto *Arg : Dag->getArgs()) {
+        Arg->print(OS);
+        OS << "\n";
+      }
+    }
+  } else if (const auto *Leaf = llvm::dyn_cast<llvm::DefInit>(Stmt)) {
+    const llvm::RecordRecTy *LeafType = Leaf->getDef()->getType();
+
+    /// LLVM Comparison predicates
+    if (LeafType->isSubClassOf(
+            Stmt->getRecordKeeper().getClass("LLVMCmpPredicate"))) {
+      OS << Leaf->getDef()->getValueAsString("Code");
+    }
+
+    /// LLVM Atomic ops
+    else if (LeafType->isSubClassOf(
+                 Stmt->getRecordKeeper().getClass("AtomicRMWOp"))) {
+      OS << Leaf->getDef()->getValueAsString("Op");
+    }
+    /// Pointer type operands
+    else if (LeafType->isSubClassOf(
+                 Stmt->getRecordKeeper().getClass("LLVMQualPointerType"))) {
+      const llvm::Record *PtrRecord = Leaf->getDef();
+      const llvm::ListInit *PtrSig = PtrRecord->getValueAsListInit("Sig");
+      OS << "Builder.getPtrTy("
+         << (PtrSig->size() == 2 ? PtrSig->getElement(1)->getAsString() : "0")
+         << ")";
+    } else if (LeafType->isSubClassOf(
+                   Stmt->getRecordKeeper().getClass("LLVMType"))) {
+      OS << getTypeExpr(LeafType->getAsString());
+    }
   }
-
-  // --- ImplicitDef REG, value_dag ---
-  if (OpName == "ImplicitDef") {
-    const auto *RegDef = dyn_cast<DefInit>(Dag->getArg(0));
-    StringRef RegName = RegDef->getDef()->getName();
-    const auto *ValDag = dyn_cast<DagInit>(Dag->getArg(1));
-    if (!ValDag)
-      PrintFatalError("ImplicitDef second arg is not a DAG");
-    std::string ValVar = emitDagExpr(OS, ValDag, Indent);
-    OS << Indent << "Tracker.setImplicitRegValue(MI, llvm::AMDGPU::" << RegName
-       << ", *" << ValVar << ");\n";
-    return;
-  }
-
-  // --- DefVal $name, value_dag ---
-  if (OpName == "DefVal") {
-    StringRef ValName = Dag->getArgNameStr(0);
-    const auto *ValDag = dyn_cast<DagInit>(Dag->getArg(1));
-    if (!ValDag)
-      PrintFatalError("DefVal second arg is not a DAG");
-    std::string ValVar = emitDagExpr(OS, ValDag, Indent);
-    DefValMap[ValName] = ValVar;
-    return;
-  }
-
-  // --- LLVMStore (bare top-level store, not inside SetNamedOperand) ---
-  if (OpName == "LLVMStore") {
-    emitDagExpr(OS, Dag, Indent);
-    return;
-  }
-
-  // --- Fallback: emit as expression ---
-  emitDagExpr(OS, Dag, Indent);
 }
 
 //===----------------------------------------------------------------------===//
 // Function emitters
 //===----------------------------------------------------------------------===//
 
-void SIInstrSemanticsEmitter::emitSemanticFunction(raw_ostream &OS,
-                                                   const Record *Rec) {
-  resetFunctionState();
+void SIInstrSemanticsEmitter::emitSemanticFunction(llvm::raw_ostream &OS,
+                                                   const llvm::Record *Rec) {
 
-  const Record *InstRec = Rec->getValueAsDef("Instruction");
-  StringRef InstName = InstRec->getName();
+  const llvm::Record *InstRec = Rec->getValueAsDef("Instruction");
+  llvm::StringRef InstName = InstRec->getName();
 
-  const auto *SemList = Rec->getValueAsListInit("Semantic");
+  const llvm::ListInit *SemList = Rec->getValueAsListInit("Semantic");
+
+  llvm::SMLoc SemanticLoc = Rec->getFieldLoc("Semantic");
+
+  /// Skip instructions with empty semantic
   if (!SemList || SemList->empty())
     return; // Skip empty semantics
 
@@ -510,26 +297,26 @@ void SIInstrSemanticsEmitter::emitSemanticFunction(raw_ostream &OS,
   OS << "void raiseMachineInstr<llvm::AMDGPU::" << InstName << ">(\n";
   OS << "    const llvm::MachineInstr &MI, llvm::IRBuilderBase &Builder,\n";
   OS << "    MBBOperandTracker &Tracker) {\n";
-  OS << "  llvm::LLVMContext &Ctx = Builder.getContext();\n";
-  OS << "  (void)Ctx; // May be unused for simple instructions\n";
 
-  for (unsigned i = 0; i < SemList->size(); ++i) {
-    const auto *StmtDag = dyn_cast<DagInit>(SemList->getElement(i));
+  llvm::errs() << "Record: " << Rec;
+  for (const llvm::Init *El : SemList->getElements()) {
+    const auto *StmtDag = llvm::dyn_cast<llvm::DagInit>(El);
     if (!StmtDag)
       PrintFatalError(Rec->getLoc(), "Semantic element is not a DAG");
-    emitSemanticStatement(OS, StmtDag, "  ");
+    emitSemanticStatement(OS.indent(2), StmtDag, SemanticLoc, 2);
+    OS << ";\n";
   }
 
   OS << "}\n\n";
 }
 
-void SIInstrSemanticsEmitter::emitIntrinsicFunction(raw_ostream &OS,
-                                                    const Record *Rec) {
-  const Record *InstRec = Rec->getValueAsDef("Instruction");
-  StringRef InstName = InstRec->getName();
+void SIInstrSemanticsEmitter::emitIntrinsicFunction(llvm::raw_ostream &OS,
+                                                    const llvm::Record *Rec) {
+  const llvm::Record *InstRec = Rec->getValueAsDef("Instruction");
+  llvm::StringRef InstName = InstRec->getName();
 
-  const Record *IntrRec = Rec->getValueAsDef("Intrinsic");
-  StringRef IntrName = IntrRec->getName();
+  const llvm::Record *IntrRec = Rec->getValueAsDef("Intrinsic");
+  llvm::StringRef IntrName = IntrRec->getName();
 
   // Convert tablegen intrinsic name to LLVM enum
   // e.g., "int_amdgcn_interp_p1" -> "llvm::Intrinsic::amdgcn_interp_p1"
@@ -574,12 +361,12 @@ void SIInstrSemanticsEmitter::emitDispatchFunction(
   OS << "  switch (MI.getOpcode()) {\n";
 
   // Emit cases for InstSISemantic records (non-empty only)
-  for (const Record *Rec : Semantics) {
+  for (const llvm::Record *Rec : Semantics) {
     const auto *SemList = Rec->getValueAsListInit("Semantic");
     if (!SemList || SemList->empty())
       continue;
-    const Record *InstRec = Rec->getValueAsDef("Instruction");
-    StringRef InstName = InstRec->getName();
+    const llvm::Record *InstRec = Rec->getValueAsDef("Instruction");
+    llvm::StringRef InstName = InstRec->getName();
     OS << "  case llvm::AMDGPU::" << InstName << ":\n";
     OS << "    raiseMachineInstr<llvm::AMDGPU::" << InstName
        << ">(MI, Builder, Tracker);\n";
@@ -587,9 +374,9 @@ void SIInstrSemanticsEmitter::emitDispatchFunction(
   }
 
   // Emit cases for InstSIIntrinsic records
-  for (const Record *Rec : Intrinsics) {
-    const Record *InstRec = Rec->getValueAsDef("Instruction");
-    StringRef InstName = InstRec->getName();
+  for (const llvm::Record *Rec : Intrinsics) {
+    const llvm::Record *InstRec = Rec->getValueAsDef("Instruction");
+    llvm::StringRef InstName = InstRec->getName();
     OS << "  case llvm::AMDGPU::" << InstName << ":\n";
     OS << "    raiseMachineInstr<llvm::AMDGPU::" << InstName
        << ">(MI, Builder, Tracker);\n";
@@ -606,7 +393,7 @@ void SIInstrSemanticsEmitter::emitDispatchFunction(
 // Header / Footer
 //===----------------------------------------------------------------------===//
 
-void SIInstrSemanticsEmitter::emitHeader(raw_ostream &OS) {
+void SIInstrSemanticsEmitter::emitHeader(llvm::raw_ostream &OS) {
   OS << "//===-- SIInstrSemantics.inc - Generated SI Instruction Semantics "
         "--------===//\n";
   OS << "// Auto-generated by luthier-tblgen. DO NOT EDIT.\n";
@@ -615,7 +402,7 @@ void SIInstrSemanticsEmitter::emitHeader(raw_ostream &OS) {
   OS << "#ifdef GET_SI_INSTR_SEMANTIC_FUNCTIONS\n\n";
 }
 
-void SIInstrSemanticsEmitter::emitFooter(raw_ostream &OS) {
+void SIInstrSemanticsEmitter::emitFooter(llvm::raw_ostream &OS) {
   OS << "#endif // GET_SI_INSTR_SEMANTIC_FUNCTIONS\n\n";
   OS << "#ifdef GET_SI_INSTR_SEMANTIC_DISPATCH\n\n";
 }
@@ -624,18 +411,14 @@ void SIInstrSemanticsEmitter::emitFooter(raw_ostream &OS) {
 // Main entry point
 //===----------------------------------------------------------------------===//
 
-void SIInstrSemanticsEmitter::run(raw_ostream &OS) {
+void SIInstrSemanticsEmitter::run(llvm::raw_ostream &OS) {
   // Collect all InstSISemantic records
-  std::vector<const Record *> Semantics;
-  for (const auto *Rec : Records.getAllDerivedDefinitions("InstSISemantic")) {
-    Semantics.push_back(Rec);
-  }
+  llvm::ArrayRef<const llvm::Record *> Semantics =
+      Records.getAllDerivedDefinitions("InstSISemantic");
 
   // Collect all InstSIIntrinsic records
-  std::vector<const Record *> Intrinsics;
-  for (const auto *Rec : Records.getAllDerivedDefinitions("InstSIIntrinsic")) {
-    Intrinsics.push_back(Rec);
-  }
+  llvm::ArrayRef<const llvm::Record *> Intrinsics =
+      Records.getAllDerivedDefinitions("InstSIIntrinsic");
 
   // --- Emit template specializations ---
   emitHeader(OS);
@@ -645,32 +428,31 @@ void SIInstrSemanticsEmitter::run(raw_ostream &OS) {
   OS << "void raiseMachineInstr(const llvm::MachineInstr &MI,\n";
   OS << "                       llvm::IRBuilderBase &Builder,\n";
   OS << "                       MBBOperandTracker &Tracker);\n\n";
-
-  // Emit specializations for InstSISemantic (non-empty only)
-  for (const Record *Rec : Semantics) {
-    const auto *SemList = Rec->getValueAsListInit("Semantic");
-    if (SemList && !SemList->empty())
-      emitSemanticFunction(OS, Rec);
+  //
+  // // Emit specializations for InstSISemantic (non-empty only)
+  for (const llvm::Record *Rec : Semantics) {
+    emitSemanticFunction(OS, Rec);
   }
-
-  // Emit specializations for InstSIIntrinsic
-  for (const Record *Rec : Intrinsics) {
-    emitIntrinsicFunction(OS, Rec);
-  }
-
-  OS << "#endif // GET_SI_INSTR_SEMANTIC_FUNCTIONS\n\n";
-
-  // --- Emit dispatch function ---
-  OS << "#ifdef GET_SI_INSTR_SEMANTIC_DISPATCH\n\n";
-  emitDispatchFunction(OS, Semantics, Intrinsics);
-  OS << "#endif // GET_SI_INSTR_SEMANTIC_DISPATCH\n";
+  //
+  // // Emit specializations for InstSIIntrinsic
+  // for (const llvm::Record *Rec : Intrinsics) {
+  //   emitIntrinsicFunction(OS, Rec);
+  // }
+  //
+  // OS << "#endif // GET_SI_INSTR_SEMANTIC_FUNCTIONS\n\n";
+  //
+  // // --- Emit dispatch function ---
+  // OS << "#ifdef GET_SI_INSTR_SEMANTIC_DISPATCH\n\n";
+  // emitDispatchFunction(OS, Semantics, Intrinsics);
+  // OS << "#endif // GET_SI_INSTR_SEMANTIC_DISPATCH\n";
 }
 
 //===----------------------------------------------------------------------===//
 // Global entry point
 //===----------------------------------------------------------------------===//
 
-void emitSIInstrSemantics(const RecordKeeper &Records, raw_ostream &OS) {
+void emitSIInstrSemantics(const llvm::RecordKeeper &Records,
+                          llvm::raw_ostream &OS) {
   SIInstrSemanticsEmitter Emitter(Records);
   Emitter.run(OS);
 }

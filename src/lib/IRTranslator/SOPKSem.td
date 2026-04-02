@@ -55,7 +55,7 @@ def S_CMOVK_I32_sem : InstSISemantic<S_CMOVK_I32> {
     (DefVal $tmp, (LLVMSelect (ImplicitUse SCC), 
                             (GetNamedOperand $simm16), 
                             (GetNamedOperand $sdst))),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -92,7 +92,7 @@ def S_MOVK_I32_sem : InstSISemantic<S_MOVK_I32> {
 def S_MULK_I32_sem : InstSISemantic<S_MULK_I32> {
   let Semantic = [
     (DefVal $tmp, (LLVMMul (GetNamedOperand $src0), (GetNamedOperand $simm16))),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 

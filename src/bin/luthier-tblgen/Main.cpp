@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 #include "RealToPseudoOpcodeMapBackend.hpp"
 #include "RealToPseudoRegisterMapBackend.hpp"
+#include "SIInstrSemanticsEmitter.hpp"
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/InitLLVM.h>
 #include <llvm/TableGen/Main.h>
@@ -34,6 +35,10 @@ int main(int argc, char *argv[]) {
   llvm::TableGen::Emitter::Opt RealToPseudoRegisterOption(
       "gen-si-real-to-pseudo-reg-map", luthier::emitRealToPseudoRegisterTable,
       "Generate a Real to Pseudo Register enum map for the AMDGPU backend");
+  llvm::TableGen::Emitter::Opt SISemanticsOption(
+      "gen-si-instr-semantics", luthier::emitSIInstrSemantics,
+      "Generate functions to translate every pseudo-physical machine "
+      "instruction for the AMDGPU backend to its LLVM IR equivalent");
   llvm::cl::ParseCommandLineOptions(argc, argv);
   return llvm::TableGenMain(
       argv[0],

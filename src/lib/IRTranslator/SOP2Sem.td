@@ -86,7 +86,7 @@ def S_SUB_U32_sem : InstSISemantic<S_SUB_U32> {
     (DefVal $tmp, (LLVMSub (GetNamedOperand $src0), (GetNamedOperand $src1))),
     (ImplicitDef SCC, (LLVMCmp SETUGT, (GetNamedOperand $src1),
                                        (GetNamedOperand $src0))),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -111,7 +111,7 @@ def S_ADD_I32_sem : InstSISemantic<S_ADD_I32> {
     (ImplicitDef SCC, (LLVMAnd (LLVMCmp SETEQ, $src0_31, $src1_31),
                                (LLVMCmp SETNE, $src0_31, $sdst_31))
     ),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -135,7 +135,7 @@ def S_SUB_I32_sem : InstSISemantic<S_SUB_I32> {
     (DefVal $sdst_31, LLVMExtractValueConstIdx<(GetNamedOperand $sdst), llvm_v32i1_ty, 31>.Op),
     (ImplicitDef SCC, (LLVMAnd (LLVMCmp SETNE, $src0_31, $src1_31),
                                (LLVMCmp SETNE, $src0_31, $sdst_31))),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -182,7 +182,7 @@ def S_SUBB_U32_sem : InstSISemantic<S_SUBB_U32> {
     (ImplicitDef SCC, (LLVMCmp SETUGT, (LLVMAdd (LLVMZExt (GetNamedOperand $src1), llvm_i64_ty),
                                                 (LLVMZExt (ImplicitUse SCC), llvm_i64_ty)),
                                        (LLVMZExt (GetNamedOperand $src0), llvm_i64_ty))),
-    (SetNamedOperand $sdst, $tmp)
+    (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
 
@@ -485,7 +485,7 @@ foreach op = ["And", "Or"] in {
   foreach size = [32, 64] in {
     def S_#!toupper(op)#N2_B#size#_sem : InstSISemantic<!cast<InstSI>("S_"#!toupper(op)#"N2_B"#size)> {
       let Semantic = [
-        (SetNamedOperand $sdst, (!cast<LLVMOp>("LLVM"#op) (GetNamedOperand $src0), (LLVMNot<(GetNamedOperand $src1), !cast<LLVMType>("llvm_i"#size#"_ty")>.ret))),
+        (SetNamedOperand $sdst, (!cast<LLVMOp>("LLVM"#op) (GetNamedOperand $src0), LLVMNot<(GetNamedOperand $src1), !cast<LLVMType>("llvm_i"#size#"_ty")>.ret)),
         (ImplicitDef SCC, (LLVMCmp SETNE, (GetNamedOperand $sdst), (ConstantInt !cast<LLVMType>("llvm_i"#size#"_ty"), 0)))
       ];
     }
@@ -655,7 +655,7 @@ def S_PACK_LL_B32_B16_sem : InstSISemantic<S_PACK_LL_B32_B16> {
     (DefVal $packed, (LLVMOr (LLVMZExt $src1_lo, llvm_i32_ty),
                              (LLVMShl (LLVMZExt $src0_lo, llvm_i32_ty),
                                       (ConstantInt llvm_i32_ty, 16)))),
-    (SetNamedOperand $sdst, $packed)
+    (SetNamedOperand $sdst, (GetVal $packed))
   ];
 }
 
@@ -677,7 +677,7 @@ def S_PACK_LH_B32_B16_sem : InstSISemantic<S_PACK_LH_B32_B16> {
     (DefVal $packed, (LLVMOr (LLVMZExt $src1_hi, llvm_i32_ty),
                              (LLVMShl (LLVMZExt $src0_lo, llvm_i32_ty),
                                       (ConstantInt llvm_i32_ty, 16)))),
-    (SetNamedOperand $sdst, $packed)
+    (SetNamedOperand $sdst, (GetVal $packed))
   ];
 }
 
@@ -699,7 +699,7 @@ def S_PACK_HH_B32_B16_sem : InstSISemantic<S_PACK_HH_B32_B16> {
     (DefVal $packed, (LLVMOr (LLVMZExt $src1_hi, llvm_i32_ty),
                              (LLVMShl (LLVMZExt $src0_hi, llvm_i32_ty),
                                       (ConstantInt llvm_i32_ty, 16)))),
-    (SetNamedOperand $sdst, $packed)
+    (SetNamedOperand $sdst, (GetVal $packed))
   ];
 }
 
@@ -717,7 +717,7 @@ def S_PACK_HL_B32_B16_sem : InstSISemantic<S_PACK_HL_B32_B16> {
     (DefVal $packed, (LLVMOr (LLVMZExt $src1_lo, llvm_i32_ty),
                              (LLVMShl (LLVMZExt $src0_hi, llvm_i32_ty),
                                       (ConstantInt llvm_i32_ty, 16)))),
-    (SetNamedOperand $sdst, $packed)
+    (SetNamedOperand $sdst, (GetVal $packed))
   ];
 }
 
@@ -776,7 +776,7 @@ foreach size = [32, 64] in {
       (DefVal $sign_bit, (LLVMTrunc (LLVMLShr $masked, (LLVMSub (GetVal $bit_width), (ConstantInt !cast<LLVMType>("llvm_i"#size#"_ty"), 1))), llvm_i1_ty)),
       (DefVal $sign_ext, (LLVMSExt $sign_bit, !cast<LLVMType>("llvm_i"#size#"_ty"))),
       (DefVal $result, (LLVMOr (LLVMAnd (GetVal $masked), $mask),
-                              (LLVMAnd $sign_ext, (LLVMNot<(GetVal $mask), !cast<LLVMType>("llvm_i"#size#"_ty")>.ret)))),
+                              (LLVMAnd $sign_ext, LLVMNot<(GetVal $mask), !cast<LLVMType>("llvm_i"#size#"_ty")>.ret))),
       (ImplicitDef SCC, (LLVMCmp SETNE, (GetVal $result), (ConstantInt !cast<LLVMType>("llvm_i"#size#"_ty"), 0))),
       (SetNamedOperand $sdst, (GetVal $result))
     ];
