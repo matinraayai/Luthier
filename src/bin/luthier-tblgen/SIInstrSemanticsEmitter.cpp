@@ -221,6 +221,15 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
       llvm::PrintFatalError(
           Loc, "Unhandled def node: " + DefNode->getAsString() + ".");
     }
+  } else if (const auto *ListNode = llvm::dyn_cast<llvm::ListInit>(Stmt)) {
+    OS << "llvm::ArrayRef<llvm::Value *>({";
+    llvm::interleave(
+        ListNode->getElements(),
+        [&](const llvm::Init *Elem) {
+          emitSemanticStatement(OS, Elem, Loc, Indent);
+        },
+        [&] { OS << ", "; });
+    OS << "})";
   } else if (auto *IntNode = llvm::dyn_cast<llvm::IntInit>(Stmt)) {
     llvm::outs() << "Int node: " << IntNode->getValue() << "\n";
     OS << IntNode->getValue();
