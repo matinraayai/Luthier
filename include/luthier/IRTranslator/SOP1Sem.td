@@ -1088,8 +1088,12 @@ def S_BITSET1_B64_sem : InstSISemantic<S_BITSET1_B64> {
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 222.
 //   rdna4-instruction-set-architecture.pdf, page 235.
 //   (Not present in GCN3; introduced in GFX9/Vega.)
-def S_BITREPLICATE_B64_B32_sem : InstSIIntrinsic<S_BITREPLICATE_B64_B32,
-                                                  int_amdgcn_s_bitreplicate>;
+def S_BITREPLICATE_B64_B32_sem : InstSISemantic<S_BITREPLICATE_B64_B32> {
+  let Semantic = [
+    (SetNamedOperand $sdst,
+      (LLVMIntrinsic llvm_i64_ty, int_amdgcn_s_bitreplicate, [(GetNamedOperand $src0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_ANDN1_WREXEC_B32 / S_ANDN1_WREXEC_B64
@@ -1413,12 +1417,21 @@ def S_RNDNE_F16_sem : InstSISemantic<S_RNDNE_F16> {
 //   rdna2-shader-instruction-set-architecture.pdf, page 116.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 236.
 //   rdna4-instruction-set-architecture.pdf, page 249.
-def S_GETPC_B64_sem : InstSIIntrinsic<S_GETPC_B64, int_amdgcn_s_getpc>;
+def S_GETPC_B64_sem : InstSISemantic<S_GETPC_B64> {
+  let Semantic = [
+    (SetNamedOperand $sdst,
+      (LLVMIntrinsic llvm_i64_ty, int_amdgcn_s_getpc, []<dag>))
+  ];
+}
 
 // LLVM-only pseudo (no physical opcode in ISA docs); zero-extends PC result.
 // Defined in llvm-project: llvm/lib/Target/AMDGPU/SOPInstructions.td, line 316.
-def S_GETPC_B64_pseudo_sem : InstSIIntrinsic<S_GETPC_B64_pseudo,
-                                              int_amdgcn_s_getpc>;
+def S_GETPC_B64_pseudo_sem : InstSISemantic<S_GETPC_B64_pseudo> {
+  let Semantic = [
+    (SetNamedOperand $sdst,
+      (LLVMIntrinsic llvm_i64_ty, int_amdgcn_s_getpc, []<dag>))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_SENDMSG_RTN_B32 / S_SENDMSG_RTN_B64
@@ -1429,11 +1442,19 @@ def S_GETPC_B64_pseudo_sem : InstSIIntrinsic<S_GETPC_B64_pseudo,
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 237.
 //   rdna4-instruction-set-architecture.pdf, page 250.
 // Defined in llvm-project: llvm/lib/Target/AMDGPU/SOPInstructions.td, line 424 (B32), line 428 (B64).
-def S_SENDMSG_RTN_B32_sem : InstSIIntrinsic<S_SENDMSG_RTN_B32,
-                                             int_amdgcn_s_sendmsg_rtn>;
+def S_SENDMSG_RTN_B32_sem : InstSISemantic<S_SENDMSG_RTN_B32> {
+  let Semantic = [
+    (SetNamedOperand $sdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_s_sendmsg_rtn, [(GetNamedOperand $simm16)]))
+  ];
+}
 
-def S_SENDMSG_RTN_B64_sem : InstSIIntrinsic<S_SENDMSG_RTN_B64,
-                                             int_amdgcn_s_sendmsg_rtn>;
+def S_SENDMSG_RTN_B64_sem : InstSISemantic<S_SENDMSG_RTN_B64> {
+  let Semantic = [
+    (SetNamedOperand $sdst,
+      (LLVMIntrinsic llvm_i64_ty, int_amdgcn_s_sendmsg_rtn, [(GetNamedOperand $simm16)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_SLEEP_VAR
@@ -1444,7 +1465,11 @@ def S_SENDMSG_RTN_B64_sem : InstSIIntrinsic<S_SENDMSG_RTN_B64,
 // Sources:
 //   rdna4-instruction-set-architecture.pdf, page 253.
 // Defined in llvm-project: llvm/lib/Target/AMDGPU/SOPInstructions.td, line 1744.
-def S_SLEEP_VAR_sem : InstSIIntrinsic<S_SLEEP_VAR, int_amdgcn_s_sleep_var>;
+def S_SLEEP_VAR_sem : InstSISemantic<S_SLEEP_VAR> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_sleep_var, [(GetNamedOperand $src0)])
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_BARRIER_SIGNAL_IMM / S_BARRIER_SIGNAL_M0
@@ -1457,11 +1482,17 @@ def S_SLEEP_VAR_sem : InstSIIntrinsic<S_SLEEP_VAR, int_amdgcn_s_sleep_var>;
 // Sources:
 //   rdna4-instruction-set-architecture.pdf, page 250 (unified S_BARRIER_SIGNAL).
 // Defined in llvm-project: llvm/lib/Target/AMDGPU/SOPInstructions.td, line 536 (IMM), line 496 (M0).
-def S_BARRIER_SIGNAL_IMM_sem : InstSIIntrinsic<S_BARRIER_SIGNAL_IMM,
-                                                int_amdgcn_s_barrier_signal>;
+def S_BARRIER_SIGNAL_IMM_sem : InstSISemantic<S_BARRIER_SIGNAL_IMM> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_barrier_signal, [(GetNamedOperand $simm16)])
+  ];
+}
 
-def S_BARRIER_SIGNAL_M0_sem : InstSIIntrinsic<S_BARRIER_SIGNAL_M0,
-                                               int_amdgcn_s_barrier_signal>;
+def S_BARRIER_SIGNAL_M0_sem : InstSISemantic<S_BARRIER_SIGNAL_M0> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_barrier_signal, [(ImplicitUse M0)])
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_BARRIER_SIGNAL_ISFIRST_IMM / S_BARRIER_SIGNAL_ISFIRST_M0
@@ -1471,13 +1502,17 @@ def S_BARRIER_SIGNAL_M0_sem : InstSIIntrinsic<S_BARRIER_SIGNAL_M0,
 // Sources:
 //   rdna4-instruction-set-architecture.pdf, page 251 (unified S_BARRIER_SIGNAL_ISFIRST).
 // Defined in llvm-project: llvm/lib/Target/AMDGPU/SOPInstructions.td, line 542 (IMM), line 502 (M0).
-def S_BARRIER_SIGNAL_ISFIRST_IMM_sem :
-  InstSIIntrinsic<S_BARRIER_SIGNAL_ISFIRST_IMM,
-                   int_amdgcn_s_barrier_signal_isfirst>;
+def S_BARRIER_SIGNAL_ISFIRST_IMM_sem : InstSISemantic<S_BARRIER_SIGNAL_ISFIRST_IMM> {
+  let Semantic = [
+    (ImplicitDef SCC, (LLVMIntrinsic llvm_i1_ty, int_amdgcn_s_barrier_signal_isfirst, [(GetNamedOperand $simm16)]))
+  ];
+}
 
-def S_BARRIER_SIGNAL_ISFIRST_M0_sem :
-  InstSIIntrinsic<S_BARRIER_SIGNAL_ISFIRST_M0,
-                   int_amdgcn_s_barrier_signal_isfirst>;
+def S_BARRIER_SIGNAL_ISFIRST_M0_sem : InstSISemantic<S_BARRIER_SIGNAL_ISFIRST_M0> {
+  let Semantic = [
+    (ImplicitDef SCC, (LLVMIntrinsic llvm_i1_ty, int_amdgcn_s_barrier_signal_isfirst, [(ImplicitUse M0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_BARRIER_INIT_IMM / S_BARRIER_INIT_M0
@@ -1487,11 +1522,17 @@ def S_BARRIER_SIGNAL_ISFIRST_M0_sem :
 // Not found in any ISA PDF (gfx12+ only, not documented in available ISA manuals).
 // Defined in llvm-project: llvm/lib/Target/AMDGPU/SOPInstructions.td, line 516 (IMM), line 510 (M0).
 // Has gfx12 real encodings (opcode 0x051).
-def S_BARRIER_INIT_IMM_sem : InstSIIntrinsic<S_BARRIER_INIT_IMM,
-                                              int_amdgcn_s_barrier_init>;
+def S_BARRIER_INIT_IMM_sem : InstSISemantic<S_BARRIER_INIT_IMM> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_barrier_init, [(GetNamedOperand $simm16), (GetNamedOperand $src0)])
+  ];
+}
 
-def S_BARRIER_INIT_M0_sem : InstSIIntrinsic<S_BARRIER_INIT_M0,
-                                             int_amdgcn_s_barrier_init>;
+def S_BARRIER_INIT_M0_sem : InstSISemantic<S_BARRIER_INIT_M0> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_barrier_init, [(ImplicitUse M0), (GetNamedOperand $src0)])
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_BARRIER_JOIN_IMM / S_BARRIER_JOIN_M0
@@ -1501,11 +1542,17 @@ def S_BARRIER_INIT_M0_sem : InstSIIntrinsic<S_BARRIER_INIT_M0,
 // Not found in any ISA PDF (gfx12+ only, not documented in available ISA manuals).
 // Defined in llvm-project: llvm/lib/Target/AMDGPU/SOPInstructions.td, line 551 (IMM), line 522 (M0).
 // Has gfx12 real encodings (opcode 0x052).
-def S_BARRIER_JOIN_IMM_sem : InstSIIntrinsic<S_BARRIER_JOIN_IMM,
-                                              int_amdgcn_s_barrier_join>;
+def S_BARRIER_JOIN_IMM_sem : InstSISemantic<S_BARRIER_JOIN_IMM> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_barrier_join, [(GetNamedOperand $simm16)])
+  ];
+}
 
-def S_BARRIER_JOIN_M0_sem : InstSIIntrinsic<S_BARRIER_JOIN_M0,
-                                             int_amdgcn_s_barrier_join>;
+def S_BARRIER_JOIN_M0_sem : InstSISemantic<S_BARRIER_JOIN_M0> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_barrier_join, [(ImplicitUse M0)])
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_GET_BARRIER_STATE_IMM / S_GET_BARRIER_STATE_M0
@@ -1515,11 +1562,19 @@ def S_BARRIER_JOIN_M0_sem : InstSIIntrinsic<S_BARRIER_JOIN_M0,
 // Sources:
 //   rdna4-instruction-set-architecture.pdf, page 251 (unified S_GET_BARRIER_STATE).
 // Defined in llvm-project: llvm/lib/Target/AMDGPU/SOPInstructions.td, line 565 (IMM), line 571 (M0).
-def S_GET_BARRIER_STATE_IMM_sem :
-  InstSIIntrinsic<S_GET_BARRIER_STATE_IMM, int_amdgcn_s_get_barrier_state>;
+def S_GET_BARRIER_STATE_IMM_sem : InstSISemantic<S_GET_BARRIER_STATE_IMM> {
+  let Semantic = [
+    (SetNamedOperand $sdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_s_get_barrier_state, [(GetNamedOperand $simm16)]))
+  ];
+}
 
-def S_GET_BARRIER_STATE_M0_sem :
-  InstSIIntrinsic<S_GET_BARRIER_STATE_M0, int_amdgcn_s_get_barrier_state>;
+def S_GET_BARRIER_STATE_M0_sem : InstSISemantic<S_GET_BARRIER_STATE_M0> {
+  let Semantic = [
+    (SetNamedOperand $sdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_s_get_barrier_state, [(ImplicitUse M0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_WAKEUP_BARRIER_IMM / S_WAKEUP_BARRIER_M0
@@ -1529,8 +1584,14 @@ def S_GET_BARRIER_STATE_M0_sem :
 // Not found in any ISA PDF (gfx12+ only, not documented in available ISA manuals).
 // Defined in llvm-project: llvm/lib/Target/AMDGPU/SOPInstructions.td, line 557 (IMM), line 528 (M0).
 // Has gfx12 real encodings (opcode 0x057).
-def S_WAKEUP_BARRIER_IMM_sem : InstSIIntrinsic<S_WAKEUP_BARRIER_IMM,
-                                                int_amdgcn_s_wakeup_barrier>;
+def S_WAKEUP_BARRIER_IMM_sem : InstSISemantic<S_WAKEUP_BARRIER_IMM> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_wakeup_barrier, [(GetNamedOperand $simm16)])
+  ];
+}
 
-def S_WAKEUP_BARRIER_M0_sem : InstSIIntrinsic<S_WAKEUP_BARRIER_M0,
-                                               int_amdgcn_s_wakeup_barrier>;
+def S_WAKEUP_BARRIER_M0_sem : InstSISemantic<S_WAKEUP_BARRIER_M0> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_wakeup_barrier, [(ImplicitUse M0)])
+  ];
+}

@@ -55,8 +55,12 @@
 //   instinct-mi100-cdna1-shader-instruction-set-architecture.pdf, page 157.
 //   rdna-shader-instruction-set-architecture.pdf, page 176.
 //   rdna2-shader-instruction-set-architecture.pdf, page 174.
-def V_INTERP_P1_F32_sem : InstSIIntrinsic<V_INTERP_P1_F32,
-                                            int_amdgcn_interp_p1>;
+def V_INTERP_P1_F32_sem : InstSISemantic<V_INTERP_P1_F32> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_interp_p1, [(GetNamedOperand $vsrc), (GetNamedOperand $attrchan), (GetNamedOperand $attr), (ImplicitUse M0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // V_INTERP_P2_F32 — Interpolation Step 2 (final result)
@@ -73,8 +77,12 @@ def V_INTERP_P1_F32_sem : InstSIIntrinsic<V_INTERP_P1_F32,
 // Sources (RDNA3+, new VINTERP VOP3 encoding):
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 507.
 //   rdna4-instruction-set-architecture.pdf, page 580.
-def V_INTERP_P2_F32_sem : InstSIIntrinsic<V_INTERP_P2_F32,
-                                            int_amdgcn_interp_p2>;
+def V_INTERP_P2_F32_sem : InstSISemantic<V_INTERP_P2_F32> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_interp_p2, [(GetNamedOperand $vsrc), (GetNamedOperand $attrchan), (GetNamedOperand $attr), (ImplicitUse M0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // V_INTERP_MOV_F32 — Interpolation Move (flat/center/centroid)
@@ -88,16 +96,24 @@ def V_INTERP_P2_F32_sem : InstSIIntrinsic<V_INTERP_P2_F32,
 //   instinct-mi100-cdna1-shader-instruction-set-architecture.pdf, page 157.
 //   rdna-shader-instruction-set-architecture.pdf, page 177.
 //   rdna2-shader-instruction-set-architecture.pdf, page 174.
-def V_INTERP_MOV_F32_sem : InstSIIntrinsic<V_INTERP_MOV_F32,
-                                             int_amdgcn_interp_mov>;
+def V_INTERP_MOV_F32_sem : InstSISemantic<V_INTERP_MOV_F32> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_interp_mov, [(GetNamedOperand $vsrc), (GetNamedOperand $attrchan), (GetNamedOperand $attr), (ImplicitUse M0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // V_INTERP_P1_F32_16bank — P1 variant for 16-bank LDS (LLVM pseudo)
 //------------------------------------------------------------------------------
 // Same semantics as V_INTERP_P1_F32 but scheduled differently for
 // different LDS bank configurations. LLVM-only pseudo.
-def V_INTERP_P1_F32_16bank_sem : InstSIIntrinsic<V_INTERP_P1_F32_16bank,
-                                                   int_amdgcn_interp_p1>;
+def V_INTERP_P1_F32_16bank_sem : InstSISemantic<V_INTERP_P1_F32_16bank> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_interp_p1, [(GetNamedOperand $vsrc), (GetNamedOperand $attrchan), (GetNamedOperand $attr), (ImplicitUse M0)]))
+  ];
+}
 
 //==============================================================================
 // VOP3 Interpolation F16 Instructions (GCN3–RDNA2)
@@ -121,8 +137,12 @@ def V_INTERP_P1_F32_16bank_sem : InstSIIntrinsic<V_INTERP_P1_F32_16bank,
 //   instinct-mi100-cdna1-shader-instruction-set-architecture.pdf, page 171.
 //   rdna-shader-instruction-set-architecture.pdf, page 192.
 //   rdna2-shader-instruction-set-architecture.pdf, page 188.
-def V_INTERP_P1LL_F16_sem : InstSIIntrinsic<V_INTERP_P1LL_F16,
-                                              int_amdgcn_interp_p1_f16>;
+def V_INTERP_P1LL_F16_sem : InstSISemantic<V_INTERP_P1LL_F16> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_interp_p1_f16, [(GetNamedOperand $src0), (GetNamedOperand $attrchan), (GetNamedOperand $attr), (GetNamedOperand $high), (ImplicitUse M0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // V_INTERP_P1LV_F16 — F16 Interpolation P1, Low-High
@@ -157,8 +177,12 @@ def V_INTERP_P1LV_F16_sem : InstSISemantic<V_INTERP_P1LV_F16> {
 // Sources (RDNA3+, new VINTERP encoding):
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 508.
 //   rdna4-instruction-set-architecture.pdf, page 581.
-def V_INTERP_P2_F16_sem : InstSIIntrinsic<V_INTERP_P2_F16,
-                                            int_amdgcn_interp_p2_f16>;
+def V_INTERP_P2_F16_sem : InstSISemantic<V_INTERP_P2_F16> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_half_ty, int_amdgcn_interp_p2_f16, [(GetNamedOperand $src0), (GetNamedOperand $attrchan), (GetNamedOperand $attr), (GetNamedOperand $high), (ImplicitUse M0)]))
+  ];
+}
 
 //==============================================================================
 // LDSDIR Instructions — LDS Direct/Param Load (RDNA3 / GFX11)
@@ -179,8 +203,12 @@ def V_INTERP_P2_F16_sem : InstSIIntrinsic<V_INTERP_P2_F16,
 // parameters in RDNA3. Used with V_INTERP_P2_F32/F16 for interpolation.
 // Sources:
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 510.
-def LDS_PARAM_LOAD_sem : InstSIIntrinsic<LDS_PARAM_LOAD,
-                                           int_amdgcn_lds_param_load>;
+def LDS_PARAM_LOAD_sem : InstSISemantic<LDS_PARAM_LOAD> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_lds_param_load, [(GetNamedOperand $attr), (GetNamedOperand $attrchan), (ImplicitUse M0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // LDS_DIRECT_LOAD — Direct Load from LDS
@@ -189,8 +217,12 @@ def LDS_PARAM_LOAD_sem : InstSIIntrinsic<LDS_PARAM_LOAD,
 // in M0. Used for direct LDS access without interpolation.
 // Sources:
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 510.
-def LDS_DIRECT_LOAD_sem : InstSIIntrinsic<LDS_DIRECT_LOAD,
-                                            int_amdgcn_lds_direct_load>;
+def LDS_DIRECT_LOAD_sem : InstSISemantic<LDS_DIRECT_LOAD> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_lds_direct_load, [(ImplicitUse M0)]))
+  ];
+}
 
 //==============================================================================
 // DSDIR Instructions — DS Direct/Param Load (RDNA4 / GFX12)
@@ -209,8 +241,12 @@ def LDS_DIRECT_LOAD_sem : InstSIIntrinsic<LDS_DIRECT_LOAD,
 // encoding and additional wait counter operands.
 // Sources:
 //   rdna4-instruction-set-architecture.pdf, page 584.
-def DS_PARAM_LOAD_sem : InstSIIntrinsic<DS_PARAM_LOAD,
-                                         int_amdgcn_lds_param_load>;
+def DS_PARAM_LOAD_sem : InstSISemantic<DS_PARAM_LOAD> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_lds_param_load, [(GetNamedOperand $attr), (GetNamedOperand $attrchan), (ImplicitUse M0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // DS_DIRECT_LOAD — Direct Load from LDS (GFX12)
@@ -219,5 +255,9 @@ def DS_PARAM_LOAD_sem : InstSIIntrinsic<DS_PARAM_LOAD,
 // and additional wait counter operands.
 // Sources:
 //   rdna4-instruction-set-architecture.pdf, page 584.
-def DS_DIRECT_LOAD_sem : InstSIIntrinsic<DS_DIRECT_LOAD,
-                                          int_amdgcn_lds_direct_load>;
+def DS_DIRECT_LOAD_sem : InstSISemantic<DS_DIRECT_LOAD> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_lds_direct_load, [(ImplicitUse M0)]))
+  ];
+}

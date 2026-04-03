@@ -875,11 +875,21 @@ foreach i = 0-7 in {
 // V_CMP_CLASS → $sdst
 foreach inst = [V_CMP_CLASS_F32_e64, V_CMP_CLASS_F64_e64,
                 V_CMP_CLASS_F16_e64, V_CMP_CLASS_F16_t16_e64] in {
-  def inst#_sem : InstSIIntrinsic<inst, int_amdgcn_class>;
+  def inst#_sem : InstSISemantic<inst> {
+    let Semantic = [
+      (SetNamedOperand $sdst,
+      (LLVMIntrinsic llvm_i1_ty, int_amdgcn_class, [(GetNamedOperand $src0), (GetNamedOperand $src1)]))
+    ];
+  }
 }
 
 // V_CMPX_CLASS → $sdst + EXEC
 foreach inst = [V_CMPX_CLASS_F32_e64, V_CMPX_CLASS_F64_e64,
                 V_CMPX_CLASS_F16_e64, V_CMPX_CLASS_F16_t16_e64] in {
-  def inst#_sem : InstSIIntrinsic<inst, int_amdgcn_class>;
+  def inst#_sem : InstSISemantic<inst> {
+    let Semantic = [
+      (SetNamedOperand $sdst,
+      (LLVMIntrinsic llvm_i1_ty, int_amdgcn_class, [(GetNamedOperand $src0), (GetNamedOperand $src1)]))
+    ];
+  }
 }

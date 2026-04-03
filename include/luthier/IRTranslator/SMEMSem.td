@@ -4519,14 +4519,28 @@ def S_GL1_INV_sem : InstSISemantic<S_GL1_INV>;
 //   gcn3-instruction-set-architecture.pdf, page 162.
 //   vega-7nm-shader-instruction-set-architecture.pdf, page 124.
 //   rdna-shader-instruction-set-architecture.pdf, page 139.
-def S_MEMTIME_sem : InstSIIntrinsic<S_MEMTIME, int_amdgcn_s_memtime>;
+def S_MEMTIME_sem : InstSISemantic<S_MEMTIME> {
+  let Semantic = [
+    (SetNamedOperand $sdst,
+      (LLVMIntrinsic llvm_i64_ty, int_amdgcn_s_memtime, []<dag>))
+  ];
+}
 
 // S_MEMREALTIME: Return 64-bit real timestamp (GFX8+, deprecated in RDNA2+).
-def S_MEMREALTIME_sem : InstSIIntrinsic<S_MEMREALTIME, int_amdgcn_s_memrealtime>;
+def S_MEMREALTIME_sem : InstSISemantic<S_MEMREALTIME> {
+  let Semantic = [
+    (SetNamedOperand $sdst,
+      (LLVMIntrinsic llvm_i64_ty, int_amdgcn_s_memrealtime, []<dag>))
+  ];
+}
 
 // S_GET_WAVEID_IN_WORKGROUP: Get wave ID within workgroup (GFX10+).
-def S_GET_WAVEID_IN_WORKGROUP_sem : InstSIIntrinsic<S_GET_WAVEID_IN_WORKGROUP, 
-                                                    int_amdgcn_s_get_waveid_in_workgroup>;
+def S_GET_WAVEID_IN_WORKGROUP_sem : InstSISemantic<S_GET_WAVEID_IN_WORKGROUP> {
+  let Semantic = [
+    (SetNamedOperand $sdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_s_get_waveid_in_workgroup, []<dag>))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // Prefetch Instructions (performance hints - no semantic effect)

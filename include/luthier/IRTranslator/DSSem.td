@@ -715,7 +715,12 @@ def DS_CMPST_RTN_F32_sem : InstSISemantic<DS_CMPST_RTN_F32> {
 //   rdna2-shader-instruction-set-architecture.pdf, page 203.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 522.
 //   rdna4-instruction-set-architecture.pdf, page 597.
-def DS_SWIZZLE_B32_sem : InstSIIntrinsic<DS_SWIZZLE_B32, int_amdgcn_ds_swizzle>;
+def DS_SWIZZLE_B32_sem : InstSISemantic<DS_SWIZZLE_B32> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_ds_swizzle, [(GetNamedOperand $addr), (GetNamedOperand $offset)]))
+  ];
+}
 
 // DS_PERMUTE_B32: Forward permute. D[lane] = data[offset[lane]].
 // Sources:
@@ -731,7 +736,12 @@ def DS_SWIZZLE_B32_sem : InstSIIntrinsic<DS_SWIZZLE_B32, int_amdgcn_ds_swizzle>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 213.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 543.
 //   rdna4-instruction-set-architecture.pdf, page 618.
-def DS_PERMUTE_B32_sem : InstSIIntrinsic<DS_PERMUTE_B32, int_amdgcn_ds_permute>;
+def DS_PERMUTE_B32_sem : InstSISemantic<DS_PERMUTE_B32> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_ds_permute, [(GetNamedOperand $addr), (GetNamedOperand $src0)]))
+  ];
+}
 
 // DS_BPERMUTE_B32: Backward permute. D[lane] = data[offset[lane]].
 // Sources:
@@ -747,7 +757,12 @@ def DS_PERMUTE_B32_sem : InstSIIntrinsic<DS_PERMUTE_B32, int_amdgcn_ds_permute>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 214.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 544.
 //   rdna4-instruction-set-architecture.pdf, page 618.
-def DS_BPERMUTE_B32_sem : InstSIIntrinsic<DS_BPERMUTE_B32, int_amdgcn_ds_bpermute>;
+def DS_BPERMUTE_B32_sem : InstSISemantic<DS_BPERMUTE_B32> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_ds_bpermute, [(GetNamedOperand $addr), (GetNamedOperand $src0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // DS NOP
@@ -787,11 +802,21 @@ def DS_NOP_sem : InstSISemantic<DS_NOP>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 205.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 526.
 //   rdna4-instruction-set-architecture.pdf, page 601.
-def DS_APPEND_sem : InstSIIntrinsic<DS_APPEND, int_amdgcn_ds_append>;
+def DS_APPEND_sem : InstSISemantic<DS_APPEND> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_ds_append, [(GetNamedOperand $addr), (ConstantInt llvm_i1_ty, 0)]))
+  ];
+}
 
 // DS_CONSUME: Consume a dword from a buffer. GDS_BASE -= 4; D = MEM[GDS_BASE].
 // Sources: same as DS_APPEND (same pages or adjacent).
-def DS_CONSUME_sem : InstSIIntrinsic<DS_CONSUME, int_amdgcn_ds_consume>;
+def DS_CONSUME_sem : InstSISemantic<DS_CONSUME> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_ds_consume, [(GetNamedOperand $addr), (ConstantInt llvm_i1_ty, 0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // CI+ DS Instructions
@@ -2527,7 +2552,12 @@ def DS_SUB_GS_REG_RTN_sem : InstSISemantic<DS_SUB_GS_REG_RTN> {
 //------------------------------------------------------------------------------
 
 // DS_BPERMUTE_FI_B32: Backward permute with fetch-inactive.
-def DS_BPERMUTE_FI_B32_sem : InstSIIntrinsic<DS_BPERMUTE_FI_B32, int_amdgcn_ds_bpermute_fi_b32>;
+def DS_BPERMUTE_FI_B32_sem : InstSISemantic<DS_BPERMUTE_FI_B32> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_ds_bpermute_fi_b32, [(GetNamedOperand $addr), (GetNamedOperand $src0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // DS Atomic Barrier Instructions (inline asm)

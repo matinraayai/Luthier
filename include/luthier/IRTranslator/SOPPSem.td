@@ -38,7 +38,11 @@
 //   rdna2-shader-instruction-set-architecture.pdf, page 133.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 242.
 //   rdna4-instruction-set-architecture.pdf, page 276.
-def S_NOP_sem : InstSIIntrinsic<S_NOP, int_amdgcn_s_nop>;
+def S_NOP_sem : InstSISemantic<S_NOP> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_nop, [(GetNamedOperand $simm16)])
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_BARRIER
@@ -56,7 +60,11 @@ def S_NOP_sem : InstSIIntrinsic<S_NOP, int_amdgcn_s_nop>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 134.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 254.
 //   (Removed in RDNA4; replaced by S_BARRIER_SIGNAL + S_BARRIER_WAIT.)
-def S_BARRIER_sem : InstSIIntrinsic<S_BARRIER, int_amdgcn_s_barrier>;
+def S_BARRIER_sem : InstSISemantic<S_BARRIER> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_barrier, []<dag>)
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_WAITCNT
@@ -74,7 +82,11 @@ def S_BARRIER_sem : InstSIIntrinsic<S_BARRIER, int_amdgcn_s_barrier>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 135.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 247.
 //   (Removed in RDNA4; replaced by S_WAIT_KMCNT/LOADCNT/STORECNT/etc.)
-def S_WAITCNT_sem : InstSIIntrinsic<S_WAITCNT, int_amdgcn_s_waitcnt>;
+def S_WAITCNT_sem : InstSISemantic<S_WAITCNT> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_waitcnt, [(GetNamedOperand $simm16)])
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_SENDMSG / S_SENDMSGHALT
@@ -92,11 +104,19 @@ def S_WAITCNT_sem : InstSIIntrinsic<S_WAITCNT, int_amdgcn_s_waitcnt>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 135.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 254.
 //   rdna4-instruction-set-architecture.pdf, page 286.
-def S_SENDMSG_sem : InstSIIntrinsic<S_SENDMSG, int_amdgcn_s_sendmsg>;
+def S_SENDMSG_sem : InstSISemantic<S_SENDMSG> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_sendmsg, [(GetNamedOperand $simm16)])
+  ];
+}
 
 // Send a message then enter halt state.
 // Sources: same pages as S_SENDMSG.
-def S_SENDMSGHALT_sem : InstSIIntrinsic<S_SENDMSGHALT, int_amdgcn_s_sendmsghalt>;
+def S_SENDMSGHALT_sem : InstSISemantic<S_SENDMSGHALT> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_sendmsghalt, [(GetNamedOperand $simm16)])
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_SLEEP
@@ -114,7 +134,11 @@ def S_SENDMSGHALT_sem : InstSIIntrinsic<S_SENDMSGHALT, int_amdgcn_s_sendmsghalt>
 //   rdna2-shader-instruction-set-architecture.pdf, page 135.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 243.
 //   rdna4-instruction-set-architecture.pdf, page 277.
-def S_SLEEP_sem : InstSIIntrinsic<S_SLEEP, int_amdgcn_s_sleep>;
+def S_SLEEP_sem : InstSISemantic<S_SLEEP> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_sleep, [(GetNamedOperand $simm16)])
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_SETHALT
@@ -132,7 +156,11 @@ def S_SLEEP_sem : InstSIIntrinsic<S_SLEEP, int_amdgcn_s_sleep>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 135.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 242.
 //   rdna4-instruction-set-architecture.pdf, page 276.
-def S_SETHALT_sem : InstSIIntrinsic<S_SETHALT, int_amdgcn_s_sethalt>;
+def S_SETHALT_sem : InstSISemantic<S_SETHALT> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_sethalt, [(GetNamedOperand $simm16)])
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_SETPRIO
@@ -150,7 +178,11 @@ def S_SETHALT_sem : InstSIIntrinsic<S_SETHALT, int_amdgcn_s_sethalt>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 135.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 253.
 //   rdna4-instruction-set-architecture.pdf, page 286.
-def S_SETPRIO_sem : InstSIIntrinsic<S_SETPRIO, int_amdgcn_s_setprio>;
+def S_SETPRIO_sem : InstSISemantic<S_SETPRIO> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_setprio, [(GetNamedOperand $simm16)])
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_TRAP
@@ -211,15 +243,22 @@ def S_ICACHE_INV_sem : InstSISemantic<S_ICACHE_INV> {
 //   rdna-shader-instruction-set-architecture.pdf, page 136.
 //   rdna2-shader-instruction-set-architecture.pdf, page 136.
 //   (Not present in RDNA3, RDNA4.)
-def S_TTRACEDATA_sem : InstSIIntrinsic<S_TTRACEDATA, int_amdgcn_s_ttracedata>;
+def S_TTRACEDATA_sem : InstSISemantic<S_TTRACEDATA> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_ttracedata, []<dag>)
+  ];
+}
 
 // Write immediate value to thread trace data (GFX10+).
 // Sources:
 //   rdna-shader-instruction-set-architecture.pdf, page 136.
 //   rdna2-shader-instruction-set-architecture.pdf, page 136.
 //   (Not present in RDNA3, RDNA4.)
-def S_TTRACEDATA_IMM_sem : InstSIIntrinsic<S_TTRACEDATA_IMM,
-                                            int_amdgcn_s_ttracedata_imm>;
+def S_TTRACEDATA_IMM_sem : InstSISemantic<S_TTRACEDATA_IMM> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_ttracedata_imm, [(GetNamedOperand $simm16)])
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_INCPERFLEVEL / S_DECPERFLEVEL
@@ -237,13 +276,19 @@ def S_TTRACEDATA_IMM_sem : InstSIIntrinsic<S_TTRACEDATA_IMM,
 //   rdna2-shader-instruction-set-architecture.pdf, page 136.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 254.
 //   rdna4-instruction-set-architecture.pdf, page 286.
-def S_INCPERFLEVEL_sem : InstSIIntrinsic<S_INCPERFLEVEL,
-                                          int_amdgcn_s_incperflevel>;
+def S_INCPERFLEVEL_sem : InstSISemantic<S_INCPERFLEVEL> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_incperflevel, [(GetNamedOperand $simm16)])
+  ];
+}
 
 // Decrement performance counter level.
 // Sources: same as S_INCPERFLEVEL.
-def S_DECPERFLEVEL_sem : InstSIIntrinsic<S_DECPERFLEVEL,
-                                          int_amdgcn_s_decperflevel>;
+def S_DECPERFLEVEL_sem : InstSISemantic<S_DECPERFLEVEL> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_decperflevel, [(GetNamedOperand $simm16)])
+  ];
+}
 
 //------------------------------------------------------------------------------
 // S_WAKEUP
@@ -306,20 +351,41 @@ def S_ROUND_MODE_sem : InstSISemantic<S_ROUND_MODE> {
 // Sources:
 //   rdna4-instruction-set-architecture.pdf, page 287.
 //   (Introduced in GFX12, replacing S_WAITCNT.)
-def S_WAIT_KMCNT_sem : InstSIIntrinsic<S_WAIT_KMCNT,
-                                         int_amdgcn_s_wait_kmcnt>;
-def S_WAIT_LOADCNT_sem : InstSIIntrinsic<S_WAIT_LOADCNT,
-                                           int_amdgcn_s_wait_loadcnt>;
-def S_WAIT_STORECNT_sem : InstSIIntrinsic<S_WAIT_STORECNT,
-                                            int_amdgcn_s_wait_storecnt>;
-def S_WAIT_EXPCNT_sem : InstSIIntrinsic<S_WAIT_EXPCNT,
-                                          int_amdgcn_s_wait_expcnt>;
-def S_WAIT_DSCNT_sem : InstSIIntrinsic<S_WAIT_DSCNT,
-                                         int_amdgcn_s_wait_dscnt>;
-def S_WAIT_SAMPLECNT_sem : InstSIIntrinsic<S_WAIT_SAMPLECNT,
-                                             int_amdgcn_s_wait_samplecnt>;
-def S_WAIT_BVHCNT_sem : InstSIIntrinsic<S_WAIT_BVHCNT,
-                                          int_amdgcn_s_wait_bvhcnt>;
+def S_WAIT_KMCNT_sem : InstSISemantic<S_WAIT_KMCNT> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_wait_kmcnt, [(GetNamedOperand $simm16)])
+  ];
+}
+def S_WAIT_LOADCNT_sem : InstSISemantic<S_WAIT_LOADCNT> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_wait_loadcnt, [(GetNamedOperand $simm16)])
+  ];
+}
+def S_WAIT_STORECNT_sem : InstSISemantic<S_WAIT_STORECNT> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_wait_storecnt, [(GetNamedOperand $simm16)])
+  ];
+}
+def S_WAIT_EXPCNT_sem : InstSISemantic<S_WAIT_EXPCNT> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_wait_expcnt, [(GetNamedOperand $simm16)])
+  ];
+}
+def S_WAIT_DSCNT_sem : InstSISemantic<S_WAIT_DSCNT> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_wait_dscnt, [(GetNamedOperand $simm16)])
+  ];
+}
+def S_WAIT_SAMPLECNT_sem : InstSISemantic<S_WAIT_SAMPLECNT> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_wait_samplecnt, [(GetNamedOperand $simm16)])
+  ];
+}
+def S_WAIT_BVHCNT_sem : InstSISemantic<S_WAIT_BVHCNT> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_wait_bvhcnt, [(GetNamedOperand $simm16)])
+  ];
+}
 
 // S_WAIT_IDLE: Wait for all outstanding operations.
 // Sources:
@@ -333,11 +399,17 @@ def S_WAIT_IDLE_sem : InstSISemantic<S_WAIT_IDLE> {
 // S_BARRIER_WAIT: Wait on a barrier (GFX12+).
 // Sources:
 //   rdna4-instruction-set-architecture.pdf, page 282.
-def S_BARRIER_WAIT_sem : InstSIIntrinsic<S_BARRIER_WAIT,
-                                          int_amdgcn_s_barrier_wait>;
+def S_BARRIER_WAIT_sem : InstSISemantic<S_BARRIER_WAIT> {
+  let Semantic = [
+    (LLVMIntrinsic llvm_void_ty, int_amdgcn_s_barrier_wait, [(GetNamedOperand $simm16)])
+  ];
+}
 
 // S_BARRIER_LEAVE: Leave a named barrier (GFX12+).
 // Sources:
 //   (Not present in RDNA4; present in CDNA3+.)
-def S_BARRIER_LEAVE_sem : InstSIIntrinsic<S_BARRIER_LEAVE,
-                                           int_amdgcn_s_barrier_leave>;
+def S_BARRIER_LEAVE_sem : InstSISemantic<S_BARRIER_LEAVE> {
+  let Semantic = [
+    (ImplicitDef SCC, (LLVMIntrinsic llvm_i1_ty, int_amdgcn_s_barrier_leave, []<dag>))
+  ];
+}

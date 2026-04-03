@@ -872,12 +872,20 @@ def V_BCNT_U32_B32_e64_sem : InstSISemantic<V_BCNT_U32_B32_e64> {
 //   rdna2-shader-instruction-set-architecture.pdf, page 192.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 444.
 //   rdna4-instruction-set-architecture.pdf, page 517.
-def V_MBCNT_LO_U32_B32_e64_sem : InstSIIntrinsic<V_MBCNT_LO_U32_B32_e64,
-                                                    int_amdgcn_mbcnt_lo>;
+def V_MBCNT_LO_U32_B32_e64_sem : InstSISemantic<V_MBCNT_LO_U32_B32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_mbcnt_lo, [(GetNamedOperand $src0), (GetNamedOperand $src1)]))
+  ];
+}
 
 // D.u = MaskedBitCount(S0.u, EXEC[63:32]) + S1.u (intrinsic).
-def V_MBCNT_HI_U32_B32_e64_sem : InstSIIntrinsic<V_MBCNT_HI_U32_B32_e64,
-                                                    int_amdgcn_mbcnt_hi>;
+def V_MBCNT_HI_U32_B32_e64_sem : InstSISemantic<V_MBCNT_HI_U32_B32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_mbcnt_hi, [(GetNamedOperand $src0), (GetNamedOperand $src1)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // VOP2 LDEXP e64
@@ -1989,17 +1997,30 @@ def V_CVT_U32_U16_e64_sem : InstSISemantic<V_CVT_U32_U16_e64> {
 //   amd-instinct-cdna4-instruction-set-architecture.pdf, page 223.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 300.
 //   rdna4-instruction-set-architecture.pdf, page 341.
-def V_CVT_NORM_I16_F16_e64_sem : InstSIIntrinsic<V_CVT_NORM_I16_F16_e64,
-                                                    int_amdgcn_cvt_pknorm_i16>;
-def V_CVT_NORM_U16_F16_e64_sem : InstSIIntrinsic<V_CVT_NORM_U16_F16_e64,
-                                                    int_amdgcn_cvt_pknorm_u16>;
+def V_CVT_NORM_I16_F16_e64_sem : InstSISemantic<V_CVT_NORM_I16_F16_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i16_ty, int_amdgcn_cvt_pknorm_i16, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_CVT_NORM_U16_F16_e64_sem : InstSISemantic<V_CVT_NORM_U16_F16_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i16_ty, int_amdgcn_cvt_pknorm_u16, [(GetNamedOperand $src0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // VOP1 Math e64 (hardware transcendental approximations)
 //------------------------------------------------------------------------------
 
 // Square root.
-def V_SQRT_F32_e64_sem : InstSIIntrinsic<V_SQRT_F32_e64, int_amdgcn_sqrt>;
+def V_SQRT_F32_e64_sem : InstSISemantic<V_SQRT_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_sqrt, [(GetNamedOperand $src0)]))
+  ];
+}
 // Sources:
 //   gcn3-instruction-set-architecture.pdf, page 224.
 //   vega-shader-instruction-set-architecture.pdf, page 140.
@@ -2012,8 +2033,18 @@ def V_SQRT_F32_e64_sem : InstSIIntrinsic<V_SQRT_F32_e64, int_amdgcn_sqrt>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 150.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 286.
 //   rdna4-instruction-set-architecture.pdf, page 327.
-def V_SQRT_F64_e64_sem : InstSIIntrinsic<V_SQRT_F64_e64, int_amdgcn_sqrt>;
-def V_SQRT_F16_e64_sem : InstSIIntrinsic<V_SQRT_F16_e64, int_amdgcn_sqrt>;
+def V_SQRT_F64_e64_sem : InstSISemantic<V_SQRT_F64_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_double_ty, int_amdgcn_sqrt, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_SQRT_F16_e64_sem : InstSISemantic<V_SQRT_F16_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_half_ty, int_amdgcn_sqrt, [(GetNamedOperand $src0)]))
+  ];
+}
 
 // Reciprocal square root.
 // Sources:
@@ -2028,9 +2059,24 @@ def V_SQRT_F16_e64_sem : InstSIIntrinsic<V_SQRT_F16_e64, int_amdgcn_sqrt>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 150.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 285.
 //   rdna4-instruction-set-architecture.pdf, page 326.
-def V_RSQ_F32_e64_sem : InstSIIntrinsic<V_RSQ_F32_e64, int_amdgcn_rsq>;
-def V_RSQ_F64_e64_sem : InstSIIntrinsic<V_RSQ_F64_e64, int_amdgcn_rsq>;
-def V_RSQ_F16_e64_sem : InstSIIntrinsic<V_RSQ_F16_e64, int_amdgcn_rsq>;
+def V_RSQ_F32_e64_sem : InstSISemantic<V_RSQ_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_rsq, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_RSQ_F64_e64_sem : InstSISemantic<V_RSQ_F64_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_double_ty, int_amdgcn_rsq, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_RSQ_F16_e64_sem : InstSISemantic<V_RSQ_F16_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_half_ty, int_amdgcn_rsq, [(GetNamedOperand $src0)]))
+  ];
+}
 
 // Reciprocal.
 // Sources:
@@ -2045,9 +2091,24 @@ def V_RSQ_F16_e64_sem : InstSIIntrinsic<V_RSQ_F16_e64, int_amdgcn_rsq>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 149.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 284.
 //   rdna4-instruction-set-architecture.pdf, page 325.
-def V_RCP_F32_e64_sem : InstSIIntrinsic<V_RCP_F32_e64, int_amdgcn_rcp>;
-def V_RCP_F64_e64_sem : InstSIIntrinsic<V_RCP_F64_e64, int_amdgcn_rcp>;
-def V_RCP_F16_e64_sem : InstSIIntrinsic<V_RCP_F16_e64, int_amdgcn_rcp>;
+def V_RCP_F32_e64_sem : InstSISemantic<V_RCP_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_rcp, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_RCP_F64_e64_sem : InstSISemantic<V_RCP_F64_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_double_ty, int_amdgcn_rcp, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_RCP_F16_e64_sem : InstSISemantic<V_RCP_F16_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_half_ty, int_amdgcn_rcp, [(GetNamedOperand $src0)]))
+  ];
+}
 
 // Reciprocal with integer division-by-zero flag.
 // Sources:
@@ -2062,28 +2123,56 @@ def V_RCP_F16_e64_sem : InstSIIntrinsic<V_RCP_F16_e64, int_amdgcn_rcp>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 149.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 284.
 //   rdna4-instruction-set-architecture.pdf, page 325.
-def V_RCP_IFLAG_F32_e64_sem : InstSIIntrinsic<V_RCP_IFLAG_F32_e64,
-                                                int_amdgcn_rcp>;
+def V_RCP_IFLAG_F32_e64_sem : InstSISemantic<V_RCP_IFLAG_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_rcp, [(GetNamedOperand $src0)]))
+  ];
+}
 
 // Clamped reciprocal (GFX6/GFX7).
-def V_RCP_CLAMP_F32_e64_sem : InstSIIntrinsic<V_RCP_CLAMP_F32_e64,
-                                                int_amdgcn_rcp>;
-def V_RCP_CLAMP_F64_e64_sem : InstSIIntrinsic<V_RCP_CLAMP_F64_e64,
-                                                int_amdgcn_rcp>;
+def V_RCP_CLAMP_F32_e64_sem : InstSISemantic<V_RCP_CLAMP_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_rcp, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_RCP_CLAMP_F64_e64_sem : InstSISemantic<V_RCP_CLAMP_F64_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_double_ty, int_amdgcn_rcp, [(GetNamedOperand $src0)]))
+  ];
+}
 
 // Clamped RSQ (GFX6/GFX7).
-def V_RSQ_CLAMP_F32_e64_sem : InstSIIntrinsic<V_RSQ_CLAMP_F32_e64,
-                                                int_amdgcn_rsq_clamp>;
-def V_RSQ_CLAMP_F64_e64_sem : InstSIIntrinsic<V_RSQ_CLAMP_F64_e64,
-                                                int_amdgcn_rsq_clamp>;
+def V_RSQ_CLAMP_F32_e64_sem : InstSISemantic<V_RSQ_CLAMP_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_rsq_clamp, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_RSQ_CLAMP_F64_e64_sem : InstSISemantic<V_RSQ_CLAMP_F64_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_double_ty, int_amdgcn_rsq_clamp, [(GetNamedOperand $src0)]))
+  ];
+}
 
 // Legacy RSQ (GFX6/GFX7).
-def V_RSQ_LEGACY_F32_e64_sem : InstSIIntrinsic<V_RSQ_LEGACY_F32_e64,
-                                                 int_amdgcn_rsq_legacy>;
+def V_RSQ_LEGACY_F32_e64_sem : InstSISemantic<V_RSQ_LEGACY_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_rsq_legacy, [(GetNamedOperand $src0)]))
+  ];
+}
 
 // Legacy reciprocal (GFX6/GFX7).
-def V_RCP_LEGACY_F32_e64_sem : InstSIIntrinsic<V_RCP_LEGACY_F32_e64,
-                                                 int_amdgcn_rcp_legacy>;
+def V_RCP_LEGACY_F32_e64_sem : InstSISemantic<V_RCP_LEGACY_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_rcp_legacy, [(GetNamedOperand $src0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // VOP1 Trig e64
@@ -2102,8 +2191,18 @@ def V_RCP_LEGACY_F32_e64_sem : InstSIIntrinsic<V_RCP_LEGACY_F32_e64,
 //   rdna2-shader-instruction-set-architecture.pdf, page 150.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 286.
 //   rdna4-instruction-set-architecture.pdf, page 328.
-def V_SIN_F32_e64_sem : InstSIIntrinsic<V_SIN_F32_e64, int_amdgcn_sin>;
-def V_SIN_F16_e64_sem : InstSIIntrinsic<V_SIN_F16_e64, int_amdgcn_sin>;
+def V_SIN_F32_e64_sem : InstSISemantic<V_SIN_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_sin, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_SIN_F16_e64_sem : InstSISemantic<V_SIN_F16_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_half_ty, int_amdgcn_sin, [(GetNamedOperand $src0)]))
+  ];
+}
 
 // D.f = cos(S0.f * 2 * PI) (hardware cosine).
 // Sources:
@@ -2118,8 +2217,18 @@ def V_SIN_F16_e64_sem : InstSIIntrinsic<V_SIN_F16_e64, int_amdgcn_sin>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 151.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 287.
 //   rdna4-instruction-set-architecture.pdf, page 328.
-def V_COS_F32_e64_sem : InstSIIntrinsic<V_COS_F32_e64, int_amdgcn_cos>;
-def V_COS_F16_e64_sem : InstSIIntrinsic<V_COS_F16_e64, int_amdgcn_cos>;
+def V_COS_F32_e64_sem : InstSISemantic<V_COS_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_cos, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_COS_F16_e64_sem : InstSISemantic<V_COS_F16_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_half_ty, int_amdgcn_cos, [(GetNamedOperand $src0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // VOP1 Exp/Log e64
@@ -2138,10 +2247,24 @@ def V_COS_F16_e64_sem : InstSIIntrinsic<V_COS_F16_e64, int_amdgcn_cos>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 149.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 283.
 //   rdna4-instruction-set-architecture.pdf, page 324.
-def V_EXP_F32_e64_sem : InstSIIntrinsic<V_EXP_F32_e64, int_amdgcn_exp2>;
-def V_EXP_F16_e64_sem : InstSIIntrinsic<V_EXP_F16_e64, int_amdgcn_exp2>;
-def V_EXP_LEGACY_F32_e64_sem : InstSIIntrinsic<V_EXP_LEGACY_F32_e64,
-                                                 int_amdgcn_exp2>;
+def V_EXP_F32_e64_sem : InstSISemantic<V_EXP_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_exp2, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_EXP_F16_e64_sem : InstSISemantic<V_EXP_F16_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_half_ty, int_amdgcn_exp2, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_EXP_LEGACY_F32_e64_sem : InstSISemantic<V_EXP_LEGACY_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_exp2, [(GetNamedOperand $src0)]))
+  ];
+}
 
 // D.f = log2(S0.f) (hardware base-2 logarithm).
 // Sources:
@@ -2156,12 +2279,30 @@ def V_EXP_LEGACY_F32_e64_sem : InstSIIntrinsic<V_EXP_LEGACY_F32_e64,
 //   rdna2-shader-instruction-set-architecture.pdf, page 149.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 283.
 //   rdna4-instruction-set-architecture.pdf, page 324.
-def V_LOG_F32_e64_sem : InstSIIntrinsic<V_LOG_F32_e64, int_amdgcn_log>;
-def V_LOG_F16_e64_sem : InstSIIntrinsic<V_LOG_F16_e64, int_amdgcn_log>;
-def V_LOG_LEGACY_F32_e64_sem : InstSIIntrinsic<V_LOG_LEGACY_F32_e64,
-                                                 int_amdgcn_log>;
-def V_LOG_CLAMP_F32_e64_sem : InstSIIntrinsic<V_LOG_CLAMP_F32_e64,
-                                                int_amdgcn_log_clamp>;
+def V_LOG_F32_e64_sem : InstSISemantic<V_LOG_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_log, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_LOG_F16_e64_sem : InstSISemantic<V_LOG_F16_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_half_ty, int_amdgcn_log, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_LOG_LEGACY_F32_e64_sem : InstSISemantic<V_LOG_LEGACY_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_log, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_LOG_CLAMP_F32_e64_sem : InstSISemantic<V_LOG_CLAMP_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_log_clamp, [(GetNamedOperand $src0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // VOP1 Rounding e64
@@ -2444,9 +2585,24 @@ def V_RNDNE_F16_e64_sem : InstSISemantic<V_RNDNE_F16_e64> {
 //   rdna2-shader-instruction-set-architecture.pdf, page 148.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 282.
 //   rdna4-instruction-set-architecture.pdf, page 323.
-def V_FRACT_F32_e64_sem : InstSIIntrinsic<V_FRACT_F32_e64, int_amdgcn_fract>;
-def V_FRACT_F64_e64_sem : InstSIIntrinsic<V_FRACT_F64_e64, int_amdgcn_fract>;
-def V_FRACT_F16_e64_sem : InstSIIntrinsic<V_FRACT_F16_e64, int_amdgcn_fract>;
+def V_FRACT_F32_e64_sem : InstSISemantic<V_FRACT_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_fract, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_FRACT_F64_e64_sem : InstSISemantic<V_FRACT_F64_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_double_ty, int_amdgcn_fract, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_FRACT_F16_e64_sem : InstSISemantic<V_FRACT_F16_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_half_ty, int_amdgcn_fract, [(GetNamedOperand $src0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // VOP1 Frexp e64
@@ -2465,10 +2621,18 @@ def V_FRACT_F16_e64_sem : InstSIIntrinsic<V_FRACT_F16_e64, int_amdgcn_fract>;
 //   rdna2-shader-instruction-set-architecture.pdf, page 153.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 291.
 //   rdna4-instruction-set-architecture.pdf, page 332.
-def V_FREXP_MANT_F32_e64_sem : InstSIIntrinsic<V_FREXP_MANT_F32_e64,
-                                                 int_amdgcn_frexp_mant>;
-def V_FREXP_MANT_F64_e64_sem : InstSIIntrinsic<V_FREXP_MANT_F64_e64,
-                                                 int_amdgcn_frexp_mant>;
+def V_FREXP_MANT_F32_e64_sem : InstSISemantic<V_FREXP_MANT_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_float_ty, int_amdgcn_frexp_mant, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_FREXP_MANT_F64_e64_sem : InstSISemantic<V_FREXP_MANT_F64_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_double_ty, int_amdgcn_frexp_mant, [(GetNamedOperand $src0)]))
+  ];
+}
 // Sources:
 //   gcn3-instruction-set-architecture.pdf, page 212.
 //   vega-shader-instruction-set-architecture.pdf, page 143.
@@ -2481,8 +2645,12 @@ def V_FREXP_MANT_F64_e64_sem : InstSIIntrinsic<V_FREXP_MANT_F64_e64,
 //   rdna2-shader-instruction-set-architecture.pdf, page 153.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 291.
 //   rdna4-instruction-set-architecture.pdf, page 332.
-def V_FREXP_MANT_F16_e64_sem : InstSIIntrinsic<V_FREXP_MANT_F16_e64,
-                                                 int_amdgcn_frexp_mant>;
+def V_FREXP_MANT_F16_e64_sem : InstSISemantic<V_FREXP_MANT_F16_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_half_ty, int_amdgcn_frexp_mant, [(GetNamedOperand $src0)]))
+  ];
+}
 
 // D.i = frexp_exp(S0.f). Extract exponent (intrinsic).
 // Sources:
@@ -2497,10 +2665,18 @@ def V_FREXP_MANT_F16_e64_sem : InstSIIntrinsic<V_FREXP_MANT_F16_e64,
 //   rdna2-shader-instruction-set-architecture.pdf, page 153.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 291.
 //   rdna4-instruction-set-architecture.pdf, page 332.
-def V_FREXP_EXP_I32_F32_e64_sem : InstSIIntrinsic<V_FREXP_EXP_I32_F32_e64,
-                                                    int_amdgcn_frexp_exp>;
-def V_FREXP_EXP_I32_F64_e64_sem : InstSIIntrinsic<V_FREXP_EXP_I32_F64_e64,
-                                                    int_amdgcn_frexp_exp>;
+def V_FREXP_EXP_I32_F32_e64_sem : InstSISemantic<V_FREXP_EXP_I32_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_frexp_exp, [(GetNamedOperand $src0)]))
+  ];
+}
+def V_FREXP_EXP_I32_F64_e64_sem : InstSISemantic<V_FREXP_EXP_I32_F64_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i32_ty, int_amdgcn_frexp_exp, [(GetNamedOperand $src0)]))
+  ];
+}
 // Sources:
 //   gcn3-instruction-set-architecture.pdf, page 210.
 //   vega-shader-instruction-set-architecture.pdf, page 143.
@@ -2513,8 +2689,12 @@ def V_FREXP_EXP_I32_F64_e64_sem : InstSIIntrinsic<V_FREXP_EXP_I32_F64_e64,
 //   rdna2-shader-instruction-set-architecture.pdf, page 153.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 291.
 //   rdna4-instruction-set-architecture.pdf, page 332.
-def V_FREXP_EXP_I16_F16_e64_sem : InstSIIntrinsic<V_FREXP_EXP_I16_F16_e64,
-                                                    int_amdgcn_frexp_exp>;
+def V_FREXP_EXP_I16_F16_e64_sem : InstSISemantic<V_FREXP_EXP_I16_F16_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_i16_ty, int_amdgcn_frexp_exp, [(GetNamedOperand $src0)]))
+  ];
+}
 
 //------------------------------------------------------------------------------
 // VOP1 Find First Bit e64
@@ -4349,8 +4529,12 @@ def V_ALIGNBYTE_B32_e64_sem : InstSISemantic<V_ALIGNBYTE_B32_e64> {
 //   amd-instinct-cdna4-instruction-set-architecture.pdf, page 587.
 //   rdna-shader-instruction-set-architecture.pdf, page 263.
 //   rdna2-shader-instruction-set-architecture.pdf, page 257.
-def V_CVT_PKRTZ_F16_F32_e64_sem : InstSIIntrinsic<V_CVT_PKRTZ_F16_F32_e64,
-                                                    int_amdgcn_cvt_pkrtz>;
+def V_CVT_PKRTZ_F16_F32_e64_sem : InstSISemantic<V_CVT_PKRTZ_F16_F32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_v2f16_ty, int_amdgcn_cvt_pkrtz, [(GetNamedOperand $src0), (GetNamedOperand $src1)]))
+  ];
+}
 
 def V_CVT_PKNORM_I16_F32_e64_sem : InstSISemantic<V_CVT_PKNORM_I16_F32_e64> {
   let Semantic = [];
@@ -4369,8 +4553,12 @@ def V_CVT_PKNORM_U16_F32_e64_sem : InstSISemantic<V_CVT_PKNORM_U16_F32_e64> {
   let Semantic = [];
 }
 
-def V_CVT_PK_I16_I32_e64_sem : InstSIIntrinsic<V_CVT_PK_I16_I32_e64,
-                                                 int_amdgcn_cvt_pk_i16>;
+def V_CVT_PK_I16_I32_e64_sem : InstSISemantic<V_CVT_PK_I16_I32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_v2i16_ty, int_amdgcn_cvt_pk_i16, [(GetNamedOperand $src0), (GetNamedOperand $src1)]))
+  ];
+}
 // Sources:
 //   gcn3-instruction-set-architecture.pdf, page 238.
 //   vega-shader-instruction-set-architecture.pdf, page 181.
@@ -4383,8 +4571,12 @@ def V_CVT_PK_I16_I32_e64_sem : InstSIIntrinsic<V_CVT_PK_I16_I32_e64,
 //   rdna2-shader-instruction-set-architecture.pdf, page 193.
 //   rdna3-shader-instruction-set-architecture-feb-2023_0.pdf, page 445.
 //   rdna4-instruction-set-architecture.pdf, page 518.
-def V_CVT_PK_U16_U32_e64_sem : InstSIIntrinsic<V_CVT_PK_U16_U32_e64,
-                                                 int_amdgcn_cvt_pk_u16>;
+def V_CVT_PK_U16_U32_e64_sem : InstSISemantic<V_CVT_PK_U16_U32_e64> {
+  let Semantic = [
+    (SetNamedOperand $vdst,
+      (LLVMIntrinsic llvm_v2i16_ty, int_amdgcn_cvt_pk_u16, [(GetNamedOperand $src0), (GetNamedOperand $src1)]))
+  ];
+}
 
 // Sources:
 //   gcn3-instruction-set-architecture.pdf, page 237.
