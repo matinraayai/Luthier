@@ -2,6 +2,8 @@
 #include "luthier/Common/DenseMapInfo.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Tooling/TargetMachineInstrMDNode.h"
+
+#include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
 #include <SIRegisterInfo.h>
 #include <llvm/ADT/DenseSet.h>
@@ -80,12 +82,20 @@ public:
     }
   };
 
+  const llvm::SIInstrInfo &getTII() const {
+    return *MF.getSubtarget<llvm::GCNSubtarget>().getInstrInfo();
+  }
+
+  const llvm::SIRegisterInfo &getTRI() const {
+    return *MF.getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
+  }
+
   /// Given \p Op returns its equivalent \c llvm::Value
   /// Register operands are returned as unsigned integers with the same
   /// size as the register
   llvm::Value &getOperandAsValue(const llvm::MachineOperand &Op);
 
-  void setRegOperandValue(const llvm::MachineOperand &Op, llvm::Value &Val);
+  void setRegOperandValue(const llvm::MachineOperand &Op, llvm::Value *Val);
 };
 
 llvm::Value &
@@ -233,7 +243,8 @@ MBBOperandTracker::getOperandAsValue(const llvm::MachineOperand &Op) {
 }
 
 void MBBOperandTracker::setRegOperandValue(const llvm::MachineOperand &Op,
-                                           llvm::Value &Val) {
+                                           llvm::Value *Val) {
+  assert(Val && "Val is nullptr");
   assert(Op.isReg() && "Operand is not a register");
   assert(Op.getReg().isPhysical() && "Operand is not a physical register");
   llvm::MCRegister Reg = Op.getReg();
@@ -251,7 +262,7 @@ void MBBOperandTracker::setRegOperandValue(const llvm::MachineOperand &Op,
   const llvm::TargetRegisterClass *RC = TRI->getMinimalPhysRegClass(Reg);
   assert(RC && "The value associated with the register class is nullptr");
   const auto RegSize = TRI->getRegSizeInBits(*RC);
-  assert(RegSize == Val.getType()->getIntegerBitWidth() &&
+  assert(RegSize == Val->getType()->getIntegerBitWidth() &&
          "Physical reg size and value size don't match");
   llvm::StringRef RegName = TRI->getName(Reg);
   llvm::IRBuilder Builder{BB};
@@ -263,7 +274,7 @@ void MBBOperandTracker::setRegOperandValue(const llvm::MachineOperand &Op,
   /// it and return; Otherwise, we need to extract each regunit's value from
   /// the big value
   if (GCDRegUnitSize == RegSize) {
-    MBBValueMap.emplace_or_assign(Reg, std::ref(Val));
+    MBBValueMap.emplace_or_assign(Reg, std::ref(*Val));
     return;
   }
 
@@ -273,7 +284,7 @@ void MBBOperandTracker::setRegOperandValue(const llvm::MachineOperand &Op,
   llvm::Type *BitCastType =
       llvm::FixedVectorType::get(SmallestScalarTy, NumVecEls);
   llvm::Value *BitCastedVal = Builder.CreateBitCast(
-      &Val, BitCastType, llvm::formatv("{0}.bitcast", RegName));
+      Val, BitCastType, llvm::formatv("{0}.bitcast", RegName));
 
   unsigned CurrentRegUnitIdx = 0;
   llvm::SmallDenseMap<unsigned, llvm::Value *> VecSizeToVecTypeCast;
@@ -321,84 +332,13 @@ using MBBToBBMapTy =
     llvm::DenseMap<std::reference_wrapper<const llvm::MachineBasicBlock>,
                    std::reference_wrapper<llvm::BasicBlock>>;
 
-template <uint16_t Opcode, typename... Operands>
+template <uint16_t Opcode>
 void raiseMachineInstr(const llvm::MachineInstr &MI,
                        llvm::IRBuilderBase &Builder,
                        MBBOperandTracker &RegisterValueMap);
 
-template <>
-void raiseMachineInstr<llvm::AMDGPU::S_ADD_U32>(
-    const llvm::MachineInstr &MI, llvm::IRBuilderBase &Builder,
-    MBBOperandTracker &RegisterValueMap) {
-  /// D.u = S0.u + S1.u;
-  /// SCC = (S0.u + S1.u >= 0x100000000ULL ? 1 : 0). // unsigned
-  /// overflow/carry-out
-  const llvm::MachineOperand &D = MI.getOperand(0);
-  const llvm::MachineOperand &S0 = MI.getOperand(1);
-  const llvm::MachineOperand &S1 = MI.getOperand(2);
-
-  llvm::Value &Op1Val = RegisterValueMap.getOperandAsValue(S0);
-  llvm::Value &Op2Val = RegisterValueMap.getOperandAsValue(S1);
-  llvm::Value *DVal = Builder.CreateAdd(&Op1Val, &Op2Val);
-  llvm::Value *SCCVal = Builder.CreateCmp(llvm::CmpInst::ICMP_UGE, DVal,
-                                          Builder.getInt64(0x100000000ULL));
-  assert(MI.getNumImplicitOperands() == 1 &&
-         "Incorrect number of implicit operands");
-  const llvm::MachineOperand &SCCOp = *MI.implicit_operands().begin();
-  assert(SCCOp.isReg() && SCCOp.getReg() == llvm::AMDGPU::SCC &&
-         "SCC is not the implicit operand of the instruction");
-  RegisterValueMap.setRegOperandValue(D, *DVal);
-  RegisterValueMap.setRegOperandValue(SCCOp, *SCCVal);
-}
-
-template <>
-void raiseMachineInstr<llvm::AMDGPU::S_SUB_U32>(
-    const llvm::MachineInstr &MI, llvm::IRBuilderBase &Builder,
-    MBBOperandTracker &RegisterValueMap) {
-  /// D.u = S0.u - S1.u;
-  /// SCC = (S1.u > S0.u ? 1 : 0). // unsigned overflow or carry-out for
-  /// S_SUBB_U32.
-  const llvm::MachineOperand &D = MI.getOperand(0);
-  const llvm::MachineOperand &S0 = MI.getOperand(1);
-  const llvm::MachineOperand &S1 = MI.getOperand(2);
-  llvm::Value &S0Val = RegisterValueMap.getOperandAsValue(S0);
-  llvm::Value &S1Val = RegisterValueMap.getOperandAsValue(S1);
-  llvm::Value *DVal = Builder.CreateSub(&S0Val, &S1Val);
-  llvm::Value *SCCVal =
-      Builder.CreateCmp(llvm::CmpInst::ICMP_UGT, &S1Val, &S0Val);
-  RegisterValueMap.setRegOperandValue(D, *DVal);
-  assert(MI.getNumImplicitOperands() == 1 &&
-         "Incorrect number of implicit operands");
-  const llvm::MachineOperand &SCCOp = *MI.implicit_operands().begin();
-  assert(SCCOp.isReg() && SCCOp.getReg() == llvm::AMDGPU::SCC &&
-         "SCC is not the implicit operand of the instruction");
-  RegisterValueMap.setRegOperandValue(SCCOp, *SCCVal);
-}
-
-template <>
-void raiseMachineInstr<llvm::AMDGPU::S_ADD_I32>(
-    const llvm::MachineInstr &MI, llvm::IRBuilderBase &Builder,
-    MBBOperandTracker &RegisterValueMap) {
-  /// tmp = S0.i32 + S1.i32;
-  /// SCC = ((S0.u32[31] == S1.u32[31]) && (S0.u32[31] != tmp.u32[31]));
-  /// // signed overflow.
-  /// D0.i32 = tmp.i32
-  const llvm::MachineOperand &D = MI.getOperand(0);
-  const llvm::MachineOperand &S0 = MI.getOperand(1);
-  const llvm::MachineOperand &S1 = MI.getOperand(2);
-  llvm::Value &S0Val = RegisterValueMap.getOperandAsValue(S0);
-  llvm::Value &S1Val = RegisterValueMap.getOperandAsValue(S1);
-  llvm::Value *DVal = Builder.CreateSub(&S0Val, &S1Val);
-  llvm::Value *SCCVal =
-      Builder.CreateCmp(llvm::CmpInst::ICMP_UGT, &S1Val, &S0Val);
-  RegisterValueMap.setRegOperandValue(D, *DVal);
-  assert(MI.getNumImplicitOperands() == 1 &&
-         "Incorrect number of implicit operands");
-  const llvm::MachineOperand &SCCOp = *MI.implicit_operands().begin();
-  assert(SCCOp.isReg() && SCCOp.getReg() == llvm::AMDGPU::SCC &&
-         "SCC is not the implicit operand of the instruction");
-  RegisterValueMap.setRegOperandValue(SCCOp, *SCCVal);
-}
+#define GET_SI_INSTR_SEMANTIC_FUNCTIONS
+#include "SIInstrSemantics.inc"
 
 llvm::Expected<llvm::Value &>
 raiseMachineInstr(const llvm::MachineInstr &MI, llvm::IRBuilderBase &Builder,

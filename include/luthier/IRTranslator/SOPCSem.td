@@ -34,7 +34,7 @@
 foreach i = 0-5 in {
   defvar op = [S_CMP_EQ_I32, S_CMP_LG_I32, S_CMP_GT_I32,
                S_CMP_GE_I32, S_CMP_LT_I32, S_CMP_LE_I32][i];
-  defvar cmpPred = [SETEQ, SETNE, SETGT, SETGE, SETLT, SETLE][i];
+  defvar cmpPred = [LLVMICmpEQ, LLVMICmpNE, LLVMICmpSGT, LLVMICmpSGE, LLVMICmpSLT, LLVMICmpSLE][i];
 
   def op#_sem : InstSISemantic<op> {
     let Semantic = [
@@ -47,7 +47,7 @@ foreach i = 0-5 in {
 foreach i = 0-5 in {
   defvar op = [S_CMP_EQ_U32, S_CMP_LG_U32, S_CMP_GT_U32,
                S_CMP_GE_U32, S_CMP_LT_U32, S_CMP_LE_U32][i];
-  defvar cmpPred = [SETEQ, SETNE, SETUGT, SETUGE, SETULT, SETULE][i];
+  defvar cmpPred = [LLVMICmpEQ, LLVMICmpNE, LLVMICmpUGT, LLVMICmpUGE, LLVMICmpULT, LLVMICmpULE][i];
 
   def op#_sem : InstSISemantic<op> {
     let Semantic = [
@@ -168,7 +168,7 @@ def S_BITCMP1_B64_sem : InstSISemantic<S_BITCMP1_B64> {
 foreach i = 0-5 in {
   defvar op = [S_CMP_EQ_F32, S_CMP_LG_F32, S_CMP_GT_F32,
                S_CMP_GE_F32, S_CMP_LT_F32, S_CMP_LE_F32][i];
-  defvar cmpPred = [SETOEQ, SETONE, SETOGT, SETOGE, SETOLT, SETOLE][i];
+  defvar cmpPred = [LLVMFCmpOEQ, LLVMFCmpONE, LLVMFCmpOGT, LLVMFCmpOGE, LLVMFCmpOLT, LLVMFCmpOLE][i];
 
   def op#_sem : InstSISemantic<op> {
     let Semantic = [
@@ -183,7 +183,7 @@ foreach i = 0-5 in {
 foreach i = 0-5 in {
   defvar op = [S_CMP_EQ_F16, S_CMP_LG_F16, S_CMP_GT_F16,
                S_CMP_GE_F16, S_CMP_LT_F16, S_CMP_LE_F16][i];
-  defvar cmpPred = [SETOEQ, SETONE, SETOGT, SETOGE, SETOLT, SETOLE][i];
+  defvar cmpPred = [LLVMFCmpOEQ, LLVMFCmpONE, LLVMFCmpOGT, LLVMFCmpOGE, LLVMFCmpOLT, LLVMFCmpOLE][i];
 
   def op#_sem : InstSISemantic<op> {
     let Semantic = [
@@ -199,7 +199,7 @@ foreach i = 0-5 in {
 foreach i = 0-5 in {
   defvar op = [S_CMP_NEQ_F32, S_CMP_NLG_F32, S_CMP_NGT_F32,
                S_CMP_NGE_F32, S_CMP_NLT_F32, S_CMP_NLE_F32][i];
-  defvar cmpPred = [SETUNE, SETUEQ, SETULE, SETULT, SETUGE, SETUGT][i];
+  defvar cmpPred = [LLVMFCmpUNE, LLVMFCmpUEQ, LLVMFCmpULE, LLVMFCmpULT, LLVMFCmpUGE, LLVMFCmpUGT][i];
 
   def op#_sem : InstSISemantic<op> {
     let Semantic = [
@@ -214,7 +214,7 @@ foreach i = 0-5 in {
 foreach i = 0-5 in {
   defvar op = [S_CMP_NEQ_F16, S_CMP_NLG_F16, S_CMP_NGT_F16,
                S_CMP_NGE_F16, S_CMP_NLT_F16, S_CMP_NLE_F16][i];
-  defvar cmpPred = [SETUNE, SETUEQ, SETULE, SETULT, SETUGE, SETUGT][i];
+  defvar cmpPred = [LLVMFCmpUNE, LLVMFCmpUEQ, LLVMFCmpULE, LLVMFCmpULT, LLVMFCmpUGE, LLVMFCmpUGT][i];
 
   def op#_sem : InstSISemantic<op> {
     let Semantic = [

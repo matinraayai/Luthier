@@ -122,7 +122,7 @@ def S_ABS_I32_sem : InstSISemantic<S_ABS_I32> {
   let Semantic = [
     (DefVal $sign, (LLVMAnd (GetNamedOperand $src0), (ConstantInt llvm_i32_ty, 0x80000000))),
     (DefVal $neg, (LLVMSub (ConstantInt llvm_i32_ty, 0), (GetNamedOperand $src0))),
-    (DefVal $result, (LLVMSelect (LLVMCmp LLVMICmpNE, $sign, (ConstantInt llvm_i32_ty, 0)), $neg, (GetNamedOperand $src0))),
+    (DefVal $result, (LLVMSelect (LLVMCmp LLVMICmpNE, (GetVal $sign), (ConstantInt llvm_i32_ty, 0)), (GetVal $neg), (GetNamedOperand $src0))),
     (ImplicitDef SCC, (LLVMCmp LLVMICmpNE, (GetVal $result), (ConstantInt llvm_i32_ty, 0))),
     (SetNamedOperand $sdst, (GetVal $result))
   ];
@@ -1346,7 +1346,7 @@ def S_FLOOR_F16_sem : InstSISemantic<S_FLOOR_F16> {
 def S_TRUNC_F32_sem : InstSISemantic<S_TRUNC_F32> {
   let Semantic = [
     (DefVal $result, (LLVMBitCast
-      (ftrunc (LLVMBitCast (GetNamedOperand $src0), llvm_float_ty)),
+      (LLVMUnaryIntrinsic int_trunc, (LLVMBitCast (GetNamedOperand $src0), llvm_float_ty)),
       llvm_i32_ty)),
     (SetNamedOperand $sdst, (GetVal $result))
   ];
@@ -1359,7 +1359,7 @@ def S_TRUNC_F16_sem : InstSISemantic<S_TRUNC_F16> {
   let Semantic = [
     (DefVal $src_i16, (LLVMTrunc (GetNamedOperand $src0), llvm_i16_ty)),
     (DefVal $half_val, (LLVMBitCast (GetVal $src_i16), llvm_half_ty)),
-    (DefVal $result_half, (ftrunc (GetVal $half_val))),
+    (DefVal $result_half, (LLVMUnaryIntrinsic int_trunc, (GetVal $half_val))),
     (DefVal $result, (LLVMZExt (LLVMBitCast (GetVal $result_half), llvm_i16_ty),
                                 llvm_i32_ty)),
     (SetNamedOperand $sdst, (GetVal $result))
@@ -1376,7 +1376,7 @@ def S_TRUNC_F16_sem : InstSISemantic<S_TRUNC_F16> {
 def S_RNDNE_F32_sem : InstSISemantic<S_RNDNE_F32> {
   let Semantic = [
     (DefVal $result, (LLVMBitCast
-      (froundeven (LLVMBitCast (GetNamedOperand $src0), llvm_float_ty)),
+      (LLVMUnaryIntrinsic int_roundeven, (LLVMBitCast (GetNamedOperand $src0), llvm_float_ty)),
       llvm_i32_ty)),
     (SetNamedOperand $sdst, (GetVal $result))
   ];
@@ -1389,7 +1389,7 @@ def S_RNDNE_F16_sem : InstSISemantic<S_RNDNE_F16> {
   let Semantic = [
     (DefVal $src_i16, (LLVMTrunc (GetNamedOperand $src0), llvm_i16_ty)),
     (DefVal $half_val, (LLVMBitCast (GetVal $src_i16), llvm_half_ty)),
-    (DefVal $result_half, (froundeven (GetVal $half_val))),
+    (DefVal $result_half, (LLVMUnaryIntrinsic int_roundeven, (GetVal $half_val))),
     (DefVal $result, (LLVMZExt (LLVMBitCast (GetVal $result_half), llvm_i16_ty),
                                 llvm_i32_ty)),
     (SetNamedOperand $sdst, (GetVal $result))

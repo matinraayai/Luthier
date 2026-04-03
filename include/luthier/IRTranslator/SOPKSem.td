@@ -328,6 +328,6 @@ def S_GETREG_B32_sem : InstSISemantic<S_GETREG_B32> {
 //   rdna4-instruction-set-architecture.pdf, page 176.
 def S_SETREG_B32_sem : InstSISemantic<S_SETREG_B32> {
   let Semantic = [
-    (int_amdgcn_s_setreg (GetNamedOperand $simm16), (GetNamedOperand $sdst))
+    (LLVMBinaryIntrinsic int_amdgcn_s_setreg, (GetNamedOperand $simm16), (GetNamedOperand $sdst))
   ];
 }
