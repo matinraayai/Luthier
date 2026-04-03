@@ -72,9 +72,6 @@ class MBBOperandTracker {
 
   BBValueMap VM{};
 
-  llvm::Value &getRegisterOperand(const llvm::MachineBasicBlock &MBB,
-                                  llvm::MCRegister Reg);
-
 public:
   explicit MBBOperandTracker(const llvm::MachineFunction &MF) : MF(MF) {
     for (const llvm::MachineBasicBlock &MBB : MF) {
@@ -94,6 +91,12 @@ public:
   /// Register operands are returned as unsigned integers with the same
   /// size as the register
   llvm::Value &getOperandAsValue(const llvm::MachineOperand &Op);
+
+  llvm::Value &getRegisterOperand(const llvm::MachineInstr &MI,
+                                  llvm::MCRegister Reg);
+
+  llvm::Value &getRegisterOperand(const llvm::MachineBasicBlock &MBB,
+                                  llvm::MCRegister Reg);
 
   void setRegOperandValue(const llvm::MachineInstr &MI, llvm::MCRegister Reg,
                           llvm::Value *Val);
@@ -210,15 +213,20 @@ MBBOperandTracker::getRegisterOperand(const llvm::MachineBasicBlock &MBB,
   return *Builder.CreateBitCast(OutVecVal, Builder.getIntNTy(RegSize), RegName);
 }
 
+llvm::Value &MBBOperandTracker::getRegisterOperand(const llvm::MachineInstr &MI,
+                                                   llvm::MCRegister Reg) {
+  const llvm::MachineBasicBlock *MBB = MI.getParent();
+  assert(MBB && "MI does not have a machine basic block");
+  return getRegisterOperand(*MBB, Reg);
+}
+
 llvm::Value &
 MBBOperandTracker::getOperandAsValue(const llvm::MachineOperand &Op) {
   switch (Op.getType()) {
   case llvm::MachineOperand::MO_Register: {
     const llvm::MachineInstr *MI = Op.getParent();
     assert(MI && "Operand does not have a machine instruction");
-    const llvm::MachineBasicBlock *MBB = MI->getParent();
-    assert(MBB && "Operand does not have a machine basic block");
-    return getRegisterOperand(*MBB, Op.getReg());
+    return getRegisterOperand(*MI, Op.getReg());
   }
   case llvm::MachineOperand::MO_Immediate: {
     const llvm::MachineInstr *MI = Op.getParent();
@@ -345,6 +353,7 @@ void raiseMachineInstr(const llvm::MachineInstr &MI,
                        MBBOperandTracker &RegisterValueMap);
 
 #define GET_SI_INSTR_SEMANTIC_FUNCTIONS
+#define GET_SI_INSTR_SEMANTIC_DISPATCH
 #include "SIInstrSemantics.inc"
 
 llvm::PreservedAnalyses IRTranslator::run(llvm::Function &F,

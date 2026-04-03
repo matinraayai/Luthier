@@ -50,9 +50,6 @@ private:
   /// Emit the file header (includes, namespace, forward decls).
   void emitHeader(llvm::raw_ostream &OS);
 
-  /// Emit the file footer (close namespace).
-  void emitFooter(llvm::raw_ostream &OS);
-
   /// Emit a single raiseMachineInstr<> specialization for an InstSISemantic.
   void emitSemanticFunction(llvm::raw_ostream &OS, const llvm::Record *Rec);
 
@@ -68,8 +65,7 @@ private:
   /// Emit code for a top-level semantic statement (SetNamedOperand,
   /// ImplicitDef, DefVal, or a bare store/call).
   void emitSemanticStatement(llvm::raw_ostream &OS, const llvm::Init *Stmt,
-                             llvm::ArrayRef<llvm::SMLoc> Loc,
-                             unsigned int Indent);
+                             llvm::ArrayRef<llvm::SMLoc> Loc);
 
   /// Map a ConstantXxx name to its C++ builder expression.
   static std::string getConstantExpr(llvm::StringRef ConstName);

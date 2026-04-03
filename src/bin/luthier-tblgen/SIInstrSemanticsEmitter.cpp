@@ -68,7 +68,7 @@ static std::string getTypeExpr(llvm::ArrayRef<llvm::SMLoc> Loc,
 
 void SIInstrSemanticsEmitter::emitSemanticStatement(
     llvm::raw_ostream &OS, const llvm::Init *Stmt,
-    llvm::ArrayRef<llvm::SMLoc> Loc, unsigned int Indent) {
+    llvm::ArrayRef<llvm::SMLoc> Loc) {
   if (const auto *Dag = llvm::dyn_cast<llvm::DagInit>(Stmt)) {
     Dag->print(llvm::errs());
     llvm::errs() << "\n";
@@ -90,7 +90,7 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
       OS << "*Tracker.getTII().getNamedOperand(MI, "
             "llvm::AMDGPU::OpName::"
          << OperandName << "), ";
-      emitSemanticStatement(OS, AssignmentDag, Loc, Indent);
+      emitSemanticStatement(OS, AssignmentDag, Loc);
       OS << ")";
     }
     // --- ImplicitDef REG, value_dag ---
@@ -120,7 +120,7 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
       if (!ValDag)
         llvm::PrintFatalError("ImplicitDef second arg is not a DAG");
       OS << "Tracker.setRegOperandValue(MI, llvm::AMDGPU::" << RegName << ", ";
-      emitSemanticStatement(OS, ValDag, Loc, Indent);
+      emitSemanticStatement(OS, ValDag, Loc);
       OS << ")";
     }
     // --- DefVal $name, value_dag ---
@@ -130,7 +130,7 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
       if (!ValDag)
         llvm::PrintFatalError("DefVal second arg is not a DAG");
       OS << "llvm::Value *" << ValName << " = ";
-      emitSemanticStatement(OS, ValDag, Loc, Indent);
+      emitSemanticStatement(OS, ValDag, Loc);
     }
 
     // --- GetNamedOperand $name ---
@@ -153,7 +153,7 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
       // First arg is a register def (e.g., VCC, EXEC, SCC)
       const auto *RegDef = llvm::dyn_cast<llvm::DefInit>(Dag->getArg(0));
       llvm::StringRef RegName = RegDef->getDef()->getName();
-      OS << "&Tracker.getOperandAsValue(MI, llvm::AMDGPU::" << RegName << ")";
+      OS << "&Tracker.getRegisterOperand(MI, llvm::AMDGPU::" << RegName << ")";
     }
 
     // --- LLVM Operands ---
@@ -161,9 +161,7 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
       OS << "Builder." << Op->getValueAsString("IRBuilderFunc") << "(";
       llvm::interleave(
           Dag->getArgs(),
-          [&](const llvm::Init *Arg) {
-            emitSemanticStatement(OS, Arg, Loc, Indent);
-          },
+          [&](const llvm::Init *Arg) { emitSemanticStatement(OS, Arg, Loc); },
           [&] { OS << ", "; });
       OS << ")";
     }
@@ -173,9 +171,7 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
       OS << Op->getValueAsString("BuilderFunc") << "(";
       llvm::interleave(
           Dag->getArgs(),
-          [&](const llvm::Init *Arg) {
-            emitSemanticStatement(OS, Arg, Loc, Indent);
-          },
+          [&](const llvm::Init *Arg) { emitSemanticStatement(OS, Arg, Loc); },
           [&] { OS << ", "; });
       OS << ")";
     } else {
@@ -225,9 +221,7 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
     OS << "llvm::ArrayRef<llvm::Value *>({";
     llvm::interleave(
         ListNode->getElements(),
-        [&](const llvm::Init *Elem) {
-          emitSemanticStatement(OS, Elem, Loc, Indent);
-        },
+        [&](const llvm::Init *Elem) { emitSemanticStatement(OS, Elem, Loc); },
         [&] { OS << ", "; });
     OS << "})";
   } else if (auto *IntNode = llvm::dyn_cast<llvm::IntInit>(Stmt)) {
@@ -265,7 +259,7 @@ void SIInstrSemanticsEmitter::emitSemanticFunction(llvm::raw_ostream &OS,
     const auto *StmtDag = llvm::dyn_cast<llvm::DagInit>(El);
     if (!StmtDag)
       PrintFatalError(Rec->getLoc(), "Semantic element is not a DAG");
-    emitSemanticStatement(OS.indent(2), StmtDag, SemanticLoc, 2);
+    emitSemanticStatement(OS.indent(2), StmtDag, SemanticLoc);
     OS << ";\n";
   }
 
@@ -313,13 +307,10 @@ void SIInstrSemanticsEmitter::emitIntrinsicFunction(llvm::raw_ostream &OS,
 void SIInstrSemanticsEmitter::emitDispatchFunction(
     llvm::raw_ostream &OS, llvm::ArrayRef<const llvm::Record *> Semantics,
     llvm::ArrayRef<const llvm::Record *> Intrinsics) {
-  OS << "/// Dispatch function: routes MI opcode to the appropriate\n";
-  OS << "/// raiseMachineInstr<> specialization.\n";
-  OS << "/// \\returns true if the instruction was successfully raised,\n";
-  OS << "///          false if the opcode has no semantic model.\n";
-  OS << "inline bool dispatchRaiseMachineInstr(\n";
+  OS << "static void raiseMachineInstr(\n";
   OS << "    const llvm::MachineInstr &MI, llvm::IRBuilderBase &Builder,\n";
   OS << "    MBBOperandTracker &Tracker) {\n";
+  OS << "  uint16_t Opcode = MI.getOpcode();\n";
   OS << "  switch (MI.getOpcode()) {\n";
 
   // Emit cases for InstSISemantic records (non-empty only)
@@ -330,23 +321,23 @@ void SIInstrSemanticsEmitter::emitDispatchFunction(
     const llvm::Record *InstRec = Rec->getValueAsDef("Instruction");
     llvm::StringRef InstName = InstRec->getName();
     OS << "  case llvm::AMDGPU::" << InstName << ":\n";
-    OS << "    raiseMachineInstr<llvm::AMDGPU::" << InstName
+    OS << "    return raiseMachineInstr<llvm::AMDGPU::" << InstName
        << ">(MI, Builder, Tracker);\n";
-    OS << "    return true;\n";
   }
 
-  // Emit cases for InstSIIntrinsic records
-  for (const llvm::Record *Rec : Intrinsics) {
-    const llvm::Record *InstRec = Rec->getValueAsDef("Instruction");
-    llvm::StringRef InstName = InstRec->getName();
-    OS << "  case llvm::AMDGPU::" << InstName << ":\n";
-    OS << "    raiseMachineInstr<llvm::AMDGPU::" << InstName
-       << ">(MI, Builder, Tracker);\n";
-    OS << "    return true;\n";
-  }
+  // // Emit cases for InstSIIntrinsic records
+  // for (const llvm::Record *Rec : Intrinsics) {
+  //   const llvm::Record *InstRec = Rec->getValueAsDef("Instruction");
+  //   llvm::StringRef InstName = InstRec->getName();
+  //   OS << "  case llvm::AMDGPU::" << InstName << ":\n";
+  //   OS << "    raiseMachineInstr<llvm::AMDGPU::" << InstName
+  //      << ">(MI, Builder, Tracker);\n";
+  //   OS << "    return true;\n";
+  // }
 
   OS << "  default:\n";
-  OS << "    return false;\n";
+  OS << "    return llvm_unreachable(llvm::formatv(\"Unmodeled Opcode: {0}.\", "
+        "Opcode).str().c_str());\n";
   OS << "  }\n";
   OS << "}\n\n";
 }
@@ -361,12 +352,6 @@ void SIInstrSemanticsEmitter::emitHeader(llvm::raw_ostream &OS) {
   OS << "// Auto-generated by luthier-tblgen. DO NOT EDIT.\n";
   OS << "//===---------------------------------------------------"
         "-------------------===//\n\n";
-  OS << "#ifdef GET_SI_INSTR_SEMANTIC_FUNCTIONS\n";
-  OS << "#undef GET_SI_INSTR_SEMANTIC_FUNCTIONS\n";
-}
-
-void SIInstrSemanticsEmitter::emitFooter(llvm::raw_ostream &OS) {
-  OS << "#endif // GET_SI_INSTR_SEMANTIC_FUNCTIONS\n\n";
 }
 
 //===----------------------------------------------------------------------===//
@@ -381,16 +366,18 @@ void SIInstrSemanticsEmitter::run(llvm::raw_ostream &OS) {
   llvm::ArrayRef<const llvm::Record *> Intrinsics =
       Records.getAllDerivedDefinitions("InstSIIntrinsic");
 
-  // --- Emit template specializations ---
   emitHeader(OS);
 
-  // Forward declare the template
-  // // Emit specializations for InstSISemantic (non-empty only)
+  /// --- Emit template specializations ---
+  OS << "#ifdef GET_SI_INSTR_SEMANTIC_FUNCTIONS\n";
+  OS << "#undef GET_SI_INSTR_SEMANTIC_FUNCTIONS\n";
+
   for (const llvm::Record *Rec : Semantics) {
     emitSemanticFunction(OS, Rec);
   }
 
-  emitFooter(OS);
+  OS << "#endif // GET_SI_INSTR_SEMANTIC_FUNCTIONS\n\n";
+
   //
   // // Emit specializations for InstSIIntrinsic
   // for (const llvm::Record *Rec : Intrinsics) {
@@ -399,10 +386,10 @@ void SIInstrSemanticsEmitter::run(llvm::raw_ostream &OS) {
   //
   // OS << "#endif // GET_SI_INSTR_SEMANTIC_FUNCTIONS\n\n";
   //
-  // // --- Emit dispatch function ---
-  // OS << "#ifdef GET_SI_INSTR_SEMANTIC_DISPATCH\n\n";
-  // emitDispatchFunction(OS, Semantics, Intrinsics);
-  // OS << "#endif // GET_SI_INSTR_SEMANTIC_DISPATCH\n";
+  // --- Emit dispatch function ---
+  OS << "#ifdef GET_SI_INSTR_SEMANTIC_DISPATCH\n\n";
+  emitDispatchFunction(OS, Semantics, Intrinsics);
+  OS << "#undef GET_SI_INSTR_SEMANTIC_DISPATCH\n";
 }
 
 //===----------------------------------------------------------------------===//
