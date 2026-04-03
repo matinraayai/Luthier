@@ -1489,16 +1489,16 @@ def DS_WRXCHG_RTN_B64_sem : InstSISemantic<DS_WRXCHG_RTN_B64> {
 def DS_WRXCHG2_RTN_B32_sem : InstSISemantic<DS_WRXCHG2_RTN_B32> {
   let Semantic = [
     (DefVal $base, (LLVMIntToPtr (GetNamedOperand $addr), local_ptr_ty)),
-    (DefVal $addr0, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 4)))),
-    (DefVal $addr1, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 4)))),
-    (DefVal $old0, (LLVMLoad llvm_i32_ty, $addr0)),
-    (LLVMStore (GetNamedOperand $data0), $addr0),
-    (DefVal $old1, (LLVMLoad llvm_i32_ty, $addr1)),
-    (LLVMStore (GetNamedOperand $data1), $addr1),
+    (DefVal $addr0, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 4)))),
+    (DefVal $addr1, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 4)))),
+    (DefVal $old0, (LLVMLoad llvm_i32_ty, (GetVal $addr0))),
+    (LLVMStore (GetNamedOperand $data0), (GetVal $addr0)),
+    (DefVal $old1, (LLVMLoad llvm_i32_ty, (GetVal $addr1))),
+    (LLVMStore (GetNamedOperand $data1), (GetVal $addr1)),
     (DefVal $result, (LLVMInsertElement
-      (LLVMInsertElement (PoisionVal llvm_v2i32_ty), $old0, (ConstantInt llvm_i32_ty, 0)),
-      $old1, (ConstantInt llvm_i32_ty, 1))),
-    (SetNamedOperand $vdst, $result)
+      (LLVMInsertElement (PoisionVal llvm_v2i32_ty), (GetVal $old0), (ConstantInt llvm_i32_ty, 0)),
+      (GetVal $old1), (ConstantInt llvm_i32_ty, 1))),
+    (SetNamedOperand $vdst, (GetVal $result))
   ];
 }
 
@@ -1521,16 +1521,16 @@ def DS_WRXCHG2_RTN_B32_sem : InstSISemantic<DS_WRXCHG2_RTN_B32> {
 def DS_WRXCHG2_RTN_B64_sem : InstSISemantic<DS_WRXCHG2_RTN_B64> {
   let Semantic = [
     (DefVal $base, (LLVMIntToPtr (GetNamedOperand $addr), local_ptr_ty)),
-    (DefVal $addr0, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 8)))),
-    (DefVal $addr1, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 8)))),
-    (DefVal $old0, (LLVMLoad llvm_i64_ty, $addr0)),
-    (LLVMStore (GetNamedOperand $data0), $addr0),
-    (DefVal $old1, (LLVMLoad llvm_i64_ty, $addr1)),
-    (LLVMStore (GetNamedOperand $data1), $addr1),
+    (DefVal $addr0, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 8)))),
+    (DefVal $addr1, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 8)))),
+    (DefVal $old0, (LLVMLoad llvm_i64_ty, (GetVal $addr0))),
+    (LLVMStore (GetNamedOperand $data0), (GetVal $addr0)),
+    (DefVal $old1, (LLVMLoad llvm_i64_ty, (GetVal $addr1))),
+    (LLVMStore (GetNamedOperand $data1), (GetVal $addr1)),
     (DefVal $result, (LLVMInsertElement
-      (LLVMInsertElement (PoisionVal llvm_v2i64_ty), $old0, (ConstantInt llvm_i32_ty, 0)),
-      $old1, (ConstantInt llvm_i32_ty, 1))),
-    (SetNamedOperand $vdst, $result)
+      (LLVMInsertElement (PoisionVal llvm_v2i64_ty), (GetVal $old0), (ConstantInt llvm_i32_ty, 0)),
+      (GetVal $old1), (ConstantInt llvm_i32_ty, 1))),
+    (SetNamedOperand $vdst, (GetVal $result))
   ];
 }
 
@@ -1553,16 +1553,16 @@ def DS_WRXCHG2_RTN_B64_sem : InstSISemantic<DS_WRXCHG2_RTN_B64> {
 def DS_WRXCHG2ST64_RTN_B32_sem : InstSISemantic<DS_WRXCHG2ST64_RTN_B32> {
   let Semantic = [
     (DefVal $base, (LLVMIntToPtr (GetNamedOperand $addr), local_ptr_ty)),
-    (DefVal $addr0, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 256)))),
-    (DefVal $addr1, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 256)))),
-    (DefVal $old0, (LLVMLoad llvm_i32_ty, $addr0)),
-    (LLVMStore (GetNamedOperand $data0), $addr0),
-    (DefVal $old1, (LLVMLoad llvm_i32_ty, $addr1)),
-    (LLVMStore (GetNamedOperand $data1), $addr1),
+    (DefVal $addr0, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 256)))),
+    (DefVal $addr1, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 256)))),
+    (DefVal $old0, (LLVMLoad llvm_i32_ty, (GetVal $addr0))),
+    (LLVMStore (GetNamedOperand $data0), (GetVal $addr0)),
+    (DefVal $old1, (LLVMLoad llvm_i32_ty, (GetVal $addr1))),
+    (LLVMStore (GetNamedOperand $data1), (GetVal $addr1)),
     (DefVal $result, (LLVMInsertElement
-      (LLVMInsertElement (PoisionVal llvm_v2i32_ty), $old0, (ConstantInt llvm_i32_ty, 0)),
-      $old1, (ConstantInt llvm_i32_ty, 1))),
-    (SetNamedOperand $vdst, $result)
+      (LLVMInsertElement (PoisionVal llvm_v2i32_ty), (GetVal $old0), (ConstantInt llvm_i32_ty, 0)),
+      (GetVal $old1), (ConstantInt llvm_i32_ty, 1))),
+    (SetNamedOperand $vdst, (GetVal $result))
   ];
 }
 
@@ -1585,16 +1585,16 @@ def DS_WRXCHG2ST64_RTN_B32_sem : InstSISemantic<DS_WRXCHG2ST64_RTN_B32> {
 def DS_WRXCHG2ST64_RTN_B64_sem : InstSISemantic<DS_WRXCHG2ST64_RTN_B64> {
   let Semantic = [
     (DefVal $base, (LLVMIntToPtr (GetNamedOperand $addr), local_ptr_ty)),
-    (DefVal $addr0, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 512)))),
-    (DefVal $addr1, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 512)))),
-    (DefVal $old0, (LLVMLoad llvm_i64_ty, $addr0)),
-    (LLVMStore (GetNamedOperand $data0), $addr0),
-    (DefVal $old1, (LLVMLoad llvm_i64_ty, $addr1)),
-    (LLVMStore (GetNamedOperand $data1), $addr1),
+    (DefVal $addr0, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 512)))),
+    (DefVal $addr1, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 512)))),
+    (DefVal $old0, (LLVMLoad llvm_i64_ty, (GetVal $addr0))),
+    (LLVMStore (GetNamedOperand $data0), (GetVal $addr0)),
+    (DefVal $old1, (LLVMLoad llvm_i64_ty, (GetVal $addr1))),
+    (LLVMStore (GetNamedOperand $data1), (GetVal $addr1)),
     (DefVal $result, (LLVMInsertElement
-      (LLVMInsertElement (PoisionVal llvm_v2i64_ty), $old0, (ConstantInt llvm_i32_ty, 0)),
-      $old1, (ConstantInt llvm_i32_ty, 1))),
-    (SetNamedOperand $vdst, $result)
+      (LLVMInsertElement (PoisionVal llvm_v2i64_ty), (GetVal $old0), (ConstantInt llvm_i32_ty, 0)),
+      (GetVal $old1), (ConstantInt llvm_i32_ty, 1))),
+    (SetNamedOperand $vdst, (GetVal $result))
   ];
 }
 
@@ -1821,14 +1821,14 @@ def DS_PK_ADD_RTN_BF16_sem : InstSISemantic<DS_PK_ADD_RTN_BF16> {
 def DS_READ2_B32_sem : InstSISemantic<DS_READ2_B32> {
   let Semantic = [
     (DefVal $base, (LLVMIntToPtr (GetNamedOperand $addr), local_ptr_ty)),
-    (DefVal $addr0, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 4)))),
-    (DefVal $addr1, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 4)))),
-    (DefVal $val0, (LLVMLoad llvm_i32_ty, $addr0)),
-    (DefVal $val1, (LLVMLoad llvm_i32_ty, $addr1)),
+    (DefVal $addr0, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 4)))),
+    (DefVal $addr1, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 4)))),
+    (DefVal $val0, (LLVMLoad llvm_i32_ty, (GetVal $addr0))),
+    (DefVal $val1, (LLVMLoad llvm_i32_ty, (GetVal $addr1))),
     (DefVal $result, (LLVMInsertElement
-      (LLVMInsertElement (PoisionVal llvm_v2i32_ty), $val0, (ConstantInt llvm_i32_ty, 0)),
-      $val1, (ConstantInt llvm_i32_ty, 1))),
-    (SetNamedOperand $vdst, $result)
+      (LLVMInsertElement (PoisionVal llvm_v2i32_ty), (GetVal $val0), (ConstantInt llvm_i32_ty, 0)),
+      (GetVal $val1), (ConstantInt llvm_i32_ty, 1))),
+    (SetNamedOperand $vdst, (GetVal $result))
   ];
 }
 
@@ -1851,14 +1851,14 @@ def DS_READ2_B32_sem : InstSISemantic<DS_READ2_B32> {
 def DS_READ2_B64_sem : InstSISemantic<DS_READ2_B64> {
   let Semantic = [
     (DefVal $base, (LLVMIntToPtr (GetNamedOperand $addr), local_ptr_ty)),
-    (DefVal $addr0, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 8)))),
-    (DefVal $addr1, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 8)))),
-    (DefVal $val0, (LLVMLoad llvm_i64_ty, $addr0)),
-    (DefVal $val1, (LLVMLoad llvm_i64_ty, $addr1)),
+    (DefVal $addr0, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 8)))),
+    (DefVal $addr1, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 8)))),
+    (DefVal $val0, (LLVMLoad llvm_i64_ty, (GetVal $addr0))),
+    (DefVal $val1, (LLVMLoad llvm_i64_ty, (GetVal $addr1))),
     (DefVal $result, (LLVMInsertElement
-      (LLVMInsertElement (PoisionVal llvm_v2i64_ty), $val0, (ConstantInt llvm_i32_ty, 0)),
-      $val1, (ConstantInt llvm_i32_ty, 1))),
-    (SetNamedOperand $vdst, $result)
+      (LLVMInsertElement (PoisionVal llvm_v2i64_ty), (GetVal $val0), (ConstantInt llvm_i32_ty, 0)),
+      (GetVal $val1), (ConstantInt llvm_i32_ty, 1))),
+    (SetNamedOperand $vdst, (GetVal $result))
   ];
 }
 
@@ -1881,14 +1881,14 @@ def DS_READ2_B64_sem : InstSISemantic<DS_READ2_B64> {
 def DS_READ2ST64_B32_sem : InstSISemantic<DS_READ2ST64_B32> {
   let Semantic = [
     (DefVal $base, (LLVMIntToPtr (GetNamedOperand $addr), local_ptr_ty)),
-    (DefVal $addr0, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 256)))),
-    (DefVal $addr1, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 256)))),
-    (DefVal $val0, (LLVMLoad llvm_i32_ty, $addr0)),
-    (DefVal $val1, (LLVMLoad llvm_i32_ty, $addr1)),
+    (DefVal $addr0, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 256)))),
+    (DefVal $addr1, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 256)))),
+    (DefVal $val0, (LLVMLoad llvm_i32_ty, (GetVal $addr0))),
+    (DefVal $val1, (LLVMLoad llvm_i32_ty, (GetVal $addr1))),
     (DefVal $result, (LLVMInsertElement
-      (LLVMInsertElement (PoisionVal llvm_v2i32_ty), $val0, (ConstantInt llvm_i32_ty, 0)),
-      $val1, (ConstantInt llvm_i32_ty, 1))),
-    (SetNamedOperand $vdst, $result)
+      (LLVMInsertElement (PoisionVal llvm_v2i32_ty), (GetVal $val0), (ConstantInt llvm_i32_ty, 0)),
+      (GetVal $val1), (ConstantInt llvm_i32_ty, 1))),
+    (SetNamedOperand $vdst, (GetVal $result))
   ];
 }
 
@@ -1911,14 +1911,14 @@ def DS_READ2ST64_B32_sem : InstSISemantic<DS_READ2ST64_B32> {
 def DS_READ2ST64_B64_sem : InstSISemantic<DS_READ2ST64_B64> {
   let Semantic = [
     (DefVal $base, (LLVMIntToPtr (GetNamedOperand $addr), local_ptr_ty)),
-    (DefVal $addr0, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 512)))),
-    (DefVal $addr1, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 512)))),
-    (DefVal $val0, (LLVMLoad llvm_i64_ty, $addr0)),
-    (DefVal $val1, (LLVMLoad llvm_i64_ty, $addr1)),
+    (DefVal $addr0, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 512)))),
+    (DefVal $addr1, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 512)))),
+    (DefVal $val0, (LLVMLoad llvm_i64_ty, (GetVal $addr0))),
+    (DefVal $val1, (LLVMLoad llvm_i64_ty, (GetVal $addr1))),
     (DefVal $result, (LLVMInsertElement
-      (LLVMInsertElement (PoisionVal llvm_v2i64_ty), $val0, (ConstantInt llvm_i32_ty, 0)),
-      $val1, (ConstantInt llvm_i32_ty, 1))),
-    (SetNamedOperand $vdst, $result)
+      (LLVMInsertElement (PoisionVal llvm_v2i64_ty), (GetVal $val0), (ConstantInt llvm_i32_ty, 0)),
+      (GetVal $val1), (ConstantInt llvm_i32_ty, 1))),
+    (SetNamedOperand $vdst, (GetVal $result))
   ];
 }
 
@@ -1941,10 +1941,10 @@ def DS_READ2ST64_B64_sem : InstSISemantic<DS_READ2ST64_B64> {
 def DS_WRITE2_B32_sem : InstSISemantic<DS_WRITE2_B32> {
   let Semantic = [
     (DefVal $base, (LLVMIntToPtr (GetNamedOperand $addr), local_ptr_ty)),
-    (DefVal $addr0, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 4)))),
-    (DefVal $addr1, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 4)))),
-    (LLVMStore (GetNamedOperand $data0), $addr0),
-    (LLVMStore (GetNamedOperand $data1), $addr1)
+    (DefVal $addr0, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 4)))),
+    (DefVal $addr1, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 4)))),
+    (LLVMStore (GetNamedOperand $data0), (GetVal $addr0)),
+    (LLVMStore (GetNamedOperand $data1), (GetVal $addr1))
   ];
 }
 
@@ -1967,10 +1967,10 @@ def DS_WRITE2_B32_sem : InstSISemantic<DS_WRITE2_B32> {
 def DS_WRITE2_B64_sem : InstSISemantic<DS_WRITE2_B64> {
   let Semantic = [
     (DefVal $base, (LLVMIntToPtr (GetNamedOperand $addr), local_ptr_ty)),
-    (DefVal $addr0, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 8)))),
-    (DefVal $addr1, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 8)))),
-    (LLVMStore (GetNamedOperand $data0), $addr0),
-    (LLVMStore (GetNamedOperand $data1), $addr1)
+    (DefVal $addr0, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 8)))),
+    (DefVal $addr1, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 8)))),
+    (LLVMStore (GetNamedOperand $data0), (GetVal $addr0)),
+    (LLVMStore (GetNamedOperand $data1), (GetVal $addr1))
   ];
 }
 
@@ -1993,10 +1993,10 @@ def DS_WRITE2_B64_sem : InstSISemantic<DS_WRITE2_B64> {
 def DS_WRITE2ST64_B32_sem : InstSISemantic<DS_WRITE2ST64_B32> {
   let Semantic = [
     (DefVal $base, (LLVMIntToPtr (GetNamedOperand $addr), local_ptr_ty)),
-    (DefVal $addr0, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 256)))),
-    (DefVal $addr1, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 256)))),
-    (LLVMStore (GetNamedOperand $data0), $addr0),
-    (LLVMStore (GetNamedOperand $data1), $addr1)
+    (DefVal $addr0, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 256)))),
+    (DefVal $addr1, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 256)))),
+    (LLVMStore (GetNamedOperand $data0), (GetVal $addr0)),
+    (LLVMStore (GetNamedOperand $data1), (GetVal $addr1))
   ];
 }
 
@@ -2019,10 +2019,10 @@ def DS_WRITE2ST64_B32_sem : InstSISemantic<DS_WRITE2ST64_B32> {
 def DS_WRITE2ST64_B64_sem : InstSISemantic<DS_WRITE2ST64_B64> {
   let Semantic = [
     (DefVal $base, (LLVMIntToPtr (GetNamedOperand $addr), local_ptr_ty)),
-    (DefVal $addr0, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 512)))),
-    (DefVal $addr1, (LLVMPtrAdd $base, (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 512)))),
-    (LLVMStore (GetNamedOperand $data0), $addr0),
-    (LLVMStore (GetNamedOperand $data1), $addr1)
+    (DefVal $addr0, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset0), (ConstantInt llvm_i32_ty, 512)))),
+    (DefVal $addr1, (LLVMPtrAdd (GetVal $base), (LLVMMul (GetNamedOperand $offset1), (ConstantInt llvm_i32_ty, 512)))),
+    (LLVMStore (GetNamedOperand $data0), (GetVal $addr0)),
+    (LLVMStore (GetNamedOperand $data1), (GetVal $addr1))
   ];
 }
 

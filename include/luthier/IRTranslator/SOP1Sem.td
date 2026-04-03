@@ -81,7 +81,7 @@ def S_MOV_B32_sideeffects_sem : InstSISemantic<S_MOV_B32_sideeffects> {
 def S_NOT_B32_sem : InstSISemantic<S_NOT_B32> {
   let Semantic = [
     (DefVal $result, (LLVMXor (GetNamedOperand $src0), (LLVMSExt (ConstantTrue llvm_i1_ty), llvm_i32_ty))),
-    (ImplicitDef SCC, (LLVMCmp LLVMICmpNE, $result, (ConstantInt llvm_i32_ty, 0))),
+    (ImplicitDef SCC, (LLVMCmp LLVMICmpNE, (GetVal $result), (ConstantInt llvm_i32_ty, 0))),
     (SetNamedOperand $sdst, (GetVal $result))
   ];
 }
@@ -102,7 +102,7 @@ def S_NOT_B32_sem : InstSISemantic<S_NOT_B32> {
 def S_NOT_B64_sem : InstSISemantic<S_NOT_B64> {
   let Semantic = [
     (DefVal $result, (LLVMXor (GetNamedOperand $src0), (LLVMSExt (ConstantTrue llvm_i1_ty), llvm_i64_ty))),
-    (ImplicitDef SCC, (LLVMCmp LLVMICmpNE, $result, (ConstantInt llvm_i64_ty, 0))),
+    (ImplicitDef SCC, (LLVMCmp LLVMICmpNE, (GetVal $result), (ConstantInt llvm_i64_ty, 0))),
     (SetNamedOperand $sdst, (GetVal $result))
   ];
 }
@@ -629,7 +629,7 @@ def S_ORN2_SAVEEXEC_B64_sem : InstSISemantic<S_ORN2_SAVEEXEC_B64> {
 def S_BCNT0_I32_B32_sem : InstSISemantic<S_BCNT0_I32_B32> {
   let Semantic = [
     (DefVal $popcnt, (LLVMUnaryIntrinsic int_ctpop, (GetNamedOperand $src0))),
-    (DefVal $result, (LLVMSub (ConstantInt llvm_i32_ty, 32), $popcnt)),
+    (DefVal $result, (LLVMSub (ConstantInt llvm_i32_ty, 32), (GetVal $popcnt))),
     (ImplicitDef SCC, (LLVMCmp LLVMICmpNE, (GetVal $result), (ConstantInt llvm_i32_ty, 0))),
     (SetNamedOperand $sdst, (GetVal $result))
   ];
@@ -651,7 +651,7 @@ def S_BCNT0_I32_B32_sem : InstSISemantic<S_BCNT0_I32_B32> {
 def S_BCNT0_I32_B64_sem : InstSISemantic<S_BCNT0_I32_B64> {
   let Semantic = [
     (DefVal $popcnt, (LLVMUnaryIntrinsic int_ctpop, (GetNamedOperand $src0))),
-    (DefVal $result, (LLVMSub (ConstantInt llvm_i64_ty, 64), $popcnt)),
+    (DefVal $result, (LLVMSub (ConstantInt llvm_i64_ty, 64), (GetVal $popcnt))),
     (ImplicitDef SCC, (LLVMCmp LLVMICmpNE, (GetVal $result), (ConstantInt llvm_i64_ty, 0))),
     (SetNamedOperand $sdst, (GetVal $result))
   ];

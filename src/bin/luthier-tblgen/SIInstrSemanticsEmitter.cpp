@@ -25,33 +25,45 @@
 
 namespace luthier {
 
-static std::string getTypeExpr(llvm::StringRef TypeName) {
-  // Strip "llvm_" prefix and "_ty" suffix if present
-  // e.g., "llvm_i32_ty" -> "i32", "llvm_float_ty" -> "float"
-  return llvm::StringSwitch<std::string>(TypeName)
-      .Case("llvm_i1_ty", "Builder.getInt1Ty()")
-      .Case("llvm_i8_ty", "Builder.getInt8Ty()")
-      .Case("llvm_i16_ty", "Builder.getInt16Ty()")
-      .Case("llvm_i32_ty", "Builder.getInt32Ty()")
-      .Case("llvm_i64_ty", "Builder.getInt64Ty()")
-      .Case("llvm_half_ty", "Builder.getHalfTy()")
-      .Case("llvm_float_ty", "Builder.getFloatTy()")
-      .Case("llvm_double_ty", "Builder.getDoubleTy()")
-      .Case("llvm_v2i16_ty",
-            "llvm::FixedVectorType::get(Builder.getInt16Ty(), 2)")
-      .Case("llvm_v2i32_ty",
-            "llvm::FixedVectorType::get(Builder.getInt32Ty(), 2)")
-      .Case("llvm_v3i32_ty",
-            "llvm::FixedVectorType::get(Builder.getInt32Ty(), 3)")
-      .Case("llvm_v4i32_ty",
-            "llvm::FixedVectorType::get(Builder.getInt32Ty(), 4)")
-      .Case("llvm_v2f16_ty",
-            "llvm::FixedVectorType::get(Builder.getHalfTy(), 2)")
-      .Case("llvm_v2f32_ty",
-            "llvm::FixedVectorType::get(Builder.getFloatTy(), 2)")
-      .Case("llvm_v4f32_ty",
-            "llvm::FixedVectorType::get(Builder.getFloatTy(), 4)")
-      .Default(formatv("/* unknown type: {0} */", TypeName));
+/// Converts a record of type \c LLVMType into its appropriate LLVM constructor
+static std::string getTypeExpr(llvm::ArrayRef<llvm::SMLoc> Loc,
+                               const llvm::Record *Type) {
+  const llvm::Record *ValueType = Type->getValueAsDef("VT");
+  bool IsFP = ValueType->getValueAsBit("isFP");
+  bool IsInt = ValueType->getValueAsBit("isInteger");
+  llvm::StringRef TypeName = Type->getName();
+
+  std::string Builder{};
+
+  if (IsInt) {
+    int64_t Size = ValueType->getValueAsInt("Size");
+    Builder += llvm::StringSwitch<std::string>(TypeName)
+                   .Case("llvm_i1_ty", "Builder.getInt1Ty()")
+                   .Case("llvm_i8_ty", "Builder.getInt8Ty()")
+                   .Case("llvm_i16_ty", "Builder.getInt16Ty()")
+                   .Case("llvm_i32_ty", "Builder.getInt32Ty()")
+                   .Case("llvm_i64_ty", "Builder.getInt64Ty()")
+                   .Case("llvm_i128_ty", "Builder.getInt128Ty()")
+                   .Default(llvm::formatv("Builder.getIntNTy({0})", Size));
+  } else if (IsFP) {
+    Builder += llvm::StringSwitch<std::string>(TypeName)
+                   .Case("llvm_half_ty", "Builder.getHalfTy()")
+                   .Case("llvm_float_ty", "Builder.getFloatTy()")
+                   .Case("llvm_double_ty", "Builder.getDoubleTy()")
+                   .Case("llvm_bfloat_ty", "Builder.getBFloatTy()");
+  } else if (TypeName == "llvm_void_ty") {
+    return "Builder.getVoidTy()";
+  } else {
+    llvm::PrintFatalError(Loc, "Unhandled type " + Type->getName() + ".");
+  }
+
+  if (ValueType->getValueAsBit("isVector")) {
+    int64_t NumEls = ValueType->getValueAsInt("nElem");
+    Builder =
+        llvm::formatv("llvm::FixedVectorType::get({0}, {1})", Builder, NumEls);
+  }
+
+  return Builder;
 }
 
 void SIInstrSemanticsEmitter::emitSemanticStatement(
@@ -107,7 +119,7 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
       const auto *ValDag = llvm::dyn_cast<llvm::DagInit>(Dag->getArg(1));
       if (!ValDag)
         llvm::PrintFatalError("ImplicitDef second arg is not a DAG");
-      OS << "Tracker.setRegOperandValue(MI, llvm::AMDGPU::" << RegName << ", *";
+      OS << "Tracker.setRegOperandValue(MI, llvm::AMDGPU::" << RegName << ", ";
       emitSemanticStatement(OS, ValDag, Loc, Indent);
       OS << ")";
     }
@@ -194,7 +206,7 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
     } else if (DefType->isSubClassOf(
                    Stmt->getRecordKeeper().getClass("LLVMType"))) {
       llvm::errs() << "Leaf type: " << DefNode->getDef()->getName() << "\n";
-      OS << getTypeExpr(DefNode->getDef()->getName());
+      OS << getTypeExpr(Loc, DefNode->getDef());
     } else if (DefType->isSubClassOf(
                    Stmt->getRecordKeeper().getClass("Intrinsic"))) {
       llvm::errs() << "Leaf type: " << DefNode->getDef()->getName() << "\n";
@@ -210,7 +222,11 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
           Loc, "Unhandled def node: " + DefNode->getAsString() + ".");
     }
   } else if (auto *IntNode = llvm::dyn_cast<llvm::IntInit>(Stmt)) {
+    llvm::outs() << "Int node: " << IntNode->getValue() << "\n";
     OS << IntNode->getValue();
+  } else if (auto *StrNode = llvm::dyn_cast<llvm::StringInit>(Stmt)) {
+    llvm::outs() << "String node: " << StrNode->getValue() << "\n";
+    OS << StrNode->getValue();
   } else {
     llvm::PrintFatalError(Loc, "Unhandled node: " + Stmt->getAsString() + ".");
   }

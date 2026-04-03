@@ -95,6 +95,9 @@ public:
   /// size as the register
   llvm::Value &getOperandAsValue(const llvm::MachineOperand &Op);
 
+  void setRegOperandValue(const llvm::MachineInstr &MI, llvm::MCRegister Reg,
+                          llvm::Value *Val);
+
   void setRegOperandValue(const llvm::MachineOperand &Op, llvm::Value *Val);
 };
 
@@ -241,18 +244,11 @@ MBBOperandTracker::getOperandAsValue(const llvm::MachineOperand &Op) {
     llvm_unreachable("Unsupported operand type");
   }
 }
-
-void MBBOperandTracker::setRegOperandValue(const llvm::MachineOperand &Op,
+void MBBOperandTracker::setRegOperandValue(const llvm::MachineInstr &MI,
+                                           llvm::MCRegister Reg,
                                            llvm::Value *Val) {
-  assert(Val && "Val is nullptr");
-  assert(Op.isReg() && "Operand is not a register");
-  assert(Op.getReg().isPhysical() && "Operand is not a physical register");
-  llvm::MCRegister Reg = Op.getReg();
-  const llvm::MachineInstr *MI = Op.getParent();
-  assert(MI && "Machine operand does not have a machine instruction");
-  const llvm::MachineBasicBlock *MBB = MI->getParent();
-  assert(MBB && "Machine operand does not have a machine basic block");
-
+  const llvm::MachineBasicBlock *MBB = MI.getParent();
+  assert(MBB && "Machine instruction doesn't have a parent");
   assert(VM.contains(*MBB) &&
          "Failed to find the value map associated with MBB");
   auto &MBBValueMap = VM[*MBB];
@@ -328,6 +324,17 @@ void MBBOperandTracker::setRegOperandValue(const llvm::MachineOperand &Op,
   }
 }
 
+void MBBOperandTracker::setRegOperandValue(const llvm::MachineOperand &Op,
+                                           llvm::Value *Val) {
+  assert(Val && "Val is nullptr");
+  assert(Op.isReg() && "Operand is not a register");
+  assert(Op.getReg().isPhysical() && "Operand is not a physical register");
+  llvm::MCRegister Reg = Op.getReg();
+  const llvm::MachineInstr *MI = Op.getParent();
+  assert(MI && "Machine operand does not have a machine instruction");
+  setRegOperandValue(*MI, Reg, Val);
+}
+
 using MBBToBBMapTy =
     llvm::DenseMap<std::reference_wrapper<const llvm::MachineBasicBlock>,
                    std::reference_wrapper<llvm::BasicBlock>>;
@@ -339,76 +346,6 @@ void raiseMachineInstr(const llvm::MachineInstr &MI,
 
 #define GET_SI_INSTR_SEMANTIC_FUNCTIONS
 #include "SIInstrSemantics.inc"
-
-llvm::Expected<llvm::Value &>
-raiseMachineInstr(const llvm::MachineInstr &MI, llvm::IRBuilderBase &Builder,
-                  MBBToBBMapTy &MBBToBBMap,
-                  BasicBlockMCRegisterValueMap &RegisterValueMap) {
-  llvm::Value *Out{nullptr};
-  llvm::LLVMContext &Ctx = Builder.getContext();
-  switch (MI.getOpcode()) {
-  case llvm::AMDGPU::S_ADD_U32:
-    raiseMachineInstr<llvm::AMDGPU::S_ADD_U32>(
-        Builder, MBBToBBMap, RegisterValueMap, MI.getOperand(0),
-        MI.getOperand(1), MI.getOperand(2));
-    break;
-  case llvm::AMDGPU::S_SUB_U32:
-    /// D.u = S0.u - S1.u;
-    /// SCC = (S1.u > S0.u ? 1 : 0). // unsigned overflow or carry-out for
-    /// S_SUBB_U32
-    const llvm::MachineOperand &Op1 = MI.getOperand(1);
-    const llvm::MachineOperand &Op2 = MI.getOperand(2);
-    llvm::Value *Op1Val = Op1.isImm() ? Builder.getInt32(Op2.getImm())
-                                      : RegisterValueMap.getValue(Op1.getReg());
-    llvm::Value *Op2Val = Op2.isImm() ? Builder.getInt32(Op2.getImm())
-                                      : RegisterValueMap.getValue(Op2.getReg());
-    if (!Op1Val) {
-      return LUTHIER_MAKE_GENERIC_ERROR("Failed to create the first operand");
-    }
-    if (!Op2Val) {
-      return LUTHIER_MAKE_GENERIC_ERROR("Failed to create the second operand");
-    }
-    Out = Builder.CreateAdd(Op1Val, Op2Val);
-    llvm::Value *SCCVal = Builder.CreateSelect(
-        Builder.CreateCmp(llvm::CmpInst::ICMP_UGE,
-                          Builder.CreateAdd(Op1Val, Op2Val),
-                          Builder.getInt64(0x100000000ULL)),
-        Builder.getInt1(true), Builder.getInt1(false));
-    RegisterValueMap.setValue(MI.getOperand(0).getReg(), *Out);
-    RegisterValueMap.setValue(llvm::AMDGPU::SCC, *SCCVal);
-    break;
-  case llvm::AMDGPU::S_ENDPGM:
-    RegisterValueMap.setValue(
-        MI.getOperand(0).getReg(),
-        *Builder.CreateIntrinsic(Builder.getVoidTy(),
-                                 llvm::Intrinsic::amdgcn_endpgm, {}));
-    break;
-  case llvm::AMDGPU::S_GETPC_B64:
-    RegisterValueMap.setValue(
-        MI.getOperand(0).getReg(),
-        *Builder.CreateIntrinsic(Builder.getInt64Ty(),
-                                 llvm::Intrinsic::amdgcn_s_getpc, {}));
-    break;
-  case llvm::AMDGPU::S_ADD_I32:
-    const llvm::MachineOperand &Op1 = MI.getOperand(1);
-    const llvm::MachineOperand &Op2 = MI.getOperand(2);
-    llvm::Value *Op1Val = Op1.isImm() ? Builder.getInt32(Op1.getImm())
-                                      : RegisterValueMap.getValue(Op1.getReg());
-    llvm::Value *Op2Val = Op2.isImm() ? Builder.getInt32(Op2.getImm())
-                                      : RegisterValueMap.getValue(Op2.getReg());
-    if (!Op1Val) {
-      return LUTHIER_MAKE_GENERIC_ERROR("Failed to create the first operand");
-    }
-    if (!Op2Val) {
-      return LUTHIER_MAKE_GENERIC_ERROR("Failed to create the second operand");
-    }
-    Out = Builder.CreateAdd(Op1Val, Op2Val);
-    RegisterValueMap.setValue(MI.getOperand(0).getReg(), *Out);
-    break;
-  default:
-    llvm_unreachable("Not modeled");
-  }
-}
 
 llvm::PreservedAnalyses IRTranslator::run(llvm::Function &F,
                                           llvm::FunctionAnalysisManager &FAM) {

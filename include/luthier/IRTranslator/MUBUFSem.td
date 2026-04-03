@@ -240,9 +240,9 @@ def BUFFER_LOAD_UBYTE_D16_HI_OFFSET_sem : InstSISemantic<BUFFER_LOAD_UBYTE_D16_H
         (GetNamedOperand $srsrc), (GetNamedOperand $vaddr),
         (GetNamedOperand $offset), (GetNamedOperand $soffset),
         (GetNamedOperand $cpol))),
-    (DefVal $vdata_hi, (LLVMShl (LLVMZExt $tmp, llvm_i32_ty), 16)),
+    (DefVal $vdata_hi, (LLVMShl (LLVMZExt (GetVal $tmp), llvm_i32_ty), 16)),
     (DefVal $vdata_lo, (LLVMAnd (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0xFFFF))),
-    (SetNamedOperand $vdata, (LLVMOr $vdata_hi, $vdata_lo))
+    (SetNamedOperand $vdata, (LLVMOr (GetVal $vdata_hi), (GetVal $vdata_lo)))
   ];
 }
 
@@ -253,10 +253,10 @@ def BUFFER_LOAD_SBYTE_D16_HI_OFFSET_sem : InstSISemantic<BUFFER_LOAD_SBYTE_D16_H
         (GetNamedOperand $srsrc), (GetNamedOperand $vaddr),
         (GetNamedOperand $offset), (GetNamedOperand $soffset),
         (GetNamedOperand $cpol))),
-    (DefVal $hi16, (LLVMSExt $tmp, llvm_i16_ty)),
-    (DefVal $vdata_hi, (LLVMShl (LLVMZExt $hi16, llvm_i32_ty), 16)),
+    (DefVal $hi16, (LLVMSExt (GetVal $tmp), llvm_i16_ty)),
+    (DefVal $vdata_hi, (LLVMShl (LLVMZExt (GetVal $hi16), llvm_i32_ty), 16)),
     (DefVal $vdata_lo, (LLVMAnd (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0xFFFF))),
-    (SetNamedOperand $vdata, (LLVMOr $vdata_hi, $vdata_lo))
+    (SetNamedOperand $vdata, (LLVMOr (GetVal $vdata_hi), (GetVal $vdata_lo)))
   ];
 }
 
@@ -267,9 +267,9 @@ def BUFFER_LOAD_SHORT_D16_HI_OFFSET_sem : InstSISemantic<BUFFER_LOAD_SHORT_D16_H
         (GetNamedOperand $srsrc), (GetNamedOperand $vaddr),
         (GetNamedOperand $offset), (GetNamedOperand $soffset),
         (GetNamedOperand $cpol))),
-    (DefVal $vdata_hi, (LLVMShl (LLVMZExt $hi16, llvm_i32_ty), 16)),
+    (DefVal $vdata_hi, (LLVMShl (LLVMZExt (GetVal $hi16), llvm_i32_ty), 16)),
     (DefVal $vdata_lo, (LLVMAnd (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0xFFFF))),
-    (SetNamedOperand $vdata, (LLVMOr $vdata_hi, $vdata_lo))
+    (SetNamedOperand $vdata, (LLVMOr (GetVal $vdata_hi), (GetVal $vdata_lo)))
   ];
 }
 
@@ -277,7 +277,7 @@ def BUFFER_STORE_BYTE_D16_HI_OFFSET_sem : InstSISemantic<BUFFER_STORE_BYTE_D16_H
   let Semantic = [
     (DefVal $tmp8, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i8_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp8, (GetNamedOperand $srsrc),
+      (GetVal $tmp8), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -287,7 +287,7 @@ def BUFFER_STORE_SHORT_D16_HI_OFFSET_sem : InstSISemantic<BUFFER_STORE_SHORT_D16
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -296,9 +296,9 @@ def BUFFER_STORE_SHORT_D16_HI_OFFSET_sem : InstSISemantic<BUFFER_STORE_SHORT_D16
 def BUFFER_STORE_FORMAT_D16_HI_X_OFFSET_sem : InstSISemantic<BUFFER_STORE_FORMAT_D16_HI_X_OFFSET> {
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
-    (DefVal $tmp_f16, (LLVMBitCast $tmp16, llvm_half_ty)),
+    (DefVal $tmp_f16, (LLVMBitCast (GetVal $tmp16), llvm_half_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store_format, llvm_void_ty,
-      $tmp_f16, (GetNamedOperand $srsrc),
+      (GetVal $tmp_f16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -339,7 +339,7 @@ def BUFFER_ATOMIC_CMPSWAP_OFFSET_sem : InstSISemantic<BUFFER_ATOMIC_CMPSWAP_OFFS
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 1))),
     (SetNamedOperand $vdata,
       (LLVMIntrinsic int_amdgcn_struct_buffer_atomic_cmpswap, llvm_i32_ty,
-        $src, $cmp, (GetNamedOperand $srsrc),
+        (GetVal $src), (GetVal $cmp), (GetNamedOperand $srsrc),
         (GetNamedOperand $vaddr), (GetNamedOperand $offset),
         (GetNamedOperand $soffset), (GetNamedOperand $cpol)))
   ];
@@ -481,7 +481,7 @@ def BUFFER_ATOMIC_CMPSWAP_X2_OFFSET_sem : InstSISemantic<BUFFER_ATOMIC_CMPSWAP_X
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 1))),
     (SetNamedOperand $vdata,
       (LLVMIntrinsic int_amdgcn_struct_buffer_atomic_cmpswap, llvm_i64_ty,
-        $src, $cmp, (GetNamedOperand $srsrc),
+        (GetVal $src), (GetVal $cmp), (GetNamedOperand $srsrc),
         (GetNamedOperand $vaddr), (GetNamedOperand $offset),
         (GetNamedOperand $soffset), (GetNamedOperand $cpol)))
   ];
@@ -867,10 +867,10 @@ foreach inst = [
         (GetNamedOperand $srsrc), (GetNamedOperand $vaddr),
         (GetNamedOperand $offset), (GetNamedOperand $soffset),
         (GetNamedOperand $cpol))),
-    (DefVal $ival, (LLVMBitCast $fval, llvm_i16_ty)),
-    (DefVal $vdata_hi, (LLVMShl (LLVMZExt $ival, llvm_i32_ty), 16)),
+    (DefVal $ival, (LLVMBitCast (GetVal $fval), llvm_i16_ty)),
+    (DefVal $vdata_hi, (LLVMShl (LLVMZExt (GetVal $ival), llvm_i32_ty), 16)),
     (DefVal $vdata_lo, (LLVMAnd (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0xFFFF))),
-    (SetNamedOperand $vdata, (LLVMOr $vdata_hi, $vdata_lo))
+    (SetNamedOperand $vdata, (LLVMOr (GetVal $vdata_hi), (GetVal $vdata_lo)))
     ];
   }
 }
@@ -1197,10 +1197,10 @@ foreach inst = [
   def inst#_sem : InstSISemantic<inst> {
     let Semantic = [
     (DefVal $shifted, (LLVMLShr (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 16))),
-    (DefVal $half, (LLVMTrunc $shifted, llvm_i16_ty)),
-    (DefVal $fval, (LLVMBitCast $half, llvm_half_ty)),
+    (DefVal $half, (LLVMTrunc (GetVal $shifted), llvm_i16_ty)),
+    (DefVal $fval, (LLVMBitCast (GetVal $half), llvm_half_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store_format, llvm_void_ty,
-      $fval, (GetNamedOperand $srsrc),
+      (GetVal $fval), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
     ];
@@ -2007,10 +2007,10 @@ def BUFFER_LOAD_SBYTE_D16_HI_ADDR64_sem : InstSISemantic<BUFFER_LOAD_SBYTE_D16_H
         (GetNamedOperand $srsrc), (GetNamedOperand $vaddr),
         (GetNamedOperand $offset), (GetNamedOperand $soffset),
         (GetNamedOperand $cpol))),
-    (DefVal $sext16, (LLVMSExt $tmp, llvm_i16_ty)),
-    (DefVal $vdata_hi, (LLVMShl (LLVMZExt $sext16, llvm_i32_ty), 16)),
+    (DefVal $sext16, (LLVMSExt (GetVal $tmp), llvm_i16_ty)),
+    (DefVal $vdata_hi, (LLVMShl (LLVMZExt (GetVal $sext16), llvm_i32_ty), 16)),
     (DefVal $vdata_lo, (LLVMAnd (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0xFFFF))),
-    (SetNamedOperand $vdata, (LLVMOr $vdata_hi, $vdata_lo))
+    (SetNamedOperand $vdata, (LLVMOr (GetVal $vdata_hi), (GetVal $vdata_lo)))
   ];
 }
 
@@ -2021,10 +2021,10 @@ def BUFFER_LOAD_SBYTE_D16_HI_BOTHEN_sem : InstSISemantic<BUFFER_LOAD_SBYTE_D16_H
         (GetNamedOperand $srsrc), (GetNamedOperand $vaddr),
         (GetNamedOperand $offset), (GetNamedOperand $soffset),
         (GetNamedOperand $cpol))),
-    (DefVal $sext16, (LLVMSExt $tmp, llvm_i16_ty)),
-    (DefVal $vdata_hi, (LLVMShl (LLVMZExt $sext16, llvm_i32_ty), 16)),
+    (DefVal $sext16, (LLVMSExt (GetVal $tmp), llvm_i16_ty)),
+    (DefVal $vdata_hi, (LLVMShl (LLVMZExt (GetVal $sext16), llvm_i32_ty), 16)),
     (DefVal $vdata_lo, (LLVMAnd (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0xFFFF))),
-    (SetNamedOperand $vdata, (LLVMOr $vdata_hi, $vdata_lo))
+    (SetNamedOperand $vdata, (LLVMOr (GetVal $vdata_hi), (GetVal $vdata_lo)))
   ];
 }
 
@@ -2035,10 +2035,10 @@ def BUFFER_LOAD_SBYTE_D16_HI_IDXEN_sem : InstSISemantic<BUFFER_LOAD_SBYTE_D16_HI
         (GetNamedOperand $srsrc), (GetNamedOperand $vaddr),
         (GetNamedOperand $offset), (GetNamedOperand $soffset),
         (GetNamedOperand $cpol))),
-    (DefVal $sext16, (LLVMSExt $tmp, llvm_i16_ty)),
-    (DefVal $vdata_hi, (LLVMShl (LLVMZExt $sext16, llvm_i32_ty), 16)),
+    (DefVal $sext16, (LLVMSExt (GetVal $tmp), llvm_i16_ty)),
+    (DefVal $vdata_hi, (LLVMShl (LLVMZExt (GetVal $sext16), llvm_i32_ty), 16)),
     (DefVal $vdata_lo, (LLVMAnd (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0xFFFF))),
-    (SetNamedOperand $vdata, (LLVMOr $vdata_hi, $vdata_lo))
+    (SetNamedOperand $vdata, (LLVMOr (GetVal $vdata_hi), (GetVal $vdata_lo)))
   ];
 }
 
@@ -2049,10 +2049,10 @@ def BUFFER_LOAD_SBYTE_D16_HI_OFFEN_sem : InstSISemantic<BUFFER_LOAD_SBYTE_D16_HI
         (GetNamedOperand $srsrc), (GetNamedOperand $vaddr),
         (GetNamedOperand $offset), (GetNamedOperand $soffset),
         (GetNamedOperand $cpol))),
-    (DefVal $sext16, (LLVMSExt $tmp, llvm_i16_ty)),
-    (DefVal $vdata_hi, (LLVMShl (LLVMZExt $sext16, llvm_i32_ty), 16)),
+    (DefVal $sext16, (LLVMSExt (GetVal $tmp), llvm_i16_ty)),
+    (DefVal $vdata_hi, (LLVMShl (LLVMZExt (GetVal $sext16), llvm_i32_ty), 16)),
     (DefVal $vdata_lo, (LLVMAnd (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0xFFFF))),
-    (SetNamedOperand $vdata, (LLVMOr $vdata_hi, $vdata_lo))
+    (SetNamedOperand $vdata, (LLVMOr (GetVal $vdata_hi), (GetVal $vdata_lo)))
   ];
 }
 
@@ -2063,10 +2063,10 @@ def BUFFER_LOAD_SBYTE_D16_HI_OFFSET_sem : InstSISemantic<BUFFER_LOAD_SBYTE_D16_H
         (GetNamedOperand $srsrc), (GetNamedOperand $vaddr),
         (GetNamedOperand $offset), (GetNamedOperand $soffset),
         (GetNamedOperand $cpol))),
-    (DefVal $sext16, (LLVMSExt $tmp, llvm_i16_ty)),
-    (DefVal $vdata_hi, (LLVMShl (LLVMZExt $sext16, llvm_i32_ty), 16)),
+    (DefVal $sext16, (LLVMSExt (GetVal $tmp), llvm_i16_ty)),
+    (DefVal $vdata_hi, (LLVMShl (LLVMZExt (GetVal $sext16), llvm_i32_ty), 16)),
     (DefVal $vdata_lo, (LLVMAnd (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0xFFFF))),
-    (SetNamedOperand $vdata, (LLVMOr $vdata_hi, $vdata_lo))
+    (SetNamedOperand $vdata, (LLVMOr (GetVal $vdata_hi), (GetVal $vdata_lo)))
   ];
 }
 
@@ -2077,10 +2077,10 @@ def BUFFER_LOAD_SBYTE_D16_HI_TFE_ADDR64_sem : InstSISemantic<BUFFER_LOAD_SBYTE_D
         (GetNamedOperand $srsrc), (GetNamedOperand $vaddr),
         (GetNamedOperand $offset), (GetNamedOperand $soffset),
         (GetNamedOperand $cpol))),
-    (DefVal $sext16, (LLVMSExt $tmp, llvm_i16_ty)),
-    (DefVal $vdata_hi, (LLVMShl (LLVMZExt $sext16, llvm_i32_ty), 16)),
+    (DefVal $sext16, (LLVMSExt (GetVal $tmp), llvm_i16_ty)),
+    (DefVal $vdata_hi, (LLVMShl (LLVMZExt (GetVal $sext16), llvm_i32_ty), 16)),
     (DefVal $vdata_lo, (LLVMAnd (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0xFFFF))),
-    (SetNamedOperand $vdata, (LLVMOr $vdata_hi, $vdata_lo))
+    (SetNamedOperand $vdata, (LLVMOr (GetVal $vdata_hi), (GetVal $vdata_lo)))
   ];
 }
 
@@ -2113,10 +2113,10 @@ foreach inst = [
         (GetNamedOperand $srsrc), (GetNamedOperand $vaddr),
         (GetNamedOperand $offset), (GetNamedOperand $soffset),
         (GetNamedOperand $cpol))),
-    (DefVal $sext16, (LLVMSExt $tmp, llvm_i16_ty)),
-    (DefVal $vdata_hi, (LLVMShl (LLVMZExt $sext16, llvm_i32_ty), 16)),
+    (DefVal $sext16, (LLVMSExt (GetVal $tmp), llvm_i16_ty)),
+    (DefVal $vdata_hi, (LLVMShl (LLVMZExt (GetVal $sext16), llvm_i32_ty), 16)),
     (DefVal $vdata_lo, (LLVMAnd (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0xFFFF))),
-    (SetNamedOperand $vdata, (LLVMOr $vdata_hi, $vdata_lo))
+    (SetNamedOperand $vdata, (LLVMOr (GetVal $vdata_hi), (GetVal $vdata_lo)))
     ];
   }
 }
@@ -2419,9 +2419,9 @@ foreach inst = [
         (GetNamedOperand $srsrc), (GetNamedOperand $vaddr),
         (GetNamedOperand $offset), (GetNamedOperand $soffset),
         (GetNamedOperand $cpol))),
-    (DefVal $vdata_hi, (LLVMShl (LLVMZExt $tmp, llvm_i32_ty), 16)),
+    (DefVal $vdata_hi, (LLVMShl (LLVMZExt (GetVal $tmp), llvm_i32_ty), 16)),
     (DefVal $vdata_lo, (LLVMAnd (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0xFFFF))),
-    (SetNamedOperand $vdata, (LLVMOr $vdata_hi, $vdata_lo))
+    (SetNamedOperand $vdata, (LLVMOr (GetVal $vdata_hi), (GetVal $vdata_lo)))
     ];
   }
 }
@@ -2521,9 +2521,9 @@ foreach inst = [
         (GetNamedOperand $srsrc), (GetNamedOperand $vaddr),
         (GetNamedOperand $offset), (GetNamedOperand $soffset),
         (GetNamedOperand $cpol))),
-    (DefVal $vdata_hi, (LLVMShl (LLVMZExt $tmp, llvm_i32_ty), 16)),
+    (DefVal $vdata_hi, (LLVMShl (LLVMZExt (GetVal $tmp), llvm_i32_ty), 16)),
     (DefVal $vdata_lo, (LLVMAnd (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0xFFFF))),
-    (SetNamedOperand $vdata, (LLVMOr $vdata_hi, $vdata_lo))
+    (SetNamedOperand $vdata, (LLVMOr (GetVal $vdata_hi), (GetVal $vdata_lo)))
     ];
   }
 }
@@ -2848,7 +2848,7 @@ foreach inst = [
     let Semantic = [
     (DefVal $tmp, (LLVMTrunc (GetNamedOperand $vdata), llvm_i8_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp, (GetNamedOperand $srsrc),
+      (GetVal $tmp), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
     ];
@@ -2881,7 +2881,7 @@ foreach inst = [
     let Semantic = [
     (DefVal $tmp8, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i8_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp8, (GetNamedOperand $srsrc),
+      (GetVal $tmp8), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
     ];
@@ -3030,7 +3030,7 @@ def BUFFER_STORE_SHORT_ADDR64_sem : InstSISemantic<BUFFER_STORE_SHORT_ADDR64> {
   let Semantic = [
     (DefVal $tmp, (LLVMTrunc (GetNamedOperand $vdata), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp, (GetNamedOperand $srsrc),
+      (GetVal $tmp), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3040,7 +3040,7 @@ def BUFFER_STORE_SHORT_BOTHEN_sem : InstSISemantic<BUFFER_STORE_SHORT_BOTHEN> {
   let Semantic = [
     (DefVal $tmp, (LLVMTrunc (GetNamedOperand $vdata), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp, (GetNamedOperand $srsrc),
+      (GetVal $tmp), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3050,7 +3050,7 @@ def BUFFER_STORE_SHORT_D16_HI_ADDR64_sem : InstSISemantic<BUFFER_STORE_SHORT_D16
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3060,7 +3060,7 @@ def BUFFER_STORE_SHORT_D16_HI_BOTHEN_sem : InstSISemantic<BUFFER_STORE_SHORT_D16
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3070,7 +3070,7 @@ def BUFFER_STORE_SHORT_D16_HI_IDXEN_sem : InstSISemantic<BUFFER_STORE_SHORT_D16_
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3080,7 +3080,7 @@ def BUFFER_STORE_SHORT_D16_HI_OFFEN_sem : InstSISemantic<BUFFER_STORE_SHORT_D16_
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3090,7 +3090,7 @@ def BUFFER_STORE_SHORT_D16_HI_OFFSET_sem : InstSISemantic<BUFFER_STORE_SHORT_D16
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3100,7 +3100,7 @@ def BUFFER_STORE_SHORT_D16_HI_TFE_ADDR64_sem : InstSISemantic<BUFFER_STORE_SHORT
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3110,7 +3110,7 @@ def BUFFER_STORE_SHORT_D16_HI_TFE_BOTHEN_sem : InstSISemantic<BUFFER_STORE_SHORT
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3120,7 +3120,7 @@ def BUFFER_STORE_SHORT_D16_HI_TFE_IDXEN_sem : InstSISemantic<BUFFER_STORE_SHORT_
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3130,7 +3130,7 @@ def BUFFER_STORE_SHORT_D16_HI_TFE_OFFEN_sem : InstSISemantic<BUFFER_STORE_SHORT_
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3140,7 +3140,7 @@ def BUFFER_STORE_SHORT_D16_HI_TFE_OFFSET_sem : InstSISemantic<BUFFER_STORE_SHORT
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3150,7 +3150,7 @@ def BUFFER_STORE_SHORT_D16_HI_TFE_VBUFFER_ADDR64_sem : InstSISemantic<BUFFER_STO
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3160,7 +3160,7 @@ def BUFFER_STORE_SHORT_D16_HI_TFE_VBUFFER_BOTHEN_sem : InstSISemantic<BUFFER_STO
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3170,7 +3170,7 @@ def BUFFER_STORE_SHORT_D16_HI_TFE_VBUFFER_IDXEN_sem : InstSISemantic<BUFFER_STOR
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3180,7 +3180,7 @@ def BUFFER_STORE_SHORT_D16_HI_TFE_VBUFFER_OFFEN_sem : InstSISemantic<BUFFER_STOR
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3190,7 +3190,7 @@ def BUFFER_STORE_SHORT_D16_HI_TFE_VBUFFER_OFFSET_sem : InstSISemantic<BUFFER_STO
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3200,7 +3200,7 @@ def BUFFER_STORE_SHORT_D16_HI_VBUFFER_ADDR64_sem : InstSISemantic<BUFFER_STORE_S
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3210,7 +3210,7 @@ def BUFFER_STORE_SHORT_D16_HI_VBUFFER_BOTHEN_sem : InstSISemantic<BUFFER_STORE_S
   let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
   ];
@@ -3242,7 +3242,7 @@ foreach inst = [
     let Semantic = [
     (DefVal $tmp16, (LLVMTrunc (LLVMLShr (GetNamedOperand $vdata), 16), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp16, (GetNamedOperand $srsrc),
+      (GetVal $tmp16), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
     ];
@@ -3256,7 +3256,7 @@ foreach inst = [
     let Semantic = [
     (DefVal $tmp, (LLVMTrunc (GetNamedOperand $vdata), llvm_i16_ty)),
     (LLVMIntrinsic int_amdgcn_struct_buffer_store, llvm_void_ty,
-      $tmp, (GetNamedOperand $srsrc),
+      (GetVal $tmp), (GetNamedOperand $srsrc),
       (GetNamedOperand $vaddr), (GetNamedOperand $offset),
       (GetNamedOperand $soffset), (GetNamedOperand $cpol))
     ];
@@ -3491,7 +3491,7 @@ foreach inst = [
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 1))),
     (SetNamedOperand $vdata,
       (LLVMIntrinsic int_amdgcn_struct_buffer_atomic_cmpswap, llvm_i32_ty,
-        $src, $cmp, (GetNamedOperand $srsrc),
+        (GetVal $src), (GetVal $cmp), (GetNamedOperand $srsrc),
         (GetNamedOperand $vaddr), (GetNamedOperand $offset),
         (GetNamedOperand $soffset), (GetNamedOperand $cpol)))
     ];
@@ -3526,7 +3526,7 @@ foreach inst = [
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 1))),
     (SetNamedOperand $vdata,
       (LLVMIntrinsic int_amdgcn_struct_buffer_atomic_cmpswap, llvm_i64_ty,
-        $src, $cmp, (GetNamedOperand $srsrc),
+        (GetVal $src), (GetVal $cmp), (GetNamedOperand $srsrc),
         (GetNamedOperand $vaddr), (GetNamedOperand $offset),
         (GetNamedOperand $soffset), (GetNamedOperand $cpol)))
     ];
@@ -3693,7 +3693,7 @@ foreach inst = [
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 1))),
     (SetNamedOperand $vdata,
       (LLVMIntrinsic int_amdgcn_struct_buffer_atomic_cmpswap, llvm_float_ty,
-        $src, $cmp, (GetNamedOperand $srsrc),
+        (GetVal $src), (GetVal $cmp), (GetNamedOperand $srsrc),
         (GetNamedOperand $vaddr), (GetNamedOperand $offset),
         (GetNamedOperand $soffset), (GetNamedOperand $cpol)))
     ];
@@ -3728,7 +3728,7 @@ foreach inst = [
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 1))),
     (SetNamedOperand $vdata,
       (LLVMIntrinsic int_amdgcn_struct_buffer_atomic_cmpswap, llvm_double_ty,
-        $src, $cmp, (GetNamedOperand $srsrc),
+        (GetVal $src), (GetVal $cmp), (GetNamedOperand $srsrc),
         (GetNamedOperand $vaddr), (GetNamedOperand $offset),
         (GetNamedOperand $soffset), (GetNamedOperand $cpol)))
     ];
