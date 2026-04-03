@@ -171,7 +171,7 @@ def S_SETPRIO_sem : InstSIIntrinsic<S_SETPRIO, int_amdgcn_s_setprio>;
 def S_TRAP_sem : InstSISemantic<S_TRAP> {
   let Semantic = [
     /// TODO: Maybe handle trap manually, to make s_trap 3 point to HSA debug trap
-    (int_trap)
+    (LLVMUnaryIntrinsic int_trap)
   ];
 }
 

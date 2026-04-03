@@ -319,7 +319,7 @@ def FLAT_ATOMIC_CMPSWAP_sem : InstSISemantic<FLAT_ATOMIC_CMPSWAP> {
     (DefVal $tmp, (LLVMLoad llvm_i32_ty, $tmp_addr)),
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 1))),
     (DefVal $src, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0))),
-    (DefVal $new_val, (LLVMSelect (LLVMCmp SETEQ, $tmp, $cmp), $src, $tmp)),
+    (DefVal $new_val, (LLVMSelect (LLVMCmp LLVMICmpEQ, $tmp, $cmp), $src, $tmp)),
     (LLVMStore $new_val, $tmp_addr),
     (SetNamedOperand $vdata, $tmp)
   ];
@@ -418,7 +418,7 @@ def FLAT_ATOMIC_COND_SUB_U32_sem : InstSISemantic<FLAT_ATOMIC_COND_SUB_U32> {
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i32_ty, $tmp_addr)),
-    (DefVal $new_val, (LLVMSelect (LLVMCmp SETUGE, $tmp, (GetNamedOperand $vdata)),
+    (DefVal $new_val, (LLVMSelect (LLVMCmp LLVMICmpUGE, $tmp, (GetNamedOperand $vdata)),
                                  (LLVMSub $tmp, (GetNamedOperand $vdata)), $tmp)),
     (LLVMStore $new_val, $tmp_addr),
     (SetNamedOperand $vdata, $tmp)
@@ -430,7 +430,7 @@ def FLAT_ATOMIC_CSUB_U32_sem : InstSISemantic<FLAT_ATOMIC_CSUB_U32> {
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i32_ty, $tmp_addr)),
-    (DefVal $new_val, (LLVMSelect (LLVMCmp SETUGT, $tmp, (GetNamedOperand $vdata)),
+    (DefVal $new_val, (LLVMSelect (LLVMCmp LLVMICmpUGT, $tmp, (GetNamedOperand $vdata)),
                                  (LLVMSub $tmp, (GetNamedOperand $vdata)),
                                  (ConstantInt llvm_i32_ty, 0))),
     (LLVMStore $new_val, $tmp_addr),
@@ -594,7 +594,7 @@ def FLAT_ATOMIC_CMPSWAP_X2_sem : InstSISemantic<FLAT_ATOMIC_CMPSWAP_X2> {
     (DefVal $tmp, (LLVMLoad llvm_i64_ty, $tmp_addr)),
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i64_ty, 1))),
     (DefVal $src, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i64_ty, 0))),
-    (DefVal $new_val, (LLVMSelect (LLVMCmp SETEQ, $tmp, $cmp), $src, $tmp)),
+    (DefVal $new_val, (LLVMSelect (LLVMCmp LLVMICmpEQ, $tmp, $cmp), $src, $tmp)),
     (LLVMStore $new_val, $tmp_addr),
     (SetNamedOperand $vdata, $tmp)
   ];
@@ -766,7 +766,7 @@ def FLAT_ATOMIC_CMPSWAP_RTN_sem : InstSISemantic<FLAT_ATOMIC_CMPSWAP_RTN> {
     (DefVal $tmp, (LLVMLoad llvm_i32_ty, $tmp_addr)),
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 1))),
     (DefVal $src, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0))),
-    (DefVal $new_val, (LLVMSelect (LLVMCmp SETEQ, $tmp, $cmp), $src, $tmp)),
+    (DefVal $new_val, (LLVMSelect (LLVMCmp LLVMICmpEQ, $tmp, $cmp), $src, $tmp)),
     (LLVMStore $new_val, $tmp_addr),
     (SetNamedOperand $vdata, $tmp)
   ];
@@ -779,7 +779,7 @@ def FLAT_ATOMIC_CMPSWAP_X2_RTN_sem : InstSISemantic<FLAT_ATOMIC_CMPSWAP_X2_RTN> 
     (DefVal $tmp, (LLVMLoad llvm_i64_ty, $tmp_addr)),
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i64_ty, 1))),
     (DefVal $src, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i64_ty, 0))),
-    (DefVal $new_val, (LLVMSelect (LLVMCmp SETEQ, $tmp, $cmp), $src, $tmp)),
+    (DefVal $new_val, (LLVMSelect (LLVMCmp LLVMICmpEQ, $tmp, $cmp), $src, $tmp)),
     (LLVMStore $new_val, $tmp_addr),
     (SetNamedOperand $vdata, $tmp)
   ];
@@ -966,7 +966,7 @@ def FLAT_ATOMIC_COND_SUB_U32_RTN_sem : InstSISemantic<FLAT_ATOMIC_COND_SUB_U32_R
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i32_ty, $tmp_addr)),
-    (DefVal $new_val, (LLVMSelect (LLVMCmp SETUGE, $tmp, (GetNamedOperand $vdata)),
+    (DefVal $new_val, (LLVMSelect (LLVMCmp LLVMICmpUGE, $tmp, (GetNamedOperand $vdata)),
                                  (LLVMSub $tmp, (GetNamedOperand $vdata)), $tmp)),
     (LLVMStore $new_val, $tmp_addr),
     (SetNamedOperand $vdata, $tmp)
@@ -978,7 +978,7 @@ def FLAT_ATOMIC_CSUB_U32_RTN_sem : InstSISemantic<FLAT_ATOMIC_CSUB_U32_RTN> {
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i32_ty, $tmp_addr)),
-    (DefVal $new_val, (LLVMSelect (LLVMCmp SETUGT, $tmp, (GetNamedOperand $vdata)),
+    (DefVal $new_val, (LLVMSelect (LLVMCmp LLVMICmpUGT, $tmp, (GetNamedOperand $vdata)),
                                  (LLVMSub $tmp, (GetNamedOperand $vdata)),
                                  (ConstantInt llvm_i32_ty, 0))),
     (LLVMStore $new_val, $tmp_addr),
@@ -1518,7 +1518,7 @@ def GLOBAL_ATOMIC_CMPSWAP_sem : InstSISemantic<GLOBAL_ATOMIC_CMPSWAP> {
     (DefVal $tmp, (LLVMLoad llvm_i32_ty, $tmp_addr)),
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 1))),
     (DefVal $src, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i32_ty, 0))),
-    (DefVal $new_val, (LLVMSelect (LLVMCmp SETEQ, $tmp, $cmp), $src, $tmp)),
+    (DefVal $new_val, (LLVMSelect (LLVMCmp LLVMICmpEQ, $tmp, $cmp), $src, $tmp)),
     (LLVMStore $new_val, $tmp_addr),
     (SetNamedOperand $vdata, $tmp)
   ];
@@ -1667,7 +1667,7 @@ def GLOBAL_ATOMIC_CSUB_sem : InstSISemantic<GLOBAL_ATOMIC_CSUB> {
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i32_ty, $tmp_addr)),
-    (DefVal $new_val, (LLVMSelect (LLVMCmp SETUGT, $tmp, (GetNamedOperand $vdata)),
+    (DefVal $new_val, (LLVMSelect (LLVMCmp LLVMICmpUGT, $tmp, (GetNamedOperand $vdata)),
                                  (LLVMSub $tmp, (GetNamedOperand $vdata)),
                                  (ConstantInt llvm_i32_ty, 0))),
     (LLVMStore $new_val, $tmp_addr),
@@ -1680,7 +1680,7 @@ def GLOBAL_ATOMIC_COND_SUB_U32_sem : InstSISemantic<GLOBAL_ATOMIC_COND_SUB_U32> 
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
     (DefVal $tmp, (LLVMLoad llvm_i32_ty, $tmp_addr)),
-    (DefVal $new_val, (LLVMSelect (LLVMCmp SETUGE, $tmp, (GetNamedOperand $vdata)),
+    (DefVal $new_val, (LLVMSelect (LLVMCmp LLVMICmpUGE, $tmp, (GetNamedOperand $vdata)),
                                  (LLVMSub $tmp, (GetNamedOperand $vdata)), $tmp)),
     (LLVMStore $new_val, $tmp_addr),
     (SetNamedOperand $vdata, $tmp)
@@ -1716,7 +1716,7 @@ def GLOBAL_ATOMIC_CMPSWAP_X2_sem : InstSISemantic<GLOBAL_ATOMIC_CMPSWAP_X2> {
     (DefVal $tmp, (LLVMLoad llvm_i64_ty, $tmp_addr)),
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i64_ty, 1))),
     (DefVal $src, (LLVMExtractElement (GetNamedOperand $vdata), (ConstantInt llvm_i64_ty, 0))),
-    (DefVal $new_val, (LLVMSelect (LLVMCmp SETEQ, $tmp, $cmp), $src, $tmp)),
+    (DefVal $new_val, (LLVMSelect (LLVMCmp LLVMICmpEQ, $tmp, $cmp), $src, $tmp)),
     (LLVMStore $new_val, $tmp_addr),
     (SetNamedOperand $vdata, $tmp)
   ];

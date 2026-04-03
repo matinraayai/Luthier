@@ -13,13 +13,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-///
 /// \file SIInstrSemanticsEmitter.cpp
 /// TableGen backend that emits C++ code to translate AMDGPU \c MachineInstr
 /// instances into LLVM IR based on their \c InstSISemantic records.
 //===----------------------------------------------------------------------===//
 #include "SIInstrSemanticsEmitter.hpp"
-#include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/TableGen/Error.h>
@@ -27,11 +25,7 @@
 
 namespace luthier {
 
-//===----------------------------------------------------------------------===//
-// Utility: Map tablegen names to C++ expressions
-//===----------------------------------------------------------------------===//
-
-std::string SIInstrSemanticsEmitter::getTypeExpr(llvm::StringRef TypeName) {
+static std::string getTypeExpr(llvm::StringRef TypeName) {
   // Strip "llvm_" prefix and "_ty" suffix if present
   // e.g., "llvm_i32_ty" -> "i32", "llvm_float_ty" -> "float"
   return llvm::StringSwitch<std::string>(TypeName)
@@ -59,74 +53,6 @@ std::string SIInstrSemanticsEmitter::getTypeExpr(llvm::StringRef TypeName) {
             "llvm::FixedVectorType::get(Builder.getFloatTy(), 4)")
       .Default(formatv("/* unknown type: {0} */", TypeName));
 }
-
-std::string SIInstrSemanticsEmitter::getCmpPredicate(llvm::StringRef PredName) {
-  return llvm::StringSwitch<std::string>(PredName)
-      // Integer predicates
-      .Case("SETEQ", "llvm::CmpInst::ICMP_EQ")
-      .Case("SETNE", "llvm::CmpInst::ICMP_NE")
-      .Case("SETGT", "llvm::CmpInst::ICMP_SGT")
-      .Case("SETGE", "llvm::CmpInst::ICMP_SGE")
-      .Case("SETLT", "llvm::CmpInst::ICMP_SLT")
-      .Case("SETLE", "llvm::CmpInst::ICMP_SLE")
-      .Case("SETUGT", "llvm::CmpInst::ICMP_UGT")
-      .Case("SETUGE", "llvm::CmpInst::ICMP_UGE")
-      .Case("SETULT", "llvm::CmpInst::ICMP_ULT")
-      .Case("SETULE", "llvm::CmpInst::ICMP_ULE")
-      // Floating-point ordered predicates
-      .Case("SETOEQ", "llvm::CmpInst::FCMP_OEQ")
-      .Case("SETONE", "llvm::CmpInst::FCMP_ONE")
-      .Case("SETOGT", "llvm::CmpInst::FCMP_OGT")
-      .Case("SETOGE", "llvm::CmpInst::FCMP_OGE")
-      .Case("SETOLT", "llvm::CmpInst::FCMP_OLT")
-      .Case("SETOLE", "llvm::CmpInst::FCMP_OLE")
-      .Case("SETO", "llvm::CmpInst::FCMP_ORD")
-      // Floating-point unordered predicates
-      .Case("SETUO", "llvm::CmpInst::FCMP_UNO")
-      .Case("SETUEQ", "llvm::CmpInst::FCMP_UEQ")
-      .Case("SETUNE", "llvm::CmpInst::FCMP_UNE")
-      .Case("SETUGT", "llvm::CmpInst::FCMP_UGT")
-      .Case("SETUGE", "llvm::CmpInst::FCMP_UGE")
-      .Case("SETULT", "llvm::CmpInst::FCMP_ULT")
-      .Case("SETULE", "llvm::CmpInst::FCMP_ULE")
-      .Default(llvm::formatv("/* unknown predicate: {0} */", PredName));
-}
-
-std::string SIInstrSemanticsEmitter::getAtomicRMWOp(llvm::StringRef OpName) {
-  return llvm::StringSwitch<std::string>(OpName)
-      .Case("AtomicRMWAdd", "llvm::AtomicRMWInst::Add")
-      .Case("AtomicRMWSub", "llvm::AtomicRMWInst::Sub")
-      .Case("AtomicRMWAnd", "llvm::AtomicRMWInst::And")
-      .Case("AtomicRMWOr", "llvm::AtomicRMWInst::Or")
-      .Case("AtomicRMWXor", "llvm::AtomicRMWInst::Xor")
-      .Case("AtomicRMWXchg", "llvm::AtomicRMWInst::Xchg")
-      .Case("AtomicRMWMin", "llvm::AtomicRMWInst::Min")
-      .Case("AtomicRMWUMin", "llvm::AtomicRMWInst::UMin")
-      .Case("AtomicRMWMax", "llvm::AtomicRMWInst::Max")
-      .Case("AtomicRMWUMax", "llvm::AtomicRMWInst::UMax")
-      .Case("AtomicRMWNand", "llvm::AtomicRMWInst::Nand")
-      .Default(llvm::formatv("/* unknown AtomicRMWOp: {0} */", OpName));
-}
-
-//===----------------------------------------------------------------------===//
-// Per-function state management
-//===----------------------------------------------------------------------===//
-
-std::string SIInstrSemanticsEmitter::freshTmp() {
-  return llvm::formatv("t{0}", TmpCounter++);
-}
-
-//===----------------------------------------------------------------------===//
-// DAG expression code emitter
-//===----------------------------------------------------------------------===//
-
-std::string SIInstrSemanticsEmitter::emitDagExpr(llvm::raw_ostream &OS,
-                                                 const llvm::DagInit *Dag,
-                                                 llvm::StringRef Indent) {}
-
-//===----------------------------------------------------------------------===//
-// Top-level semantic statement emitter
-//===----------------------------------------------------------------------===//
 
 void SIInstrSemanticsEmitter::emitSemanticStatement(
     llvm::raw_ostream &OS, const llvm::Init *Stmt,
@@ -199,7 +125,7 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
     else if (OpName == "GetNamedOperand") {
       llvm::StringRef ArgName = Dag->getArgNameStr(0);
       OS << "&Tracker.getOperandAsValue("
-         << "    *llvm::SIInstrInfo::getNamedOperand(MI, "
+         << "*llvm::SIInstrInfo::getNamedOperand(MI, "
             "llvm::AMDGPU::OpName::"
          << ArgName << "))";
     }
@@ -238,13 +164,9 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
             emitSemanticStatement(OS, Arg, Loc, Indent);
           },
           [&] { OS << ", "; });
-      OS << ");";
+      OS << ")";
     } else {
-      OS << "Unhandled operand: " << OpName << ",\n";
-      for (const auto *Arg : Dag->getArgs()) {
-        Arg->print(OS);
-        OS << "\n";
-      }
+      llvm::PrintFatalError(Loc, "Unhandled operand: " + OpName + ".");
     }
   } else if (const auto *Leaf = llvm::dyn_cast<llvm::DefInit>(Stmt)) {
     const llvm::RecordRecTy *LeafType = Leaf->getDef()->getType();
@@ -270,14 +192,21 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
          << ")";
     } else if (LeafType->isSubClassOf(
                    Stmt->getRecordKeeper().getClass("LLVMType"))) {
-      OS << getTypeExpr(LeafType->getAsString());
+      llvm::errs() << "Leaf type: " << Leaf->getDef()->getName() << "\n";
+      OS << getTypeExpr(Leaf->getDef()->getName());
+    } else if (LeafType->isSubClassOf(
+                   Stmt->getRecordKeeper().getClass("Intrinsic"))) {
+      llvm::errs() << "Leaf type: " << Leaf->getDef()->getName() << "\n";
+      llvm::StringRef IntrinsicName = Leaf->getDef()->getName();
+      if (!IntrinsicName.consume_front("int_")) {
+        llvm::PrintFatalError(Loc, "Intrinsic record's name " + IntrinsicName +
+                                       "does not start with 'int_'");
+      }
+      llvm::errs() << "Final name of the intrinsic: " << IntrinsicName << "\n";
+      OS << "llvm::Intrinsic::" << IntrinsicName;
     }
   }
 }
-
-//===----------------------------------------------------------------------===//
-// Function emitters
-//===----------------------------------------------------------------------===//
 
 void SIInstrSemanticsEmitter::emitSemanticFunction(llvm::raw_ostream &OS,
                                                    const llvm::Record *Rec) {
