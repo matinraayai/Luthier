@@ -1,5 +1,5 @@
-//===-- GpuAgent.cpp ------------------------------------------------------===//
-// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+//===-- Agent.cpp ---------------------------------------------------------===//
+// Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,8 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-///
-/// \file
+/// \file Agent.cpp
 /// Implements a set of commonly used functionality around the \c hsa_agent_t
 /// handle in HSA.
 //===----------------------------------------------------------------------===//
@@ -24,6 +23,112 @@
 #include <llvm/Support/FormatVariadic.h>
 
 namespace luthier::hsa {
+
+llvm::Error getAllAgents(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                         llvm::SmallVectorImpl<hsa_agent_t> &Agents) {
+  return iterateAgents(CoreApi, [&](hsa_agent_t Agent) -> llvm::Error {
+    Agents.emplace_back(Agent);
+    return llvm::Error::success();
+  });
+}
+
+template <typename T>
+static llvm::Expected<T>
+agentGetInfoT(const ApiTableContainer<::CoreApiTable> &CoreApi,
+              hsa_agent_t Agent, hsa_agent_info_t Attr) {
+  T Val{};
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<hsa_agent_get_info>(Agent, Attr, &Val),
+      llvm::formatv("hsa_agent_get_info({0}) failed for agent {1:x}", Attr,
+                    Agent.handle)));
+  return Val;
+}
+
+llvm::Expected<std::string>
+agentGetName(const ApiTableContainer<::CoreApiTable> &CoreApi,
+             hsa_agent_t Agent) {
+  char Buf[64]{};
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<hsa_agent_get_info>(Agent, HSA_AGENT_INFO_NAME, Buf),
+      llvm::formatv("Failed to get the name of agent {0:x}", Agent.handle)));
+  return std::string(Buf);
+}
+
+llvm::Expected<std::string>
+agentGetVendorName(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                   hsa_agent_t Agent) {
+  char Buf[64]{};
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<hsa_agent_get_info>(Agent,
+                                               HSA_AGENT_INFO_VENDOR_NAME, Buf),
+      llvm::formatv("Failed to get the vendor name of agent {0:x}",
+                    Agent.handle)));
+  return std::string(Buf);
+}
+
+llvm::Expected<hsa_device_type_t>
+agentGetDeviceType(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                   hsa_agent_t Agent) {
+  return agentGetInfoT<hsa_device_type_t>(CoreApi, Agent,
+                                          HSA_AGENT_INFO_DEVICE);
+}
+
+llvm::Expected<uint32_t>
+agentGetQueueMinSize(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                     hsa_agent_t Agent) {
+  return agentGetInfoT<uint32_t>(CoreApi, Agent, HSA_AGENT_INFO_QUEUE_MIN_SIZE);
+}
+
+llvm::Expected<uint32_t>
+agentGetQueueMaxSize(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                     hsa_agent_t Agent) {
+  return agentGetInfoT<uint32_t>(CoreApi, Agent, HSA_AGENT_INFO_QUEUE_MAX_SIZE);
+}
+
+llvm::Expected<hsa_queue_type32_t>
+agentGetQueueType(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                  hsa_agent_t Agent) {
+  return agentGetInfoT<hsa_queue_type32_t>(CoreApi, Agent,
+                                           HSA_AGENT_INFO_QUEUE_TYPE);
+}
+
+llvm::Expected<hsa_agent_feature_t>
+agentGetFeature(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                hsa_agent_t Agent) {
+  return agentGetInfoT<hsa_agent_feature_t>(CoreApi, Agent,
+                                            HSA_AGENT_INFO_FEATURE);
+}
+
+llvm::Expected<uint16_t>
+agentGetVersionMajor(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                     hsa_agent_t Agent) {
+  return agentGetInfoT<uint16_t>(CoreApi, Agent, HSA_AGENT_INFO_VERSION_MAJOR);
+}
+
+llvm::Expected<uint16_t>
+agentGetVersionMinor(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                     hsa_agent_t Agent) {
+  return agentGetInfoT<uint16_t>(CoreApi, Agent, HSA_AGENT_INFO_VERSION_MINOR);
+}
+
+llvm::Error agentGetCaches(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                           hsa_agent_t Agent,
+                           llvm::SmallVectorImpl<hsa_cache_t> &Caches) {
+  return agentIterateCaches(CoreApi, Agent, [&](hsa_cache_t C) -> llvm::Error {
+    Caches.push_back(C);
+    return llvm::Error::success();
+  });
+}
+
+llvm::Error agentGetRegions(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                            hsa_agent_t Agent,
+                            llvm::SmallVectorImpl<hsa_region_t> &Regions) {
+  return agentIterateRegions(CoreApi, Agent,
+                             [&](hsa_region_t R) -> llvm::Error {
+                               Regions.push_back(R);
+                               return llvm::Error::success();
+                             });
+}
 
 llvm::Error
 agentGetSupportedISAs(const ApiTableContainer<::CoreApiTable> &CoreApi,
@@ -38,75 +143,6 @@ agentGetSupportedISAs(const ApiTableContainer<::CoreApiTable> &CoreApi,
   return LUTHIER_HSA_CALL_ERROR_CHECK(
       CoreApi.callFunction<hsa_agent_iterate_isas>(Agent, Iterator, &ISAList),
       llvm::formatv("Failed to iterate over ISAs of Agent {0:x}"));
-}
-
-llvm::Error
-agentIterateISAs(const ApiTableContainer<::CoreApiTable> &CoreApi,
-                 const hsa_agent_t Agent,
-                 const std::function<llvm::Error(hsa_isa_t)> &Callback) {
-  struct CallbackDataType {
-    decltype(Callback) CB;
-    llvm::Error Err;
-  } CBData{Callback, llvm::Error::success()};
-
-  auto Iterator = [](const hsa_isa_t ISA, void *D) -> hsa_status_t {
-    auto *Data = static_cast<CallbackDataType *>(D);
-    if (!Data) {
-      return HSA_STATUS_ERROR_INVALID_ARGUMENT;
-    }
-    Data->Err = Data->CB(ISA);
-    if (Data->Err)
-      return HSA_STATUS_INFO_BREAK;
-    return HSA_STATUS_SUCCESS;
-  };
-
-  if (const hsa_status_t Out = CoreApi.callFunction<hsa_agent_iterate_isas>(
-          Agent, Iterator, &CBData);
-      Out == HSA_STATUS_SUCCESS || Out == HSA_STATUS_INFO_BREAK)
-    return std::move(CBData.Err);
-
-  return llvm::make_error<HsaError>(
-      llvm::formatv("Failed to iterate over the ISAs of agent "
-                    "{0:x}.",
-                    Agent.handle));
-}
-
-llvm::Expected<std::optional<hsa_isa_t>> agentFindFirstISA(
-    const ApiTableContainer<::CoreApiTable> &CoreApi, hsa_agent_t Agent,
-    const std::function<llvm::Expected<bool>(hsa_isa_t)> &Predicate) {
-  struct CallbackDataType {
-    decltype(Predicate) CB;
-    std::optional<hsa_isa_t> ISA;
-    llvm::Error Err;
-  } CBData{Predicate, std::nullopt, llvm::Error::success()};
-
-  auto Iterator = [](const hsa_isa_t ISA, void *D) -> hsa_status_t {
-    auto *Data = static_cast<CallbackDataType *>(D);
-    if (!Data) {
-      return HSA_STATUS_ERROR_INVALID_ARGUMENT;
-    }
-    llvm::Expected<bool> Res = Data->CB(ISA);
-    Data->Err = Res.takeError();
-    if (Data->Err)
-      return HSA_STATUS_INFO_BREAK;
-    if (*Res) {
-      Data->ISA = ISA;
-      return HSA_STATUS_INFO_BREAK;
-    }
-    return HSA_STATUS_SUCCESS;
-  };
-
-  if (const hsa_status_t Out = CoreApi.callFunction<hsa_agent_iterate_isas>(
-          Agent, Iterator, &CBData);
-      Out == HSA_STATUS_SUCCESS || Out == HSA_STATUS_INFO_BREAK) {
-    LUTHIER_RETURN_ON_ERROR(CBData.Err);
-    return CBData.ISA;
-  }
-
-  return llvm::make_error<HsaError>(
-      llvm::formatv("Failed to iterate over the ISAs of agent "
-                    "{0:x}.",
-                    Agent.handle));
 }
 
 } // namespace luthier::hsa
