@@ -1,5 +1,5 @@
 //===-- hsa.h ----------------------------------------------------*- C++-*-===//
-// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+// Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,8 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-///
-/// \file
+/// \file hsa.h
 /// Defines and implements a set of commonly used functionality regarding
 /// the global state of the HSA runtime.
 //===----------------------------------------------------------------------===//
@@ -37,16 +36,6 @@ namespace luthier::hsa {
 /// \return \c llvm::Error indicating the success or failure of the operation
 /// \sa ::hsa_init
 llvm::Error init(const ApiTableContainer<::CoreApiTable> &CoreApi);
-
-/// Queries the GPU <tt>hsa_agent_t</tt>s attached to the host
-/// \param [in] CoreApi the \c ::CoreApiTable used to perform the required HSA
-/// calls
-/// \param [out] Agents the list of <tt>hsa_agent_t</tt>s of type GPU attached
-/// to the host
-/// \return \c llvm::Error indicating the success or failure of the operation
-/// \sa hsa_iterate_agents
-llvm::Error getGpuAgents(const ApiTableContainer<::CoreApiTable> &CoreApi,
-                         llvm::SmallVectorImpl<hsa_agent_t> &Agents);
 
 /// Obtains a list of all the \c hsa_executable_t handles currently loaded into
 /// HSA

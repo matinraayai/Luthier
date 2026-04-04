@@ -13,8 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-///
-/// \file
+/// \file hsa.cpp
 /// Implements a set of commonly used functionality regarding the global state
 /// of the HSA runtime.
 //===----------------------------------------------------------------------===//
@@ -29,28 +28,6 @@ namespace luthier::hsa {
 llvm::Error init(const ApiTableContainer<::CoreApiTable> &CoreApi) {
   return LUTHIER_HSA_CALL_ERROR_CHECK(CoreApi.callFunction<hsa_init>(),
                                       "Failed to initialize HSA");
-}
-
-llvm::Error getGpuAgents(const ApiTableContainer<::CoreApiTable> &CoreApi,
-                         llvm::SmallVectorImpl<hsa_agent_t> &Agents) {
-  auto ReturnGpuAgentsCallback = [](hsa_agent_t Agent, void *Data) {
-    auto AgentList = static_cast<llvm::SmallVector<hsa_agent_t> *>(Data);
-    hsa_device_type_t DevType = HSA_DEVICE_TYPE_CPU;
-
-    const hsa_status_t Status =
-        hsa_agent_get_info(Agent, HSA_AGENT_INFO_DEVICE, &DevType);
-
-    if (Status != HSA_STATUS_SUCCESS)
-      return Status;
-    if (DevType == HSA_DEVICE_TYPE_GPU) {
-      AgentList->emplace_back(Agent);
-    }
-    return Status;
-  };
-  return LUTHIER_HSA_CALL_ERROR_CHECK(
-      CoreApi.callFunction<hsa_iterate_agents>(ReturnGpuAgentsCallback,
-                                               &Agents),
-      "Failed to iterate over all HSA agents attached to the system");
 }
 
 llvm::Error shutdown(const ApiTableContainer<::CoreApiTable> &CoreApi) {
