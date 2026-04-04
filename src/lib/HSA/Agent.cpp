@@ -20,6 +20,7 @@
 #include "luthier/HSA/Agent.h"
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/HSA/HsaError.h"
+#include "luthier/HSA/Region.h"
 #include <llvm/Support/FormatVariadic.h>
 
 namespace luthier::hsa {
@@ -128,6 +129,33 @@ llvm::Error agentGetRegions(const ApiTableContainer<::CoreApiTable> &CoreApi,
                                Regions.push_back(R);
                                return llvm::Error::success();
                              });
+}
+
+llvm::Expected<std::optional<hsa_region_t>>
+agentFindKernargRegion(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                       hsa_agent_t Agent) {
+  return agentFindFirstRegion(CoreApi, Agent,
+                              [&](hsa_region_t R) -> llvm::Expected<bool> {
+                                return regionIsKernArg(CoreApi, R);
+                              });
+}
+
+llvm::Expected<std::optional<hsa_region_t>>
+agentFindFineGrainedRegion(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                           hsa_agent_t Agent) {
+  return agentFindFirstRegion(CoreApi, Agent,
+                              [&](hsa_region_t R) -> llvm::Expected<bool> {
+                                return regionIsFineGrained(CoreApi, R);
+                              });
+}
+
+llvm::Expected<std::optional<hsa_region_t>>
+agentFindCoarseGrainedRegion(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                             hsa_agent_t Agent) {
+  return agentFindFirstRegion(CoreApi, Agent,
+                              [&](hsa_region_t R) -> llvm::Expected<bool> {
+                                return regionIsCoarseGrained(CoreApi, R);
+                              });
 }
 
 llvm::Error

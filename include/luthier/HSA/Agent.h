@@ -269,6 +269,21 @@ agentFindFirstRegion(const ApiTableContainer<::CoreApiTable> &CoreApi,
                     Agent.handle));
 }
 
+/// Finds the first kernarg region of the \p Agent.
+llvm::Expected<std::optional<hsa_region_t>>
+agentFindKernargRegion(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                       hsa_agent_t Agent);
+
+/// Finds the first fine-grained global region of the \p Agent.
+llvm::Expected<std::optional<hsa_region_t>>
+agentFindFineGrainedRegion(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                           hsa_agent_t Agent);
+
+/// Finds the first coarse-grained global region of the \p Agent.
+llvm::Expected<std::optional<hsa_region_t>>
+agentFindCoarseGrainedRegion(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                             hsa_agent_t Agent);
+
 //===----------------------------------------------------------------------===//
 // Agent ISA iteration
 //===----------------------------------------------------------------------===//
