@@ -2319,7 +2319,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWAP
 
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $sdata), (ConstantInt llvm_i32_ty, 1))),
 
-    (LLVMIntrinsic llvm_i32_ty, int_amdgcn_struct_buffer_atomic_cmpswap, [(GetVal $src), (GetVal $cmp), (GetVal $rsrc), (ConstantInt llvm_i32_ty, 0), (GetNamedOperand $offset), (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)]),
+    (DefVal $tmp, (LLVMIntrinsic llvm_i32_ty, int_amdgcn_struct_buffer_atomic_cmpswap, [(GetVal $src), (GetVal $cmp), (GetVal $rsrc), (ConstantInt llvm_i32_ty, 0), (GetNamedOperand $offset), (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)])),
     (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
@@ -2352,7 +2352,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPSWA
 
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $sdata), (ConstantInt llvm_i32_ty, 1))),
 
-    (LLVMIntrinsic llvm_i32_ty, int_amdgcn_struct_buffer_atomic_cmpswap, [(GetVal $src), (GetVal $cmp), (GetVal $rsrc), (ConstantInt llvm_i32_ty, 0), (GetVal $total_offset), (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)]),
+    (DefVal $tmp, (LLVMIntrinsic llvm_i32_ty, int_amdgcn_struct_buffer_atomic_cmpswap, [(GetVal $src), (GetVal $cmp), (GetVal $rsrc), (ConstantInt llvm_i32_ty, 0), (GetVal $total_offset), (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)])),
     (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
@@ -2385,7 +2385,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CM
 
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $sdata), (ConstantInt llvm_i32_ty, 1))),
 
-    (LLVMIntrinsic llvm_i32_ty, int_amdgcn_struct_buffer_atomic_cmpswap, [(GetVal $src), (GetVal $cmp), (GetVal $rsrc), (ConstantInt llvm_i32_ty, 0), (GetVal $total_offset), (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)]),
+    (DefVal $tmp, (LLVMIntrinsic llvm_i32_ty, int_amdgcn_struct_buffer_atomic_cmpswap, [(GetVal $src), (GetVal $cmp), (GetVal $rsrc), (ConstantInt llvm_i32_ty, 0), (GetVal $total_offset), (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)])),
     (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
@@ -2414,7 +2414,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_X2_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMPS
 
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $sdata), (ConstantInt llvm_i64_ty, 1))),
 
-    (LLVMIntrinsic llvm_i64_ty, int_amdgcn_struct_buffer_atomic_cmpswap, [(GetVal $src), (GetVal $cmp), (GetVal $rsrc), (ConstantInt llvm_i32_ty, 0), (GetNamedOperand $offset), (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)]),
+    (DefVal $tmp, (LLVMIntrinsic llvm_i64_ty, int_amdgcn_struct_buffer_atomic_cmpswap, [(GetVal $src), (GetVal $cmp), (GetVal $rsrc), (ConstantInt llvm_i32_ty, 0), (GetNamedOperand $offset), (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)])),
     (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
@@ -2447,7 +2447,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC_CMP
 
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $sdata), (ConstantInt llvm_i64_ty, 1))),
 
-    (LLVMIntrinsic llvm_i64_ty, int_amdgcn_struct_buffer_atomic_cmpswap, [(GetVal $src), (GetVal $cmp), (GetVal $rsrc), (ConstantInt llvm_i32_ty, 0), (GetVal $total_offset), (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)]),
+    (DefVal $tmp, (LLVMIntrinsic llvm_i64_ty, int_amdgcn_struct_buffer_atomic_cmpswap, [(GetVal $src), (GetVal $cmp), (GetVal $rsrc), (ConstantInt llvm_i32_ty, 0), (GetVal $total_offset), (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)])),
     (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }
@@ -2480,7 +2480,7 @@ def S_BUFFER_ATOMIC_CMPSWAP_X2_SGPR_IMM_RTN_sem : InstSISemantic<S_BUFFER_ATOMIC
 
     (DefVal $cmp, (LLVMExtractElement (GetNamedOperand $sdata), (ConstantInt llvm_i64_ty, 1))),
 
-    (LLVMIntrinsic llvm_i64_ty, int_amdgcn_struct_buffer_atomic_cmpswap, [(GetVal $src), (GetVal $cmp), (GetVal $rsrc), (ConstantInt llvm_i32_ty, 0), (GetVal $total_offset), (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)]),
+    (DefVal $tmp, (LLVMIntrinsic llvm_i64_ty, int_amdgcn_struct_buffer_atomic_cmpswap, [(GetVal $src), (GetVal $cmp), (GetVal $rsrc), (ConstantInt llvm_i32_ty, 0), (GetVal $total_offset), (ConstantInt llvm_i32_ty, 0), (ConstantInt llvm_i32_ty, 0)])),
     (SetNamedOperand $sdst, (GetVal $tmp))
   ];
 }

@@ -405,6 +405,7 @@ void SIInstrSemanticsEmitter::run(llvm::raw_ostream &OS) {
   OS << "#ifdef GET_SI_INSTR_SEMANTIC_DISPATCH\n\n";
   emitDispatchFunction(OS, Semantics, Intrinsics);
   OS << "#undef GET_SI_INSTR_SEMANTIC_DISPATCH\n";
+  OS << "#endif // GET_SI_INSTR_SEMANTIC_DISPATCH\n\n";
 }
 
 //===----------------------------------------------------------------------===//

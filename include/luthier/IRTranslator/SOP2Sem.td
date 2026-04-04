@@ -990,7 +990,7 @@ def S_FMAAK_F32_sem : InstSISemantic<S_FMAAK_F32> {
   let Semantic = [
     (SetNamedOperand $sdst, (LLVMFMA (GetNamedOperand $src0),
                                      (GetNamedOperand $src1),
-                                     (GetNamedOperand $simm32)))
+                                     (GetNamedOperand $imm)))
   ];
 }
 
@@ -1002,7 +1002,7 @@ def S_FMAAK_F32_sem : InstSISemantic<S_FMAAK_F32> {
 def S_FMAMK_F32_sem : InstSISemantic<S_FMAMK_F32> {
   let Semantic = [
     (SetNamedOperand $sdst, (LLVMFMA (GetNamedOperand $src0),
-                                     (GetNamedOperand $simm32),
+                                     (GetNamedOperand $imm),
                                      (GetNamedOperand $src1)))
   ];
 }
