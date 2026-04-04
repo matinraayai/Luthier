@@ -198,6 +198,86 @@ def AtomicRMWUMax : AtomicRMWOp<"llvm::AtomicRMWInst::UMax">;
 
 def AtomicRMWNand : AtomicRMWOp<"llvm::AtomicRMWInst::Nand">;
 
+def AtomicRMWFAdd : AtomicRMWOp<"llvm::AtomicRMWInst::FAdd">;
+
+def AtomicRMWFMax : AtomicRMWOp<"llvm::AtomicRMWInst::FMax">;
+
+def AtomicRMWFMin : AtomicRMWOp<"llvm::AtomicRMWInst::FMin">;
+
+def AtomicRMWUIncWrap : AtomicRMWOp<"llvm::AtomicRMWInst::UIncWrap">;
+
+def AtomicRMWUDecWrap : AtomicRMWOp<"llvm::AtomicRMWInst::UDecWrap">;
+
+def AtomicRMWUSubCond : AtomicRMWOp<"llvm::AtomicRMWInst::USubCond">;
+
+def AtomicRMWUSubSat : AtomicRMWOp<"llvm::AtomicRMWInst::USubSat">;
+
+//------------------------------------------------------------------------------
+// Alignment Values
+//------------------------------------------------------------------------------
+
+class AlignVal<string expr> {
+  string Expr = expr;
+}
+
+/// Pass std::nullopt to let CreateAtomicRMW infer alignment from the
+/// value type via DataLayout::getTypeStoreSize.
+def AlignNone : AlignVal<"std::nullopt">;
+
+//------------------------------------------------------------------------------
+// Atomic Ordering Enum Values
+//------------------------------------------------------------------------------
+
+class AtomicOrderingVal<string ord> {
+  string Ordering = ord;
+}
+
+def AtomicOrderingUnordered : AtomicOrderingVal<"llvm::AtomicOrdering::Unordered">;
+def AtomicOrderingMonotonic : AtomicOrderingVal<"llvm::AtomicOrdering::Monotonic">;
+def AtomicOrderingAcquire : AtomicOrderingVal<"llvm::AtomicOrdering::Acquire">;
+def AtomicOrderingRelease : AtomicOrderingVal<"llvm::AtomicOrdering::Release">;
+def AtomicOrderingAcqRel : AtomicOrderingVal<"llvm::AtomicOrdering::AcquireRelease">;
+def AtomicOrderingSeqCst : AtomicOrderingVal<"llvm::AtomicOrdering::SequentiallyConsistent">;
+
+//------------------------------------------------------------------------------
+// Sync Scope Values
+//------------------------------------------------------------------------------
+// SyncScope::ID is a runtime-allocated uint8_t in LLVM. The two built-in
+// scopes (SingleThread=0, System=1) are constants; all others are obtained
+// via LLVMContext::getOrInsertSyncScopeID at code-generation time.
+
+class SyncScopeVal<string expr> {
+  string Expr = expr;
+}
+
+// Built-in LLVM sync scopes
+def SyncScopeSingleThread : SyncScopeVal<"llvm::SyncScope::SingleThread">;
+def SyncScopeSystem       : SyncScopeVal<"llvm::SyncScope::System">;
+
+// AMDGPU-specific sync scopes (looked up by string name at runtime)
+def SyncScopeAgent     : SyncScopeVal<
+  "Builder.getContext().getOrInsertSyncScopeID(\"agent\")">;
+def SyncScopeWorkgroup : SyncScopeVal<
+  "Builder.getContext().getOrInsertSyncScopeID(\"workgroup\")">;
+def SyncScopeWavefront : SyncScopeVal<
+  "Builder.getContext().getOrInsertSyncScopeID(\"wavefront\")">;
+def SyncScopeCluster   : SyncScopeVal<
+  "Builder.getContext().getOrInsertSyncScopeID(\"cluster\")">;
+
+// AMDGPU one-address-space sync scopes
+def SyncScopeOneAS              : SyncScopeVal<
+  "Builder.getContext().getOrInsertSyncScopeID(\"one-as\")">;
+def SyncScopeAgentOneAS         : SyncScopeVal<
+  "Builder.getContext().getOrInsertSyncScopeID(\"agent-one-as\")">;
+def SyncScopeWorkgroupOneAS     : SyncScopeVal<
+  "Builder.getContext().getOrInsertSyncScopeID(\"workgroup-one-as\")">;
+def SyncScopeWavefrontOneAS     : SyncScopeVal<
+  "Builder.getContext().getOrInsertSyncScopeID(\"wavefront-one-as\")">;
+def SyncScopeSingleThreadOneAS  : SyncScopeVal<
+  "Builder.getContext().getOrInsertSyncScopeID(\"singlethread-one-as\")">;
+def SyncScopeClusterOneAS       : SyncScopeVal<
+  "Builder.getContext().getOrInsertSyncScopeID(\"cluster-one-as\")">;
+
 //------------------------------------------------------------------------------
 // Comparison Predicates
 //------------------------------------------------------------------------------

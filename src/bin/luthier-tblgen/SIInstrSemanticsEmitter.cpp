@@ -191,6 +191,21 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
                  Stmt->getRecordKeeper().getClass("AtomicRMWOp"))) {
       OS << DefNode->getDef()->getValueAsString("Op");
     }
+    /// Alignment
+    else if (DefType->isSubClassOf(
+                 Stmt->getRecordKeeper().getClass("AlignVal"))) {
+      OS << DefNode->getDef()->getValueAsString("Expr");
+    }
+    /// Atomic ordering
+    else if (DefType->isSubClassOf(
+                 Stmt->getRecordKeeper().getClass("AtomicOrderingVal"))) {
+      OS << DefNode->getDef()->getValueAsString("Ordering");
+    }
+    /// Sync scope
+    else if (DefType->isSubClassOf(
+                 Stmt->getRecordKeeper().getClass("SyncScopeVal"))) {
+      OS << DefNode->getDef()->getValueAsString("Expr");
+    }
     /// Pointer type operands
     else if (DefType->isSubClassOf(
                  Stmt->getRecordKeeper().getClass("LLVMQualPointerType"))) {

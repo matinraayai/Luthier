@@ -308,7 +308,7 @@ def FLAT_ATOMIC_SWAP_sem : InstSISemantic<FLAT_ATOMIC_SWAP> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXchg, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXchg, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -329,7 +329,7 @@ def FLAT_ATOMIC_ADD_sem : InstSISemantic<FLAT_ATOMIC_ADD> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -337,7 +337,7 @@ def FLAT_ATOMIC_SUB_sem : InstSISemantic<FLAT_ATOMIC_SUB> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -345,7 +345,7 @@ def FLAT_ATOMIC_SMIN_sem : InstSISemantic<FLAT_ATOMIC_SMIN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMin, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMin, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -353,7 +353,7 @@ def FLAT_ATOMIC_UMIN_sem : InstSISemantic<FLAT_ATOMIC_UMIN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMin, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMin, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -361,7 +361,7 @@ def FLAT_ATOMIC_SMAX_sem : InstSISemantic<FLAT_ATOMIC_SMAX> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMax, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMax, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -369,7 +369,7 @@ def FLAT_ATOMIC_UMAX_sem : InstSISemantic<FLAT_ATOMIC_UMAX> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMax, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMax, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -377,7 +377,7 @@ def FLAT_ATOMIC_AND_sem : InstSISemantic<FLAT_ATOMIC_AND> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAnd, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAnd, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -385,7 +385,7 @@ def FLAT_ATOMIC_OR_sem : InstSISemantic<FLAT_ATOMIC_OR> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWOr, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWOr, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -393,7 +393,7 @@ def FLAT_ATOMIC_XOR_sem : InstSISemantic<FLAT_ATOMIC_XOR> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXor, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXor, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -401,7 +401,7 @@ def FLAT_ATOMIC_INC_sem : InstSISemantic<FLAT_ATOMIC_INC> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (ConstantInt llvm_i32_ty, 1)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUIncWrap, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -409,7 +409,7 @@ def FLAT_ATOMIC_DEC_sem : InstSISemantic<FLAT_ATOMIC_DEC> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (ConstantInt llvm_i32_ty, 1)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUDecWrap, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -583,7 +583,7 @@ def FLAT_ATOMIC_SWAP_X2_sem : InstSISemantic<FLAT_ATOMIC_SWAP_X2> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXchg, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXchg, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -604,7 +604,7 @@ def FLAT_ATOMIC_ADD_X2_sem : InstSISemantic<FLAT_ATOMIC_ADD_X2> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -612,7 +612,7 @@ def FLAT_ATOMIC_SUB_X2_sem : InstSISemantic<FLAT_ATOMIC_SUB_X2> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -620,7 +620,7 @@ def FLAT_ATOMIC_SMIN_X2_sem : InstSISemantic<FLAT_ATOMIC_SMIN_X2> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMin, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMin, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -628,7 +628,7 @@ def FLAT_ATOMIC_UMIN_X2_sem : InstSISemantic<FLAT_ATOMIC_UMIN_X2> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMin, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMin, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -636,7 +636,7 @@ def FLAT_ATOMIC_SMAX_X2_sem : InstSISemantic<FLAT_ATOMIC_SMAX_X2> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMax, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMax, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -644,7 +644,7 @@ def FLAT_ATOMIC_UMAX_X2_sem : InstSISemantic<FLAT_ATOMIC_UMAX_X2> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMax, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMax, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -652,7 +652,7 @@ def FLAT_ATOMIC_AND_X2_sem : InstSISemantic<FLAT_ATOMIC_AND_X2> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAnd, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAnd, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -660,7 +660,7 @@ def FLAT_ATOMIC_OR_X2_sem : InstSISemantic<FLAT_ATOMIC_OR_X2> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWOr, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWOr, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -668,7 +668,7 @@ def FLAT_ATOMIC_XOR_X2_sem : InstSISemantic<FLAT_ATOMIC_XOR_X2> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXor, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXor, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -676,7 +676,7 @@ def FLAT_ATOMIC_INC_X2_sem : InstSISemantic<FLAT_ATOMIC_INC_X2> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (ConstantInt llvm_i64_ty, 1)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUIncWrap, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -684,7 +684,7 @@ def FLAT_ATOMIC_DEC_X2_sem : InstSISemantic<FLAT_ATOMIC_DEC_X2> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (ConstantInt llvm_i64_ty, 1)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUDecWrap, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -747,7 +747,7 @@ def FLAT_ATOMIC_SWAP_RTN_sem : InstSISemantic<FLAT_ATOMIC_SWAP_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXchg, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXchg, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -755,7 +755,7 @@ def FLAT_ATOMIC_SWAP_X2_RTN_sem : InstSISemantic<FLAT_ATOMIC_SWAP_X2_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXchg, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXchg, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -789,7 +789,7 @@ def FLAT_ATOMIC_ADD_RTN_sem : InstSISemantic<FLAT_ATOMIC_ADD_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -797,7 +797,7 @@ def FLAT_ATOMIC_ADD_X2_RTN_sem : InstSISemantic<FLAT_ATOMIC_ADD_X2_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -805,7 +805,7 @@ def FLAT_ATOMIC_SUB_RTN_sem : InstSISemantic<FLAT_ATOMIC_SUB_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -813,7 +813,7 @@ def FLAT_ATOMIC_SUB_X2_RTN_sem : InstSISemantic<FLAT_ATOMIC_SUB_X2_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -821,7 +821,7 @@ def FLAT_ATOMIC_SMIN_RTN_sem : InstSISemantic<FLAT_ATOMIC_SMIN_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMin, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMin, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -829,7 +829,7 @@ def FLAT_ATOMIC_SMIN_X2_RTN_sem : InstSISemantic<FLAT_ATOMIC_SMIN_X2_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMin, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMin, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -837,7 +837,7 @@ def FLAT_ATOMIC_UMIN_RTN_sem : InstSISemantic<FLAT_ATOMIC_UMIN_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMin, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMin, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -845,7 +845,7 @@ def FLAT_ATOMIC_UMIN_X2_RTN_sem : InstSISemantic<FLAT_ATOMIC_UMIN_X2_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMin, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMin, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -853,7 +853,7 @@ def FLAT_ATOMIC_SMAX_RTN_sem : InstSISemantic<FLAT_ATOMIC_SMAX_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMax, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMax, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -861,7 +861,7 @@ def FLAT_ATOMIC_SMAX_X2_RTN_sem : InstSISemantic<FLAT_ATOMIC_SMAX_X2_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMax, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMax, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -869,7 +869,7 @@ def FLAT_ATOMIC_UMAX_RTN_sem : InstSISemantic<FLAT_ATOMIC_UMAX_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMax, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMax, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -877,7 +877,7 @@ def FLAT_ATOMIC_UMAX_X2_RTN_sem : InstSISemantic<FLAT_ATOMIC_UMAX_X2_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMax, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMax, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -885,7 +885,7 @@ def FLAT_ATOMIC_AND_RTN_sem : InstSISemantic<FLAT_ATOMIC_AND_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAnd, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAnd, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -893,7 +893,7 @@ def FLAT_ATOMIC_AND_X2_RTN_sem : InstSISemantic<FLAT_ATOMIC_AND_X2_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAnd, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAnd, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -901,7 +901,7 @@ def FLAT_ATOMIC_OR_RTN_sem : InstSISemantic<FLAT_ATOMIC_OR_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWOr, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWOr, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -909,7 +909,7 @@ def FLAT_ATOMIC_OR_X2_RTN_sem : InstSISemantic<FLAT_ATOMIC_OR_X2_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWOr, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWOr, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -917,7 +917,7 @@ def FLAT_ATOMIC_XOR_RTN_sem : InstSISemantic<FLAT_ATOMIC_XOR_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXor, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXor, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -925,7 +925,7 @@ def FLAT_ATOMIC_XOR_X2_RTN_sem : InstSISemantic<FLAT_ATOMIC_XOR_X2_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXor, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXor, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -933,7 +933,7 @@ def FLAT_ATOMIC_INC_RTN_sem : InstSISemantic<FLAT_ATOMIC_INC_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (ConstantInt llvm_i32_ty, 1)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUIncWrap, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -941,7 +941,7 @@ def FLAT_ATOMIC_INC_X2_RTN_sem : InstSISemantic<FLAT_ATOMIC_INC_X2_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (ConstantInt llvm_i64_ty, 1)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUIncWrap, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -949,7 +949,7 @@ def FLAT_ATOMIC_DEC_RTN_sem : InstSISemantic<FLAT_ATOMIC_DEC_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (ConstantInt llvm_i32_ty, 1)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUDecWrap, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -957,7 +957,7 @@ def FLAT_ATOMIC_DEC_X2_RTN_sem : InstSISemantic<FLAT_ATOMIC_DEC_X2_RTN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateFlatAddr<(GetNamedOperand $vaddr),
                                        (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (ConstantInt llvm_i64_ty, 1)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUDecWrap, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -1419,7 +1419,7 @@ def GLOBAL_ATOMIC_SWAP_sem : InstSISemantic<GLOBAL_ATOMIC_SWAP> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXchg, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXchg, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -1427,7 +1427,7 @@ def GLOBAL_ATOMIC_ADD_sem : InstSISemantic<GLOBAL_ATOMIC_ADD> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -1435,7 +1435,7 @@ def GLOBAL_ATOMIC_SUB_sem : InstSISemantic<GLOBAL_ATOMIC_SUB> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -1443,7 +1443,7 @@ def GLOBAL_ATOMIC_AND_sem : InstSISemantic<GLOBAL_ATOMIC_AND> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAnd, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAnd, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -1451,7 +1451,7 @@ def GLOBAL_ATOMIC_OR_sem : InstSISemantic<GLOBAL_ATOMIC_OR> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWOr, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWOr, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -1459,7 +1459,7 @@ def GLOBAL_ATOMIC_XOR_sem : InstSISemantic<GLOBAL_ATOMIC_XOR> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXor, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWXor, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -1467,7 +1467,7 @@ def GLOBAL_ATOMIC_SMIN_sem : InstSISemantic<GLOBAL_ATOMIC_SMIN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMin, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMin, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -1475,7 +1475,7 @@ def GLOBAL_ATOMIC_UMIN_sem : InstSISemantic<GLOBAL_ATOMIC_UMIN> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMin, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMin, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -1483,7 +1483,7 @@ def GLOBAL_ATOMIC_SMAX_sem : InstSISemantic<GLOBAL_ATOMIC_SMAX> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMax, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWMax, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -1491,7 +1491,7 @@ def GLOBAL_ATOMIC_UMAX_sem : InstSISemantic<GLOBAL_ATOMIC_UMAX> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMax, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUMax, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -1499,7 +1499,7 @@ def GLOBAL_ATOMIC_INC_sem : InstSISemantic<GLOBAL_ATOMIC_INC> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (ConstantInt llvm_i32_ty, 1)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUIncWrap, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -1507,7 +1507,7 @@ def GLOBAL_ATOMIC_DEC_sem : InstSISemantic<GLOBAL_ATOMIC_DEC> {
   let Semantic = [
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWSub, (GetVal $tmp_addr), (ConstantInt llvm_i32_ty, 1)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWUDecWrap, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
@@ -1691,7 +1691,7 @@ def GLOBAL_ATOMIC_ORDERED_ADD_B64_sem : InstSISemantic<GLOBAL_ATOMIC_ORDERED_ADD
   let Semantic = [
     (DefVal $tmp_addr, (CalculateGlobalAddr<(GetNamedOperand $vaddr),
                                             (GetNamedOperand $offset)>.ret)),
-    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (GetNamedOperand $vdata)))
+    (SetNamedOperand $vdata, (LLVMAtomicRMW AtomicRMWAdd, (GetVal $tmp_addr), (GetNamedOperand $vdata), AlignNone, AtomicOrderingMonotonic, SyncScopeSystem))
   ];
 }
 
