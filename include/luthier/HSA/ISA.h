@@ -1,5 +1,5 @@
 //===-- ISA.h ---------------------------------------------------*- C++ -*-===//
-// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+// Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,8 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-///
-/// \file
+/// \file ISA.h
 /// Defines commonly used functionality around the \c hsa_isa_t type in HSA.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_ISA_H
@@ -22,6 +21,9 @@
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/HSA/ApiTable.h"
 #include "luthier/HSA/HsaError.h"
+#include <array>
+#include <functional>
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/Error.h>
 #include <llvm/TargetParser/SubtargetFeature.h>
 #include <llvm/TargetParser/Triple.h>
@@ -50,11 +52,6 @@ isaFromName(const ApiTableContainer<::CoreApiTable> &CoreApi,
 
 /// Queries the \c ISA handle associated with the given <tt>TT</tt>,
 /// <tt>CPU</tt>, and <tt>Features</tt> from LLVM
-/// \param HsaISAFromNameFn The underlying \c hsa_isa_from_name function
-/// \param TT the \c llvm::Triple of the ISA
-/// \param GPUName the name of the GPU
-/// \param Features the subtarget features of the target; (e.g. <tt>xnack</tt>,
-/// <tt>sramecc</tt>)
 /// \note refer to the LLVM AMDGPU backend documentation for more details
 /// on the supported ISA and their names
 /// \returns Expects \c hsa_isa_t handle of the queried ISA
@@ -111,6 +108,99 @@ isaGetTargetTriple(const ApiTableContainer<::CoreApiTable> &CoreApi,
 [[nodiscard]] llvm::Expected<llvm::SubtargetFeatures>
 isaGetSubTargetFeatures(const ApiTableContainer<::CoreApiTable> &CoreApi,
                         hsa_isa_t ISA);
+
+/// Queries which machine models are supported by the \p ISA.
+/// Returns a two-element array indexed by \c hsa_machine_model_t:
+/// element 0 = SMALL, element 1 = LARGE.
+/// \sa hsa_isa_get_info_alt, HSA_ISA_INFO_MACHINE_MODELS
+[[nodiscard]] llvm::Expected<std::array<bool, 2>>
+isaGetMachineModels(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                    hsa_isa_t ISA);
+
+/// Queries which profiles are supported by the \p ISA.
+/// Returns a two-element array indexed by \c hsa_profile_t:
+/// element 0 = BASE, element 1 = FULL.
+/// \sa hsa_isa_get_info_alt, HSA_ISA_INFO_PROFILES
+[[nodiscard]] llvm::Expected<std::array<bool, 2>>
+isaGetProfiles(const ApiTableContainer<::CoreApiTable> &CoreApi, hsa_isa_t ISA);
+
+/// Queries the supported default float rounding modes of the \p ISA.
+/// Returns a three-element array indexed by
+/// \c hsa_default_float_rounding_mode_t.
+/// \sa hsa_isa_get_info_alt with HSA_ISA_INFO_DEFAULT_FLOAT_ROUNDING_MODES
+[[nodiscard]] llvm::Expected<std::array<bool, 3>>
+isaGetDefaultFloatRoundingModes(
+    const ApiTableContainer<::CoreApiTable> &CoreApi, hsa_isa_t ISA);
+
+/// Queries whether the \p ISA supports fast half-precision operations.
+/// \sa hsa_isa_get_info_alt with HSA_ISA_INFO_FAST_F16_OPERATION
+[[nodiscard]] llvm::Expected<bool>
+isaGetFastF16(const ApiTableContainer<::CoreApiTable> &CoreApi, hsa_isa_t ISA);
+
+/// Queries the maximum workgroup dimensions of the \p ISA.
+/// Returns a 3-element array [x, y, z].
+/// \sa hsa_isa_get_info_alt with HSA_ISA_INFO_WORKGROUP_MAX_DIM
+[[nodiscard]] llvm::Expected<std::array<uint16_t, 3>>
+isaGetWorkgroupMaxDim(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                      hsa_isa_t ISA);
+
+/// Queries the maximum total workgroup size of the \p ISA.
+/// \sa hsa_isa_get_info_alt with HSA_ISA_INFO_WORKGROUP_MAX_SIZE
+[[nodiscard]] llvm::Expected<uint32_t>
+isaGetWorkgroupMaxSize(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                       hsa_isa_t ISA);
+
+/// Queries the maximum grid dimensions of the \p ISA.
+/// Returns an \c hsa_dim3_t.
+/// \sa hsa_isa_get_info_alt with HSA_ISA_INFO_GRID_MAX_DIM
+[[nodiscard]] llvm::Expected<hsa_dim3_t>
+isaGetGridMaxDim(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                 hsa_isa_t ISA);
+
+/// Queries the maximum total grid size of the \p ISA.
+/// \sa hsa_isa_get_info_alt with HSA_ISA_INFO_GRID_MAX_SIZE
+[[nodiscard]] llvm::Expected<uint64_t>
+isaGetGridMaxSize(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                  hsa_isa_t ISA);
+
+/// Queries the maximum number of fbarriers per workgroup for the \p ISA.
+/// \sa hsa_isa_get_info_alt with HSA_ISA_INFO_FBARRIER_MAX_SIZE
+[[nodiscard]] llvm::Expected<uint32_t>
+isaGetFbarrierMaxSize(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                      hsa_isa_t ISA);
+
+/// Queries the exception policies for the given \p ISA and \p Profile.
+/// Returns a bitmask of \c hsa_exception_policy_t.
+/// \sa hsa_isa_get_exception_policies
+[[nodiscard]] llvm::Expected<uint16_t>
+isaGetExceptionPolicies(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                        hsa_isa_t ISA, hsa_profile_t Profile);
+
+/// Queries the round method for the given \p ISA, floating-point type,
+/// and flush mode.
+/// \sa hsa_isa_get_round_method
+[[nodiscard]] llvm::Expected<hsa_round_method_t>
+isaGetRoundMethod(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                  hsa_isa_t ISA, hsa_fp_type_t FpType,
+                  hsa_flush_mode_t FlushMode);
+
+/// Iterates over the wavefronts supported by the \p ISA.
+/// \sa hsa_isa_iterate_wavefronts
+llvm::Error isaIterateWavefronts(
+    const ApiTableContainer<::CoreApiTable> &CoreApi, hsa_isa_t ISA,
+    const std::function<llvm::Error(hsa_wavefront_t)> &Callback);
+
+/// Queries all wavefronts supported by the \p ISA.
+llvm::Error
+isaGetWavefronts(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                 hsa_isa_t ISA,
+                 llvm::SmallVectorImpl<hsa_wavefront_t> &Wavefronts);
+
+/// Queries the size (number of work-items) of the \p Wavefront.
+/// \sa hsa_wavefront_get_info, HSA_WAVEFRONT_INFO_SIZE
+[[nodiscard]] llvm::Expected<uint32_t>
+wavefrontGetSize(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                 hsa_wavefront_t Wavefront);
 
 } // namespace luthier::hsa
 
