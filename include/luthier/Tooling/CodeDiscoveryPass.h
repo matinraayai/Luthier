@@ -19,7 +19,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_CODE_DISCOVERY_PASS_H
 #define LUTHIER_TOOLING_CODE_DISCOVERY_PASS_H
-#include "luthier/Tooling/MachineFunctionEntryPoint.h"
+#include "luthier/Tooling/EntryPoint.h"
 #include <llvm/IR/PassManager.h>
 
 namespace luthier {

@@ -27,7 +27,7 @@
 #include "luthier/Tooling/IntrinsicMIRLoweringPass.h"
 // #include "luthier/Tooling/LRCallgraph.h"
 // #include "luthier/Tooling/MMISlotIndexesAnalysis.h"
-#include "luthier/Tooling/MachineFunctionEntryPoint.h"
+#include "luthier/Tooling/EntryPoint.h"
 #include "luthier/Tooling/MemoryAllocationAccessor.h"
 #include "luthier/Tooling/MetadataParserAnalysis.h"
 #include "luthier/Tooling/MockAMDGPULoader.h"

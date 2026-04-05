@@ -15,11 +15,9 @@ add_library(LuthierToolingCommon OBJECT
         TargetMachineInstrMDNode.cpp
         CodeDiscoveryPass.cpp
         MachineFunctionEntryPoint.cpp
-        MachineToTraceInstrAnalysis.cpp
         InstructionTracesAnalysis.cpp
         MemoryAllocationAccessor.cpp
         InstructionModel.cpp
-        LiftedRepresentation.cpp
         #        PhysicalRegAccessVirtualizationPass.cpp
         #        SVStorageAndLoadLocations.cpp
         #        LRCallGraph.cpp
