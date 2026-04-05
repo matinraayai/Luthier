@@ -15,6 +15,7 @@ add_library(LuthierHSA OBJECT
         LoadedCodeObjectVariable.cpp
         PacketMonitor.cpp
         Region.cpp
+        Memory.cpp
 )
 
 target_compile_definitions(LuthierHSA PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
