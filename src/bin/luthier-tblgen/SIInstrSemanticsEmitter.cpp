@@ -406,6 +406,23 @@ void SIInstrSemanticsEmitter::run(llvm::raw_ostream &OS) {
   emitDispatchFunction(OS, Semantics, Intrinsics);
   OS << "#undef GET_SI_INSTR_SEMANTIC_DISPATCH\n";
   OS << "#endif // GET_SI_INSTR_SEMANTIC_DISPATCH\n\n";
+
+  // --- Emit array of all opcodes that have semantic definitions ---
+  OS << "#ifdef GET_SI_INSTR_SEMANTIC_OPCODE_LIST\n";
+  OS << "static constexpr uint16_t SemanticallyModeledOpcodes[] = {\n";
+  for (const llvm::Record *Rec : Semantics) {
+    const auto *SemList = Rec->getValueAsListInit("Semantic");
+    if (!SemList || SemList->empty())
+      continue;
+    const llvm::Record *InstRec = Rec->getValueAsDef("Instruction");
+    OS << "  llvm::AMDGPU::" << InstRec->getName() << ",\n";
+  }
+  OS << "};\n";
+  OS << "static constexpr size_t NumSemanticallyModeledOpcodes = "
+        "sizeof(SemanticallyModeledOpcodes) / "
+        "sizeof(SemanticallyModeledOpcodes[0]);\n";
+  OS << "#undef GET_SI_INSTR_SEMANTIC_OPCODE_LIST\n";
+  OS << "#endif // GET_SI_INSTR_SEMANTIC_OPCODE_LIST\n\n";
 }
 
 //===----------------------------------------------------------------------===//

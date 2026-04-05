@@ -1,3 +1,11 @@
+# Tablegen target for generating IR translation of MIR pseudo instructions
+set(LuthierSIInstrSemanticsGen_TABLEGEN_EXE luthier-tblgen)
+set(LLVM_TARGET_DEFINITIONS "${CMAKE_SOURCE_DIR}/include/luthier/InstSemantics/InstSISemantics.td")
+tablegen(LuthierSIInstrSemanticsGen SIInstrSemantics.inc -gen-si-instr-semantics EXTRA_INCLUDES
+        "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/;"
+        "${CMAKE_SOURCE_DIR}/include/luthier/InstSemantics/")
+add_public_tablegen_target(LuthierSIInstrSemanticsGen)
+
 add_library(LuthierToolingCommon OBJECT
         TargetMachineInstrMDNode.cpp
         CodeDiscoveryPass.cpp
@@ -34,6 +42,7 @@ add_library(LuthierToolingCommon OBJECT
         AMDGPUMockLoaderPrinter.cpp
         MockLoaderMemoryAccessor.cpp
         Metadata.cpp
+        MIRToIRTranslator.cpp
         NewPMAsmPrinter.cpp
         FunctionAnnotations.cpp
         IPReachingRefAnalysis.cpp

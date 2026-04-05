@@ -17,7 +17,7 @@
 /// Implements the \c InstructionTracesAnalysis class.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/InstructionTracesAnalysis.h"
-#include "../../../include/luthier/IRTranslator/PseudoOpcodeAnRegMapper.h"
+#include "luthier/InstSemantics/PseudoOpcodeAnRegMapper.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Tooling/MachineFunctionEntryPoint.h"
 #include "luthier/Tooling/MemoryAllocationAccessor.h"

@@ -5,7 +5,7 @@
 #include "luthier/Tooling/EntryPoint.h"
 #include "luthier/Tooling/FunctionAnnotations.h"
 // #include "luthier/Tooling/IPVectorRegLiveness.h"
-#include "../../../include/luthier/IRTranslator/PseudoOpcodeAnRegMapper.h"
+#include "../../../include/luthier/InstSemantics/PseudoOpcodeAnRegMapper.h"
 #include "luthier/Tooling/InitialEntryPointAnalysis.h"
 #include "luthier/Tooling/InstructionTracesAnalysis.h"
 #include "luthier/Tooling/MemoryAllocationAccessor.h"

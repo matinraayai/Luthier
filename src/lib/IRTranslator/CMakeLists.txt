@@ -11,15 +11,8 @@ tablegen(LuthierIRTranslator LuthierRealToPseudoRegEnumMap.hpp -gen-si-real-to-p
         "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
 add_public_tablegen_target(LuthierRealToPseudoRegEnumMap)
 
-set(LuthierSIInstrSemanticsGen_TABLEGEN_EXE luthier-tblgen)
-set(LLVM_TARGET_DEFINITIONS "${CMAKE_SOURCE_DIR}/include/luthier/IRTranslator/InstSISemantics.td")
-tablegen(LuthierSIInstrSemanticsGen SIInstrSemantics.inc -gen-si-instr-semantics EXTRA_INCLUDES
-        "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/;"
-        "${CMAKE_SOURCE_DIR}/include/luthier/IRTranslator/")
-add_public_tablegen_target(LuthierSIInstrSemanticsGen)
 
 add_library(LuthierIRTranslator OBJECT
-        InstructionModel.cpp
         PseudoOpcodeAndRegMapper.cpp
 )
 
