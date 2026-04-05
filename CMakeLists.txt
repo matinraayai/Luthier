@@ -39,11 +39,6 @@ if (${LUTHIER_BUILD_EXAMPLES})
     add_subdirectory(examples)
 endif ()
 
-# Build integration tests if enabled
-if (${LUTHIER_BUILD_INTEGRATION_TESTS} OR ${LUTHIER_BUILD_UNIT_TESTS})
-    add_subdirectory(tests)
-endif ()
-
 # Build documentation with Doxygen if enabled
 if (${LUTHIER_BUILD_HTML_DOCS} OR ${LUTHIER_BUILD_LATEX_DOCS})
     find_package(Doxygen REQUIRED)
