@@ -66,13 +66,13 @@ StandaloneMIBuilder::build(const InstrProfile &Profile) {
   Ctx.Ctx = std::make_unique<llvm::LLVMContext>();
   Ctx.Mod = std::make_unique<llvm::Module>("standalone_mi", *Ctx.Ctx);
   Ctx.Mod->setDataLayout(TM.createDataLayout());
-  Ctx.Mod->setTargetTriple("amdgcn-amd-amdhsa");
+  Ctx.Mod->setTargetTriple(llvm::Triple("amdgcn-amd-amdhsa"));
 
   // Stub IR function (required by MachineFunction).
   auto *FTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*Ctx.Ctx), false);
-  auto *F = llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
-                                   "standalone_" + Profile.Name.str(),
-                                   Ctx.Mod.get());
+  auto *F =
+      llvm::Function::Create(FTy, llvm::GlobalValue::ExternalLinkage,
+                             "standalone_" + Profile.Name.str(), Ctx.Mod.get());
   F->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
   F->addFnAttr("amdgpu-flat-work-group-size", "1,1");
   llvm::BasicBlock::Create(*Ctx.Ctx, "entry", F);
@@ -87,7 +87,6 @@ StandaloneMIBuilder::build(const InstrProfile &Profile) {
 
   auto *BB = MF.CreateMachineBasicBlock();
   MF.push_back(BB);
-  llvm::DebugLoc DL;
 
   // ====================================================================
   // Allocate physical registers for operands.
@@ -138,7 +137,7 @@ StandaloneMIBuilder::build(const InstrProfile &Profile) {
   // ====================================================================
   // Build the single MachineInstr.
   // ====================================================================
-  auto MIB = BuildMI(*BB, BB->end(), DL, TII.get(Profile.Opcode));
+  auto MIB = BuildMI(*BB, BB->end(), {}, TII.get(Profile.Opcode));
 
   // Defs (outputs).
   for (llvm::MCRegister Reg : Ctx.OutputRegs)
