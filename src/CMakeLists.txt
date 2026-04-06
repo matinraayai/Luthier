@@ -5,8 +5,6 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 find_package(hip REQUIRED CONFIG)
 
-find_package(amd_comgr REQUIRED CONFIG)
-
 find_package(rocprofiler-sdk REQUIRED CONFIG)
 
 find_package(hsa-runtime64 REQUIRED CONFIG)
