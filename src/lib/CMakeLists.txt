@@ -1,7 +1,6 @@
 add_subdirectory(Plugins)
 add_subdirectory(AMDGPU)
 add_subdirectory(LLVM)
-add_subdirectory(Comgr)
 add_subdirectory(Linker)
 add_subdirectory(Rocprofiler)
 add_subdirectory(Object)
