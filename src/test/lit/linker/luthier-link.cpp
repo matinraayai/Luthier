@@ -1,5 +1,5 @@
-//===-- comgr-link.cpp ----------------------------------------------------===//
-// Copyright 2022-2025 @ Northeastern University Computer Architecture Lab
+//===-- luthier-link.cpp --------------------------------------------------===//
+// Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,40 +14,39 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file
-/// This file implements comgr-link, an executable used to test the relocatable
-/// linking functionality of Comgr used in Luthier.
+/// \file luthier-link.cpp
+/// Implements luthier-link, an executable used to test the relocatable linking
+/// functionality used in Luthier.
 //===----------------------------------------------------------------------===//
-#include "luthier/Comgr/Comgr.h"
-#include "luthier/Common/GenericLuthierError.h"
+#include "luthier/Linker/Linker.h"
 #include <llvm/ADT/StringExtras.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FileSystem.h>
+#include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/InitLLVM.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/ToolOutputFile.h>
 #include <llvm/Support/WithColor.h>
 #include <luthier/Common/ErrorCheck.h>
-#include <luthier/Common/LuthierError.h>
+#include <luthier/Common/GenericLuthierError.h>
 
-static llvm::cl::OptionCategory ComgrLinkOptions("Comgr Link Options");
+static llvm::cl::OptionCategory LuthierLinkOptions("Luthier Link Options");
 
 static llvm::cl::opt<std::string>
     InputFilename(llvm::cl::Positional, llvm::cl::desc("<input file>"),
-                  llvm::cl::init("-"), llvm::cl::cat(ComgrLinkOptions));
+                  llvm::cl::init("-"), llvm::cl::cat(LuthierLinkOptions));
 
 static llvm::cl::opt<std::string>
     OutputFilename("o", llvm::cl::desc("Output filename"),
                    llvm::cl::value_desc("filename"), llvm::cl::init("-"),
-                   llvm::cl::cat(ComgrLinkOptions));
+                   llvm::cl::cat(LuthierLinkOptions));
 
 int main(int Argc, char *Argv[]) {
   llvm::InitLLVM X(Argc, Argv);
 
   llvm::cl::HideUnrelatedOptions(
-      {&ComgrLinkOptions, &llvm::getColorCategory()});
-  llvm::cl::ParseCommandLineOptions(Argc, Argv,
-                                    "Luthier link with comgr tool\n");
+      {&LuthierLinkOptions, &llvm::getColorCategory()});
+  llvm::cl::ParseCommandLineOptions(Argc, Argv, "Luthier link tool\n");
 
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> BufferPtr =
       llvm::MemoryBuffer::getFileOrSTDIN(InputFilename);
@@ -60,7 +59,7 @@ int main(int Argc, char *Argv[]) {
   llvm::StringRef Buffer = BufferPtr->get()->getBuffer();
 
   llvm::SmallVector<char> Executable;
-  LUTHIER_REPORT_FATAL_ON_ERROR(luthier::comgr::linkRelocatableToExecutable(
+  LUTHIER_REPORT_FATAL_ON_ERROR(luthier::linker::linkRelocatableToExecutable(
       llvm::arrayRefFromStringRef<char>(Buffer), Executable));
 
   auto OutFile = std::make_unique<llvm::ToolOutputFile>(OutputFilename, EC,

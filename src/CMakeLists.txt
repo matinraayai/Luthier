@@ -11,9 +11,9 @@ find_package(rocprofiler-sdk REQUIRED CONFIG)
 
 find_package(hsa-runtime64 REQUIRED CONFIG)
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-
 find_package(LLVM REQUIRED CONFIG)
+
+find_package(LLD REQUIRED CONFIG)
 
 include(LuthierFetchLLVMSrc)
 
