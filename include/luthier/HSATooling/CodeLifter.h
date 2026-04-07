@@ -37,7 +37,6 @@
 #include "luthier/Object/AMDGCNObjectFile.h"
 #include "luthier/Object/ObjectFileUtils.h"
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
-#include "luthier/Tooling/LiftedRepresentation.h"
 #include <functional>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineInstr.h>

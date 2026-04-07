@@ -18,7 +18,7 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/InstructionTracesAnalysis.h"
 #include "luthier/Common/GenericLuthierError.h"
-#include "luthier/Tooling/MachineFunctionEntryPoint.h"
+#include "luthier/Tooling/EntryPoint.h"
 #include "luthier/Tooling/MemoryAllocationAccessor.h"
 #include "luthier/Tooling/PseudoOpcodeAnRegMapper.h"
 #include <AMDGPUTargetMachine.h>

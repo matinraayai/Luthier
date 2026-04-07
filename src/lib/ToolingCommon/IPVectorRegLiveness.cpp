@@ -18,8 +18,10 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/IPVectorRegLiveness.h"
 #include "luthier/Tooling/IPPredicatedCFG.h"
-#include "luthier/Tooling/LiftedRepresentation.h"
 #include <llvm/Support/TimeProfiler.h>
+#include <llvm/CodeGen/TargetSubtargetInfo.h>
+#include <llvm/CodeGen/MachineRegisterInfo.h>
+
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-lr-register-liveness"

@@ -27,7 +27,6 @@
 #include "luthier/HSA/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/HSA/LoadedCodeObjectKernel.h"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
-#include "luthier/Tooling/LiftedRepresentation.h"
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/Support/Error.h>
@@ -35,8 +34,6 @@
 namespace luthier {
 
 class SVStorageAndLoadLocations;
-
-class LiftedRepresentation;
 
 /// \brief a struct which aggregates information about the preamble code
 /// required to be emitted for each function inside a \c LiftedRepresentation

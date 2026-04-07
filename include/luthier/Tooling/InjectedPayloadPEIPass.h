@@ -22,10 +22,9 @@
 #ifndef LUTHIER_TOOLING_INJECTED_PAYLOAD_PEI_PASS_H
 #define LUTHIER_TOOLING_INJECTED_PAYLOAD_PEI_PASS_H
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
-#include "luthier/Tooling/AMDGPURegisterLiveness.h"
+#include "luthier/Tooling/IPVectorRegLiveness.h"
 #include "luthier/Tooling/LRCallgraph.h"
 #include "luthier/Tooling/LegacyPassSupport.h"
-#include "luthier/Tooling/LiftedRepresentation.h"
 #include "luthier/Tooling/PhysicalRegAccessVirtualizationPass.h"
 #include "luthier/Tooling/PrePostAmbleEmitter.h"
 #include "luthier/Tooling/SVStorageAndLoadLocations.h"

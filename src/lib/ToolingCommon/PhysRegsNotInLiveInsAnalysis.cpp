@@ -20,7 +20,7 @@
 /// live-in set.
 //===----------------------------------------------------------------------===//
 #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
-#include "luthier/Tooling/VectorRegLiveness.h"
+#include "luthier/Tooling/IPVectorRegLiveness.h"
 #include "luthier/Tooling/IModuleIRGeneratorPass.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
 

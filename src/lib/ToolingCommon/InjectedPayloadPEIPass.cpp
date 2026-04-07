@@ -21,7 +21,6 @@
 #include "luthier/Tooling/InjectedPayloadPEIPass.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/Tooling/IntrinsicMIRLoweringPass.h"
-#include "luthier/Tooling/LiftedRepresentation.h"
 #include "luthier/Tooling/PhysRegsNotInLiveInsAnalysis.h"
 #include "luthier/Tooling/SVStorageAndLoadLocations.h"
 #include "luthier/Tooling/StateValueArraySpecs.h"

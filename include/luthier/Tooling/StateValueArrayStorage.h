@@ -22,8 +22,7 @@
 #include "luthier/HSA/LoadedCodeObject.h"
 #include "luthier/HSA/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/HSA/LoadedCodeObjectKernel.h"
-#include "luthier/Tooling/AMDGPURegisterLiveness.h"
-#include "luthier/Tooling/LiftedRepresentation.h"
+#include "luthier/Tooling/IPVectorRegLiveness.h"
 #include "luthier/Tooling/PrePostAmbleEmitter.h"
 #include <llvm/CodeGen/SlotIndexes.h>
 

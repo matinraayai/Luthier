@@ -7,7 +7,7 @@
 // #include "luthier/Tooling/IPVectorRegLiveness.h"
 #include "luthier/Tooling/InitialEntryPointAnalysis.h"
 #include "luthier/Tooling/InstructionTracesAnalysis.h"
-#include "luthier/Tooling/MachineFunctionEntryPoint.h"
+#include "luthier/Tooling/EntryPoint.h"
 #include "luthier/Tooling/MemoryAllocationAccessor.h"
 #include "luthier/Tooling/MetadataParserAnalysis.h"
 #include "luthier/Tooling/PseudoOpcodeAnRegMapper.h"

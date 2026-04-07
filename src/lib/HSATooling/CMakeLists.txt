@@ -1,12 +1,12 @@
 add_library(LuthierHSATooling OBJECT
-        CodeGenerator.cpp
-        CodeLifter.cpp
-        Context.cpp
+        #CodeGenerator.cpp
+        #CodeLifter.cpp
+        #Context.cpp
         HsaMemoryAllocationAccessor.cpp
-        InstrumentationModule.cpp
-        InstrumentationTask.cpp
+        #InstrumentationModule.cpp
+        #InstrumentationTask.cpp
         TargetManager.cpp
-        ToolExecutableLoader.cpp
+        #ToolExecutableLoader.cpp
 )
 
 target_compile_definitions(LuthierHSATooling PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})

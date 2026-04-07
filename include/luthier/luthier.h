@@ -32,7 +32,6 @@
 #include "luthier/HSA/LoadedCodeObjectKernel.h"
 #include "luthier/HSA/LoadedCodeObjectSymbol.h"
 #include "luthier/Intrinsic/Intrinsics.h"
-#include "luthier/Tooling/LiftedRepresentation.h"
 
 namespace luthier {
 

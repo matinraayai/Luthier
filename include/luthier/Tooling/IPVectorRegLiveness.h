@@ -23,6 +23,7 @@
 #include "luthier/Tooling/IPPredicatedCFG.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
+#include <llvm/CodeGen/LiveRegUnits.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/PassManager.h>
 

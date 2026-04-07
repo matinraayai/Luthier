@@ -4,7 +4,7 @@ add_llvm_pass_plugin(LuthierOptPlugin
         $<TARGET_OBJECTS:LuthierCommon>
         $<TARGET_OBJECTS:LuthierObject>
         $<TARGET_OBJECTS:LuthierLLVM>
-        $<TARGET_OBJECTS:LuthierIntrinsic>
+        #$<TARGET_OBJECTS:LuthierIntrinsic>
 )
 
 target_compile_definitions(LuthierOptPlugin PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})

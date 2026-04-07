@@ -26,11 +26,10 @@
 #include "luthier/HSA/LoadedCodeObjectDeviceFunction.h"
 #include "luthier/HSA/LoadedCodeObjectKernel.h"
 #include "luthier/Tooling/IModuleIRGeneratorPass.h"
-#include "luthier/Tooling/LiftedRepresentation.h"
 #include "luthier/Tooling/MMISlotIndexesAnalysis.h"
 #include "luthier/Tooling/PrePostAmbleEmitter.h"
 #include "luthier/Tooling/StateValueArrayStorage.h"
-#include "luthier/Tooling/VectorRegLiveness.h"
+#include "luthier/Tooling/IPVectorRegLiveness.h"
 #include <llvm/CodeGen/SlotIndexes.h>
 #include <llvm/IR/PassManager.h>
 

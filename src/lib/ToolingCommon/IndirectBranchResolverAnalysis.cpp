@@ -20,7 +20,7 @@
 #include "luthier/Tooling/IPPredicatedCFG.h"
 #include "luthier/Tooling/IPReachingDefAnalysis.h"
 #include "luthier/Tooling/IPVectorRegLiveness.h"
-#include "luthier/Tooling/MachineFunctionEntryPoint.h"
+#include "luthier/Tooling/EntryPoint.h"
 #include <llvm/Support/GenericDomTree.h>
 
 namespace luthier {

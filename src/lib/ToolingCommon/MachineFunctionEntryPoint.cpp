@@ -20,6 +20,6 @@
 
 namespace luthier {
 
-llvm::AnalysisKey MachineFunctionEntryPoint::Key;
+//llvm::AnalysisKey MachineFunctionEntryPoint::Key;
 
 }

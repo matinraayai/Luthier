@@ -31,7 +31,7 @@
 #include "luthier/Tooling/PrePostAmbleEmitter.h"
 #include "luthier/Tooling/RunIRPassesOnIModulePass.h"
 #include "luthier/Tooling/RunMIRPassesOnIModulePass.h"
-#include "luthier/Tooling/VectorRegLiveness.h"
+#include "luthier/Tooling/IPVectorRegLiveness.h"
 #include "luthier/Tooling/WrapperAnalysisPasses.h"
 #include <AMDGPUResourceUsageAnalysis.h>
 #include <AMDGPUTargetMachine.h>

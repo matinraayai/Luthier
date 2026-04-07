@@ -22,7 +22,6 @@
 #define LUTHIER_TOOLING_WRAPPER_ANALYSIS_PASSES_H
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include "luthier/Tooling/LegacyPassSupport.h"
-#include "luthier/Tooling/LiftedRepresentation.h"
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/LoopAnalysisManager.h>
 #include <llvm/IR/PassManager.h>
