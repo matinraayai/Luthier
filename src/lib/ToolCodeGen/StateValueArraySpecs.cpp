@@ -88,6 +88,14 @@ unsigned StateValueArraySpecs::getArgumentLaneSize(ScalarValueArgument SA) {
     return ScalarValueArgumentInfo<USER_ARG_PTR>::NumLanes;
   case IMPLICIT_ARG_OFFSET:
     return ScalarValueArgumentInfo<IMPLICIT_ARG_OFFSET>::NumLanes;
+  case WORKGROUP_ID_X:
+    return ScalarValueArgumentInfo<WORKGROUP_ID_X>::NumLanes;
+  case WORKGROUP_ID_Y:
+    return ScalarValueArgumentInfo<WORKGROUP_ID_Y>::NumLanes;
+  case WORKGROUP_ID_Z:
+    return ScalarValueArgumentInfo<WORKGROUP_ID_Z>::NumLanes;
+  case WORKITEM_ID_PACKED_LANE0:
+    return ScalarValueArgumentInfo<WORKITEM_ID_PACKED_LANE0>::NumLanes;
   default:
     llvm_unreachable("Invalid scalar value argument");
   }
@@ -122,6 +130,14 @@ StateValueArraySpecs::getSVASpecs(const llvm::Module &M,
     } else if (!IsArchitectedFS) {
       Out->BufferRsrcOrScratchSpillLane = llvm::AMDGPU::PRIVATE_RSRC_REG;
       NextLane += 4;
+    } else {
+      // Architected flat scratch: the kernel prolog does not spill FLAT_SCR, so
+      // nothing shares the StackPointerStore lane (StackPointerStoreLane) the
+      // way the FLAT_SCR_LO / buffer-rsrc spill does on non-architected-FS
+      // targets (see SVAFrameLanes.h). Skip past that lane before allocating
+      // per-SA lanes; otherwise the first SA would alias the SGPR32 store slot
+      // and be clobbered by the PEI / payload stack-pointer restore.
+      NextLane += 1;
     }
     /// Next determine the scalar values used via the named MD in the module
     using SVArgUnderlyingType = std::underlying_type_t<ScalarValueArgument>;

@@ -1,4 +1,4 @@
-//===-- ImplicitArgPtr.cpp - Luthier implicit arg access  -----------------===//
+//===-- UserArgPtr.cpp - Luthier user (explicit) arg access ---------------===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,49 +15,45 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements Luthier's <tt>ImplicitArgPtr</tt> intrinsic.
+/// This file implements Luthier's <tt>userArgPtr</tt> intrinsic. It returns the
+/// base of the tool's explicit-argument region inside the custom kernarg
+/// buffer, computed as <tt>USER_ARG_PTR + CustomKernargExplicitOffset</tt>.
 //===----------------------------------------------------------------------===//
-#include "luthier/Intrinsic/ImplicitArgPtr.h"
+#include "luthier/Intrinsic/UserArgPtr.h"
 #include "AMDGPUTargetMachine.h"
 #include "GCNSubtarget.h"
 #include "SIRegisterInfo.h"
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
-#include "luthier/Common/LuthierError.h"
+#include "luthier/ToolCodeGen/CustomKernargLayout.h"
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
-#include <llvm/IR/User.h>
 #include <llvm/MC/MCRegister.h>
 
 namespace luthier {
 
 llvm::Expected<IntrinsicIRLoweringInfo>
-implicitArgPtrIRProcessor(const llvm::Function &Intrinsic,
-                          const llvm::CallInst &User,
-                          const llvm::GCNTargetMachine &TM) {
-  // The user must not have any operands
+userArgPtrIRProcessor(const llvm::Function &Intrinsic,
+                      const llvm::CallInst &User,
+                      const llvm::GCNTargetMachine &TM) {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       User.arg_size() == 0,
       llvm::formatv("Expected no operands to be passed to the "
-                    "luthier::implicitArgPtr intrinsic '{0}', got {1}.",
+                    "luthier::userArgPtr intrinsic '{0}', got {1}.",
                     User, User.arg_size())));
 
   luthier::IntrinsicIRLoweringInfo Out;
-  // The implicit-args address will be returned in an SGPR
+  // The explicit-arg region base is returned in an SGPR pair.
   Out.setReturnValueInfo(User, "s");
-  // The instrumentation's implicit args live in the Luthier-managed custom
-  // kernarg buffer: their base is USER_ARG_PTR (the custom-buffer base) and the
-  // region starts IMPLICIT_ARG_OFFSET bytes in. (Per the ScalarValueArgument
-  // enum, IMPLICIT_ARG_OFFSET is documented as relative to USER_ARG_PTR.)
-  // Declare both up front so the MIR-lowering driver pre-stages the SVA vregs,
-  // which in turn marks the kernel as using a custom kernarg buffer.
+  // We need the base of the instrumentation argument buffer (the custom kernarg
+  // buffer base). Declare it so the MIR-lowering driver pre-stages the SVA
+  // vreg.
   Out.getEffects().ReadSVAs.push_back(USER_ARG_PTR);
-  Out.getEffects().ReadSVAs.push_back(IMPLICIT_ARG_OFFSET);
 
   return Out;
 }
 
-llvm::Error implicitArgPtrMIRProcessor(
+llvm::Error userArgPtrMIRProcessor(
     const llvm::MachineFunction &MF,
     llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
     llvm::MDNode *Payload,
@@ -67,43 +63,40 @@ llvm::Error implicitArgPtrMIRProcessor(
     const llvm::DenseMap<ScalarValueArgument, llvm::Register> &SVAVRegs,
     const llvm::DenseMap<llvm::MCRegister, llvm::Register> &,
     llvm::DenseMap<llvm::MCRegister, llvm::Register> &) {
-  // There should be only a single virtual register involved in the operation
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args.size() == 1,
-      llvm::formatv("Number of virtual register arguments "
-                    "involved in the MIR lowering stage of "
-                    "luthier::implicitArgPtr is {0} instead of 1.",
-                    Args.size())));
+      llvm::formatv(
+          "Number of virtual register arguments involved in the MIR "
+          "lowering stage of luthier::userArgPtr is {0} instead of 1.",
+          Args.size())));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args[0].first.isRegDefKind(),
-      "The register argument of luthier::implicitArgPtr is not a definition."));
+      "The register argument of luthier::userArgPtr is not a definition."));
   llvm::Register Output = Args[0].second;
-  auto KernArgIt = SVAVRegs.find(USER_ARG_PTR);
-  auto OffsetIt = SVAVRegs.find(IMPLICIT_ARG_OFFSET);
+
+  auto UserArgIt = SVAVRegs.find(USER_ARG_PTR);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      KernArgIt != SVAVRegs.end() && OffsetIt != SVAVRegs.end(),
-      "luthier::implicitArgPtr: USER_ARG_PTR / IMPLICIT_ARG_OFFSET missing "
-      "from pre-staged SVA map (IR processor must declare them)"));
-  llvm::Register KernArgSGPR = KernArgIt->second;
-  llvm::Register HiddenOffsetSGPR = OffsetIt->second;
+      UserArgIt != SVAVRegs.end(),
+      "luthier::userArgPtr: USER_ARG_PTR missing from pre-staged SVA map (IR "
+      "processor must declare it)"));
+  llvm::Register UserArgSGPR = UserArgIt->second;
 
   llvm::Register FirstAddSGPR = VirtRegBuilder(&llvm::AMDGPU::SGPR_32RegClass);
-
   llvm::Register SecondAddSGPR = VirtRegBuilder(&llvm::AMDGPU::SGPR_32RegClass);
 
+  // explicit-arg region base = USER_ARG_PTR + CustomKernargExplicitOffset
   MIBuilder(llvm::AMDGPU::S_ADD_U32)
       .addReg(FirstAddSGPR, llvm::RegState::Define)
-      .addReg(KernArgSGPR, llvm::RegState::Kill,
+      .addReg(UserArgSGPR, llvm::RegState::Kill,
               llvm::SIRegisterInfo::getSubRegFromChannel(0))
-      .addReg(HiddenOffsetSGPR, llvm::RegState::Kill);
+      .addImm(CustomKernargExplicitOffset);
 
   MIBuilder(llvm::AMDGPU::S_ADDC_U32)
       .addReg(SecondAddSGPR, llvm::RegState::Define)
-      .addReg(KernArgSGPR, llvm::RegState::Kill,
+      .addReg(UserArgSGPR, llvm::RegState::Kill,
               llvm::SIRegisterInfo::getSubRegFromChannel(1))
       .addImm(0);
 
-  // Do a reg sequence copy to the output
   (void)MIBuilder(llvm::AMDGPU::REG_SEQUENCE)
       .addReg(Output, llvm::RegState::Define)
       .addReg(SecondAddSGPR)

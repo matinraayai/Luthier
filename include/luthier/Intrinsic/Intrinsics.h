@@ -54,7 +54,7 @@ namespace luthier {
 /// \param Value the L-value to prevent optimization on
 template <typename T>
 __attribute__((device, always_inline)) void doNotOptimize(T const &Value) {
-  __asm__ __volatile__("" : : "X"((void*)(&Value)) : "memory");
+  __asm__ __volatile__("" : : "X"((void *)(&Value)) : "memory");
 }
 
 /// \brief Intrinsic to read the value of a register
@@ -94,6 +94,17 @@ LUTHIER_INTRINSIC_ANNOTATE void writeExec(uint64_t Val) { doNotOptimize(Val); }
 /// \return the address of the implicit argument segment
 LUTHIER_INTRINSIC_ANNOTATE uint32_t *implicitArgPtr() {
   uint32_t *Out;
+  doNotOptimize(Out);
+  return Out;
+}
+
+/// \return the base address of the instrumentation tool's explicit-argument
+/// region inside the Luthier-managed custom kernarg buffer. The tool reads its
+/// explicit arguments at fixed offsets from this pointer; the host fills them
+/// in
+/// \c InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented.
+LUTHIER_INTRINSIC_ANNOTATE uint8_t *userArgPtr() {
+  uint8_t *Out;
   doNotOptimize(Out);
   return Out;
 }

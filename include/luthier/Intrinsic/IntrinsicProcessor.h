@@ -110,8 +110,21 @@ enum ScalarValueArgument : uint8_t {
   /// 32-bit offset of the instrumentation implicit argument buffer from the
   /// \c USER_ARG_PTR
   IMPLICIT_ARG_OFFSET = 9,
+  /// 32-bit workgroup id (blockIdx) X/Y/Z. On non-architected-SGPR targets
+  /// these
+  /// are the preloaded workgroup-id system SGPRs captured into the SVA at entry
+  /// (the app may clobber them); on architected-SGPR targets they come from
+  /// TTMP registers instead and are read directly (no SVA capture).
+  WORKGROUP_ID_X = 10,
+  WORKGROUP_ID_Y = 11,
+  WORKGROUP_ID_Z = 12,
+  /// The wave's lane-0 work-item id, packed as x|y<<10|z<<20. Captured at entry
+  /// (via v_readlane of the preloaded work-item-id VGPR) so the per-lane
+  /// work-item id (threadIdx) can be recomputed at any injection point as
+  /// <tt>decompose(packed_lane0_flat + mbcnt)</tt>.
+  WORKITEM_ID_PACKED_LANE0 = 13,
   /// Marks the last defined scalar value argument
-  SCALAR_VALUE_ARGUMENT_LAST = IMPLICIT_ARG_OFFSET
+  SCALAR_VALUE_ARGUMENT_LAST = WORKITEM_ID_PACKED_LANE0
 };
 
 template <ScalarValueArgument SA> struct ScalarValueArgumentInfo;
@@ -166,6 +179,26 @@ template <> struct ScalarValueArgumentInfo<USER_ARG_PTR> {
 template <> struct ScalarValueArgumentInfo<IMPLICIT_ARG_OFFSET> {
   static constexpr uint8_t NumLanes = 1;
   static constexpr auto NamedMD = "luthier.sva.implicit_arg_offset";
+};
+
+template <> struct ScalarValueArgumentInfo<WORKGROUP_ID_X> {
+  static constexpr uint8_t NumLanes = 1;
+  static constexpr auto NamedMD = "luthier.sva.workgroup_id_x";
+};
+
+template <> struct ScalarValueArgumentInfo<WORKGROUP_ID_Y> {
+  static constexpr uint8_t NumLanes = 1;
+  static constexpr auto NamedMD = "luthier.sva.workgroup_id_y";
+};
+
+template <> struct ScalarValueArgumentInfo<WORKGROUP_ID_Z> {
+  static constexpr uint8_t NumLanes = 1;
+  static constexpr auto NamedMD = "luthier.sva.workgroup_id_z";
+};
+
+template <> struct ScalarValueArgumentInfo<WORKITEM_ID_PACKED_LANE0> {
+  static constexpr uint8_t NumLanes = 1;
+  static constexpr auto NamedMD = "luthier.sva.workitem_id_packed_lane0";
 };
 
 /// \brief Describes the ISA-state effects of a single Luthier intrinsic at

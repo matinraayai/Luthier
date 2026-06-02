@@ -167,12 +167,22 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
   /// MF.
   llvm::DenseMap<ScalarValueArgument, llvm::Register> SAResultCache;
 
-  /// Fixed insertion point for SVA-related instructions in the entry block.
-  /// Always insert before the first terminator so that the order is
-  /// deterministic and all inserted instructions dominate the entire
-  /// function.
-  llvm::MachineBasicBlock::iterator SVAInsertPt =
-      MF.front().getFirstTerminator();
+  /// Insertion point for SVA-accessor defs (lane IMPLICIT_DEFs +
+  /// REG_SEQUENCE). They must dominate *every* use, including intrinsic-lowered
+  /// uses (e.g. implicitArgPtr's S_ADD on a multi-lane SVA) that the MIR
+  /// processors emit at placeholder sites earlier than the block terminator —
+  /// inserting at the terminator would place the def after such in-block uses
+  /// and trip LiveIntervals' "Use not jointly dominated by defs". So defs go at
+  /// the top of the entry block. The anchor is the SVA-VGPR-placeholder
+  /// IMPLICIT_DEF (created by getOrCreateSVAVGPRPlaceholder): accessor defs are
+  /// inserted *before* it. That placeholder is stable throughout lowering (it's
+  /// erased only in phase 2, after this pass's MBB loop), so unlike a cached
+  /// MF.front().begin() it never dangles when the lowering loop erases the
+  /// block's leading intrinsic placeholder. Inserting before a fixed anchor in
+  /// call order also keeps each accessor's lane defs ahead of its REG_SEQUENCE.
+  /// Set when the placeholder is created; a begin() fallback covers the
+  /// (unreachable in practice) case of an accessor with no placeholder.
+  llvm::MachineBasicBlock::iterator SVAInsertPt = MF.front().begin();
 
   /// Per phys-reg-channel SSAUpdater. The updater is created lazily on the
   /// first read/write of that channel by an intrinsic.
@@ -222,11 +232,15 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     llvm::MDNode *MarkerNode = llvm::MDNode::get(
         Ctx, {llvm::MDString::get(Ctx, "luthier.sva_vgpr_placeholder")});
     auto *SVAImplDef =
-        llvm::BuildMI(MF.front(), SVAInsertPt, llvm::MIMetadata(),
+        llvm::BuildMI(MF.front(), MF.front().begin(), llvm::MIMetadata(),
                       TII->get(llvm::AMDGPU::IMPLICIT_DEF), SVAPlaceholder)
             .getInstr();
     SVAImplDef->setPCSections(MF, MarkerNode);
     MFSVAInfo.SVAVGPRPlaceholder = SVAPlaceholder;
+    // Anchor subsequent SVA-accessor defs just before this (stable) placeholder
+    // so they land at the top of the entry block in call order without
+    // dangling.
+    SVAInsertPt = SVAImplDef->getIterator();
     return MFSVAInfo.SVAVGPRPlaceholder;
   };
 
@@ -245,6 +259,9 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
       return CacheIt->second;
 
     ScalarArgumentsUsed.insert(SA);
+    // Creates the SVA-VGPR placeholder (if needed) and sets SVAInsertPt to its
+    // iterator; accessor defs below are inserted before it (see the note
+    // above).
     (void)getOrCreateSVAVGPRPlaceholder();
 
     unsigned NumLanes = StateValueArraySpecs::getArgumentLaneSize(SA);

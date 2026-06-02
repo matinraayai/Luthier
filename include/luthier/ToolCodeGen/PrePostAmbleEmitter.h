@@ -25,6 +25,7 @@
 #ifndef LUTHIER_TOOL_CODE_GEN_PRE_POST_AMBLE_EMITTER_H
 #define LUTHIER_TOOL_CODE_GEN_PRE_POST_AMBLE_EMITTER_H
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/ToolCodeGen/CustomKernargLayout.h"
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
@@ -54,6 +55,20 @@ struct FunctionPreambleDescriptor {
     /// A set of kernel arguments that are accessed by the injected payload
     /// functions
     llvm::SmallDenseSet<ScalarValueArgument, 8> RequestedKernelArguments{};
+    /// True when this kernel is launched with a Luthier-managed *custom*
+    /// kernarg buffer (its instrumentation reads \c USER_ARG_PTR /
+    /// \c IMPLICIT_ARG_OFFSET). The prologue then saves the custom base into
+    /// the \c USER_ARG_PTR lane, sets \c IMPLICIT_ARG_OFFSET, and reloads the
+    /// original kernarg pointer into the physical \c KERNARG_SEGMENT_PTR SGPR.
+    bool UsesCustomKernarg{false};
+    /// Offset (bytes) from the custom kernarg base to the COV5 implicit-args
+    /// block, written into the \c IMPLICIT_ARG_OFFSET SVA lane by the prologue.
+    /// Equals \c Layout.ImplicitOffset (meaningful iff \c UsesCustomKernarg).
+    uint32_t ImplicitArgRegionOffset{0};
+    /// Full custom kernarg buffer layout, also serialized into the
+    /// \c .luthier.kernarg_layout ELF section (meaningful iff
+    /// \c UsesCustomKernarg).
+    CustomKernargLayout Layout{};
   } KernelPreambleSpecs;
 
   /// \brief struct describing the specifications of the preamble code for

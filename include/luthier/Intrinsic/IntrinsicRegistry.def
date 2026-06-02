@@ -43,6 +43,18 @@ REGISTER_INTRINSIC("luthier::writeExec",
 REGISTER_INTRINSIC("luthier::implicitArgPtr",
                    implicitArgPtrIRProcessor,
                    implicitArgPtrMIRProcessor)
+REGISTER_INTRINSIC("luthier::userArgPtr",
+                   userArgPtrIRProcessor,
+                   userArgPtrMIRProcessor)
+REGISTER_INTRINSIC("luthier::workgroupIdX",
+                   workgroupIdXIRProcessor,
+                   workgroupIdXMIRProcessor)
+REGISTER_INTRINSIC("luthier::workgroupIdY",
+                   workgroupIdYIRProcessor,
+                   workgroupIdYMIRProcessor)
+REGISTER_INTRINSIC("luthier::workgroupIdZ",
+                   workgroupIdZIRProcessor,
+                   workgroupIdZMIRProcessor)
 REGISTER_INTRINSIC("luthier::sAtomicAdd",
                    sAtomicAddIRProcessor,
                    sAtomicAddMIRProcessor)

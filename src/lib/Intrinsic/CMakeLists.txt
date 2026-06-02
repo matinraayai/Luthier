@@ -5,6 +5,8 @@ add_library(LuthierIntrinsic OBJECT
         WriteReg.cpp
         WriteExec.cpp
         ImplicitArgPtr.cpp
+        UserArgPtr.cpp
+        WorkgroupId.cpp
         SAtomicAdd.cpp
 )
 

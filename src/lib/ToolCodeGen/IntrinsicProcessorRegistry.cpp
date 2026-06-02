@@ -22,6 +22,8 @@
 #include "luthier/Intrinsic/ReadReg.h"
 #include "luthier/Intrinsic/ReadSVA.h"
 #include "luthier/Intrinsic/SAtomicAdd.h"
+#include "luthier/Intrinsic/UserArgPtr.h"
+#include "luthier/Intrinsic/WorkgroupId.h"
 #include "luthier/Intrinsic/WriteExec.h"
 #include "luthier/Intrinsic/WriteReg.h"
 

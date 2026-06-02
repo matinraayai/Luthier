@@ -17,26 +17,123 @@
 
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
+#include "luthier/HSA/Agent.h"
 #include "luthier/HSA/CodeObjectReader.h"
 #include "luthier/HSA/Executable.h"
 #include "luthier/HSA/HsaError.h"
 #include "luthier/HSA/LoadedCodeObject.h"
+#include "luthier/HSA/Memory.h"
 #include "luthier/HSATooling/DeviceToolCodeLoader.h"
 #include "luthier/Linker/Linker.h"
 #include "luthier/Object/AMDGCNObjectFile.h"
 
+#include <cstring>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/BinaryFormat/ELF.h>
+#include <llvm/Object/ObjectFile.h>
 #include <llvm/Object/SymbolicFile.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/SmallVectorMemoryBuffer.h>
+#include <vector>
 
 #define DEBUG_TYPE "luthier-instrumented-kernel-loader-and-launcher"
 
 namespace luthier {
+
+namespace {
+
+/// Scan \p Obj for the \c __luthier_kernarg_layout symbol emitted by
+/// \c TargetModulePatcherPass and deserialize the \c CustomKernargLayout POD it
+/// anchors. Mirrors \c DeviceToolCodeLoader's \c readSubtargetMarker symbol
+/// scan. Returns \c std::nullopt when the object carries no such record (the
+/// kernel does not use a custom kernarg buffer).
+std::optional<CustomKernargLayout>
+readCustomKernargLayout(const llvm::object::ObjectFile &Obj) {
+  for (const auto &Sym : Obj.symbols()) {
+    auto NameOrErr = Sym.getName();
+    if (!NameOrErr) {
+      llvm::consumeError(NameOrErr.takeError());
+      continue;
+    }
+    if (*NameOrErr != CustomKernargLayoutGlobalName)
+      continue;
+    auto SecOrErr = Sym.getSection();
+    if (!SecOrErr) {
+      llvm::consumeError(SecOrErr.takeError());
+      return std::nullopt;
+    }
+    auto SecIt = *SecOrErr;
+    if (SecIt == Obj.section_end())
+      return std::nullopt;
+    auto ContentsOrErr = SecIt->getContents();
+    if (!ContentsOrErr) {
+      llvm::consumeError(ContentsOrErr.takeError());
+      return std::nullopt;
+    }
+    auto AddrOrErr = Sym.getAddress();
+    if (!AddrOrErr) {
+      llvm::consumeError(AddrOrErr.takeError());
+      return std::nullopt;
+    }
+    uint64_t Off = *AddrOrErr - SecIt->getAddress();
+    if (Off + sizeof(CustomKernargLayout) > ContentsOrErr->size())
+      return std::nullopt;
+    CustomKernargLayout Layout{};
+    std::memcpy(&Layout, ContentsOrErr->data() + Off,
+                sizeof(CustomKernargLayout));
+    if (Layout.Magic != CustomKernargLayoutMagic ||
+        Layout.Version != CustomKernargLayoutVersion)
+      return std::nullopt;
+    return Layout;
+  }
+  return std::nullopt;
+}
+
+/// Construct the ROCclr-style COV5 hidden/implicit kernel arguments for \p P
+/// into the \p ImplicitSize-byte region at \p Impl. Mirrors the host-side
+/// hidden-arg construction ROCclr performs when reusing the application's
+/// kernarg buffer. Pointer-valued hidden args (hostcall buffer, heap, queues,
+/// multigrid sync, completion action) are left zero — they are provisioned by
+/// the deferred host-call work, not by this kernel-argument framework.
+void fillCov5ImplicitArgs(uint8_t *Impl, size_t ImplicitSize,
+                          const hsa_kernel_dispatch_packet_t &P) {
+  std::memset(Impl, 0, ImplicitSize);
+  auto Wr32 = [&](uint32_t Off, uint32_t V) {
+    if (Off + sizeof(uint32_t) <= ImplicitSize)
+      std::memcpy(Impl + Off, &V, sizeof(uint32_t));
+  };
+  auto Wr16 = [&](uint32_t Off, uint16_t V) {
+    if (Off + sizeof(uint16_t) <= ImplicitSize)
+      std::memcpy(Impl + Off, &V, sizeof(uint16_t));
+  };
+  const uint16_t WgX = P.workgroup_size_x;
+  const uint16_t WgY = P.workgroup_size_y;
+  const uint16_t WgZ = P.workgroup_size_z;
+  const uint32_t Gx = P.grid_size_x;
+  const uint32_t Gy = P.grid_size_y;
+  const uint32_t Gz = P.grid_size_z;
+  auto Blocks = [](uint32_t G, uint16_t Wg) -> uint32_t {
+    return Wg ? (G + Wg - 1u) / Wg : 0u;
+  };
+  Wr32(cov5::BlockCountX, Blocks(Gx, WgX));
+  Wr32(cov5::BlockCountY, Blocks(Gy, WgY));
+  Wr32(cov5::BlockCountZ, Blocks(Gz, WgZ));
+  Wr16(cov5::GroupSizeX, WgX);
+  Wr16(cov5::GroupSizeY, WgY);
+  Wr16(cov5::GroupSizeZ, WgZ);
+  Wr16(cov5::RemainderX, WgX ? static_cast<uint16_t>(Gx % WgX) : 0);
+  Wr16(cov5::RemainderY, WgY ? static_cast<uint16_t>(Gy % WgY) : 0);
+  Wr16(cov5::RemainderZ, WgZ ? static_cast<uint16_t>(Gz % WgZ) : 0);
+  const uint16_t Dims = static_cast<uint16_t>(
+      (P.setup >> HSA_KERNEL_DISPATCH_PACKET_SETUP_DIMENSIONS) &
+      ((1u << HSA_KERNEL_DISPATCH_PACKET_SETUP_WIDTH_DIMENSIONS) - 1u));
+  Wr16(cov5::GridDims, Dims);
+}
+
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // Construction / destruction
@@ -78,6 +175,13 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::eraseRecordLocked(
   E = llvm::joinErrors(std::move(E),
                        hsa::codeObjectReaderDestroy(R.Reader, Core));
 
+  // Reclaim any in-flight custom kernarg buffer for this record.
+  if (R.CustomKernargAlloc) {
+    E = llvm::joinErrors(std::move(E),
+                         hsa::memoryFree(Core, R.CustomKernargAlloc));
+    R.CustomKernargAlloc = nullptr;
+  }
+
   ByOriginal.erase(It);
   return E;
 }
@@ -108,7 +212,7 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::unloadInstrumentedIfExists(
   llvm::sys::ScopedWriter W(Mutex);
   LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher] "
                                 "unloadInstrumentedIfExists KD="
-                          << OriginalKD << " preset=" << Preset << "\n");
+                             << OriginalKD << " preset=" << Preset << "\n");
   auto It = ByOriginal.find(Key{OriginalKD, Preset});
   if (It == ByOriginal.end()) {
     LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
@@ -124,7 +228,10 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::unloadInstrumentedIfExists(
 
 llvm::Error InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented(
     hsa_kernel_dispatch_packet_t &Packet, uint64_t Preset) {
-  llvm::sys::ScopedReader R(Mutex);
+  // Writer lock: when the kernel uses a custom kernarg buffer we allocate and
+  // record a per-launch buffer (mutating the record), so the reader lock the
+  // pure-swap path used is not sufficient.
+  llvm::sys::ScopedWriter W(Mutex);
   const auto *KD = reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
       Packet.kernel_object);
   LLVM_DEBUG(
@@ -142,16 +249,71 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented(
         Packet.kernel_object, Preset));
   }
 
-  const InstrumentedRecord &Rec = It->second;
+  InstrumentedRecord &Rec = It->second;
   Packet.kernel_object = Rec.InstrumentedKO;
   Packet.private_segment_size =
       std::max<uint32_t>(Packet.private_segment_size, Rec.PrivateSegmentSize);
   LLVM_DEBUG(luthier::dbgs()
              << "[InstrumentedKernelLoaderAndLauncher]   "
                 "swapped to instrKO=0x"
-                          << llvm::Twine::utohexstr(Rec.InstrumentedKO)
-                          << " privSegSize=" << Packet.private_segment_size
-                          << "\n");
+             << llvm::Twine::utohexstr(Rec.InstrumentedKO)
+             << " privSegSize=" << Packet.private_segment_size << "\n");
+
+  if (Rec.HasCustomKernarg) {
+    if (auto Err = buildCustomKernargBuffer(Rec, Packet))
+      return Err;
+  }
+  return llvm::Error::success();
+}
+
+llvm::Error InstrumentedKernelLoaderAndLauncher::buildCustomKernargBuffer(
+    InstrumentedRecord &Rec, hsa_kernel_dispatch_packet_t &Packet) {
+  const auto Core = CoreApi.getTable();
+  const CustomKernargLayout &L = Rec.KernargLayout;
+
+  // Reclaim the previous launch's buffer. Tools serialize dispatches of a given
+  // kernel and wait on its completion signal before issuing the next, so the
+  // prior buffer is no longer referenced by the device here.
+  if (Rec.CustomKernargAlloc) {
+    llvm::consumeError(hsa::memoryFree(Core, Rec.CustomKernargAlloc));
+    Rec.CustomKernargAlloc = nullptr;
+  }
+
+  auto RegionOrErr = hsa::agentFindKernargRegion(Core, Rec.Agent);
+  LUTHIER_RETURN_ON_ERROR(RegionOrErr.takeError());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      RegionOrErr->has_value(),
+      "custom kernarg: kernel's agent exposes no kernarg region"));
+  hsa_region_t KernargRegion = **RegionOrErr;
+
+  auto AllocOrErr = hsa::memoryAllocate(Core, KernargRegion, L.TotalSize);
+  LUTHIER_RETURN_ON_ERROR(AllocOrErr.takeError());
+  void *CustomBuf = *AllocOrErr;
+
+  // Stage the buffer contents on the host, then copy them into the kernarg
+  // allocation in one shot.
+  std::vector<uint8_t> Stage(L.TotalSize, 0);
+  const uint64_t OrigKernarg =
+      reinterpret_cast<uint64_t>(Packet.kernarg_address);
+  std::memcpy(Stage.data() + L.OrigKernargPtrOffset, &OrigKernarg,
+              sizeof(uint64_t));
+  // Tool explicit args occupy [ExplicitOffset, ExplicitOffset + ExplicitSize);
+  // zero-filled until the explicit-arg declaration API lands (ExplicitSize=0).
+  fillCov5ImplicitArgs(Stage.data() + L.ImplicitOffset,
+                       L.TotalSize - L.ImplicitOffset, Packet);
+
+  if (auto Err = hsa::memoryCopy(Core, CustomBuf, Stage.data(), L.TotalSize)) {
+    llvm::consumeError(hsa::memoryFree(Core, CustomBuf));
+    return Err;
+  }
+
+  Rec.CustomKernargAlloc = CustomBuf;
+  Packet.kernarg_address = CustomBuf;
+  LLVM_DEBUG(luthier::dbgs()
+             << "[InstrumentedKernelLoaderAndLauncher]   custom kernarg buffer "
+                "@"
+             << CustomBuf << " size=" << L.TotalSize << " orig kernarg=0x"
+             << llvm::Twine::utohexstr(OrigKernarg) << "\n");
   return llvm::Error::success();
 }
 
@@ -212,8 +374,8 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::invalidateOriginalExec(
     }
   }
   LLVM_DEBUG(luthier::dbgs()
-             << "[InstrumentedKernelLoaderAndLauncher]   " << Victims.size() << " victim record(s) of "
-                          << ByOriginal.size() << " total\n");
+             << "[InstrumentedKernelLoaderAndLauncher]   " << Victims.size()
+             << " victim record(s) of " << ByOriginal.size() << " total\n");
 
   for (const Key &K : Victims) {
     auto It = ByOriginal.find(K);
@@ -360,7 +522,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   hsa_agent_t Agent = PointerInfo.agentOwner;
   LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
                                 "owning agent "
-                          << Agent.handle << "\n");
+                             << Agent.handle << "\n");
 
   llvm::sys::ScopedWriter W(Mutex);
 
@@ -386,7 +548,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
       LinkedBuf));
   LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
                                 "linked relocatable -> "
-                          << LinkedBuf.size() << " bytes\n");
+                             << LinkedBuf.size() << " bytes\n");
   auto Linked = std::make_unique<llvm::SmallVectorMemoryBuffer>(
       std::move(LinkedBuf), "luthier.instrumented.linked",
       /*RequiresNullTerminator=*/false);
@@ -399,6 +561,16 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   LUTHIER_RETURN_ON_ERROR(ParsedOrErr.takeError());
   std::unique_ptr<object::AMDGCNObjectFile> Parsed = std::move(*ParsedOrErr);
 
+  // Pick up the custom kernarg buffer layout, if the patcher emitted one.
+  std::optional<CustomKernargLayout> KernargLayout =
+      readCustomKernargLayout(*Parsed);
+  LLVM_DEBUG(
+      if (KernargLayout) luthier::dbgs()
+      << "[InstrumentedKernelLoaderAndLauncher]   custom kernarg layout: "
+         "total="
+      << KernargLayout->TotalSize
+      << " implicitOff=" << KernargLayout->ImplicitOffset << "\n");
+
   // The relocatable is expected to contain exactly one kernel function;
   // we make no claim about its name — the codegen pipeline picks it.
   auto KernelSymOrErr = findSingleKernel(*Parsed);
@@ -409,7 +581,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   std::string KDName = KernelName + ".kd";
   LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
                                 "kernel='"
-                          << KernelName << "', KD='" << KDName << "'\n");
+                             << KernelName << "', KD='" << KDName << "'\n");
 
   auto ExternsOrErr = collectExternals(Core, *Parsed, DeviceCode, Agent);
   LUTHIER_RETURN_ON_ERROR(ExternsOrErr.takeError());
@@ -471,8 +643,8 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
 
   LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
                                 "instrumented KO=0x"
-                          << llvm::Twine::utohexstr(*InstrKOOrErr)
-                          << " privSegSize=" << *PrivSizeOrErr << "\n");
+                             << llvm::Twine::utohexstr(*InstrKOOrErr)
+                             << " privSegSize=" << *PrivSizeOrErr << "\n");
 
   InstrumentedRecord Rec;
   Rec.RelocatableBuffer = std::move(Relocatable);
@@ -482,6 +654,10 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   Rec.InstrumentedKO = *InstrKOOrErr;
   Rec.PrivateSegmentSize = *PrivSizeOrErr;
   Rec.Agent = Agent;
+  if (KernargLayout) {
+    Rec.HasCustomKernarg = true;
+    Rec.KernargLayout = *KernargLayout;
+  }
 
   auto [It, Inserted] =
       ByOriginal.try_emplace(Key{OriginalKD, Preset}, std::move(Rec));
@@ -490,7 +666,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
 
   LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
                                 "record inserted; total now "
-                          << ByOriginal.size() << "\n");
+                             << ByOriginal.size() << "\n");
   return InstrSym;
 }
 

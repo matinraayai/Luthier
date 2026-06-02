@@ -34,6 +34,7 @@
 #include "luthier/HSA/ExecutableSymbol.h"
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
 #include "luthier/Rocprofiler/ApiTableWrapperInstaller.h"
+#include "luthier/ToolCodeGen/CustomKernargLayout.h"
 #include <cstdint>
 #include <hsa/hsa.h>
 #include <hsa/hsa_api_trace.h>
@@ -197,6 +198,19 @@ protected:
     uint32_t PrivateSegmentSize{0};
     /// Agent the kernel runs on. Held for diagnostics / future use.
     hsa_agent_t Agent{};
+    /// True when the instrumented object carries a \c .luthier.kernarg_layout
+    /// section — i.e. the kernel is launched with a Luthier-managed custom
+    /// kernarg buffer that \c overrideWithInstrumented must build + fill.
+    bool HasCustomKernarg{false};
+    /// Parsed custom kernarg buffer layout (meaningful iff \c
+    /// HasCustomKernarg).
+    CustomKernargLayout KernargLayout{};
+    /// Most-recent custom kernarg buffer allocated by
+    /// \c overrideWithInstrumented for this record (kernarg-pool memory). Freed
+    /// on the next override (the prior launch has completed by then — tools
+    /// wait on the dispatch's completion signal) and on record teardown. Null
+    /// when no custom buffer is in flight.
+    void *CustomKernargAlloc{nullptr};
   };
 
   /// Cache key — original KD pointer + preset. \c overrideWithInstrumented
@@ -231,6 +245,15 @@ protected:
   /// teardowns succeeded).
   llvm::Error eraseRecordLocked(
       llvm::DenseMap<Key, InstrumentedRecord, KeyDenseMapInfo>::iterator It);
+
+  /// Allocate, fill, and install a Luthier-managed custom kernarg buffer for a
+  /// dispatch of the kernel cached in \p Rec: writes the application's original
+  /// \c kernarg_address into the buffer's first slot, constructs the ROCclr
+  /// COV5 hidden args from \p Packet, repoints \c Packet.kernarg_address at the
+  /// buffer, and stores the allocation in \p Rec for reclamation. Caller must
+  /// hold the writer lock. Only called when \c Rec.HasCustomKernarg.
+  llvm::Error buildCustomKernargBuffer(InstrumentedRecord &Rec,
+                                       hsa_kernel_dispatch_packet_t &Packet);
 };
 
 /// \brief CRTP trait that adds an \c hsa_executable_destroy interceptor

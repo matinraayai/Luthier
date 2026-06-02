@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_INTIRNSIC_INTRINSIC_CALLS_H
 #define LUTHIER_INTIRNSIC_INTRINSIC_CALLS_H
+#include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 
@@ -36,9 +37,9 @@ namespace luthier {
 /// \param Args the arguments to the intrinsic function
 /// \return a \c llvm::CallInst to the intrinsic function
 inline llvm::CallInst *insertCallToIntrinsic(llvm::Module &M,
-                                      llvm::IRBuilderBase &Builder,
-                                      llvm::StringRef IntrinsicName,
-                                      llvm::Type &ReturnType) {
+                                             llvm::IRBuilderBase &Builder,
+                                             llvm::StringRef IntrinsicName,
+                                             llvm::Type &ReturnType) {
   auto &LLVMContext = Builder.getContext();
   /// Construct the intrinsic's LLVM function type and its argument value
   /// list
@@ -71,10 +72,10 @@ inline llvm::CallInst *insertCallToIntrinsic(llvm::Module &M,
 /// \param Args the arguments to the intrinsic function
 /// \return a \c llvm::CallInst to the intrinsic function
 template <typename... IArgs>
-inline llvm::CallInst *insertCallToIntrinsic(llvm::Module &M,
-                                      llvm::IRBuilderBase &Builder,
-                                      llvm::StringRef IntrinsicName,
-                                      llvm::Type &ReturnType, IArgs... Args) {
+inline llvm::CallInst *
+insertCallToIntrinsic(llvm::Module &M, llvm::IRBuilderBase &Builder,
+                      llvm::StringRef IntrinsicName, llvm::Type &ReturnType,
+                      IArgs... Args) {
   auto &LLVMContext = Builder.getContext();
   /// Construct the intrinsic's LLVM function type and its argument value
   /// list
