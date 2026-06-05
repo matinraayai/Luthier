@@ -32,10 +32,17 @@ install(FILES ${CMAKE_BINARY_DIR}/lib/cmake/luthier/LuthierAddClangPlugin.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/luthier)
 
 configure_file(
-        ${CMAKE_SOURCE_DIR}/cmake/modules/LuthierAddTool.cmake
-        ${CMAKE_BINARY_DIR}/lib/cmake/luthier/LuthierAddTool.cmake COPYONLY)
+        ${CMAKE_SOURCE_DIR}/cmake/modules/LuthierCreateOffloadBundle.cmake
+        ${CMAKE_BINARY_DIR}/lib/cmake/luthier/LuthierCreateOffloadBundle.cmake COPYONLY)
 
-install(FILES ${CMAKE_BINARY_DIR}/lib/cmake/luthier/LuthierAddTool.cmake
+install(FILES ${CMAKE_BINARY_DIR}/lib/cmake/luthier/LuthierCreateOffloadBundle.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/luthier)
+
+configure_file(
+        ${CMAKE_SOURCE_DIR}/cmake/modules/FindLLVMSPIRVTranslator.cmake
+        ${CMAKE_BINARY_DIR}/lib/cmake/luthier/FindLLVMSPIRVTranslator.cmake COPYONLY)
+
+install(FILES ${CMAKE_BINARY_DIR}/lib/cmake/luthier/FindLLVMSPIRVTranslator.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/luthier)
 
 # Install Include directories

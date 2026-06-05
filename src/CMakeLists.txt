@@ -13,6 +13,15 @@ find_package(LLVM REQUIRED CONFIG)
 
 find_package(Clang REQUIRED CONFIG)
 
+find_package(LLVMSPIRVTranslator)
+if (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
+    message(STATUS "Found AMD SPIR-V translator: ${LUTHIER_LLVM_SPIRV_TRANSLATOR}")
+else ()
+    message(STATUS "AMD SPIR-V to LLVM translator not found; SPIR-V support disabled "
+            "(set LUTHIER_LLVM_SPIRV_TRANSLATOR_PREFIX_PATH to enable).")
+    add_compile_definitions(LUTHIER_DISABLE_LLVM_SPIRV_TRANSLATOR)
+endif ()
+
 include(LuthierFetchLLVMSrc)
 
 if (NOT IS_DIRECTORY ${LUTHIER_LLVM_SRC_DIR})
