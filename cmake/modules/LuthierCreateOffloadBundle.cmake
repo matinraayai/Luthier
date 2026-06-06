@@ -1,82 +1,75 @@
 include_guard(GLOBAL)
 
 #---------------------------------------------------------------------------
-# Parse one complete offload target ID into the pieces clang and the
-# offload bundler want:
-#   <entry>        e.g. amdgcn-amd-amdhsa--gfx942:xnack+:wavefrontsize64-:cumode-
-#   out_offload    --offload-arch= value: proc[:sramecc±][:xnack±]
-#   out_mflags     standalone clang flags: -m[no-]wavefrontsize64 / -m[no-]cumode
-#   out_label      full bundle target-ID tail: proc[:sramecc±][:xnack±][:wavefrontsize64±][:cumode±]
-#
-# xnack/sramecc live in clang's target-ID feature whitelist, so they ride
-# inside --offload-arch=. wavefrontsize64/cumode are NOT in that whitelist
-# (clang rejects them in the target ID) so they are passed as -m flags; they
-# still appear in the bundle label because the bundler treats labels opaquely
-# and the Luthier loader keys wave/cumode matching off them + the per-slice
-# __luthier_subtarget marker.
+# Extract the following from the isa_string:
+#   <isa_string> e.g. amdgcn-amd-amdhsa--gfx942:xnack+:wavefrontsize64-:cumode-
+#   out_triple e.g. amdgcn-amd-amdhsa
+#   out_offload_arch  offload architecture value for clang: proc[:sramecc±][:xnack±]
+#   out_mflags   standalone clang flags: -m[no-]wavefrontsize64 / -m[no-]cumode
+#   out_label    full bundle target-ID tail: proc[:sramecc±][:xnack±][:wavefrontsize64±][:cumode±]
 #---------------------------------------------------------------------------
-function(_luthier_parse_hip_target entry out_offload out_mflags out_label)
-  # Split triple ("amdgcn-amd-amdhsa") from the target-ID at the empty-env "--".
-  string(FIND "${entry}" "--" _sep)
-  if (_sep EQUAL -1)
+function(luthier_parse_isa_string isa_string out_triple out_offload_arch out_mflags)
+  # Split triple from the target-ID at the empty-env "--".
+  string(FIND "${isa_string}" "--" _SEP)
+  if (_SEP EQUAL -1)
     message(FATAL_ERROR
-            "luthier_create_offload_bundle: target '${entry}' is missing the "
+            "luthier_create_offload_bundle: target '${isa_string}' is missing the "
             "'--<processor>' suffix (expected e.g. amdgcn-amd-amdhsa--gfx942).")
   endif ()
-  string(SUBSTRING "${entry}" 0 ${_sep} _triple)
-  math(EXPR _rest_start "${_sep} + 2")
-  string(SUBSTRING "${entry}" ${_rest_start} -1 _rest)
-  if (NOT _triple STREQUAL "amdgcn-amd-amdhsa")
+  string(SUBSTRING "${isa_string}" 0 ${_SEP} _TRIPLE)
+  math(EXPR _REST_START "${_SEP} + 2")
+  string(SUBSTRING "${isa_string}" ${_REST_START} -1 _REST)
+  # Fail anything other than amdhsa for now.
+  if (NOT _TRIPLE STREQUAL "amdgcn-amd-amdhsa")
     message(FATAL_ERROR
-            "luthier_create_offload_bundle: target '${entry}' has unsupported "
-            "triple '${_triple}' (only amdgcn-amd-amdhsa is supported).")
+            "luthier_create_offload_bundle: target '${isa_string}' has unsupported "
+            "triple '${_TRIPLE}' (only amdgcn-amd-amdhsa is supported for now).")
   endif ()
 
   # proc + feature tokens.
-  string(REPLACE ":" ";" _toks "${_rest}")
-  list(GET _toks 0 _proc)
-  list(REMOVE_AT _toks 0)
+  string(REPLACE ":" ";" _TOKS "${_REST}")
+  list(GET _TOKS 0 _PROC)
+  list(REMOVE_AT _TOKS 0)
 
-  set(_xnack "")
-  set(_sramecc "")
-  set(_wave "")
-  set(_cumode "")
-  set(_mflags "")
-  foreach (_t IN LISTS _toks)
-    string(REGEX MATCH "^(xnack|sramecc|wavefrontsize64|cumode)([+-])$" _m "${_t}")
-    if (NOT _m)
+  set(_XNACK "")
+  set(_SRAMECC "")
+  set(_WAVE "")
+  set(_CUMODE "")
+  set(_MFLAGS "")
+  foreach (_T IN LISTS _TOKS)
+    string(REGEX MATCH "^(xnack|sramecc|wavefrontsize64|cumode)([+-])$" _M "${_T}")
+    if (NOT _M)
       message(FATAL_ERROR
-              "luthier_create_offload_bundle: target '${entry}' has unknown or "
-              "malformed feature '${_t}' (expected <name>+ / <name>- where name "
+              "luthier_create_offload_bundle: target '${isa_string}' has unknown or "
+              "malformed feature '${_T}' (expected <name>+ / <name>- where name "
               "is xnack | sramecc | wavefrontsize64 | cumode).")
     endif ()
-    set(_name "${CMAKE_MATCH_1}")
-    set(_sign "${CMAKE_MATCH_2}")
-    if (_name STREQUAL "xnack")
-      set(_xnack ":xnack${_sign}")
-    elseif (_name STREQUAL "sramecc")
-      set(_sramecc ":sramecc${_sign}")
-    elseif (_name STREQUAL "wavefrontsize64")
-      set(_wave ":wavefrontsize64${_sign}")
-      if (_sign STREQUAL "+")
-        list(APPEND _mflags -mwavefrontsize64)
+    set(_NAME "${CMAKE_MATCH_1}")
+    set(_SIGN "${CMAKE_MATCH_2}")
+    if (_NAME STREQUAL "xnack")
+      set(_XNACK ":xnack${_SIGN}")
+    elseif (_NAME STREQUAL "sramecc")
+      set(_SRAMECC ":sramecc${_SIGN}")
+    elseif (_NAME STREQUAL "wavefrontsize64")
+      set(_WAVE ":wavefrontsize64${_SIGN}")
+      if (_SIGN STREQUAL "+")
+        list(APPEND _MFLAGS -mwavefrontsize64)
       else ()
-        list(APPEND _mflags -mno-wavefrontsize64)
+        list(APPEND _MFLAGS -mno-wavefrontsize64)
       endif ()
     else () # cumode
-      set(_cumode ":cumode${_sign}")
-      if (_sign STREQUAL "+")
-        list(APPEND _mflags -mcumode)
+      set(_CUMODE ":cumode${_SIGN}")
+      if (_SIGN STREQUAL "+")
+        list(APPEND _MFLAGS -mcumode)
       else ()
-        list(APPEND _mflags -mno-cumode)
+        list(APPEND _MFLAGS -mno-cumode)
       endif ()
     endif ()
   endforeach ()
 
-  # AMDGPU canonical order: sramecc, xnack (offload-arch), then our wave/cumode.
-  set(${out_offload} "${_proc}${_sramecc}${_xnack}" PARENT_SCOPE)
-  set(${out_mflags} "${_mflags}" PARENT_SCOPE)
-  set(${out_label} "${_proc}${_sramecc}${_xnack}${_wave}${_cumode}" PARENT_SCOPE)
+  set(${out_offload_arch} "${_PROC}${_SRAMECC}${_XNACK}" PARENT_SCOPE)
+  set(${out_triple} "${_TRIPLE}" PARENT_SCOPE)
+  set(${out_mflags} "${_MFLAGS}" PARENT_SCOPE)
 endfunction()
 
 
@@ -289,24 +282,23 @@ function(luthier_create_offload_bundle target source)
   set(_rebundle_targets "")
   set(_dev_targets "")
   set(_seen_labels "")
-  set(_idx 0)
   foreach (_tgt IN LISTS _DEVICE_ISA_TARGETS)
-    _luthier_parse_hip_target("${_tgt}" _offload _mflags _label)
+    luthier_parse_isa_string("${_tgt}" _triple _offload _mflags)
 
     # Reject duplicate targets up front. Keyed on the canonical label (the
     # parser normalizes feature order), so reordered-feature spellings of the
     # same ISA are caught too — exactly what clang-offload-bundler would reject
     # at bundle time ("Duplicate targets are not allowed").
-    if (_label IN_LIST _seen_labels)
+    if (_tgt IN_LIST _seen_labels)
       message(FATAL_ERROR
               "luthier_create_offload_bundle(${target}): duplicate offload "
-              "target '${_tgt}' (resolves to '${_label}'). Each target may "
+              "target '${_tgt}'. Each target may "
               "appear only once in TARGETS / LUTHIER_HIP_TARGETS / "
               "CMAKE_HIP_ARCHITECTURES.")
     endif ()
-    list(APPEND _seen_labels "${_label}")
+    list(APPEND _seen_labels "${_tgt}")
 
-    set(_slice_tgt "${target}.dev.${_idx}")
+    set(_slice_tgt "${target}-${_tgt}")
     add_library(${_slice_tgt} OBJECT ${_DEV_SOURCE})
     set_target_properties(${_slice_tgt} PROPERTIES HIP_ARCHITECTURES "${_offload}")
     target_compile_options(${_slice_tgt} PRIVATE
@@ -317,8 +309,7 @@ function(luthier_create_offload_bundle target source)
     list(APPEND _dev_targets "${_slice_tgt}")
     list(APPEND _slice_objs "$<TARGET_OBJECTS:${_slice_tgt}>")
     list(APPEND _slice_inputs "--input=$<TARGET_OBJECTS:${_slice_tgt}>")
-    string(APPEND _rebundle_targets ",hipv4-amdgcn-amd-amdhsa--${_label}")
-    math(EXPR _idx "${_idx} + 1")
+    string(APPEND _rebundle_targets ",hipv4-${_tgt}")
   endforeach ()
 
   #---------------------------------------------------------------------------
