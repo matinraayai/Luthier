@@ -145,8 +145,6 @@ endfunction()
 #     [DEVICE_OBJECT_LIBRARIES <var>] # list of per-slice device OBJECT libraries
 #     [BUNDLE_TARGET <var>])          # the custom target that builds the .hipfb
 #
-# The target list is sourced from TARGET_ISAS, else LUTHIER_HIP_TARGETS, else
-# synthesized from CMAKE_HIP_ARCHITECTURES.
 #
 # Requirements:
 #   * `project(... LANGUAGES HIP)`
