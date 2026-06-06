@@ -185,42 +185,37 @@ function(luthier_create_offload_bundle target source)
   # derived from CMAKE_HIP_ARCHITECTURES (one bare target per arch). An empty
   # result is fine as long as the amdgcnspirv slice is emitted (SPIR-V found);
   # if both are empty we error out below rather than bundle nothing.
-  set(_targets "")
+  set(_DEVICE_ISA_TARGETS "")
   if (OFFLOAD_BUNDLE_ARG_TARGET_ISAS)
-    set(_targets "${OFFLOAD_BUNDLE_ARG_TARGET_ISAS}")
+    set(_DEVICE_ISA_TARGETS "${OFFLOAD_BUNDLE_ARG_TARGET_ISAS}")
   elseif (LUTHIER_HIP_TARGETS)
-    set(_targets "${LUTHIER_HIP_TARGETS}")
+    set(_DEVICE_ISA_TARGETS "${LUTHIER_HIP_TARGETS}")
   elseif (CMAKE_HIP_ARCHITECTURES)
-    foreach (_a IN LISTS CMAKE_HIP_ARCHITECTURES)
-      list(APPEND _targets "amdgcn-amd-amdhsa--${_a}")
+    foreach (_ARCH IN LISTS CMAKE_HIP_ARCHITECTURES)
+      list(APPEND _DEVICE_ISA_TARGETS "amdgcn-amd-amdhsa--${_ARCH}")
     endforeach ()
   endif ()
 
   # Source-file naming → intermediates / fatbin.
   get_filename_component(_prefix "${source}" NAME_WE)
-  set(_fatbin "${CMAKE_CURRENT_BINARY_DIR}/${target}.${_prefix}.hipfb")
+  set(_TARGET_FATBIN "${CMAKE_CURRENT_BINARY_DIR}/${target}.${_prefix}.hipfb")
 
-  # Absolute source path (used by both the device and host compiles). Kept as a
-  # one-element list (_abs_sources) for the downstream add_library / copy logic.
+  # Absolute source path for the downstream add_library / copy logic.
   if (IS_ABSOLUTE "${source}")
-    set(_abs_sources "${source}")
+    set(_ABS_SOURCE "${source}")
   else ()
-    set(_abs_sources "${CMAKE_CURRENT_SOURCE_DIR}/${source}")
+    set(_ABS_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/${source}")
   endif ()
 
-  # The device-slice OBJECT libraries compile a COPY of the sources, kept apart
-  # from the originals the host compiles. The host source carries an
+  # The device-slice OBJECT libraries compile a COPY of the source, kept apart
+  # from the original the host compiles. The host source carries an
   # OBJECT_DEPENDS on the fat binary (so it recompiles when the bundle changes);
   # source-file properties are directory-scoped, so if the device slices shared
-  # that source they would inherit the OBJECT_DEPENDS and form a build cycle
-  # (slice object -> fatbin -> slice object). Compiling a copy breaks the share.
-  set(_dev_sources "")
-  foreach (_s IN LISTS _abs_sources)
-    get_filename_component(_sn "${_s}" NAME)
-    set(_dev_copy "${CMAKE_CURRENT_BINARY_DIR}/${target}.dev_tu/${_sn}")
-    configure_file("${_s}" "${_dev_copy}" COPYONLY)
-    list(APPEND _dev_sources "${_dev_copy}")
-  endforeach ()
+  # that source they would inherit the OBJECT_DEPENDS and form a build cycle.
+  # Compiling a copy breaks the share.
+  get_filename_component(_SOURCE_NAME ${_ABS_SOURCE} NAME)
+  set(_DEV_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/${target}.dev_tu/${_SOURCE_NAME}")
+  configure_file(${_ABS_SOURCE} ${_DEV_SOURCE} COPYONLY)
 
   #---------------------------------------------------------------------------
   # Locate the plugins + LuthierTooling.
@@ -230,11 +225,11 @@ function(luthier_create_offload_bundle target source)
   #---------------------------------------------------------------------------
 
   if (TARGET LuthierToolIRCompilationPlugin)
-    set(_ir_plugin "$<TARGET_FILE:LuthierToolIRCompilationPlugin>")
-    set(_ir_plugin_target LuthierToolIRCompilationPlugin)
+    set(_LUTHIER_IR_PLUGIN "$<TARGET_FILE:LuthierToolIRCompilationPlugin>")
+    set(_LUTHIER_IR_PLUGIN_TARGET LuthierToolIRCompilationPlugin)
   elseif (TARGET luthier::LuthierToolIRCompilationPlugin)
-    set(_ir_plugin "$<TARGET_FILE:luthier::LuthierToolIRCompilationPlugin>")
-    set(_ir_plugin_target luthier::LuthierToolIRCompilationPlugin)
+    set(_LUTHIER_IR_PLUGIN "$<TARGET_FILE:luthier::LuthierToolIRCompilationPlugin>")
+    set(_LUTHIER_IR_PLUGIN_TARGET luthier::LuthierToolIRCompilationPlugin)
   else ()
     message(FATAL_ERROR
             "luthier_create_offload_bundle(${target}): "
@@ -242,11 +237,11 @@ function(luthier_create_offload_bundle target source)
   endif ()
 
   if (TARGET LuthierToolCXXCompilationPlugin)
-    set(_cxx_plugin "$<TARGET_FILE:LuthierToolCXXCompilationPlugin>")
-    set(_cxx_plugin_target LuthierToolCXXCompilationPlugin)
+    set(_LUTHIER_CXX_PLUGIN "$<TARGET_FILE:LuthierToolCXXCompilationPlugin>")
+    set(_LUTHIER_CXX_PLUGIN_TARGET LuthierToolCXXCompilationPlugin)
   elseif (TARGET luthier::LuthierToolCXXCompilationPlugin)
-    set(_cxx_plugin "$<TARGET_FILE:luthier::LuthierToolCXXCompilationPlugin>")
-    set(_cxx_plugin_target luthier::LuthierToolCXXCompilationPlugin)
+    set(_LUTHIER_CXX_PLUGIN "$<TARGET_FILE:luthier::LuthierToolCXXCompilationPlugin>")
+    set(_LUTHIER_CXX_PLUGIN_TARGET luthier::LuthierToolCXXCompilationPlugin)
   else ()
     message(FATAL_ERROR
             "luthier_create_offload_bundle(${target}): "
@@ -254,40 +249,27 @@ function(luthier_create_offload_bundle target source)
   endif ()
 
   #---------------------------------------------------------------------------
-  # The helper injects ONLY the Luthier plugins onto each target (IR pass plugin
-  # on every device slice; IR pass plugin + CXX clang plugin on the host) plus
-  # the foundational mode flags that define each compile (--cuda-{device,host}-only,
-  # -emit-llvm / --no-gpu-bundle-output, --offload-arch via HIP_ARCHITECTURES,
-  # -m{wave,cumode}, -fcuda-include-gpubinary). Everything else — include dirs,
-  # -O3, -std=, defines, and any extra flags — is the caller's responsibility on
-  # the returned targets. NOTE: -O3 matters for the instrumentation pipeline
-  # (without it HIP-Clang leaves out-of-line device helpers as pre-RA bodies that
-  # trip resource-usage analysis), so callers will typically want it.
-  #---------------------------------------------------------------------------
-
-  #---------------------------------------------------------------------------
   # Resolve clang-offload-bundler + the host placeholder triple.
   #
   # The bundler is an LLVM-project tool, so look in LLVM_TOOLS_BINARY_DIR
-  # (exported by find_package(LLVM CONFIG)) first, then next to
-  # CMAKE_HIP_COMPILER, then PATH. The host placeholder slot's label uses
-  # clang's own default target triple (the form `host-<triple>` the bundler
+  # (exported by find_package(LLVM CONFIG)) first, then PATH. The host
+  # placeholder slot's label uses clang's own default target triple (the
+  # form `host-<triple>` the bundler
   # emits for the `--cuda-device-only` host stub).
   #---------------------------------------------------------------------------
 
   if (OFFLOAD_BUNDLE_ARG_BUNDLER)
     set(_bundler "${OFFLOAD_BUNDLE_ARG_BUNDLER}")
   else ()
-    get_filename_component(_hipbin "${CMAKE_HIP_COMPILER}" DIRECTORY)
     find_program(LUTHIER_CLANG_OFFLOAD_BUNDLER
             NAMES clang-offload-bundler
-            HINTS ${LLVM_TOOLS_BINARY_DIR} "${_hipbin}"
+            HINTS ${LLVM_TOOLS_BINARY_DIR}
             DOC "clang-offload-bundler used by luthier_create_offload_bundle")
     if (NOT LUTHIER_CLANG_OFFLOAD_BUNDLER)
       message(FATAL_ERROR
               "luthier_create_offload_bundle(${target}): clang-offload-bundler "
               "not found in LLVM_TOOLS_BINARY_DIR ('${LLVM_TOOLS_BINARY_DIR}'), "
-              "next to CMAKE_HIP_COMPILER ('${_hipbin}'), or on PATH. Pass "
+              "or on PATH. Pass "
               "BUNDLER <path> to override.")
     endif ()
     set(_bundler "${LUTHIER_CLANG_OFFLOAD_BUNDLER}")
@@ -329,7 +311,7 @@ function(luthier_create_offload_bundle target source)
   set(_dev_targets "")
   set(_seen_labels "")
   set(_idx 0)
-  foreach (_tgt IN LISTS _targets)
+  foreach (_tgt IN LISTS _DEVICE_ISA_TARGETS)
     _luthier_parse_hip_target("${_tgt}" _offload _mflags _label)
 
     # Reject duplicate targets up front. Keyed on the canonical label (the
@@ -346,14 +328,12 @@ function(luthier_create_offload_bundle target source)
     list(APPEND _seen_labels "${_label}")
 
     set(_slice_tgt "${target}.dev.${_idx}")
-    add_library(${_slice_tgt} OBJECT ${_dev_sources})
+    add_library(${_slice_tgt} OBJECT ${_DEV_SOURCE})
     set_target_properties(${_slice_tgt} PROPERTIES HIP_ARCHITECTURES "${_offload}")
-    # Only the IR pass plugin is injected here; the caller adds include dirs,
-    # -O3/-std, defines, and any extra flags on this target itself.
     target_compile_options(${_slice_tgt} PRIVATE
             --cuda-device-only -emit-llvm --no-gpu-bundle-output
-            ${_mflags} -fpass-plugin=${_ir_plugin})
-    add_dependencies(${_slice_tgt} ${_ir_plugin_target})
+            ${_mflags} -fpass-plugin=${_LUTHIER_IR_PLUGIN})
+    add_dependencies(${_slice_tgt} ${_LUTHIER_IR_PLUGIN_TARGET})
 
     list(APPEND _dev_targets "${_slice_tgt}")
     list(APPEND _slice_objs "$<TARGET_OBJECTS:${_slice_tgt}>")
@@ -376,12 +356,12 @@ function(luthier_create_offload_bundle target source)
   if (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
     set(_spv_target "hip-spirv64-amd-amdhsa--amdgcnspirv")
     set(_spv_tgt "${target}.dev.amdgcnspirv")
-    add_library(${_spv_tgt} OBJECT ${_dev_sources})
+    add_library(${_spv_tgt} OBJECT ${_DEV_SOURCE})
     set_target_properties(${_spv_tgt} PROPERTIES HIP_ARCHITECTURES "amdgcnspirv")
     target_compile_options(${_spv_tgt} PRIVATE
             --cuda-device-only --no-gpu-bundle-output -B "${_spv_dir}"
             -fpass-plugin=${_ir_plugin})
-    add_dependencies(${_spv_tgt} ${_ir_plugin_target})
+    add_dependencies(${_spv_tgt} ${_LUTHIER_IR_PLUGIN_TARGET})
 
     list(APPEND _dev_targets "${_spv_tgt}")
     list(APPEND _slice_objs "$<TARGET_OBJECTS:${_spv_tgt}>")
@@ -411,16 +391,16 @@ function(luthier_create_offload_bundle target source)
   #---------------------------------------------------------------------------
 
   add_custom_command(
-          OUTPUT "${_fatbin}"
+          OUTPUT "${_TARGET_FATBIN}"
           COMMAND "${_bundler}" --type=o
           --targets=${_rebundle_targets}
           --input=/dev/null ${_slice_inputs}
-          --output="${_fatbin}" --bundle-align=8
+          --output="${_TARGET_FATBIN}" --bundle-align=8
           DEPENDS ${_slice_objs}
           COMMENT "luthier_create_offload_bundle(${target}): bundle .hipfb"
           VERBATIM COMMAND_EXPAND_LISTS)
 
-  add_custom_target(${target}-fatbin-dep DEPENDS "${_fatbin}")
+  add_custom_target(${target}-fatbin-dep DEPENDS "${_TARGET_FATBIN}")
 
   #---------------------------------------------------------------------------
   # Host compile → OBJECT library.
@@ -445,10 +425,10 @@ function(luthier_create_offload_bundle target source)
   # OBJECT_DEPENDS on the fatbin makes each object wait for and rebuild with it.
   #---------------------------------------------------------------------------
 
-  add_library(${target} OBJECT ${_abs_sources})
-  set_source_files_properties(${_abs_sources} PROPERTIES
+  add_library(${target} OBJECT ${_ABS_SOURCE})
+  set_source_files_properties(${_ABS_SOURCE} PROPERTIES
           LANGUAGE HIP
-          OBJECT_DEPENDS "${_fatbin}")
+          OBJECT_DEPENDS "${_TARGET_FATBIN}")
   set_target_properties(${target} PROPERTIES HIP_ARCHITECTURES OFF)
 
   # Both plugins are injected on the host: the IR pass plugin (LoadHIPFATBinaryInfoPass)
@@ -456,16 +436,16 @@ function(luthier_create_offload_bundle target source)
   # include dirs, -O3/-std, defines, and any extra flags on this target itself.
   target_compile_options(${target} PRIVATE
           --cuda-host-only -fno-gpu-rdc -fuse-cuid=none
-          "SHELL:-Xclang -fcuda-include-gpubinary -Xclang ${_fatbin}"
+          "SHELL:-Xclang -fcuda-include-gpubinary -Xclang ${_TARGET_FATBIN}"
           -fpass-plugin=${_ir_plugin}
-          -fplugin=${_cxx_plugin})
+          -fplugin=${_LUTHIER_CXX_PLUGIN})
 
   # $<TARGET_FILE:...> compile options and the generated fatbin don't create
   # build-order edges on their own; add them explicitly.
   add_dependencies(${target}
           ${target}-fatbin-dep
-          ${_ir_plugin_target}
-          ${_cxx_plugin_target})
+          ${_LUTHIER_IR_PLUGIN_TARGET}
+          ${_LUTHIER_CXX_PLUGIN_TARGET})
 
   #---------------------------------------------------------------------------
   # Hand the created targets back to the caller (all optional). The caller is
