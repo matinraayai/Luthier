@@ -85,7 +85,7 @@ function(_luthier_parse_hip_target entry out_offload out_mflags out_label)
   set(${out_label} "${_proc}${_sramecc}${_xnack}${_wave}${_cumode}" PARENT_SCOPE)
 endfunction()
 
-#
+
 # Builds an offload bundle object from a single hip source for use with
 # instrumentation passes in Luthier.
 # Unlike normal HIP compilation:
@@ -121,10 +121,11 @@ endfunction()
 #
 # Synopsis:
 #
-#   luthier_create_offload_bundle(<target>
-#     SOURCE <file>               # exactly one HIP source (single-TU tool;
-#                                 # passing more than one is an error)
-#     [TARGETS <isa...>]          # complete offload target IDs to compile
+#   luthier_create_offload_bundle(<target> <source>
+#                                 # <source>: exactly one HIP source file,
+#                                 # passed positionally right after <target>
+#                                 # (single-TU tool).
+#     [TARGET_ISAS <isa...>]      # complete offload target IDs to compile
 #                                 # for, each `triple--proc[:feat±...]`, e.g.
 #                                 # amdgcn-amd-amdhsa--gfx942:xnack-. Overrides
 #                                 # LUTHIER_HIP_TARGETS for this call. When
@@ -142,7 +143,7 @@ endfunction()
 #     [DEVICE_OBJECT_LIBRARIES <var>] # list of per-slice device OBJECT libraries
 #     [BUNDLE_TARGET <var>])          # the custom target that builds the .hipfb
 #
-# The target list is sourced from TARGETS, else LUTHIER_HIP_TARGETS, else
+# The target list is sourced from TARGET_ISAS, else LUTHIER_HIP_TARGETS, else
 # synthesized from CMAKE_HIP_ARCHITECTURES.
 #
 # Requirements:
@@ -155,23 +156,26 @@ endfunction()
 #     LUTHIER_LLVM_SPIRV_TRANSLATOR_PREFIX_PATH cache var). When absent the
 #     amdgcnspirv slice is simply omitted.
 #===----------------------------------------------------------------------===#
-function(luthier_create_offload_bundle target)
+function(luthier_create_offload_bundle target source)
   cmake_parse_arguments(OFFLOAD_BUNDLE_ARG ""
-          "BUNDLER;HOST_OBJECT_LIBRARY;DEVICE_OBJECT_LIBRARIES;BUNDLE_TARGET"
-          "SOURCE;TARGETS;CLANG_ARGS"
+          "BUNDLER;DEVICE_OBJECT_LIBRARIES;BUNDLE_TARGET"
+          "TARGET_ISAS;"
           ${ARGN})
 
-  if (NOT OFFLOAD_BUNDLE_ARG_SOURCE)
-    message(FATAL_ERROR "luthier_create_offload_bundle(${target}): SOURCE required")
+  if (NOT source)
+    message(FATAL_ERROR
+            "luthier_create_offload_bundle(${target}): a HIP source file must be "
+            "passed immediately after <target>.")
   endif ()
   # A tool is a single HIP TU: -fuse-cuid=none forces the unsuffixed __hip_fatbin
-  # symbol, so more than one HIP source would collide on it (and the per-slice
-  # bundler input assumes one object per device library). Reject multiple here.
-  list(LENGTH OFFLOAD_BUNDLE_ARG_SOURCE _nsrc)
-  if (_nsrc GREATER 1)
+  # symbol, so a second HIP source would collide on it (and the per-slice bundler
+  # input assumes one object per device library). The single positional <source>
+  # guarantees one TU; reject any stray extra positional/keyword here.
+  if (OFFLOAD_BUNDLE_ARG_UNPARSED_ARGUMENTS)
     message(FATAL_ERROR
-            "luthier_create_offload_bundle(${target}): SOURCE takes exactly one "
-            "HIP source, got ${_nsrc}: ${OFFLOAD_BUNDLE_ARG_SOURCE}.")
+            "luthier_create_offload_bundle(${target}): unexpected argument(s): "
+            "${OFFLOAD_BUNDLE_ARG_UNPARSED_ARGUMENTS}. Exactly one HIP source is "
+            "passed positionally after <target>.")
   endif ()
   if (NOT CMAKE_HIP_COMPILER)
     message(FATAL_ERROR
@@ -179,13 +183,13 @@ function(luthier_create_offload_bundle target)
             "set — enable HIP via `project(... LANGUAGES HIP)` first.")
   endif ()
 
-  # Resolve the AMDGCN target list: per-call TARGETS > LUTHIER_HIP_TARGETS >
+  # Resolve the AMDGCN target list: per-call TARGET_ISAS > LUTHIER_HIP_TARGETS >
   # derived from CMAKE_HIP_ARCHITECTURES (one bare target per arch). An empty
   # result is fine as long as the amdgcnspirv slice is emitted (SPIR-V found);
   # if both are empty we error out below rather than bundle nothing.
   set(_targets "")
-  if (OFFLOAD_BUNDLE_ARG_TARGETS)
-    set(_targets "${OFFLOAD_BUNDLE_ARG_TARGETS}")
+  if (OFFLOAD_BUNDLE_ARG_TARGET_ISAS)
+    set(_targets "${OFFLOAD_BUNDLE_ARG_TARGET_ISAS}")
   elseif (LUTHIER_HIP_TARGETS)
     set(_targets "${LUTHIER_HIP_TARGETS}")
   elseif (CMAKE_HIP_ARCHITECTURES)
@@ -195,21 +199,16 @@ function(luthier_create_offload_bundle target)
   endif ()
 
   # Source-file naming → intermediates / fatbin.
-  get_filename_component(_prefix "${OFFLOAD_BUNDLE_ARG_SOURCE}" NAME_WE)
+  get_filename_component(_prefix "${source}" NAME_WE)
   set(_fatbin "${CMAKE_CURRENT_BINARY_DIR}/${target}.${_prefix}.hipfb")
 
-  # Absolute source path (used by both the device and host compiles). Exactly
-  # one source (enforced above): the host compile is built with -fuse-cuid=none,
-  # which drops the per-TU fat-binary symbol suffix, so a second HIP TU would
-  # collide on the unsuffixed __hip_fatbin symbol.
-  set(_abs_sources "")
-  foreach (_s IN LISTS OFFLOAD_BUNDLE_ARG_SOURCE)
-    if (IS_ABSOLUTE "${_s}")
-      list(APPEND _abs_sources "${_s}")
-    else ()
-      list(APPEND _abs_sources "${CMAKE_CURRENT_SOURCE_DIR}/${_s}")
-    endif ()
-  endforeach ()
+  # Absolute source path (used by both the device and host compiles). Kept as a
+  # one-element list (_abs_sources) for the downstream add_library / copy logic.
+  if (IS_ABSOLUTE "${source}")
+    set(_abs_sources "${source}")
+  else ()
+    set(_abs_sources "${CMAKE_CURRENT_SOURCE_DIR}/${source}")
+  endif ()
 
   # The device-slice OBJECT libraries compile a COPY of the sources, kept apart
   # from the originals the host compiles. The host source carries an
@@ -278,8 +277,8 @@ function(luthier_create_offload_bundle target)
   # emits for the `--cuda-device-only` host stub).
   #---------------------------------------------------------------------------
 
-  if (OFFLOAD_BUNDLE_A_BUNDLER)
-    set(_bundler "${OFFLOAD_BUNDLE_A_BUNDLER}")
+  if (OFFLOAD_BUNDLE_ARG_BUNDLER)
+    set(_bundler "${OFFLOAD_BUNDLE_ARG_BUNDLER}")
   else ()
     get_filename_component(_hipbin "${CMAKE_HIP_COMPILER}" DIRECTORY)
     find_program(LUTHIER_CLANG_OFFLOAD_BUNDLER
@@ -476,13 +475,13 @@ function(luthier_create_offload_bundle target)
   # these — the helper enforces none.
   #---------------------------------------------------------------------------
 
-  if (OFFLOAD_BUNDLE_A_HOST_OBJECT_LIBRARY)
-    set(${OFFLOAD_BUNDLE_A_HOST_OBJECT_LIBRARY} "${target}" PARENT_SCOPE)
+  if (OFFLOAD_BUNDLE_ARG_HOST_OBJECT_LIBRARY)
+    set(${OFFLOAD_BUNDLE_ARG_HOST_OBJECT_LIBRARY} "${target}" PARENT_SCOPE)
   endif ()
-  if (OFFLOAD_BUNDLE_A_DEVICE_OBJECT_LIBRARIES)
-    set(${OFFLOAD_BUNDLE_A_DEVICE_OBJECT_LIBRARIES} "${_dev_targets}" PARENT_SCOPE)
+  if (OFFLOAD_BUNDLE_ARG_DEVICE_OBJECT_LIBRARIES)
+    set(${OFFLOAD_BUNDLE_ARG_DEVICE_OBJECT_LIBRARIES} "${_dev_targets}" PARENT_SCOPE)
   endif ()
-  if (OFFLOAD_BUNDLE_A_BUNDLE_TARGET)
-    set(${LAT_BUNDLE_TARGET} "${target}-fatbin-dep" PARENT_SCOPE)
+  if (OFFLOAD_BUNDLE_ARG_BUNDLE_TARGET)
+    set(${OFFLOAD_BUNDLE_ARG_BUNDLE_TARGET} "${target}-fatbin-dep" PARENT_SCOPE)
   endif ()
 endfunction()
