@@ -122,7 +122,10 @@ endfunction()
 # Synopsis:
 #
 #   luthier_create_offload_bundle(<target> <source>
-#                                 # <source>: exactly one HIP source file,
+# --- inputs:
+#     <target>:                   # The host file's OBJECT library to be created
+#                                 # by this function.
+#     <source>:                   # exactly one HIP source file,
 #                                 # passed positionally right after <target>
 #                                 # (single-TU tool).
 #     [TARGET_ISAS <isa...>]      # complete offload target IDs to compile
@@ -138,8 +141,7 @@ endfunction()
 #     [BUNDLER <path>]            # override the clang-offload-bundler
 #                                 # path. By default the sibling of
 #                                 # CMAKE_HIP_COMPILER.
-#     # --- outputs (all optional): each names a variable set in the caller ---
-#     [HOST_OBJECT_LIBRARY <var>]     # the host OBJECT library target (= <target>)
+# --- outputs:
 #     [DEVICE_OBJECT_LIBRARIES <var>] # list of per-slice device OBJECT libraries
 #     [BUNDLE_TARGET <var>])          # the custom target that builds the .hipfb
 #
@@ -147,9 +149,7 @@ endfunction()
 # synthesized from CMAKE_HIP_ARCHITECTURES.
 #
 # Requirements:
-#   * `project(... LANGUAGES HIP)` (we read CMAKE_HIP_COMPILER /
-#     CMAKE_HIP_ARCHITECTURES / CMAKE_HIP_STANDARD).
-#   * `find_package(hip REQUIRED)` for `hip::host` and `hip_INCLUDE_DIR`.
+#   * `project(... LANGUAGES HIP)`
 #   * The IR/CXX compilation plugins must be visible (in-tree via Luthier's
 #     own build, or imported via `find_package(luthier ...)`).
 #   * OPTIONAL: the AMD SPIR-V translator (FindLLVMSPIRVTranslator.cmake / the
