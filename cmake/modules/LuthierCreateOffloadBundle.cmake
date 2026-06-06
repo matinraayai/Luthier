@@ -249,17 +249,15 @@ function(luthier_create_offload_bundle target source)
   endif ()
 
   #---------------------------------------------------------------------------
-  # Resolve clang-offload-bundler + the host placeholder triple.
+  # Resolve clang-offload-bundler.
   #
   # The bundler is an LLVM-project tool, so look in LLVM_TOOLS_BINARY_DIR
-  # (exported by find_package(LLVM CONFIG)) first, then PATH. The host
-  # placeholder slot's label uses clang's own default target triple (the
-  # form `host-<triple>` the bundler
+  # (exported by find_package(LLVM CONFIG)) first, then PATH. The bundler
   # emits for the `--cuda-device-only` host stub).
   #---------------------------------------------------------------------------
 
   if (OFFLOAD_BUNDLE_ARG_BUNDLER)
-    set(_bundler "${OFFLOAD_BUNDLE_ARG_BUNDLER}")
+    set(_OFFLOAD_BUNDLER "${OFFLOAD_BUNDLE_ARG_BUNDLER}")
   else ()
     find_program(LUTHIER_CLANG_OFFLOAD_BUNDLER
             NAMES clang-offload-bundler
@@ -272,7 +270,7 @@ function(luthier_create_offload_bundle target source)
               "or on PATH. Pass "
               "BUNDLER <path> to override.")
     endif ()
-    set(_bundler "${LUTHIER_CLANG_OFFLOAD_BUNDLER}")
+    set(_OFFLOAD_BUNDLER "${LUTHIER_CLANG_OFFLOAD_BUNDLER}")
   endif ()
 
   # AMD SPIR-V translator (amd-llvm-spirv) — OPTIONAL. Located by
@@ -284,25 +282,12 @@ function(luthier_create_offload_bundle target source)
     find_package(LLVMSPIRVTranslator QUIET)
   endif ()
   if (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
-    get_filename_component(_spv_dir "${LUTHIER_LLVM_SPIRV_TRANSLATOR}" DIRECTORY)
+    get_filename_component(_SPIRV_DIR "${LUTHIER_LLVM_SPIRV_TRANSLATOR}" DIRECTORY)
   endif ()
 
   #---------------------------------------------------------------------------
   # Per target: a HIP OBJECT library that device-compiles the (copied) source
-  # straight to LLVM bitcode with `-emit-llvm`. The IR pass plugin still runs
-  # (its EP-callback passes fire in the optimization pipeline, embedding the
-  # IModule and the __luthier_subtarget marker), but the AMDGPU backend /
-  # assembler / linker do not.
-  #
-  # NOTE: despite the `.o` filename CMake gives them, the objects produced by
-  # these device OBJECT libraries are NOT object files — they are raw LLVM
-  # bitcode (and SPIR-V for the amdgcnspirv slice, below). They must never be
-  # linked; they are only ever fed to clang-offload-bundler, which dispatches on
-  # the file's magic bytes rather than its extension. CMake has no per-target
-  # knob to change the object extension, so the `.o` name is cosmetic.
-  #
-  # The arch + xnack/sramecc ride in HIP_ARCHITECTURES (-> --offload-arch=);
-  # wave/cumode are -m flags (frontend target attributes).
+  # straight to LLVM bitcode with `-emit-llvm` + tool IR pass plugin.
   #---------------------------------------------------------------------------
 
   set(_slice_objs "")
@@ -347,7 +332,7 @@ function(luthier_create_offload_bundle target source)
   # requested arch list, for the runtime SPIR-V -> AMDGCN JIT fallback. Skipped
   # when the SPIR-V translator was not found (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND).
   # `--no-gpu-bundle-output` makes clang emit raw SPIR-V (no __CLANG_OFFLOAD_BUNDLE__
-  # wrapper); `-B${_spv_dir}` lets clang exec the SPIR-V translator. The object
+  # wrapper); `-B${_SPIRV_DIR}` lets clang exec the SPIR-V translator. The object
   # is SPIR-V (again, not an object file despite the `.o` name). Its bundle label
   # is `hip-spirv64-amd-amdhsa--amdgcnspirv` (the `hip-` kind prefix + `spirv64`
   # triple, distinct from the native `hipv4-amdgcn-...` slices).
@@ -359,7 +344,7 @@ function(luthier_create_offload_bundle target source)
     add_library(${_spv_tgt} OBJECT ${_DEV_SOURCE})
     set_target_properties(${_spv_tgt} PROPERTIES HIP_ARCHITECTURES "amdgcnspirv")
     target_compile_options(${_spv_tgt} PRIVATE
-            --cuda-device-only --no-gpu-bundle-output -B "${_spv_dir}"
+            --cuda-device-only --no-gpu-bundle-output -B "${_SPIRV_DIR}"
             -fpass-plugin=${_ir_plugin})
     add_dependencies(${_spv_tgt} ${_LUTHIER_IR_PLUGIN_TARGET})
 
@@ -392,7 +377,7 @@ function(luthier_create_offload_bundle target source)
 
   add_custom_command(
           OUTPUT "${_TARGET_FATBIN}"
-          COMMAND "${_bundler}" --type=o
+          COMMAND "${_OFFLOAD_BUNDLER}" --type=o
           --targets=${_rebundle_targets}
           --input=/dev/null ${_slice_inputs}
           --output="${_TARGET_FATBIN}" --bundle-align=8
