@@ -1,73 +1,7 @@
-#===- LuthierCreateOffloadBundle.cmake ----------------------------------===#
+#===- LuthierCreateOffloadBundle.cmake -----------------------------------===#
 # Copyright @ Northeastern University Computer Architecture Lab
 #
 # Licensed under the Apache License, Version 2.0.
-#===----------------------------------------------------------------------===#
-#
-# luthier_create_offload_bundle: build an offload bundle from hip source files
-# for use in Luthier tooling libraries
-#
-# For each requested offload target:
-#   * Device: one HIP OBJECT library per target compiles the source via CMake's
-#     native HIP language with `--cuda-device-only -emit-llvm --no-gpu-bundle-output`,
-#     so its object holds raw LLVM bitcode (the IR pass plugin runs; the AMDGPU
-#     backend does not). If the SPIR-V translator is available
-#     (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND, see FindLLVMSPIRVTranslator.cmake) an
-#     extra amdgcnspirv OBJECT library emits raw SPIR-V; absent, it is skipped.
-#     NOTE: CMake names these objects `*.o`, but they are NOT object files —
-#     they are bitcode / SPIR-V, fed only to clang-offload-bundler (which keys on
-#     content, not extension) and never linked.
-#   * Bundle: packs every slice into a single `.hipfb` clang offload bundle. This
-#     is the only packing step.
-#   * Host: compiles the host side of the same sources through CMake's native
-#     HIP language with the produced `.hipfb` spliced in via
-#     `-fcuda-include-gpubinary`, the IR pass plugin and the CXX clang plugin.
-#
-# The helper creates unlinked OBJECT libraries (the host object plus one device
-# object per slice) and a custom target for the .hipfb. It links nothing and
-# enforces no include/library requirements — the caller wires those up itself
-# on the targets handed back through the optional output arguments below (e.g.
-# `target_include_directories(<host> ...)`, `target_link_libraries(<consumer>
-# PRIVATE <host> hip::host ...)`, `target_sources(other PRIVATE
-# $<TARGET_OBJECTS:<host>>)`).
-#
-# Synopsis:
-#
-#   luthier_create_offload_bundle(<target>
-#     SOURCES <files...>
-#     [TARGETS <isa...>]          # complete offload target IDs to compile
-#                                 # for, each `triple--proc[:feat±...]`, e.g.
-#                                 # amdgcn-amd-amdhsa--gfx942:xnack-. Overrides
-#                                 # LUTHIER_HIP_TARGETS for this call. When
-#                                 # neither is set, derived from
-#                                 # CMAKE_HIP_ARCHITECTURES (one bare target
-#                                 # per arch). xnack/sramecc become target-ID
-#                                 # feature suffixes on --offload-arch;
-#                                 # wavefrontsize64/cumode become standalone
-#                                 # -m flags.
-#     [CLANG_ARGS <flag…>]        # accepted for compatibility but IGNORED —
-#                                 # add extra flags via target_compile_options
-#                                 # on the returned targets instead.
-#     [BUNDLER <path>]            # override the clang-offload-bundler
-#                                 # path. By default the sibling of
-#                                 # CMAKE_HIP_COMPILER.
-#     # --- outputs (all optional): each names a variable set in the caller ---
-#     [HOST_OBJECT_LIBRARY <var>]     # the host OBJECT library target (= <target>)
-#     [DEVICE_OBJECT_LIBRARIES <var>] # list of per-slice device OBJECT libraries
-#     [BUNDLE_TARGET <var>])          # the custom target that builds the .hipfb
-#
-# The target list is sourced from TARGETS, else LUTHIER_HIP_TARGETS, else
-# synthesized from CMAKE_HIP_ARCHITECTURES.
-#
-# Requirements:
-#   * `project(... LANGUAGES HIP)` (we read CMAKE_HIP_COMPILER /
-#     CMAKE_HIP_ARCHITECTURES / CMAKE_HIP_STANDARD).
-#   * `find_package(hip REQUIRED)` for `hip::host` and `hip_INCLUDE_DIR`.
-#   * The IR/CXX compilation plugins must be visible (in-tree via Luthier's
-#     own build, or imported via `find_package(luthier ...)`).
-#   * OPTIONAL: the AMD SPIR-V translator (FindLLVMSPIRVTranslator.cmake / the
-#     LUTHIER_LLVM_SPIRV_TRANSLATOR_PREFIX_PATH cache var). When absent the
-#     amdgcnspirv slice is simply omitted.
 #===----------------------------------------------------------------------===#
 
 include_guard(GLOBAL)
@@ -151,25 +85,93 @@ function(_luthier_parse_hip_target entry out_offload out_mflags out_label)
   set(${out_label} "${_proc}${_sramecc}${_xnack}${_wave}${_cumode}" PARENT_SCOPE)
 endfunction()
 
+#
+# Builds an offload bundle object from a single hip source for use with
+# instrumentation passes in Luthier.
+# Unlike normal HIP compilation:
+# - The LLVM bitcode or SPIR-V file of the device logic is embedded in the
+#   FAT binary instead of its shared object. SPIR-V file of the device logic
+#   is only emitted if the ROCm fork of the SPIR-V LLVM translator is found
+#   or is provided to cmake.
+# - The Luthier IR compiler plugin is applied to the device code's compilation
+#   process for bundled LLVM bitcode slices but not the bundled SPIR-V files
+#   (hence the parsing logic must first apply Luthier's tool device compilation
+#   process itself).
+# - The host portion is compiled with the Luthier CXX and the IR compiler plugins
+#   applied.
+# Note that this utility is necessary because:
+# - There is no way to have clang automatically emit the bitcode and SPIR-V file
+#   of the device logic into the FAT binary.
+# - There is also no way to have clang automatically embed the device code for the
+#   same architecture but with different wavefront or cu modes.
+# The HIP file will have the following targets generated for it:
+#   * Device: one HIP OBJECT library per Luthier target compiles the source via
+#     CMake's native HIP language to generate the LLVM bitcode or SPIR-V file.
+#     NOTE: CMake names these objects `*.o`, but they are NOT object files —
+#     they are bitcode / SPIR-V, fed only to clang-offload-bundler (which keys on
+#     content, not extension) and never linked.
+#   * Bundle: packs every bitcode or SPIR-V slice into a single `.hipfb` clang
+#     offload bundle.
+#   * Host: compiles the host side of the same sources through CMake's native
+#     HIP language with the produced `.hipfb` spliced in via
+#     `-fcuda-include-gpubinary`, and the Luthier CXX and IR pass plugins.
+# Both the device and the host targets are unliked OBJECT libraries, and can
+# be returned to the caller for further customization of their targets e.g.
+# adding include directories and link libraries.
+#
+# Synopsis:
+#
+#   luthier_create_offload_bundle(<target>
+#     SOURCE <file>               # exactly one HIP source (single-TU tool;
+#                                 # passing more than one is an error)
+#     [TARGETS <isa...>]          # complete offload target IDs to compile
+#                                 # for, each `triple--proc[:feat±...]`, e.g.
+#                                 # amdgcn-amd-amdhsa--gfx942:xnack-. Overrides
+#                                 # LUTHIER_HIP_TARGETS for this call. When
+#                                 # neither is set, derived from
+#                                 # CMAKE_HIP_ARCHITECTURES (one bare target
+#                                 # per arch). xnack/sramecc become target-ID
+#                                 # feature suffixes on --offload-arch;
+#                                 # wavefrontsize64/cumode become standalone
+#                                 # -m flags.
+#     [BUNDLER <path>]            # override the clang-offload-bundler
+#                                 # path. By default the sibling of
+#                                 # CMAKE_HIP_COMPILER.
+#     # --- outputs (all optional): each names a variable set in the caller ---
+#     [HOST_OBJECT_LIBRARY <var>]     # the host OBJECT library target (= <target>)
+#     [DEVICE_OBJECT_LIBRARIES <var>] # list of per-slice device OBJECT libraries
+#     [BUNDLE_TARGET <var>])          # the custom target that builds the .hipfb
+#
+# The target list is sourced from TARGETS, else LUTHIER_HIP_TARGETS, else
+# synthesized from CMAKE_HIP_ARCHITECTURES.
+#
+# Requirements:
+#   * `project(... LANGUAGES HIP)` (we read CMAKE_HIP_COMPILER /
+#     CMAKE_HIP_ARCHITECTURES / CMAKE_HIP_STANDARD).
+#   * `find_package(hip REQUIRED)` for `hip::host` and `hip_INCLUDE_DIR`.
+#   * The IR/CXX compilation plugins must be visible (in-tree via Luthier's
+#     own build, or imported via `find_package(luthier ...)`).
+#   * OPTIONAL: the AMD SPIR-V translator (FindLLVMSPIRVTranslator.cmake / the
+#     LUTHIER_LLVM_SPIRV_TRANSLATOR_PREFIX_PATH cache var). When absent the
+#     amdgcnspirv slice is simply omitted.
+#===----------------------------------------------------------------------===#
 function(luthier_create_offload_bundle target)
-  # LIBRARIES is still parsed (so callers that pass it don't have those tokens
-  # swallowed into SOURCES) but is now IGNORED: the helper emits unlinked OBJECT
-  # libraries, so the consumer adds its own include dirs / link dependencies on
-  # the returned targets.
-  #
-  # Output arguments (all optional) — each names a variable set in the caller's
-  # scope so it can wire up includes/links itself:
-  #   HOST_OBJECT_LIBRARY     <var>  : the host-side OBJECT library target.
-  #   DEVICE_OBJECT_LIBRARIES <var>  : list of the per-slice device OBJECT
-  #                                    library targets (incl. amdgcnspirv).
-  #   BUNDLE_TARGET           <var>  : the custom target that builds the .hipfb.
-  cmake_parse_arguments(LAT ""
+  cmake_parse_arguments(OFFLOAD_BUNDLE_ARG ""
           "BUNDLER;HOST_OBJECT_LIBRARY;DEVICE_OBJECT_LIBRARIES;BUNDLE_TARGET"
-          "SOURCES;TARGETS;CLANG_ARGS;LIBRARIES"
+          "SOURCE;TARGETS;CLANG_ARGS"
           ${ARGN})
 
-  if (NOT LAT_SOURCES)
-    message(FATAL_ERROR "luthier_create_offload_bundle(${target}): SOURCES required")
+  if (NOT OFFLOAD_BUNDLE_ARG_SOURCE)
+    message(FATAL_ERROR "luthier_create_offload_bundle(${target}): SOURCE required")
+  endif ()
+  # A tool is a single HIP TU: -fuse-cuid=none forces the unsuffixed __hip_fatbin
+  # symbol, so more than one HIP source would collide on it (and the per-slice
+  # bundler input assumes one object per device library). Reject multiple here.
+  list(LENGTH OFFLOAD_BUNDLE_ARG_SOURCE _nsrc)
+  if (_nsrc GREATER 1)
+    message(FATAL_ERROR
+            "luthier_create_offload_bundle(${target}): SOURCE takes exactly one "
+            "HIP source, got ${_nsrc}: ${OFFLOAD_BUNDLE_ARG_SOURCE}.")
   endif ()
   if (NOT CMAKE_HIP_COMPILER)
     message(FATAL_ERROR
@@ -182,8 +184,8 @@ function(luthier_create_offload_bundle target)
   # result is fine as long as the amdgcnspirv slice is emitted (SPIR-V found);
   # if both are empty we error out below rather than bundle nothing.
   set(_targets "")
-  if (LAT_TARGETS)
-    set(_targets "${LAT_TARGETS}")
+  if (OFFLOAD_BUNDLE_ARG_TARGETS)
+    set(_targets "${OFFLOAD_BUNDLE_ARG_TARGETS}")
   elseif (LUTHIER_HIP_TARGETS)
     set(_targets "${LUTHIER_HIP_TARGETS}")
   elseif (CMAKE_HIP_ARCHITECTURES)
@@ -193,16 +195,15 @@ function(luthier_create_offload_bundle target)
   endif ()
 
   # Source-file naming → intermediates / fatbin.
-  list(GET LAT_SOURCES 0 _first_source)
-  get_filename_component(_prefix "${_first_source}" NAME_WE)
+  get_filename_component(_prefix "${OFFLOAD_BUNDLE_ARG_SOURCE}" NAME_WE)
   set(_fatbin "${CMAKE_CURRENT_BINARY_DIR}/${target}.${_prefix}.hipfb")
 
-  # Absolute source paths (used by both the device and host compiles). The
-  # single-source convention holds because the host compile is built with
-  # -fuse-cuid=none, which drops the per-TU fat-binary symbol suffix — more
-  # than one HIP TU would collide on the unsuffixed __hip_fatbin symbol.
+  # Absolute source path (used by both the device and host compiles). Exactly
+  # one source (enforced above): the host compile is built with -fuse-cuid=none,
+  # which drops the per-TU fat-binary symbol suffix, so a second HIP TU would
+  # collide on the unsuffixed __hip_fatbin symbol.
   set(_abs_sources "")
-  foreach (_s IN LISTS LAT_SOURCES)
+  foreach (_s IN LISTS OFFLOAD_BUNDLE_ARG_SOURCE)
     if (IS_ABSOLUTE "${_s}")
       list(APPEND _abs_sources "${_s}")
     else ()
@@ -277,8 +278,8 @@ function(luthier_create_offload_bundle target)
   # emits for the `--cuda-device-only` host stub).
   #---------------------------------------------------------------------------
 
-  if (LAT_BUNDLER)
-    set(_bundler "${LAT_BUNDLER}")
+  if (OFFLOAD_BUNDLE_A_BUNDLER)
+    set(_bundler "${OFFLOAD_BUNDLE_A_BUNDLER}")
   else ()
     get_filename_component(_hipbin "${CMAKE_HIP_COMPILER}" DIRECTORY)
     find_program(LUTHIER_CLANG_OFFLOAD_BUNDLER
@@ -329,9 +330,23 @@ function(luthier_create_offload_bundle target)
   set(_slice_inputs "")
   set(_rebundle_targets "")
   set(_dev_targets "")
+  set(_seen_labels "")
   set(_idx 0)
   foreach (_tgt IN LISTS _targets)
     _luthier_parse_hip_target("${_tgt}" _offload _mflags _label)
+
+    # Reject duplicate targets up front. Keyed on the canonical label (the
+    # parser normalizes feature order), so reordered-feature spellings of the
+    # same ISA are caught too — exactly what clang-offload-bundler would reject
+    # at bundle time ("Duplicate targets are not allowed").
+    if (_label IN_LIST _seen_labels)
+      message(FATAL_ERROR
+              "luthier_create_offload_bundle(${target}): duplicate offload "
+              "target '${_tgt}' (resolves to '${_label}'). Each target may "
+              "appear only once in TARGETS / LUTHIER_HIP_TARGETS / "
+              "CMAKE_HIP_ARCHITECTURES.")
+    endif ()
+    list(APPEND _seen_labels "${_label}")
 
     set(_slice_tgt "${target}.dev.${_idx}")
     add_library(${_slice_tgt} OBJECT ${_dev_sources})
@@ -461,13 +476,13 @@ function(luthier_create_offload_bundle target)
   # these — the helper enforces none.
   #---------------------------------------------------------------------------
 
-  if (LAT_HOST_OBJECT_LIBRARY)
-    set(${LAT_HOST_OBJECT_LIBRARY} "${target}" PARENT_SCOPE)
+  if (OFFLOAD_BUNDLE_A_HOST_OBJECT_LIBRARY)
+    set(${OFFLOAD_BUNDLE_A_HOST_OBJECT_LIBRARY} "${target}" PARENT_SCOPE)
   endif ()
-  if (LAT_DEVICE_OBJECT_LIBRARIES)
-    set(${LAT_DEVICE_OBJECT_LIBRARIES} "${_dev_targets}" PARENT_SCOPE)
+  if (OFFLOAD_BUNDLE_A_DEVICE_OBJECT_LIBRARIES)
+    set(${OFFLOAD_BUNDLE_A_DEVICE_OBJECT_LIBRARIES} "${_dev_targets}" PARENT_SCOPE)
   endif ()
-  if (LAT_BUNDLE_TARGET)
+  if (OFFLOAD_BUNDLE_A_BUNDLE_TARGET)
     set(${LAT_BUNDLE_TARGET} "${target}-fatbin-dep" PARENT_SCOPE)
   endif ()
 endfunction()
