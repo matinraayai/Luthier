@@ -144,7 +144,7 @@ endfunction()
 function(luthier_create_offload_bundle target source)
   cmake_parse_arguments(OFFLOAD_BUNDLE_ARG ""
           "BUNDLER;DEVICE_OBJECT_LIBRARIES;BUNDLE_TARGET"
-          "TARGET_ISAS;"
+          "TARGET_ISAS"
           ${ARGN})
 
   if (NOT source)
@@ -152,10 +152,7 @@ function(luthier_create_offload_bundle target source)
             "luthier_create_offload_bundle(${target}): a HIP source file must be "
             "passed immediately after <target>.")
   endif ()
-  # A tool is a single HIP TU: -fuse-cuid=none forces the unsuffixed __hip_fatbin
-  # symbol, so a second HIP source would collide on it (and the per-slice bundler
-  # input assumes one object per device library). The single positional <source>
-  # guarantees one TU; reject any stray extra positional/keyword here.
+  # Reject any stray extra positional/keyword here.
   if (OFFLOAD_BUNDLE_ARG_UNPARSED_ARGUMENTS)
     message(FATAL_ERROR
             "luthier_create_offload_bundle(${target}): unexpected argument(s): "
@@ -285,13 +282,33 @@ function(luthier_create_offload_bundle target source)
   foreach (_TARGET_ISA IN LISTS _DEVICE_ISA_TARGETS)
     luthier_parse_isa_string(${_TARGET_ISA} _TRIPLE _OFFLOAD _MFLAGS)
 
-    # Skip duplicate ISAs
-    if (_TARGET_ISA IN_LIST _SEEN_LABELS)
+    # Canonical label of the target ISA, used for dedup. _OFFLOAD already lists
+    # xnack/sramecc in canonical order; sorting the wave/cumode -m flags makes
+    # feature reorderings of the same ISA (e.g. wavefrontsize64+:cumode- vs
+    # cumode-:wavefrontsize64+) compare equal. Spaces (not ';') keep it a single
+    # list element so IN_LIST / list(APPEND) treat it atomically.
+    set(_SORTED_MFLAGS "${_MFLAGS}")
+    list(SORT _SORTED_MFLAGS)
+    string(REPLACE ";" " " _SORTED_MFLAGS "${_SORTED_MFLAGS}")
+    set(_CANONICAL_LABEL "${_TRIPLE}--${_OFFLOAD} ${_SORTED_MFLAGS}")
+    if (_CANONICAL_LABEL IN_LIST _SEEN_LABELS)
       continue()
     endif ()
-    list(APPEND _SEEN_LABELS "${_TARGET_ISA}")
 
-    set(_SLICE_TGT "${target}-${_TARGET_ISA}")
+    list(APPEND _SEEN_LABELS "${_CANONICAL_LABEL}")
+
+    # Sanitize the ISA into a valid CMake target-name suffix: spell the subtarget
+    # feature signs as _on/_off and turn the ':' separators into '_'. The +/-
+    # replacements are anchored on the feature name, so the triple's dashes
+    # (amdgcn-amd-amdhsa--) are left intact.
+    set(_SANITIZED_TARGET_ISA "${_TARGET_ISA}")
+    string(REGEX REPLACE "(xnack|sramecc|wavefrontsize64|cumode)\\+" "\\1_on"
+            _SANITIZED_TARGET_ISA "${_SANITIZED_TARGET_ISA}")
+    string(REGEX REPLACE "(xnack|sramecc|wavefrontsize64|cumode)-" "\\1_off"
+            _SANITIZED_TARGET_ISA "${_SANITIZED_TARGET_ISA}")
+    string(REGEX REPLACE ":" "_" _SANITIZED_TARGET_ISA "${_SANITIZED_TARGET_ISA}")
+
+    set(_SLICE_TGT "${target}-${_SANITIZED_TARGET_ISA}")
     add_library(${_SLICE_TGT} OBJECT ${_DEV_SOURCE})
     set_target_properties(${_SLICE_TGT} PROPERTIES HIP_ARCHITECTURES "${_OFFLOAD}")
     target_compile_options(${_SLICE_TGT} PRIVATE
@@ -302,7 +319,7 @@ function(luthier_create_offload_bundle target source)
     list(APPEND _DEV_TARGETS "${_SLICE_TGT}")
     list(APPEND _SLICE_OBJS "$<TARGET_OBJECTS:${_SLICE_TGT}>")
     list(APPEND _REBUNDLE_SLICE_INPUTS "--input=$<TARGET_OBJECTS:${_SLICE_TGT}>")
-    string(APPEND _REBUNDLE_TARGET_ISAS ",hipv4-${_TARGET_ISA}")
+    list(APPEND _REBUNDLE_TARGET_ISAS "hipv4-${_TARGET_ISA}")
   endforeach ()
 
   #---------------------------------------------------------------------------
@@ -318,13 +335,13 @@ function(luthier_create_offload_bundle target source)
     set_target_properties(${_SPIRV_TARGET} PROPERTIES HIP_ARCHITECTURES "amdgcnspirv")
     target_compile_options(${_SPIRV_TARGET} PRIVATE
             --cuda-device-only --no-gpu-bundle-output -B "${_SPIRV_DIR}"
-            -fpass-plugin=${_ir_plugin})
+            -fpass-plugin=${_LUTHIER_IR_PLUGIN})
     add_dependencies(${_SPIRV_TARGET} ${_LUTHIER_IR_PLUGIN_TARGET})
 
     list(APPEND _DEV_TARGETS "${_SPIRV_TARGET}")
     list(APPEND _SLICE_OBJS "$<TARGET_OBJECTS:${_SPIRV_TARGET}>")
     list(APPEND _REBUNDLE_SLICE_INPUTS "--input=$<TARGET_OBJECTS:${_SPIRV_TARGET}>")
-    string(APPEND _REBUNDLE_TARGET_ISAS ",${_SPIRV_TARGET_ISA}")
+    list(APPEND _REBUNDLE_TARGET_ISAS "${_SPIRV_TARGET_ISA}")
   else ()
     message(STATUS
             "luthier_create_offload_bundle(${target}): SPIR-V translator not "
@@ -336,9 +353,11 @@ function(luthier_create_offload_bundle target source)
             "luthier_create_offload_bundle(${target}): no device slices to "
             "bundle — the resolved target list is empty and the SPIR-V slice is "
             "unavailable. Set CMAKE_HIP_ARCHITECTURES / LUTHIER_HIP_TARGETS / "
-            "TARGETS, or enable SPIR-V via LUTHIER_LLVM_SPIRV_TRANSLATOR_PREFIX_PATH.")
+            "TARGET_ISAS, or enable SPIR-V via LUTHIER_LLVM_SPIRV_TRANSLATOR_PREFIX_PATH.")
   endif ()
 
+  # Join the list of target ISAs for the bundle target argument
+  list(JOIN _REBUNDLE_TARGET_ISAS "," _REBUNDLE_TARGET_ISAS)
   #---------------------------------------------------------------------------
   # Bundle the device slices (bitcode for the AMDGCN targets, SPIR-V for the
   # amdgcnspirv target)  into the final .hipfb — the one and only packing step.
@@ -349,7 +368,7 @@ function(luthier_create_offload_bundle target source)
           OUTPUT "${_TARGET_FATBIN}"
           COMMAND "${_OFFLOAD_BUNDLER}" --type=o
           --targets=${_REBUNDLE_TARGET_ISAS}
-          --input=/dev/null ${_REBUNDLE_SLICE_INPUTS}
+          ${_REBUNDLE_SLICE_INPUTS}
           --output="${_TARGET_FATBIN}" --bundle-align=8
           DEPENDS ${_SLICE_OBJS}
           COMMENT "luthier_create_offload_bundle(${target}): bundle .hipfb"
@@ -384,7 +403,7 @@ function(luthier_create_offload_bundle target source)
   target_compile_options(${target} PRIVATE
           --cuda-host-only -fno-gpu-rdc -fuse-cuid=none
           "SHELL:-Xclang -fcuda-include-gpubinary -Xclang ${_TARGET_FATBIN}"
-          -fpass-plugin=${_ir_plugin}
+          -fpass-plugin=${_LUTHIER_IR_PLUGIN}
           -fplugin=${_LUTHIER_CXX_PLUGIN})
 
   add_dependencies(${target}
@@ -395,10 +414,6 @@ function(luthier_create_offload_bundle target source)
   #---------------------------------------------------------------------------
   # Hand the created targets back to the caller if requested.
   #---------------------------------------------------------------------------
-
-  if (OFFLOAD_BUNDLE_ARG_HOST_OBJECT_LIBRARY)
-    set(${OFFLOAD_BUNDLE_ARG_HOST_OBJECT_LIBRARY} "${target}" PARENT_SCOPE)
-  endif ()
   if (OFFLOAD_BUNDLE_ARG_DEVICE_OBJECT_LIBRARIES)
     set(${OFFLOAD_BUNDLE_ARG_DEVICE_OBJECT_LIBRARIES} "${_DEV_TARGETS}" PARENT_SCOPE)
   endif ()
