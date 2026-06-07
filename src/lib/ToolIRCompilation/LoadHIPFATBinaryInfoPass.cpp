@@ -121,17 +121,15 @@ static llvm::Error populateArrayRefSlot(
     /// same payload but having one GV per slot keeps mangling simple and
     /// lets each ArrayRef view its own storage cleanly.
     auto *Data = new llvm::GlobalVariable(
-        M, ArrayTy, /*isConstant=*/true,
-        llvm::GlobalValue::PrivateLinkage, DataInit,
-        ".luthier.loader." + Name + ".data");
+        M, ArrayTy, /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage,
+        DataInit, ".luthier.loader." + Name + ".data");
     llvm::Constant *DataPtr = Data;
     if (DataPtr->getType() != SlotTy->getElementType(0))
-      DataPtr = llvm::ConstantExpr::getBitCast(
-          DataPtr, SlotTy->getElementType(0));
+      DataPtr =
+          llvm::ConstantExpr::getBitCast(DataPtr, SlotTy->getElementType(0));
     llvm::Constant *Init = llvm::ConstantStruct::get(
-        SlotTy,
-        {DataPtr, llvm::ConstantInt::get(llvm::Type::getInt64Ty(C),
-                                         TempArr.size())});
+        SlotTy, {DataPtr, llvm::ConstantInt::get(llvm::Type::getInt64Ty(C),
+                                                 TempArr.size())});
     OldVar->setInitializer(Init);
     OldVar->setConstant(true);
   }
@@ -310,10 +308,10 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
     // HIP-Clang's dual-emission gives `__hip_fatbin` a fully-typed
     // `[N x i8]` initializer in the SAME TU as the
     // `__hipRegisterFatBinary` call, so the size is visible at IR time.
-    // `luthier_add_tool`'s split-compile design separates the bytes
-    // (a generated C TU) from the registration (the user's --cuda-host-only
-    // TU), leaving `__hip_fatbin` as `external constant i8` here — no
-    // ArrayType, no compile-time size. In that case emit Size=0 and let
+    // `luthier_create_offload_bundle`'s split-compile design can leave the
+    // bytes separate from the registration TU, leaving `__hip_fatbin` as
+    // `external constant i8` here — no ArrayType, no compile-time size. In
+    // that case emit Size=0 and let
     // the loader discover the bundle extent at runtime by walking the
     // `.hip_fatbin` ELF section that contains the BundleGV's address.
     uint64_t Size = 0;
@@ -323,8 +321,7 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
              ArrTy->getElementType()->getScalarSizeInBits() / 8;
     }
     FatBinInfos.push_back(llvm::ConstantStruct::get(
-        FatBinInfoTy,
-        {BundleGV, llvm::ConstantInt::get(I64Ty, Size)}));
+        FatBinInfoTy, {BundleGV, llvm::ConstantInt::get(I64Ty, Size)}));
   }
   LUTHIER_REPORT_FATAL_ON_ERROR(populateArrayRefSlot(
       HipFatBinariesAttr, FatBinInfoTy, FatBinInfos, M, NameToVar));
@@ -470,8 +467,7 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
             llvm::dyn_cast<llvm::Constant>(CB->getArgOperand(2));
         auto *ConstName = llvm::dyn_cast<llvm::Constant>(CB->getArgOperand(3));
         auto *ConstSize = llvm::dyn_cast<llvm::Constant>(CB->getArgOperand(4));
-        auto *ConstAlign =
-            llvm::dyn_cast<llvm::Constant>(CB->getArgOperand(5));
+        auto *ConstAlign = llvm::dyn_cast<llvm::Constant>(CB->getArgOperand(5));
         if (ConstPtr && ConstInitValue && ConstName && ConstSize && ConstAlign)
           ManagedVars.push_back(llvm::ConstantStruct::get(
               ManagedVarTy,
@@ -479,13 +475,13 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
       }
     }
     LUTHIER_REPORT_FATAL_ON_ERROR(populateArrayRefSlot(
-        HipManagedVarsAttr, ManagedVarTy, ManagedVars, M,
-        NameToVar));
+        HipManagedVarsAttr, ManagedVarTy, ManagedVars, M, NameToVar));
   }
 
   if (RDV) {
     llvm::StructType *VarInfoTy = getOrCreateStruct(
-        "struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceVarInfo", {PtrTy, PtrTy});
+        "struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceVarInfo",
+        {PtrTy, PtrTy});
     llvm::SmallVector<llvm::Constant *, 10> DeviceVars{};
     for (llvm::User *U : RDV->users()) {
       if (auto *CB = llvm::dyn_cast<llvm::CallBase>(U)) {
@@ -497,13 +493,13 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
       }
     }
     LUTHIER_REPORT_FATAL_ON_ERROR(populateArrayRefSlot(
-        HipDeviceVarsAttr, VarInfoTy, DeviceVars, M,
-        NameToVar));
+        HipDeviceVarsAttr, VarInfoTy, DeviceVars, M, NameToVar));
   }
 
   if (RTX) {
     llvm::StructType *TextureInfoTy = getOrCreateStruct(
-        "struct.luthier::DeviceToolCodeFatBinaryLoader::HipTextureInfo", {PtrTy, PtrTy});
+        "struct.luthier::DeviceToolCodeFatBinaryLoader::HipTextureInfo",
+        {PtrTy, PtrTy});
     llvm::SmallVector<llvm::Constant *, 10> Textures{};
     for (llvm::User *U : RTX->users()) {
       if (auto *CB = llvm::dyn_cast<llvm::CallBase>(U)) {
@@ -515,13 +511,13 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
       }
     }
     LUTHIER_REPORT_FATAL_ON_ERROR(populateArrayRefSlot(
-        HipTextureVarsAttr, TextureInfoTy, Textures, M,
-        NameToVar));
+        HipTextureVarsAttr, TextureInfoTy, Textures, M, NameToVar));
   }
 
   if (RSF) {
     llvm::StructType *SurfaceInfoTy = getOrCreateStruct(
-        "struct.luthier::DeviceToolCodeFatBinaryLoader::HipSurfaceInfo", {PtrTy, PtrTy});
+        "struct.luthier::DeviceToolCodeFatBinaryLoader::HipSurfaceInfo",
+        {PtrTy, PtrTy});
     llvm::SmallVector<llvm::Constant *, 10> Surfaces{};
     for (llvm::User *U : RSF->users()) {
       if (auto *CB = llvm::dyn_cast<llvm::CallBase>(U)) {
@@ -533,8 +529,7 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
       }
     }
     LUTHIER_REPORT_FATAL_ON_ERROR(populateArrayRefSlot(
-        HipSurfaceVarsAttr, SurfaceInfoTy, Surfaces, M,
-        NameToVar));
+        HipSurfaceVarsAttr, SurfaceInfoTy, Surfaces, M, NameToVar));
   }
   /// Make sure we remove the hip module Ctor from  llvm.global_ctors, not doing
   /// so the function cannot be deleted since it still would have a use

@@ -25,9 +25,9 @@
 #include <llvm/TableGen/Main.h>
 #include <llvm/TableGen/TableGenBackend.h>
 
-int main(int argc, char *argv[]) {
-  llvm::InitLLVM Y(argc, argv);
-  llvm::PrettyStackTraceProgram X(argc, argv);
+int main(int Argc, char *Argv[]) {
+  llvm::InitLLVM Y(Argc, Argv);
+  llvm::PrettyStackTraceProgram X(Argc, Argv);
   llvm::TableGen::Emitter::Opt RealToPseudoOpcodeOption(
       "gen-si-real-to-pseudo-opcode-map", luthier::emitRealToPseudoOpcodeTable,
       "Generate a Real to Pseudo Opcode map for the AMDGPU backend");
@@ -39,8 +39,8 @@ int main(int argc, char *argv[]) {
       "gen-si-instr-semantics", luthier::emitSIInstrSemantics,
       "Generate functions to translate every pseudo-physical machine "
       "instruction for the AMDGPU backend to its LLVM IR equivalent");
-  llvm::cl::ParseCommandLineOptions(argc, argv);
+  llvm::cl::ParseCommandLineOptions(Argc, Argv);
   return llvm::TableGenMain(
-      argv[0],
+      Argv[0],
       [](llvm::raw_ostream &, const llvm::RecordKeeper &) { return false; });
 }

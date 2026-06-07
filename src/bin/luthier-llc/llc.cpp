@@ -372,9 +372,9 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(Triple::OSType OS) {
 
 // main - Entry point for the llc compiler.
 //
-int main(int argc, char **argv) {
-  InitLLVM X(argc, argv);
-  auto FinalizeLuthierStreams =
+int main(int Argc, char **Argv) {
+  InitLLVM X(Argc, Argv);
+ auto FinalizeLuthierStreams =
       llvm::scope_exit([] { luthier::finalizeStreams(); });
 
   // Enable debug stream buffering.
@@ -424,7 +424,7 @@ int main(int argc, char **argv) {
   cl::AddExtraVersionPrinter(TargetRegistry::printRegisteredTargetsForVersion);
 
   luthier::registerDebugCLOptions();
-  cl::ParseCommandLineOptions(argc, argv, "llvm system compiler\n");
+  cl::ParseCommandLineOptions(Argc, Argv, "llvm system compiler\n");
 
   if (!PassPipeline.empty() && !getRunPassNames().empty()) {
     errs() << "The `llc -run-pass=...` syntax for the new pass manager is "
@@ -434,7 +434,7 @@ int main(int argc, char **argv) {
   }
 
   if (TimeTrace)
-    timeTraceProfilerInitialize(TimeTraceGranularity, argv[0]);
+    timeTraceProfilerInitialize(TimeTraceGranularity, Argv[0]);
   auto TimeTraceScopeExit = make_scope_exit([]() {
     if (TimeTrace) {
       if (auto E = timeTraceProfilerWrite(TimeTraceFile, OutputFilename)) {
@@ -470,7 +470,7 @@ int main(int argc, char **argv) {
   // Compile the module TimeCompilations times to give better compile time
   // metrics.
   for (unsigned I = TimeCompilations; I; --I)
-    if (int RetVal = compileModule(argv, PluginList, Context, OutputFilename))
+    if (int RetVal = compileModule(Argv, PluginList, Context, OutputFilename))
       return RetVal;
 
   if (RemarksFile)
