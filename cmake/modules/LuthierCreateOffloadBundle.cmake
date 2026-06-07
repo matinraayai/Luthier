@@ -6,7 +6,6 @@ include_guard(GLOBAL)
 #   out_triple e.g. amdgcn-amd-amdhsa
 #   out_offload_arch  offload architecture value for clang: proc[:sramecc±][:xnack±]
 #   out_mflags   standalone clang flags: -m[no-]wavefrontsize64 / -m[no-]cumode
-#   out_label    full bundle target-ID tail: proc[:sramecc±][:xnack±][:wavefrontsize64±][:cumode±]
 #---------------------------------------------------------------------------
 function(luthier_parse_isa_string isa_string out_triple out_offload_arch out_mflags)
   # Split triple from the target-ID at the empty-env "--".
@@ -33,8 +32,6 @@ function(luthier_parse_isa_string isa_string out_triple out_offload_arch out_mfl
 
   set(_XNACK "")
   set(_SRAMECC "")
-  set(_WAVE "")
-  set(_CUMODE "")
   set(_MFLAGS "")
   foreach (_T IN LISTS _TOKS)
     string(REGEX MATCH "^(xnack|sramecc|wavefrontsize64|cumode)([+-])$" _M "${_T}")
@@ -51,14 +48,12 @@ function(luthier_parse_isa_string isa_string out_triple out_offload_arch out_mfl
     elseif (_NAME STREQUAL "sramecc")
       set(_SRAMECC ":sramecc${_SIGN}")
     elseif (_NAME STREQUAL "wavefrontsize64")
-      set(_WAVE ":wavefrontsize64${_SIGN}")
       if (_SIGN STREQUAL "+")
         list(APPEND _MFLAGS -mwavefrontsize64)
       else ()
         list(APPEND _MFLAGS -mno-wavefrontsize64)
       endif ()
     else () # cumode
-      set(_CUMODE ":cumode${_SIGN}")
       if (_SIGN STREQUAL "+")
         list(APPEND _MFLAGS -mcumode)
       else ()
@@ -102,7 +97,7 @@ endfunction()
 #   * Host: compiles the host side of the same sources through CMake's native
 #     HIP language with the produced `.hipfb` spliced in via
 #     `-fcuda-include-gpubinary`, and the Luthier CXX and IR pass plugins.
-# Both the device and the host targets are unliked OBJECT libraries, and can
+# Both the device and the host targets are unlinked OBJECT libraries, and can
 # be returned to the caller for further customization of their targets e.g.
 # adding include directories and link libraries.
 #
@@ -126,8 +121,7 @@ endfunction()
 #                                 # wavefrontsize64/cumode become standalone
 #                                 # -m flags.
 #     [BUNDLER <path>]            # override the clang-offload-bundler
-#                                 # path. By default the sibling of
-#                                 # CMAKE_HIP_COMPILER.
+#                                 # path.
 # --- outputs:
 #     [DEVICE_OBJECT_LIBRARIES <var>] # list of per-slice device OBJECT libraries
 #     [BUNDLE_TARGET <var>])          # the custom target that builds the .hipfb
@@ -236,8 +230,7 @@ function(luthier_create_offload_bundle target source)
   # Resolve clang-offload-bundler.
   #
   # The bundler is an LLVM-project tool, so look in LLVM_TOOLS_BINARY_DIR
-  # (exported by find_package(LLVM CONFIG)) first, then PATH. The bundler
-  # emits for the `--cuda-device-only` host stub).
+  # (exported by find_package(LLVM CONFIG)) first, then PATH.
   #---------------------------------------------------------------------------
 
   if (OFFLOAD_BUNDLE_ARG_BUNDLER)
