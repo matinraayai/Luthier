@@ -277,73 +277,61 @@ function(luthier_create_offload_bundle target source)
   # straight to LLVM bitcode with `-emit-llvm` + tool IR pass plugin.
   #---------------------------------------------------------------------------
 
-  set(_slice_objs "")
-  set(_slice_inputs "")
-  set(_rebundle_targets "")
-  set(_dev_targets "")
-  set(_seen_labels "")
-  foreach (_tgt IN LISTS _DEVICE_ISA_TARGETS)
-    luthier_parse_isa_string("${_tgt}" _triple _offload _mflags)
+  set(_SLICE_OBJS "")
+  set(_REBUNDLE_SLICE_INPUTS "")
+  set(_REBUNDLE_TARGET_ISAS "")
+  set(_DEV_TARGETS "")
+  set(_SEEN_LABELS "")
+  foreach (_TARGET_ISA IN LISTS _DEVICE_ISA_TARGETS)
+    luthier_parse_isa_string(${_TARGET_ISA} _TRIPLE _OFFLOAD _MFLAGS)
 
-    # Reject duplicate targets up front. Keyed on the canonical label (the
-    # parser normalizes feature order), so reordered-feature spellings of the
-    # same ISA are caught too — exactly what clang-offload-bundler would reject
-    # at bundle time ("Duplicate targets are not allowed").
-    if (_tgt IN_LIST _seen_labels)
-      message(FATAL_ERROR
-              "luthier_create_offload_bundle(${target}): duplicate offload "
-              "target '${_tgt}'. Each target may "
-              "appear only once in TARGETS / LUTHIER_HIP_TARGETS / "
-              "CMAKE_HIP_ARCHITECTURES.")
+    # Skip duplicate ISAs
+    if (_TARGET_ISA IN_LIST _SEEN_LABELS)
+      continue()
     endif ()
-    list(APPEND _seen_labels "${_tgt}")
+    list(APPEND _SEEN_LABELS "${_TARGET_ISA}")
 
-    set(_slice_tgt "${target}-${_tgt}")
-    add_library(${_slice_tgt} OBJECT ${_DEV_SOURCE})
-    set_target_properties(${_slice_tgt} PROPERTIES HIP_ARCHITECTURES "${_offload}")
-    target_compile_options(${_slice_tgt} PRIVATE
+    set(_SLICE_TGT "${target}-${_TARGET_ISA}")
+    add_library(${_SLICE_TGT} OBJECT ${_DEV_SOURCE})
+    set_target_properties(${_SLICE_TGT} PROPERTIES HIP_ARCHITECTURES "${_OFFLOAD}")
+    target_compile_options(${_SLICE_TGT} PRIVATE
             --cuda-device-only -emit-llvm --no-gpu-bundle-output
-            ${_mflags} -fpass-plugin=${_LUTHIER_IR_PLUGIN})
-    add_dependencies(${_slice_tgt} ${_LUTHIER_IR_PLUGIN_TARGET})
+            ${_MFLAGS} -fpass-plugin=${_LUTHIER_IR_PLUGIN})
+    add_dependencies(${_SLICE_TGT} ${_LUTHIER_IR_PLUGIN_TARGET})
 
-    list(APPEND _dev_targets "${_slice_tgt}")
-    list(APPEND _slice_objs "$<TARGET_OBJECTS:${_slice_tgt}>")
-    list(APPEND _slice_inputs "--input=$<TARGET_OBJECTS:${_slice_tgt}>")
-    string(APPEND _rebundle_targets ",hipv4-${_tgt}")
+    list(APPEND _DEV_TARGETS "${_SLICE_TGT}")
+    list(APPEND _SLICE_OBJS "$<TARGET_OBJECTS:${_SLICE_TGT}>")
+    list(APPEND _REBUNDLE_SLICE_INPUTS "--input=$<TARGET_OBJECTS:${_SLICE_TGT}>")
+    string(APPEND _REBUNDLE_TARGET_ISAS ",hipv4-${_TARGET_ISA}")
   endforeach ()
 
   #---------------------------------------------------------------------------
   # Optionally add an AMD-flavored SPIR-V slice (amdgcnspirv), regardless of the
   # requested arch list, for the runtime SPIR-V -> AMDGCN JIT fallback. Skipped
-  # when the SPIR-V translator was not found (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND).
-  # `--no-gpu-bundle-output` makes clang emit raw SPIR-V (no __CLANG_OFFLOAD_BUNDLE__
-  # wrapper); `-B${_SPIRV_DIR}` lets clang exec the SPIR-V translator. The object
-  # is SPIR-V (again, not an object file despite the `.o` name). Its bundle label
-  # is `hip-spirv64-amd-amdhsa--amdgcnspirv` (the `hip-` kind prefix + `spirv64`
-  # triple, distinct from the native `hipv4-amdgcn-...` slices).
+  # when the SPIR-V translator is not found (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND).
   #---------------------------------------------------------------------------
 
   if (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
-    set(_spv_target "hip-spirv64-amd-amdhsa--amdgcnspirv")
-    set(_spv_tgt "${target}.dev.amdgcnspirv")
-    add_library(${_spv_tgt} OBJECT ${_DEV_SOURCE})
-    set_target_properties(${_spv_tgt} PROPERTIES HIP_ARCHITECTURES "amdgcnspirv")
-    target_compile_options(${_spv_tgt} PRIVATE
+    set(_SPIRV_TARGET_ISA "hip-spirv64-amd-amdhsa--amdgcnspirv")
+    set(_SPIRV_TARGET "${target}-${_SPIRV_TARGET_ISA}")
+    add_library(${_SPIRV_TARGET} OBJECT ${_DEV_SOURCE})
+    set_target_properties(${_SPIRV_TARGET} PROPERTIES HIP_ARCHITECTURES "amdgcnspirv")
+    target_compile_options(${_SPIRV_TARGET} PRIVATE
             --cuda-device-only --no-gpu-bundle-output -B "${_SPIRV_DIR}"
             -fpass-plugin=${_ir_plugin})
-    add_dependencies(${_spv_tgt} ${_LUTHIER_IR_PLUGIN_TARGET})
+    add_dependencies(${_SPIRV_TARGET} ${_LUTHIER_IR_PLUGIN_TARGET})
 
-    list(APPEND _dev_targets "${_spv_tgt}")
-    list(APPEND _slice_objs "$<TARGET_OBJECTS:${_spv_tgt}>")
-    list(APPEND _slice_inputs "--input=$<TARGET_OBJECTS:${_spv_tgt}>")
-    string(APPEND _rebundle_targets ",${_spv_target}")
+    list(APPEND _DEV_TARGETS "${_SPIRV_TARGET}")
+    list(APPEND _SLICE_OBJS "$<TARGET_OBJECTS:${_SPIRV_TARGET}>")
+    list(APPEND _REBUNDLE_SLICE_INPUTS "--input=$<TARGET_OBJECTS:${_SPIRV_TARGET}>")
+    string(APPEND _REBUNDLE_TARGET_ISAS ",${_SPIRV_TARGET_ISA}")
   else ()
     message(STATUS
             "luthier_create_offload_bundle(${target}): SPIR-V translator not "
             "found; skipping the amdgcnspirv slice.")
   endif ()
 
-  if (NOT _slice_objs)
+  if (NOT _SLICE_OBJS)
     message(FATAL_ERROR
             "luthier_create_offload_bundle(${target}): no device slices to "
             "bundle — the resolved target list is empty and the SPIR-V slice is "
@@ -353,35 +341,27 @@ function(luthier_create_offload_bundle target source)
 
   #---------------------------------------------------------------------------
   # Bundle the device slices (bitcode for the AMDGCN targets, SPIR-V for the
-  # amdgcnspirv target) + a /dev/null host placeholder into the final .hipfb —
-  # the one and only packing step. --bundle-align=8 keeps each slice's offset
-  # 8-byte aligned (bitcode itself has no alignment requirement, but the
-  # alignment is harmless and keeps any code-object/SPIR-V slice readable in
-  # place by the loader).
+  # amdgcnspirv target)  into the final .hipfb — the one and only packing step.
+  # --bundle-align=8 is required by the LLVM offload parser.
   #---------------------------------------------------------------------------
 
   add_custom_command(
           OUTPUT "${_TARGET_FATBIN}"
           COMMAND "${_OFFLOAD_BUNDLER}" --type=o
-          --targets=${_rebundle_targets}
-          --input=/dev/null ${_slice_inputs}
+          --targets=${_REBUNDLE_TARGET_ISAS}
+          --input=/dev/null ${_REBUNDLE_SLICE_INPUTS}
           --output="${_TARGET_FATBIN}" --bundle-align=8
-          DEPENDS ${_slice_objs}
+          DEPENDS ${_SLICE_OBJS}
           COMMENT "luthier_create_offload_bundle(${target}): bundle .hipfb"
           VERBATIM COMMAND_EXPAND_LISTS)
 
-  add_custom_target(${target}-fatbin-dep DEPENDS "${_TARGET_FATBIN}")
+  add_custom_target(${target}-fatbin DEPENDS "${_TARGET_FATBIN}")
 
   #---------------------------------------------------------------------------
   # Host compile → OBJECT library.
   #
   # The host side compiles through CMake's native HIP language (the .hip files
-  # build as HIP). We do NOT link it against anything; the result is just the
-  # object file(s), exposed as the OBJECT library `${target}` for the caller to
-  # add to another target (e.g. `target_link_libraries(other PRIVATE ${target})`
-  # or `target_sources(other PRIVATE $<TARGET_OBJECTS:${target}>)`). The caller
-  # is responsible for linking hip::host (resolves __hipRegisterFatBinary et al.)
-  # and any other dependencies.
+  # build as HIP).
   #
   # Flags (per-target; HIP language genex-guarded where multi-token):
   #   HIP_ARCHITECTURES OFF           : no --offload-arch is added — this is a
@@ -390,8 +370,8 @@ function(luthier_create_offload_bundle target source)
   #   -fuse-cuid=none                 : unsuffixed __hip_fatbin symbol names.
   #   -Xclang -fcuda-include-gpubinary -Xclang <fatbin> : embed the bundle
   #       bytes (SHELL: keeps the paired -Xclang from collapsing under de-dup).
-  #   -fpass-plugin=<ir>              : LoadHIPFATBinaryInfoPass.
-  #   -fplugin=<cxx>                  : LUTHIER_HOOK_* AST rewrites.
+  #   -fpass-plugin=<ir>              : IR tool compiler plugin.
+  #   -fplugin=<cxx>                  : CXX tool compiler plugin.
   # OBJECT_DEPENDS on the fatbin makes each object wait for and rebuild with it.
   #---------------------------------------------------------------------------
 
@@ -401,35 +381,28 @@ function(luthier_create_offload_bundle target source)
           OBJECT_DEPENDS "${_TARGET_FATBIN}")
   set_target_properties(${target} PROPERTIES HIP_ARCHITECTURES OFF)
 
-  # Both plugins are injected on the host: the IR pass plugin (LoadHIPFATBinaryInfoPass)
-  # and the CXX clang plugin (LUTHIER_HOOK_* AST rewrites). The caller adds
-  # include dirs, -O3/-std, defines, and any extra flags on this target itself.
   target_compile_options(${target} PRIVATE
           --cuda-host-only -fno-gpu-rdc -fuse-cuid=none
           "SHELL:-Xclang -fcuda-include-gpubinary -Xclang ${_TARGET_FATBIN}"
           -fpass-plugin=${_ir_plugin}
           -fplugin=${_LUTHIER_CXX_PLUGIN})
 
-  # $<TARGET_FILE:...> compile options and the generated fatbin don't create
-  # build-order edges on their own; add them explicitly.
   add_dependencies(${target}
-          ${target}-fatbin-dep
+          ${target}-fatbin
           ${_LUTHIER_IR_PLUGIN_TARGET}
           ${_LUTHIER_CXX_PLUGIN_TARGET})
 
   #---------------------------------------------------------------------------
-  # Hand the created targets back to the caller (all optional). The caller is
-  # responsible for any target_include_directories / target_link_libraries on
-  # these — the helper enforces none.
+  # Hand the created targets back to the caller if requested.
   #---------------------------------------------------------------------------
 
   if (OFFLOAD_BUNDLE_ARG_HOST_OBJECT_LIBRARY)
     set(${OFFLOAD_BUNDLE_ARG_HOST_OBJECT_LIBRARY} "${target}" PARENT_SCOPE)
   endif ()
   if (OFFLOAD_BUNDLE_ARG_DEVICE_OBJECT_LIBRARIES)
-    set(${OFFLOAD_BUNDLE_ARG_DEVICE_OBJECT_LIBRARIES} "${_dev_targets}" PARENT_SCOPE)
+    set(${OFFLOAD_BUNDLE_ARG_DEVICE_OBJECT_LIBRARIES} "${_DEV_TARGETS}" PARENT_SCOPE)
   endif ()
   if (OFFLOAD_BUNDLE_ARG_BUNDLE_TARGET)
-    set(${OFFLOAD_BUNDLE_ARG_BUNDLE_TARGET} "${target}-fatbin-dep" PARENT_SCOPE)
+    set(${OFFLOAD_BUNDLE_ARG_BUNDLE_TARGET} "${target}-fatbin" PARENT_SCOPE)
   endif ()
 endfunction()
