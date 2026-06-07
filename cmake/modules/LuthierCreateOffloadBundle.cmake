@@ -153,10 +153,12 @@ function(luthier_create_offload_bundle target source)
             "${OFFLOAD_BUNDLE_ARG_UNPARSED_ARGUMENTS}. Exactly one HIP source is "
             "passed positionally after <target>.")
   endif ()
-  if (NOT CMAKE_HIP_COMPILER)
+  get_property(_ENABLED_LANGUAGES GLOBAL PROPERTY ENABLED_LANGUAGES)
+  if (NOT "HIP" IN_LIST _ENABLED_LANGUAGES)
     message(FATAL_ERROR
-            "luthier_create_offload_bundle(${target}): CMAKE_HIP_COMPILER not "
-            "set — enable HIP via `project(... LANGUAGES HIP)` first.")
+            "luthier_create_offload_bundle(${target}): the HIP language is not "
+            "enabled — add it via `project(... LANGUAGES HIP)` or "
+            "`enable_language(HIP)` first.")
   endif ()
 
   # Resolve the AMDGCN target list: per-call TARGET_ISAS > LUTHIER_HIP_TARGETS >
@@ -194,6 +196,9 @@ function(luthier_create_offload_bundle target source)
   get_filename_component(_SOURCE_NAME ${_ABS_SOURCE} NAME)
   set(_DEV_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/${target}.dev_tu/${_SOURCE_NAME}")
   configure_file(${_ABS_SOURCE} ${_DEV_SOURCE} COPYONLY)
+  # Compile the copy as HIP regardless of its extension (the host source is
+  # likewise marked LANGUAGE HIP at the host-compile step below).
+  set_source_files_properties(${_DEV_SOURCE} PROPERTIES LANGUAGE HIP)
 
   #---------------------------------------------------------------------------
   # Locate the plugins + LuthierTooling.
