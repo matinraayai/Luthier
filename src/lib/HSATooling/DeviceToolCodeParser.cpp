@@ -216,8 +216,26 @@ llvm::Error DeviceToolCodeParser::addSlice(llvm::MemoryBufferRef Slice,
   // A fat-binary slice is raw LLVM bitcode (the Luthier offload-bundle format)
   // or a SPIR-V module (the universal JIT-fallback slice). Dispatch on magic.
   const llvm::file_magic Magic = llvm::identify_magic(Slice.getBuffer());
-  if (Magic == llvm::file_magic::bitcode)
-    return addBitcodeSlice(Slice, ID);
+  if (Magic == llvm::file_magic::bitcode) {
+    // Derive the LLVM ISA key from the slice's offload-bundle entry ID rather
+    // than parsing the bitcode (the bitcode is parsed lazily, only when the
+    // slice is actually requested via getEmbeddedModule).
+    auto ISAOrErr = parseSliceISA(ID);
+    if (!ISAOrErr)
+      return ISAOrErr.takeError();
+    auto &[TT, CPU, Features] = *ISAOrErr;
+
+    std::string Key = canonicalLLVMISAKey(TT, CPU, Features);
+    LLVM_DEBUG(luthier::dbgs() << "[DeviceToolCodeParser] addBitcodeSlice id=["
+                               << ID << "] key=[" << Key
+                               << "] bcSize=" << Slice.getBufferSize() << "\n");
+    if (Slices.contains(Key))
+      return LUTHIER_MAKE_GENERIC_ERROR(
+          "Duplicate LLVM ISA in bitcode input: " + Key);
+
+    Slices.insert({std::move(Key), SliceCacheEntry{Slice}});
+    return llvm::Error::success();
+  }
   if (Magic == llvm::file_magic::spirv_object) {
     if (SpirvSlice)
       return LUTHIER_MAKE_GENERIC_ERROR(
@@ -230,28 +248,6 @@ llvm::Error DeviceToolCodeParser::addSlice(llvm::MemoryBufferRef Slice,
   }
   return LUTHIER_MAKE_GENERIC_ERROR(
       "Fat-binary slice is neither LLVM bitcode nor SPIR-V.");
-}
-
-llvm::Error DeviceToolCodeParser::addBitcodeSlice(llvm::MemoryBufferRef Bitcode,
-                                                  llvm::StringRef ID) {
-  // Derive the LLVM ISA key from the slice's offload-bundle entry ID rather
-  // than parsing the bitcode (the bitcode is parsed lazily, only when the slice
-  // is actually requested via getEmbeddedModule).
-  auto ISAOrErr = parseSliceISA(ID);
-  if (!ISAOrErr)
-    return ISAOrErr.takeError();
-  auto &[TT, CPU, Features] = *ISAOrErr;
-
-  std::string Key = canonicalLLVMISAKey(TT, CPU, Features);
-  LLVM_DEBUG(luthier::dbgs()
-             << "[DeviceToolCodeParser] addBitcodeSlice id=[" << ID << "] key=["
-             << Key << "] bcSize=" << Bitcode.getBufferSize() << "\n");
-  if (Slices.contains(Key))
-    return LUTHIER_MAKE_GENERIC_ERROR("Duplicate LLVM ISA in bitcode input: " +
-                                      Key);
-
-  Slices.insert({std::move(Key), SliceCacheEntry{Bitcode}});
-  return llvm::Error::success();
 }
 
 //===----------------------------------------------------------------------===//

@@ -97,11 +97,6 @@ protected:
   /// Errors on a malformed ID, duplicate ISA, or an unrecognized slice.
   llvm::Error addSlice(llvm::MemoryBufferRef Slice, llvm::StringRef ID);
 
-  /// Insert a raw-bitcode slice: derive the LLVM ISA key from the slice's
-  /// offload-bundle entry \p ID (NOT by parsing the bitcode) and cache the
-  /// whole \c .bc under it.
-  llvm::Error addBitcodeSlice(llvm::MemoryBufferRef Bitcode, llvm::StringRef ID);
-
   /// SPIR-V → AMDGCN JIT fallback. Translates \c SpirvSlice to LLVM IR for the
   /// requested ISA, runs an O3 default pipeline + the Luthier device tool
   /// passes, caches the serialized bitcode under \p Key, and returns the
