@@ -25,7 +25,6 @@
 #include "luthier/LLVM/streams.h"
 
 #include <algorithm>
-#include <clang/Basic/OffloadArch.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/BinaryFormat/Magic.h>
@@ -73,7 +72,7 @@ parseSliceISA(llvm::StringRef ID) {
   // <triple> := <arch>-<vendor>-<os>-<env>
   llvm::SmallVector<llvm::StringRef, 6> Components;
   ID.split(Components, '-', /*MaxSplit=*/5);
-  if (Components.size() < 5 || Components.size() > 7) {
+  if (Components.size() < 5) {
     return LUTHIER_MAKE_GENERIC_ERROR(
         llvm::formatv("Malformed target string {0}", ID));
   }
