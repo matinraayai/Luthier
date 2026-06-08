@@ -13,10 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file DeviceToolCodeParser.cpp
-/// HSA-free Clang-offload-bundle parsing + per-subtarget LLVM-bitcode
+/// \file
+/// Implements Clang-offload-bundle parsing + per-subtarget LLVM-bitcode
 /// extraction, with a SPIR-V → AMDGCN JIT fallback for ISAs not shipped as a
-/// precompiled bitcode slice.
+/// precompiled bitcode slice in \c DeviceToolCodeParser.
 //===----------------------------------------------------------------------===//
 #include "luthier/HSATooling/DeviceToolCodeParser.h"
 
@@ -25,6 +25,7 @@
 #include "luthier/LLVM/streams.h"
 
 #include <algorithm>
+#include <clang/Basic/OffloadArch.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/BinaryFormat/Magic.h>
@@ -64,68 +65,59 @@ struct BundleSlice {
   std::string ID;
 };
 
-//===----------------------------------------------------------------------===//
-// Offload-bundle entry ID → LLVM ISA tuple
-//===----------------------------------------------------------------------===//
-
 /// Derive the LLVM ISA tuple (triple, CPU, features) from a Clang offload
-/// bundle entry \p ID such as
-/// \c hipv4-amdgcn-amd-amdhsa--gfx942:xnack-:wavefrontsize64+:cumode-. The
-/// offload-kind prefix (e.g. \c hipv4-) is stripped and the AMDGPU target-ID
-/// feature suffixes (\c name±) are converted to LLVM subtarget features. wave32
-/// is spelled \c wavefrontsize64- in the target ID but \c +wavefrontsize32 in
-/// LLVM (matching the agent-derived request features), so it is translated.
+/// bundle entry \p ID
 llvm::Expected<std::tuple<llvm::Triple, std::string, llvm::SubtargetFeatures>>
 parseSliceISA(llvm::StringRef ID) {
-  // Split the triple from the target-ID at the empty-environment "--".
-  size_t Sep = ID.find("--");
-  if (Sep == llvm::StringRef::npos)
+  // <kind>-<triple>[-<target id>[:target features]]
+  // <triple> := <arch>-<vendor>-<os>-<env>
+  llvm::SmallVector<llvm::StringRef, 6> Components;
+  ID.split(Components, '-', /*MaxSplit=*/5);
+  if (Components.size() < 5 || Components.size() > 7) {
     return LUTHIER_MAKE_GENERIC_ERROR(
-        "Offload bundle entry ID '" + ID.str() +
-        "' is missing the '--<processor>' target-ID separator.");
-  llvm::StringRef KindAndTriple = ID.substr(0, Sep);
-  llvm::StringRef TargetID = ID.substr(Sep + 2);
+        llvm::formatv("Malformed target string {0}", ID));
+  }
 
-  // Strip the offload-kind prefix (e.g. "hipv4"): the token before the triple,
-  // which carries no internal dash.
-  size_t KindDash = KindAndTriple.find('-');
-  llvm::StringRef TripleStr = KindDash == llvm::StringRef::npos
-                                  ? KindAndTriple
-                                  : KindAndTriple.substr(KindDash + 1);
+  llvm::StringRef CpuIdWithFeature =
+      Components.size() == 6 ? Components.back() : "";
 
-  llvm::SmallVector<llvm::StringRef, 6> Toks;
-  TargetID.split(Toks, ':');
-  if (Toks.empty() || Toks.front().empty())
-    return LUTHIER_MAKE_GENERIC_ERROR("Offload bundle entry ID '" + ID.str() +
-                                      "' has no processor name.");
-  std::string CPU = Toks.front().str();
+  auto [CpuID, FeatureString] = CpuIdWithFeature.split(':');
 
-  llvm::SubtargetFeatures Features;
-  for (llvm::StringRef Tok : llvm::drop_begin(Toks)) {
-    if (Tok.empty())
+  if (CpuID.empty()) {
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        llvm::formatv("Empy CPU ID in target ID {0}", ID));
+  }
+
+  llvm::ArrayRef TripleSlice{&Components[1], /*length=*/4};
+
+  llvm::Triple TT(llvm::join(TripleSlice, "-"));
+
+  llvm::SmallVector<llvm::StringRef, 6> ParsedFeatures;
+  FeatureString.split(ParsedFeatures, ':');
+
+  llvm::SubtargetFeatures FS;
+
+  for (llvm::StringRef Feature : ParsedFeatures) {
+    if (Feature.empty())
       continue;
-    const char Sign = Tok.back();
+    const char Sign = Feature.back();
     if (Sign != '+' && Sign != '-')
       return LUTHIER_MAKE_GENERIC_ERROR("Offload bundle entry ID '" + ID.str() +
-                                        "' feature '" + Tok.str() +
+                                        "' feature '" + Feature.str() +
                                         "' is missing a +/- sign.");
-    const llvm::StringRef Name = Tok.drop_back();
+    const llvm::StringRef Name = Feature.drop_back();
     const bool Enable = Sign == '+';
-    // wave32 appears as `wavefrontsize64-` in the AMDGPU target ID; LLVM (and
-    // the agent-derived request) spell it `+wavefrontsize32`.
+    // wave32 might appear as `wavefrontsize64-` in the AMDGPU target ID;
+    // convert it to `+wavefrontsize32` to match IR's feature string
     if (Name == "wavefrontsize64")
-      Features.AddFeature(Enable ? "wavefrontsize64" : "wavefrontsize32",
+      FS.AddFeature(Enable ? "wavefrontsize64" : "wavefrontsize32",
                           /*Enable=*/true);
     else
-      Features.AddFeature(Name, Enable);
+      FS.AddFeature(Name, Enable);
   }
-  return std::make_tuple(llvm::Triple(TripleStr), std::move(CPU),
-                         std::move(Features));
-}
 
-//===----------------------------------------------------------------------===//
-// Clang offload bundle parsing (HSA-free)
-//===----------------------------------------------------------------------===//
+  return std::make_tuple(TT, std::string(CpuID), std::move(FS));
+}
 
 /// Parses a Clang offload \p Bundle into a list of kept device slices — raw
 /// LLVM bitcode (the Luthier offload-bundle format) or an AMD-flavored SPIR-V
