@@ -25,6 +25,7 @@
 #include "luthier/LLVM/streams.h"
 
 #include <algorithm>
+#include <cstring>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/BinaryFormat/Magic.h>
@@ -191,6 +192,53 @@ DeviceToolCodeParser::canonicalLLVMISAKey(const llvm::Triple &T,
   for (llvm::StringRef Feat : Sorted)
     OS << ',' << Feat;
   return OS.str();
+}
+
+uint64_t DeviceToolCodeParser::discoverBundleSize(const void *Bundle) {
+  if (Bundle == nullptr)
+    return 0;
+  const char *P = static_cast<const char *>(Bundle);
+  // Compressed bundle (CCOB): its header records the total (compressed) file
+  // size, so hand the header prefix to LLVM's parser and read it back. The
+  // compressed header is small and fixed (magic + version + method + sizes +
+  // hash, at most ~32 bytes for V3); 64 bytes covers any version with slack,
+  // and a real bundle is far larger than its header.
+  static constexpr llvm::StringRef CCOBMagic = "CCOB";
+  if (llvm::StringRef(P, CCOBMagic.size()) == CCOBMagic) {
+    auto HdrOrErr =
+        llvm::object::CompressedOffloadBundle::CompressedBundleHeader::tryParse(
+            llvm::StringRef(P, /*Length=*/64));
+    if (!HdrOrErr) {
+      llvm::consumeError(HdrOrErr.takeError());
+      return 0;
+    }
+    return HdrOrErr->FileSize.value_or(0);
+  }
+
+  // Uncompressed bundle (__CLANG_OFFLOAD_BUNDLE__): there is no total-size
+  // field, so walk the entry table (located right after the magic, before the
+  // slice payloads) for the (offset + size) high-water mark, which is the
+  // bundle's end. Mirrors OffloadBundleFatBin::readEntries.
+  static constexpr llvm::StringRef BundleMagic = "__CLANG_OFFLOAD_BUNDLE__";
+  if (llvm::StringRef(P, BundleMagic.size()) != BundleMagic)
+    return 0;
+  P += BundleMagic.size();
+  auto ReadU64 = [&P]() {
+    uint64_t V;
+    std::memcpy(&V, P, sizeof(V));
+    P += sizeof(V);
+    return V;
+  };
+  const uint64_t NumEntries = ReadU64();
+  uint64_t MaxEnd = 0;
+  for (uint64_t I = 0; I < NumEntries; ++I) {
+    const uint64_t Off = ReadU64();
+    const uint64_t Sz = ReadU64();
+    const uint64_t IDLen = ReadU64();
+    P += IDLen;
+    MaxEnd = std::max(MaxEnd, Off + Sz);
+  }
+  return MaxEnd;
 }
 
 llvm::Error DeviceToolCodeParser::addSlice(llvm::MemoryBufferRef Slice,

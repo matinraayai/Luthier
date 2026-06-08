@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_DEVICE_TOOL_CODE_PARSER_H
 #define LUTHIER_TOOLING_DEVICE_TOOL_CODE_PARSER_H
+#include <cstdint>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringMap.h>
@@ -85,6 +86,11 @@ protected:
   static std::string canonicalLLVMISAKey(const llvm::Triple &T,
                                          llvm::StringRef CPU,
                                          const llvm::SubtargetFeatures &F);
+
+  /// Determine a Clang offload bundle's total byte extent from its in-memory
+  /// header alone, handling both the uncompressed (\c __CLANG_OFFLOAD_BUNDLE__)
+  /// and compressed (\c CCOB) formats via LLVM's offload-bundle parsers
+  static uint64_t discoverBundleSize(const void *Bundle);
 
   /// Insert a new \c Slices entry (or stash the SPIR-V slice) for one
   /// fat-binary slice, dispatching on its leading magic (LLVM bitcode or
