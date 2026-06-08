@@ -163,9 +163,8 @@ parseOffloadBundle(llvm::MemoryBufferRef Bundle,
       continue;
     llvm::StringRef SliceBytes(ParseBuf.getBufferStart() + Entry.Offset,
                                Entry.Size);
-    // Keep only raw LLVM bitcode and SPIR-V slices (the Luthier offload-bundle
-    // formats). Anything else — e.g. a non-empty host placeholder — is not a
-    // device slice Luthier understands and is skipped.
+    // Keep only raw LLVM bitcode and SPIR-V slices. Skip everything else for
+    // now
     const llvm::file_magic SliceMagic = llvm::identify_magic(SliceBytes);
     if (SliceMagic == llvm::file_magic::bitcode ||
         SliceMagic == llvm::file_magic::spirv_object)
@@ -179,10 +178,6 @@ parseOffloadBundle(llvm::MemoryBufferRef Bundle,
 }
 
 } // namespace
-
-//===----------------------------------------------------------------------===//
-// Canonical LLVM ISA key
-//===----------------------------------------------------------------------===//
 
 std::string
 DeviceToolCodeParser::canonicalLLVMISAKey(const llvm::Triple &T,
@@ -198,19 +193,11 @@ DeviceToolCodeParser::canonicalLLVMISAKey(const llvm::Triple &T,
   return OS.str();
 }
 
-//===----------------------------------------------------------------------===//
-// addSlice (dispatches on slice format) + per-format inserters
-//===----------------------------------------------------------------------===//
-
 llvm::Error DeviceToolCodeParser::addSlice(llvm::MemoryBufferRef Slice,
                                            llvm::StringRef ID) {
-  // A fat-binary slice is raw LLVM bitcode (the Luthier offload-bundle format)
-  // or a SPIR-V module (the universal JIT-fallback slice). Dispatch on magic.
   const llvm::file_magic Magic = llvm::identify_magic(Slice.getBuffer());
   if (Magic == llvm::file_magic::bitcode) {
-    // Derive the LLVM ISA key from the slice's offload-bundle entry ID rather
-    // than parsing the bitcode (the bitcode is parsed lazily, only when the
-    // slice is actually requested via getEmbeddedModule).
+    // Derive the LLVM ISA key from the slice's offload-bundle entry ID
     auto ISAOrErr = parseSliceISA(ID);
     if (!ISAOrErr)
       return ISAOrErr.takeError();
@@ -227,6 +214,7 @@ llvm::Error DeviceToolCodeParser::addSlice(llvm::MemoryBufferRef Slice,
     Slices.insert({std::move(Key), Slice});
     return llvm::Error::success();
   }
+  /// TODO: Support more than one SPIR-V slice
   if (Magic == llvm::file_magic::spirv_object) {
     if (SpirvSlice)
       return LUTHIER_MAKE_GENERIC_ERROR(
@@ -240,10 +228,6 @@ llvm::Error DeviceToolCodeParser::addSlice(llvm::MemoryBufferRef Slice,
   return LUTHIER_MAKE_GENERIC_ERROR(
       "Fat-binary slice is neither LLVM bitcode nor SPIR-V.");
 }
-
-//===----------------------------------------------------------------------===//
-// Constructor
-//===----------------------------------------------------------------------===//
 
 DeviceToolCodeParser::DeviceToolCodeParser(
     std::unique_ptr<llvm::MemoryBuffer> Bundle, llvm::Error &Err) {
@@ -279,15 +263,12 @@ DeviceToolCodeParser::DeviceToolCodeParser(
              << "\n");
 }
 
-//===----------------------------------------------------------------------===//
-// SPIR-V → AMDGCN JIT fallback
-//===----------------------------------------------------------------------===//
 
 llvm::Expected<std::unique_ptr<llvm::Module>>
 DeviceToolCodeParser::translateSpirvFallback(
     const llvm::Triple &T, llvm::StringRef CPU,
     const llvm::SubtargetFeatures &Features, llvm::StringRef Key,
-    llvm::LLVMContext &Ctx) {
+    llvm::LLVMContext &Ctx, llvm::OptimizationLevel OptLevel) {
 #ifndef LUTHIER_HAS_SPIRV_TRANSLATOR
   (void)T;
   (void)CPU;
@@ -342,9 +323,7 @@ DeviceToolCodeParser::translateSpirvFallback(
       F.addFnAttr("target-features", FeatStr);
   }
 
-  // 3) Run an O3 default pipeline (the precompiled bitcode slices are produced
-  // at -O3) followed by the Luthier device tool passes the IR plugin applies to
-  // bitcode slices at compile time.
+  // 3) Run the Luthier IR compilation pipeline
   llvm::LoopAnalysisManager LAM;
   llvm::FunctionAnalysisManager FAM;
   llvm::CGSCCAnalysisManager CGAM;
@@ -356,8 +335,7 @@ DeviceToolCodeParser::translateSpirvFallback(
   PB.registerLoopAnalyses(LAM);
   PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
 
-  llvm::ModulePassManager MPM =
-      PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
+  llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(OptLevel);
   MPM.addPass(MarkAnnotationsPass());
   MPM.addPass(FinalizeIntrinsicsPass());
   MPM.addPass(SubstituteAMDGCNIntrinsicsPass());
@@ -385,34 +363,16 @@ DeviceToolCodeParser::translateSpirvFallback(
 #endif
 }
 
-//===----------------------------------------------------------------------===//
-// getEmbeddedModule (pure; no device loading)
-//===----------------------------------------------------------------------===//
-
 llvm::Expected<std::unique_ptr<llvm::Module>>
-DeviceToolCodeParser::getEmbeddedModule(const llvm::Triple &T,
-                                        llvm::StringRef CPU,
-                                        const llvm::SubtargetFeatures &Features,
-                                        llvm::LLVMContext &Ctx) {
+DeviceToolCodeParser::parseModule(const llvm::Triple &T, llvm::StringRef CPU,
+                                  const llvm::SubtargetFeatures &Features,
+                                  llvm::LLVMContext &Ctx,
+                                  llvm::OptimizationLevel OptLevel) {
   std::lock_guard Lock(Mutex);
   std::string Key = canonicalLLVMISAKey(T, CPU, Features);
   LLVM_DEBUG(luthier::dbgs() << "[DeviceToolCodeParser] getEmbeddedModule key=["
                              << Key << "]\n");
   auto It = Slices.find(Key);
-  if (It == Slices.end()) {
-    // Fall back to a triple+CPU-only match against the precompiled slices. A
-    // slice's feature list may have fewer qualifiers than the request; CPU
-    // agreement is sufficient at this stage. Match by CPU substring.
-    std::string CPUMarker = ("-" + CPU + ",").str();
-    std::string CPUTail = ("-" + CPU).str();
-    for (auto &KV : Slices) {
-      llvm::StringRef K = KV.first();
-      if (K.contains(CPUMarker) || K.ends_with(CPUTail)) {
-        It = Slices.find(KV.first());
-        break;
-      }
-    }
-  }
   if (It != Slices.end()) {
     LLVM_DEBUG(luthier::dbgs()
                << "[DeviceToolCodeParser]   matched slice [" << It->first()
@@ -454,7 +414,7 @@ DeviceToolCodeParser::getEmbeddedModule(const llvm::Triple &T,
   // helpful message when neither a SPIR-V slice nor the translator is
   // available).
   if (SpirvSlice)
-    return translateSpirvFallback(T, CPU, Features, Key, Ctx);
+    return translateSpirvFallback(T, CPU, Features, Key, Ctx, OptLevel);
 
   std::string AvailKeys;
   llvm::raw_string_ostream OS(AvailKeys);

@@ -27,6 +27,7 @@
 #include <llvm/ADT/StringRef.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Passes/OptimizationLevel.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/MemoryBufferRef.h>
@@ -99,8 +100,9 @@ protected:
   /// is present or the translator was not built into this binary.
   llvm::Expected<std::unique_ptr<llvm::Module>>
   translateSpirvFallback(const llvm::Triple &T, llvm::StringRef CPU,
-                         const llvm::SubtargetFeatures &Features,
-                         llvm::StringRef Key, llvm::LLVMContext &Ctx);
+      const llvm::SubtargetFeatures &Features, llvm::StringRef Key,
+      llvm::LLVMContext &Ctx,
+      llvm::OptimizationLevel OptLevel = llvm::OptimizationLevel::O3);
 
 public:
   /// Bundle-path constructor: takes ownership of \p Bundle and parses it as a
@@ -116,14 +118,14 @@ public:
   ~DeviceToolCodeParser() = default;
 
   /// Parse the embedded tool bitcode for the requested LLVM ISA tuple into
-  /// \p Ctx. On an exact-key miss, falls back to a triple+CPU-only match, then
-  /// (if a SPIR-V slice is present and the translator is available) to a
-  /// SPIR-V → AMDGCN JIT translation for the requested ISA. Pure extraction —
-  /// does NOT trigger any device loading.
+  /// \p Ctx. On an exact-key miss, falls back to a SPIR-V → AMDGCN JIT
+  /// translation for the requested ISA (if a SPIR-V slice is present and the
+  /// translator is available). \p OptLevel indicates the optimization level
+  /// used to compile the SPIR-V slice
   llvm::Expected<std::unique_ptr<llvm::Module>>
-  getEmbeddedModule(const llvm::Triple &T, llvm::StringRef CPU,
-                    const llvm::SubtargetFeatures &Features,
-                    llvm::LLVMContext &Ctx);
+  parseModule(const llvm::Triple &T, llvm::StringRef CPU,
+              const llvm::SubtargetFeatures &Features, llvm::LLVMContext &Ctx,
+              llvm::OptimizationLevel OptLevel = llvm::OptimizationLevel::O3);
 };
 
 } // namespace luthier
