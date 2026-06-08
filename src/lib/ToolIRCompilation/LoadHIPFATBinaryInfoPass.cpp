@@ -64,7 +64,7 @@ static llvm::Error getAnnotatedValues(
       llvm::getConstantStringInfo(GV, Content);
       if (Content.starts_with("luthier.loader.hip")) {
         /// Inline-static class-template slots in
-        /// \c DeviceToolCodeFatBinaryLoader<Derived> get emitted with
+        /// \c DeviceToolCodeFatBinaryParser<Derived> get emitted with
         /// linkonce_odr linkage; if multiple TUs ODR-use the class, the
         /// linker collapses the GVs but \c llvm.global.annotations (which
         /// has appending linkage) accumulates one entry per TU. De-dup so
@@ -80,7 +80,7 @@ static llvm::Error getAnnotatedValues(
 /// \brief Set the initializer of an annotated \c llvm::ArrayRef<T> placeholder
 /// to a constant view of \p TempArr.
 ///
-/// The corresponding slot on \c DeviceToolCodeFatBinaryLoader<Derived> is
+/// The corresponding slot on \c DeviceToolCodeFatBinaryParser<Derived> is
 /// declared \c inline \c static \c llvm::ArrayRef<T>{}, so Clang has already
 /// emitted each placeholder as a global of struct type
 /// \c { ptr Data; i64 Length; } (matching ArrayRef's ABI). We side-load a
@@ -131,6 +131,43 @@ static llvm::Error populateArrayRefSlot(
         SlotTy, {DataPtr, llvm::ConstantInt::get(llvm::Type::getInt64Ty(C),
                                                  TempArr.size())});
     OldVar->setInitializer(Init);
+    OldVar->setConstant(true);
+  }
+  return llvm::Error::success();
+}
+
+/// \brief Set the initializer of an annotated single-struct placeholder — a
+/// two-element \c { ptr, i64 } slot such as \c HipFatBinaryInfo — directly to
+/// \c { Ptr, Val }.
+///
+/// Unlike \c populateArrayRefSlot there is no side data array: the slot itself
+/// IS the struct (the Luthier-side field is a lone \c HipFatBinaryInfo, not an
+/// \c llvm::ArrayRef). The initializer is built with the slot's own type so it
+/// matches whatever named struct Clang emitted for the field.
+static llvm::Error populateStructSlot(
+    llvm::StringRef Name, llvm::Constant *Ptr, uint64_t Val, llvm::Module &M,
+    llvm::StringMap<llvm::SmallVector<llvm::GlobalVariable *, 4>> &NameToVar) {
+  if (NameToVar[Name].empty()) {
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        ("There is no annotated variable for " + Name).str());
+  }
+  llvm::LLVMContext &C = M.getContext();
+  for (auto *OldVar : NameToVar[Name]) {
+    auto *SlotTy = llvm::dyn_cast<llvm::StructType>(OldVar->getValueType());
+    if (!SlotTy || SlotTy->getNumElements() != 2 ||
+        !SlotTy->getElementType(0)->isPointerTy() ||
+        !SlotTy->getElementType(1)->isIntegerTy(64)) {
+      return LUTHIER_MAKE_GENERIC_ERROR(
+          ("Annotated struct slot '" + Name +
+           "' is not the expected { ptr, i64 } shape.")
+              .str());
+    }
+    llvm::Constant *P = Ptr;
+    if (P->getType() != SlotTy->getElementType(0))
+      P = llvm::ConstantExpr::getBitCast(P, SlotTy->getElementType(0));
+    OldVar->setInitializer(llvm::ConstantStruct::get(
+        SlotTy,
+        {P, llvm::ConstantInt::get(llvm::Type::getInt64Ty(C), Val)}));
     OldVar->setConstant(true);
   }
   return llvm::Error::success();
@@ -266,7 +303,7 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
   /// There should only be one hip binary, but we generalize to assume there
   /// Helper to look up / create the named element struct type for a Hip*Info
   /// data array. The Luthier-side C++ struct definitions in
-  /// \c DeviceToolCodeFatBinaryLoader.h are the source of truth for the
+  /// \c DeviceToolCodeFatBinaryParser.h are the source of truth for the
   /// field shapes encoded here.
   auto getOrCreateStruct =
       [&C](llvm::StringRef Name,
@@ -285,10 +322,12 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
   /// the bundle storage GV, and emit \c { ptr Bundle, i64 GV-array-size }
   /// — letting the runtime hand a correctly-sized \c MemoryBufferRef to
   /// LLVM's \c OffloadBundleFatBin parser without re-deriving the size.
-  llvm::StructType *FatBinInfoTy = getOrCreateStruct(
-      "struct.luthier::DeviceToolCodeFatBinaryLoader::HipFatBinaryInfo",
-      {PtrTy, I64Ty});
-  llvm::SmallVector<llvm::Constant *, 4> FatBinInfos{};
+  // Luthier embeds exactly one fat binary per tool TU, so the HipFatBinaries
+  // slot is a single HipFatBinaryInfo, not an ArrayRef. Find the first
+  // __hipRegisterFatBinary call's bundle GV and write { Bundle, Size } directly
+  // into the slot.
+  llvm::GlobalVariable *BundleGV = nullptr;
+  uint64_t FatBinSize = 0;
   for (llvm::User *U : RFB->users()) {
     auto *CB = llvm::dyn_cast<llvm::CallBase>(U);
     if (!CB)
@@ -301,7 +340,7 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
         llvm::dyn_cast<llvm::ConstantStruct>(WrapperGV->getInitializer());
     if (!WrapperInit || WrapperInit->getNumOperands() < 3)
       continue;
-    auto *BundleGV = llvm::dyn_cast<llvm::GlobalVariable>(
+    BundleGV = llvm::dyn_cast<llvm::GlobalVariable>(
         WrapperInit->getOperand(2)->stripPointerCasts());
     if (!BundleGV)
       continue;
@@ -314,21 +353,21 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
     // that case emit Size=0 and let
     // the loader discover the bundle extent at runtime by walking the
     // `.hip_fatbin` ELF section that contains the BundleGV's address.
-    uint64_t Size = 0;
     if (auto *ArrTy =
             llvm::dyn_cast<llvm::ArrayType>(BundleGV->getValueType())) {
-      Size = ArrTy->getNumElements() *
-             ArrTy->getElementType()->getScalarSizeInBits() / 8;
+      FatBinSize = ArrTy->getNumElements() *
+                   ArrTy->getElementType()->getScalarSizeInBits() / 8;
     }
-    FatBinInfos.push_back(llvm::ConstantStruct::get(
-        FatBinInfoTy, {BundleGV, llvm::ConstantInt::get(I64Ty, Size)}));
+    break;
   }
-  LUTHIER_REPORT_FATAL_ON_ERROR(populateArrayRefSlot(
-      HipFatBinariesAttr, FatBinInfoTy, FatBinInfos, M, NameToVar));
+  if (BundleGV)
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        populateStructSlot(HipFatBinariesAttr, BundleGV, FatBinSize, M,
+                           NameToVar));
 
   if (RFUN) {
     llvm::StructType *KernelInfoTy = getOrCreateStruct(
-        "struct.luthier::DeviceToolCodeFatBinaryLoader::HipKernelInfo",
+        "struct.luthier::DeviceToolCodeFatBinaryParser::HipKernelInfo",
         {PtrTy, PtrTy});
     llvm::SmallVector<llvm::Constant *, 10> KernelHandles{};
     for (llvm::User *U : RFUN->users()) {
@@ -356,7 +395,7 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
   /// device-side hook in the IModule).
   {
     llvm::StructType *DevFnInfoTy = getOrCreateStruct(
-        "struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceFunctionInfo",
+        "struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceFunctionInfo",
         {PtrTy, PtrTy});
     llvm::SmallVector<llvm::Constant *, 10> DevFnEntries{};
     if (const llvm::GlobalVariable *Annots =
@@ -457,7 +496,7 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
 
   if (RMV) {
     llvm::StructType *ManagedVarTy = getOrCreateStruct(
-        "struct.luthier::DeviceToolCodeFatBinaryLoader::HipManagedVarInfo",
+        "struct.luthier::DeviceToolCodeFatBinaryParser::HipManagedVarInfo",
         {PtrTy, PtrTy, PtrTy, I64Ty, I32Ty});
     llvm::SmallVector<llvm::Constant *, 10> ManagedVars{};
     for (llvm::User *U : RMV->users()) {
@@ -480,7 +519,7 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
 
   if (RDV) {
     llvm::StructType *VarInfoTy = getOrCreateStruct(
-        "struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceVarInfo",
+        "struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceVarInfo",
         {PtrTy, PtrTy});
     llvm::SmallVector<llvm::Constant *, 10> DeviceVars{};
     for (llvm::User *U : RDV->users()) {
@@ -498,7 +537,7 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
 
   if (RTX) {
     llvm::StructType *TextureInfoTy = getOrCreateStruct(
-        "struct.luthier::DeviceToolCodeFatBinaryLoader::HipTextureInfo",
+        "struct.luthier::DeviceToolCodeFatBinaryParser::HipTextureInfo",
         {PtrTy, PtrTy});
     llvm::SmallVector<llvm::Constant *, 10> Textures{};
     for (llvm::User *U : RTX->users()) {
@@ -516,7 +555,7 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
 
   if (RSF) {
     llvm::StructType *SurfaceInfoTy = getOrCreateStruct(
-        "struct.luthier::DeviceToolCodeFatBinaryLoader::HipSurfaceInfo",
+        "struct.luthier::DeviceToolCodeFatBinaryParser::HipSurfaceInfo",
         {PtrTy, PtrTy});
     llvm::SmallVector<llvm::Constant *, 10> Surfaces{};
     for (llvm::User *U : RSF->users()) {
