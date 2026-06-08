@@ -61,11 +61,6 @@ namespace luthier {
 /// for multiple GPU targets. For multiple TUs, use multiple instances.
 class DeviceToolCodeParser {
 protected:
-  /// Cache entry for each ISA in the bundle
-  struct SliceCacheEntry {
-    /// Non-owning view of the slice's bitcode
-    llvm::MemoryBufferRef Bitcode;
-  };
 
   /// Guards \c Slices and the SPIR-V JIT cache insertion. Recursive so a
   /// derived class can re-enter through \c getEmbeddedModule.
@@ -73,7 +68,7 @@ protected:
 
   /// All slices, keyed by canonical LLVM ISA string. Populated at construction;
   /// SPIR-V JIT fallbacks insert additional entries lazily.
-  llvm::StringMap<SliceCacheEntry> Slices;
+  llvm::StringMap<llvm::MemoryBufferRef> Slices;
 
   /// AMD-flavored SPIR-V slice (\c hip-spirv64-amd-amdhsa--amdgcnspirv), if the
   /// bundle carried one. Used by the SPIR-V → AMDGCN JIT fallback. A non-owning

@@ -233,7 +233,7 @@ llvm::Error DeviceToolCodeParser::addSlice(llvm::MemoryBufferRef Slice,
       return LUTHIER_MAKE_GENERIC_ERROR(
           "Duplicate LLVM ISA in bitcode input: " + Key);
 
-    Slices.insert({std::move(Key), SliceCacheEntry{Slice}});
+    Slices.insert({std::move(Key), Slice});
     return llvm::Error::success();
   }
   if (Magic == llvm::file_magic::spirv_object) {
@@ -251,7 +251,7 @@ llvm::Error DeviceToolCodeParser::addSlice(llvm::MemoryBufferRef Slice,
 }
 
 //===----------------------------------------------------------------------===//
-// Constructor (HSA-free)
+// Constructor
 //===----------------------------------------------------------------------===//
 
 DeviceToolCodeParser::DeviceToolCodeParser(
@@ -385,9 +385,7 @@ DeviceToolCodeParser::translateSpirvFallback(
   llvm::MemoryBufferRef BcRef = Owned->getMemBufferRef();
   RetainedBuffers.push_back(std::move(Owned));
 
-  SliceCacheEntry Entry;
-  Entry.Bitcode = BcRef;
-  Slices.insert({Key.str(), std::move(Entry)});
+  Slices.insert({Key.str(), std::move(BcRef)});
 
   LLVM_DEBUG(luthier::dbgs()
              << "[DeviceToolCodeParser] SPIR-V JIT produced + cached " << Key
@@ -427,9 +425,9 @@ DeviceToolCodeParser::getEmbeddedModule(const llvm::Triple &T,
   if (It != Slices.end()) {
     LLVM_DEBUG(luthier::dbgs()
                << "[DeviceToolCodeParser]   matched slice [" << It->first()
-               << "], parsing " << It->second.Bitcode.getBufferSize()
+               << "], parsing " << It->second.getBufferSize()
                << " bytes of bitcode\n");
-    auto MOrErr = llvm::parseBitcodeFile(It->second.Bitcode, Ctx);
+    auto MOrErr = llvm::parseBitcodeFile(It->second, Ctx);
 #ifndef NDEBUG
     // Debug-only: validate that the bitcode's own ISA matches the slice ID we
     // keyed it under (the cache key is derived from the bundle entry ID, not
