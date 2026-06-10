@@ -1,4 +1,4 @@
-//===-- MIRToIRTranslator.h -------------------------------------*- C++ -*-===//
+//===-- TraceIRTranslator.h -------------------------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +13,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file MIRToIRTranslator.h
-/// Describes the \c MIRToIRTranslator class which is used to translate
+/// \file TraceIRTranslator.h
+/// Describes the \c TraceIRTranslator class which is used to translate
 /// discovered machine function traces by the \c CodeDiscoveryPass to LLVM IR.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOL_CODE_GEN_MIR_TO_IR_TRANSLATOR_H
-#define LUTHIER_TOOL_CODE_GEN_MIR_TO_IR_TRANSLATOR_H
+#ifndef LUTHIER_TOOL_CODE_GEN_TRACE_IR_TRANSLATOR_H
+#define LUTHIER_TOOL_CODE_GEN_TRACE_IR_TRANSLATOR_H
 #include "luthier/Common/DenseMapInfo.h"
 #include "luthier/ToolCodeGen/MIInlineAsmEmitter.h"
 #include <GCNSubtarget.h>
@@ -45,16 +45,16 @@ class Error;
 
 namespace luthier {
 
-class MIRToIRTranslator;
+class TraceIRTranslator;
 
 /// Individual machine instruction to LLVM IR translation functions emitted
 /// by the tablegen backend. Each of these function is specialized on
-/// \p MI's opcode. \c MIRToIRTranslator::raiseMachineInstr is in charge
+/// \p MI's opcode. \c TraceIRTranslator::raiseMachineInstr is in charge
 /// of dispatching the correct specialization
 template <uint16_t Opcode>
 void raiseMachineInstr(const llvm::MachineInstr &MI,
                        llvm::IRBuilderBase &Builder,
-                       MIRToIRTranslator &Translator);
+                       TraceIRTranslator &Translator);
 
 /// \brief Used by the \c CodeDiscoveryPass to translate Machine instructions
 /// in a machine function trace to LLVM IR and inserts the translated IR into
@@ -151,7 +151,7 @@ void raiseMachineInstr(const llvm::MachineInstr &MI,
 /// from one trace function to another results in a call instruction that pass
 /// the entire register file of the caller to the callee as argument. The
 /// prototype of the callee can be queried via
-/// \c MIRToIRTranslator::getStandardDeviceFunctionType function.
+/// \c TraceIRTranslator::getStandardDeviceFunctionType function.
 /// When passing device (i.e. non-entry) function to the translator the
 /// \p CodeDiscoveryPass must ensure the function's prototype matches the
 /// type returned by \c getStandardDeviceFunctionType, since the function's
@@ -183,18 +183,18 @@ void raiseMachineInstr(const llvm::MachineInstr &MI,
 /// predecessors. The \c CodeDiscoveryPass is in charge of detecting this
 /// issue and fixing it up in the discovered trace before passing the
 /// machine function for translation.
-/// \TODO The \c MIRToIRTranslator was designed to exepect
+/// \TODO The \c TraceIRTranslator was designed to exepect
 /// well-formed Luthier trace machine functions; In other words, during
 /// translation, it doesn't return a \c llvm::Error that can be later checked,
 /// and only has assertions for sanity checks for performance reasons and
 /// readabilty; Which is why the \p CodeDiscoveryPass if prompted runs the
 /// machine verifier on the trace machine function before passing it
 /// down to the translator.
-class MIRToIRTranslator {
+class TraceIRTranslator {
   template <uint16_t Opcode>
   friend void luthier::raiseMachineInstr(const llvm::MachineInstr &MI,
                                          llvm::IRBuilderBase &Builder,
-                                         MIRToIRTranslator &Translator);
+                                         TraceIRTranslator &Translator);
 
   /// Primary interface for raising machine instructions to LLVM IR in the
   /// translator loop. If a semantic for the \p MI's opcode exists, the
@@ -639,7 +639,7 @@ class MIRToIRTranslator {
                             llvm::IRBuilderBase &Builder, llvm::Value *Target);
 
 public:
-  MIRToIRTranslator(llvm::MachineFunction &MF, llvm::Error &Err);
+  TraceIRTranslator(llvm::MachineFunction &MF, llvm::Error &Err);
 
   /// Provides the function type used for trace device functions; Useful to
   /// know when creating new device function for translation in the same

@@ -24,7 +24,7 @@ add_library(LuthierToolCodeGen OBJECT
         TargetMachineInstrMDNode.cpp
         CodeDiscoveryPass.cpp
         InstructionTracesAnalysis.cpp
-        MIToIRMappingAnalysis.cpp
+        TraceInstrMappingAnalysis.cpp
         MemoryAllocationAccessor.cpp
         SVStorageAndLoadLocations.cpp
         SVAPhysVGPRPinPass.cpp
@@ -52,8 +52,8 @@ add_library(LuthierToolCodeGen OBJECT
         InitialEntryPointAnalysis.cpp
         InitialExecutionPointAnalysis.cpp
         Metadata.cpp
-        MIRToIRTranslator.cpp
-        MIRToIRTranslationAnalysis.cpp
+        TraceIRTranslator.cpp
+        TraceIRTranslatorAnalysis.cpp
         RegValueMetadata.cpp
         RegValueMapAnalysis.cpp
         MIInlineAsmEmitter.cpp

@@ -1,4 +1,4 @@
-//===-- MIToIRMappingAnalysis.cpp -----------------------------------------===//
+//===-- TraceInstrMappingAnalysis.cpp -------------------------------------===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,14 +14,13 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements the \c MIToIRMappingAnalysis class.
+/// Implements the \c TraceInstrMappingAnalysis class.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGen/MIToIRMappingAnalysis.h"
+#include "luthier/ToolCodeGen/TraceInstrMappingAnalysis.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFunction.h>
-#include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instruction.h>
@@ -30,31 +29,30 @@
 
 #undef DEBUG_TYPE
 
-#define DEBUG_TYPE "luthier-mi-to-ir-mapping"
+#define DEBUG_TYPE "luthier-trace-instr-mapping"
 
 namespace luthier {
 
-bool MIToIRMapping::invalidate(llvm::Function &,
-                               const llvm::PreservedAnalyses &PA,
-                               llvm::FunctionAnalysisManager::Invalidator &) {
+bool TraceInstrMapping::invalidate(
+    llvm::MachineFunction &, const llvm::PreservedAnalyses &PA,
+    llvm::MachineFunctionAnalysisManager::Invalidator &) {
   // The mapping holds raw MachineInstr/Instruction pointers, so any pass that
   // adds or removes instructions in either representation invalidates it.
   // Unless it is preserved explicitly, recompute it.
-  auto PAC = PA.getChecker<MIToIRMappingAnalysis>();
+  auto PAC = PA.getChecker<TraceInstrMappingAnalysis>();
   return !PAC.preservedWhenStateless();
 }
 
-llvm::AnalysisKey MIToIRMappingAnalysis::Key;
+llvm::AnalysisKey TraceInstrMappingAnalysis::Key;
 
-MIToIRMappingAnalysis::Result
-MIToIRMappingAnalysis::run(llvm::Function &F,
-                           llvm::FunctionAnalysisManager &FAM) {
-  MIToIRMapping Result;
+TraceInstrMappingAnalysis::Result
+TraceInstrMappingAnalysis::run(llvm::MachineFunction &MF,
+                               llvm::MachineFunctionAnalysisManager &) {
+  TraceInstrMapping Result;
 
-  llvm::MachineFunction &MF =
-      FAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
+  llvm::Function &F = MF.getFunction();
 
-  LLVM_DEBUG(luthier::dbgs() << "[MIToIRMapping] Running analysis for "
+  LLVM_DEBUG(luthier::dbgs() << "[TraceInstrMapping] Running analysis for "
                              << MF.getName() << "\n";);
 
   // Pass 1: index this function's trace MIs by their PC sections MDNode. Each
@@ -73,8 +71,8 @@ MIToIRMappingAnalysis::run(llvm::Function &F,
       // discovery); warn rather than silently mis-map.
       if (!PCSToMI.try_emplace(MD, &MI).second) {
         LLVM_DEBUG(luthier::dbgs()
-                       << "[MIToIRMapping] Duplicate trace MDNode for MI " << MI
-                       << "; keeping the first MI mapped to it.\n";);
+                       << "[TraceInstrMapping] Duplicate trace MDNode for MI "
+                       << MI << "; keeping the first MI mapped to it.\n";);
       }
     }
   }
@@ -94,7 +92,7 @@ MIToIRMappingAnalysis::run(llvm::Function &F,
   }
 
   LLVM_DEBUG(luthier::dbgs()
-                 << "[MIToIRMapping] Mapped " << Result.size()
+                 << "[TraceInstrMapping] Mapped " << Result.size()
                  << " IR instructions in " << MF.getName() << "\n";);
 
   return Result;

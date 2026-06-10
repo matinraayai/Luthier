@@ -1,4 +1,4 @@
-//===-- MIRToIRTranslationAnalysis.h ------------------------------*-C++-*-===//
+//===-- TraceIRTranslatorAnalysis.h ------------------------------*-C++-*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file MIRToIRTranslationAnalysis.h
-/// Describes the \c MIRToIRTranslationAnalysis, a pinned \c
+/// \file TraceIRTranslatorAnalysis.h
+/// Describes the \c TraceIRTranslatorAnalysis, a pinned \c
 /// llvm::MachineFunction analysis owning the lifted IR of a machine function
 /// and keeping it up to date with the MIR. Passes that mutate the MIR mark
 /// the affected \c llvm::MachineBasicBlock s dirty on the \c TranslationState
@@ -22,8 +22,8 @@
 /// call \c TranslationState::flush() before reading, which re-translates the
 /// dirty blocks.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOL_CODE_GEN_MIR_TO_IR_TRANSLATION_ANALYSIS_H
-#define LUTHIER_TOOL_CODE_GEN_MIR_TO_IR_TRANSLATION_ANALYSIS_H
+#ifndef LUTHIER_TOOL_CODE_GEN_TRACE_IR_TRANSLATOR_ANALYSIS_H
+#define LUTHIER_TOOL_CODE_GEN_TRACE_IR_TRANSLATOR_ANALYSIS_H
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallPtrSet.h>
 #include <llvm/ADT/SmallVector.h>
@@ -40,9 +40,9 @@ class MachineFunction;
 
 namespace luthier {
 
-class MIRToIRTranslator;
+class TraceIRTranslator;
 
-/// \brief Result of \c MIRToIRTranslationAnalysis: owns the lifted IR of a
+/// \brief Result of \c TraceIRTranslatorAnalysis: owns the lifted IR of a
 /// machine function and keeps it in sync with the MIR via re-translation of
 /// dirty MBBs.
 ///
@@ -50,7 +50,7 @@ class MIRToIRTranslator;
 /// \c llvm::LazyCallGraph / \c llvm::MemorySSA "update, don't invalidate"
 /// model. Passes that mutate the MIR must obtain the cached result and mark
 /// the affected MBBs dirty; the next consumer that calls \c flush triggers
-/// re-translation, so no client ever invokes the \c MIRToIRTranslator
+/// re-translation, so no client ever invokes the \c TraceIRTranslator
 /// directly. The only escape hatch is clearing the analysis manager (which
 /// also happens when the MF itself is destroyed).
 ///
@@ -68,7 +68,7 @@ class MIRToIRTranslator;
 /// are tracked in memory only — they have no instruction to carry the mark
 /// and translate to an empty BodyBB anyway.
 class TranslationState {
-  friend class MIRToIRTranslationAnalysis;
+  friend class TraceIRTranslatorAnalysis;
 
   llvm::MachineFunction &MF;
 
@@ -76,7 +76,7 @@ class TranslationState {
   /// state that seeds incremental re-translation. Created on the first
   /// flush; recreated whenever a structural change forces a full
   /// re-translation
-  std::unique_ptr<MIRToIRTranslator> Translator;
+  std::unique_ptr<TraceIRTranslator> Translator;
 
   /// MBBs marked dirty since the last flush. Mirrors the per-MI
   /// needsRetranslation metadata; rebuilt from it on analysis (re)computation
@@ -99,7 +99,7 @@ class TranslationState {
   void clearDirtyMarks();
 
   /// \returns true if the pending changes can be re-translated in place by
-  /// \c MIRToIRTranslator::retranslateMBB; false when a structural change
+  /// \c TraceIRTranslator::retranslateMBB; false when a structural change
   /// (new/erased MBBs, CFG edge changes, untranslated function, or no
   /// persistent translator) requires a full re-translation
   bool canFlushIncrementally() const;
@@ -140,9 +140,9 @@ public:
 
 /// \brief Pinned \c llvm::MachineFunction analysis owning the incrementally
 /// maintained MIR-to-IR translation of a lifted machine function
-class MIRToIRTranslationAnalysis
-    : public llvm::AnalysisInfoMixin<MIRToIRTranslationAnalysis> {
-  friend llvm::AnalysisInfoMixin<MIRToIRTranslationAnalysis>;
+class TraceIRTranslatorAnalysis
+    : public llvm::AnalysisInfoMixin<TraceIRTranslatorAnalysis> {
+  friend llvm::AnalysisInfoMixin<TraceIRTranslatorAnalysis>;
 
   static llvm::AnalysisKey Key;
 

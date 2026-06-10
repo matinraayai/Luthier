@@ -19,7 +19,7 @@
 /// physical-register slices to the IR values holding their content at the
 /// block's exit. The map is rebuilt purely from the \c luthier.reg
 /// per-instruction metadata and the function-level \c luthier.entry_reg_map
-/// emitted by the \c MIRToIRTranslator, so it is cheap to recompute, follows
+/// emitted by the \c TraceIRTranslator, so it is cheap to recompute, follows
 /// normal pass-manager invalidation, and survives serialization round trips.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_REG_VALUE_MAP_ANALYSIS_H

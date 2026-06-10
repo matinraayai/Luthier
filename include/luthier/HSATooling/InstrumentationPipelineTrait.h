@@ -51,14 +51,15 @@
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
 #include "luthier/ToolCodeGen/InstrumentationPass.h"
-#include "luthier/ToolCodeGen/MIRToIRTranslationAnalysis.h"
-#include "luthier/ToolCodeGen/MIToIRMappingAnalysis.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 #include "luthier/ToolCodeGen/Metadata.h"
 #include "luthier/ToolCodeGen/MetadataParserAnalysis.h"
 #include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
+#include "luthier/ToolCodeGen/RegValueMapAnalysis.h"
 #include "luthier/ToolCodeGen/TraceCallGraph.h"
+#include "luthier/ToolCodeGen/TraceIRTranslatorAnalysis.h"
+#include "luthier/ToolCodeGen/TraceInstrMappingAnalysis.h"
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/IR/LLVMContext.h>
@@ -120,8 +121,9 @@ public:
 
     MAM.registerPass([&] { return llvm::MachineModuleAnalysis(MMI); });
     MFAM.registerPass([] { return luthier::InstructionTracesAnalysis(); });
-    FAM.registerPass([] { return luthier::MIToIRMappingAnalysis(); });
-    MFAM.registerPass([] { return luthier::MIRToIRTranslationAnalysis(); });
+    MFAM.registerPass([] { return luthier::TraceInstrMappingAnalysis(); });
+    MFAM.registerPass([] { return luthier::TraceIRTranslatorAnalysis(); });
+    FAM.registerPass([] { return luthier::RegValueMapAnalysis(); });
     MAM.registerPass([&] {
       return luthier::InitialEntryPointAnalysis(
           [&](llvm::Module &, llvm::ModuleAnalysisManager &) {

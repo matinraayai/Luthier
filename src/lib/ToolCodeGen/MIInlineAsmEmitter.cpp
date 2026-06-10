@@ -20,7 +20,7 @@
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
-#include "luthier/ToolCodeGen/MIRToIRTranslator.h"
+#include "luthier/ToolCodeGen/TraceIRTranslator.h"
 #include <llvm/CodeGen/AsmPrinter.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
@@ -133,7 +133,7 @@ void MIInlineAsmEmitter::emitInlineAsm(
 
     LLVM_DEBUG(llvm::StringRef RegName = TRI.getRegAsmName(Op.getReg());
                luthier::dbgs()
-               << "[MIRToIRTranslator] Def Operand info: "
+               << "[TraceIRTranslator] Def Operand info: "
                << "Op idx: " << OpIdx << ", "
                << "Reg name: " << RegName << ", constraint: " << RegConstraint
                << ", is implicit: " << Op.isImplicit() << "\n");
@@ -149,7 +149,7 @@ void MIInlineAsmEmitter::emitInlineAsm(
 
     LLVM_DEBUG(llvm::StringRef RegName = TRI.getRegAsmName(Op.getReg());
                luthier::dbgs()
-               << "[MIRToIRTranslator] Use Operand info: "
+               << "[TraceIRTranslator] Use Operand info: "
                << "Op idx: " << OpIdx << ", "
                << "Reg name: " << RegName << ", constraint: " << RegConstraint
                << ", is implicit: " << Op.isImplicit() << "\n");

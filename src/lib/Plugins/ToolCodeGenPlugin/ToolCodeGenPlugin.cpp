@@ -24,10 +24,10 @@
 #include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
-#include "luthier/ToolCodeGen/MIRToIRTranslationAnalysis.h"
-#include "luthier/ToolCodeGen/MIToIRMappingAnalysis.h"
 #include "luthier/ToolCodeGen/ProcessIntrinsicsAtIRLevelPass.h"
 #include "luthier/ToolCodeGen/RegValueMapAnalysis.h"
+#include "luthier/ToolCodeGen/TraceIRTranslatorAnalysis.h"
+#include "luthier/ToolCodeGen/TraceInstrMappingAnalysis.h"
 #include "luthier/ToolCodeGenTesting/AMDGPUMockLoaderPrinter.h"
 #include "luthier/ToolCodeGenTesting/CodeObjectManagerAnalysis.h"
 // #include "luthier/ToolCodeGen/IntrinsicMIRLoweringPass.h"
@@ -91,7 +91,7 @@ struct MarkRetranslateTestPass
           FAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
       if (MF.empty())
         continue;
-      auto &Translation = MFAM.getResult<MIRToIRTranslationAnalysis>(MF);
+      auto &Translation = MFAM.getResult<TraceIRTranslatorAnalysis>(MF);
       for (const llvm::MachineBasicBlock &MBB : MF)
         Translation.markDirty(MBB);
     }
@@ -117,7 +117,7 @@ struct FlushTranslationTestPass
       if (MF.empty())
         continue;
       if (llvm::Error Err =
-              MFAM.getResult<MIRToIRTranslationAnalysis>(MF).flush())
+              MFAM.getResult<TraceIRTranslatorAnalysis>(MF).flush())
         M.getContext().emitError(llvm::toString(std::move(Err)));
     }
     /// Flushing rewrites the lifted IR bodies wholesale
@@ -404,11 +404,12 @@ llvmGetPassPluginInfo() {
           MFAM.registerPass(
               []() { return luthier::InstructionTracesAnalysis(); });
           MFAM.registerPass(
-              []() { return luthier::MIRToIRTranslationAnalysis(); });
+              []() { return luthier::TraceInstrMappingAnalysis(); });
+          MFAM.registerPass(
+              []() { return luthier::TraceIRTranslatorAnalysis(); });
         });
     PB.registerAnalysisRegistrationCallback(
         [](llvm::FunctionAnalysisManager &FAM) {
-          FAM.registerPass([]() { return luthier::MIToIRMappingAnalysis(); });
           FAM.registerPass([]() { return luthier::RegValueMapAnalysis(); });
         });
 

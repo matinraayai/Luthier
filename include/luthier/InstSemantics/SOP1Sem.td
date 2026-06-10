@@ -1739,7 +1739,7 @@ def S_GET_SHADER_CYCLES_U64_sem : InstSISemantic<S_GET_SHADER_CYCLES_U64> {
 
 // S_RFE_B64 / S_RFE_RESTORE_B64 — "Return From Exception". DELIBERATELY
 // left without DSL semantics: both ops fall through to the translator's
-// inline-asm emitter (MIRToIRTranslator::raiseMachineInstr's `default:`
+// inline-asm emitter (TraceIRTranslator::raiseMachineInstr's `default:`
 // branch invokes InlineAsmEmitter::emitInlineAsm). The MIR opcode and
 // operands are preserved verbatim in the IR as a `call asm sideeffect`,
 // which is the correct conservative model for a privileged "return from

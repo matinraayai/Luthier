@@ -1,4 +1,4 @@
-//===-- MIRToIRTranslationAnalysis.cpp ------------------------------------===//
+//===-- TraceIRTranslatorAnalysis.cpp ------------------------------------===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +13,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file MIRToIRTranslationAnalysis.cpp
-/// Implements the \c MIRToIRTranslationAnalysis and its \c TranslationState
+/// \file TraceIRTranslatorAnalysis.cpp
+/// Implements the \c TraceIRTranslatorAnalysis and its \c TranslationState
 /// result.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGen/MIRToIRTranslationAnalysis.h"
+#include "luthier/ToolCodeGen/TraceIRTranslatorAnalysis.h"
 #include "luthier/LLVM/streams.h"
-#include "luthier/ToolCodeGen/MIRToIRTranslator.h"
+#include "luthier/ToolCodeGen/TraceIRTranslator.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFunction.h>
@@ -29,7 +29,7 @@
 
 #undef DEBUG_TYPE
 
-#define DEBUG_TYPE "luthier-mir-to-ir-translation"
+#define DEBUG_TYPE "luthier-trace-ir-translator"
 
 namespace luthier {
 
@@ -77,7 +77,7 @@ void TranslationState::markDirty(const llvm::MachineBasicBlock &MBB) {
     auto MDOrErr = TargetMachineInstrMDNode::initializeMDNode(FirstMI);
     if (!MDOrErr) {
       LLVM_DEBUG(luthier::dbgs()
-                     << "[MIRToIRTranslation] Failed to persist dirty mark: "
+                     << "[TraceIRTranslator] Failed to persist dirty mark: "
                      << llvm::toString(MDOrErr.takeError()) << "\n";);
       return;
     }
@@ -125,7 +125,7 @@ bool TranslationState::canFlushIncrementally() const {
 
 llvm::Error TranslationState::flushFull() {
   llvm::Error Err = llvm::Error::success();
-  Translator = std::make_unique<MIRToIRTranslator>(MF, Err);
+  Translator = std::make_unique<TraceIRTranslator>(MF, Err);
   if (Err) {
     Translator.reset();
     return Err;
@@ -148,7 +148,7 @@ llvm::Error TranslationState::flush() {
     return llvm::Error::success();
 
   LLVM_DEBUG(luthier::dbgs()
-                 << "[MIRToIRTranslation] Flushing " << DirtyMBBs.size()
+                 << "[TraceIRTranslator] Flushing " << DirtyMBBs.size()
                  << " dirty MBBs of " << MF.getName() << "\n";);
 
   bool Incremental = canFlushIncrementally();
@@ -164,7 +164,7 @@ llvm::Error TranslationState::flush() {
   if (!Incremental)
     return flushFull();
 
-  LLVM_DEBUG(luthier::dbgs() << "[MIRToIRTranslation] Incremental flush of "
+  LLVM_DEBUG(luthier::dbgs() << "[TraceIRTranslator] Incremental flush of "
                              << ToRetranslate.size() << " MBBs\n";);
   for (const llvm::MachineBasicBlock *MBB : ToRetranslate) {
     llvm::Expected<bool> NeedFull =
@@ -179,10 +179,10 @@ llvm::Error TranslationState::flush() {
   return llvm::Error::success();
 }
 
-llvm::AnalysisKey MIRToIRTranslationAnalysis::Key;
+llvm::AnalysisKey TraceIRTranslatorAnalysis::Key;
 
-MIRToIRTranslationAnalysis::Result
-MIRToIRTranslationAnalysis::run(llvm::MachineFunction &MF,
+TraceIRTranslatorAnalysis::Result
+TraceIRTranslatorAnalysis::run(llvm::MachineFunction &MF,
                                 llvm::MachineFunctionAnalysisManager &) {
   return TranslationState{MF};
 }

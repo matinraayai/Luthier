@@ -1,4 +1,4 @@
-//===-- MIToIRMappingAnalysis.h ----------------------------------*-C++-*-===//
+//===-- TraceInstrMappingAnalysis.h--------------------------------*-C++-*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,20 +13,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file MIToIRMappingAnalysis.h
-/// Describes the \c MIToIRMappingAnalysis, a \c llvm::Function analysis
-/// that provides a bidirectional mapping between the \c llvm::MachineInstr s of
-/// a lifted machine function and the \c llvm::Instruction s they were
-/// translated into by the \c MIRToIRTranslator. The mapping is reconstructed by
-/// matching the \c TargetMachineInstrMDNode (PC sections) metadata that the
-/// translator copies, by pointer, from each source MI onto every IR instruction
-/// it emits for that MI. It is a function (not machine function) analysis
-/// because its result holds \c llvm::Instruction pointers: any pass that
-/// rewrites the lifted IR invalidates it through the normal function-level
-/// \c llvm::PreservedAnalyses channel.
+/// \file TraceInstrMappingAnalysis.h
+/// Describes the \c TraceInstrMappingAnalysis, a \c llvm::MachineFunction
+/// analysis that provides a bidirectional mapping between the
+/// \c llvm::MachineInstr s of a lifted machine function and the
+/// \c llvm::Instruction s they were translated into by the
+/// \c TraceIRTranslator. The mapping is reconstructed by matching the
+/// \c TargetMachineInstrMDNode (PC sections) metadata that the translator
+/// copies, by pointer, from each source MI onto every IR instruction it emits
+/// for that MI. Like the translation itself it is a MIR-derived view, so it
+/// lives in the machine function analysis manager next to
+/// \c TraceIRTranslatorAnalysis; it is recomputed whenever a pass fails to
+/// preserve it explicitly.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOL_CODE_GEN_MI_TO_IR_MAPPING_ANALYSIS_H
-#define LUTHIER_TOOL_CODE_GEN_MI_TO_IR_MAPPING_ANALYSIS_H
+#ifndef LUTHIER_TOOL_CODE_GEN_TRACE_INSTR_MAPPING_ANALYSIS_H
+#define LUTHIER_TOOL_CODE_GEN_TRACE_INSTR_MAPPING_ANALYSIS_H
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
@@ -41,9 +42,9 @@ class MachineInstr;
 
 namespace luthier {
 
-/// \brief Result of \c MIToIRMappingAnalysis: a bidirectional mapping between
-/// the machine instructions of a single lifted machine function and the IR
-/// instructions they were translated into.
+/// \brief Result of \c TraceInstrMappingAnalysis: a bidirectional mapping
+/// between the machine instructions of a single lifted machine function and the
+/// IR instructions they were translated into.
 ///
 /// A single \c llvm::MachineInstr can lower to one or more \c llvm::Instruction
 /// s (e.g. an inline-asm call followed by \c llvm::ExtractElementInst s for its
@@ -51,9 +52,9 @@ namespace luthier {
 /// instructions synthesized by the translator that do not correspond to a
 /// single source MI (e.g. EXEC-predicate checks or \c PHI nodes inserted for
 /// vector blocks) are intentionally left unmapped.
-class MIToIRMapping {
+class TraceInstrMapping {
 private:
-  friend class MIToIRMappingAnalysis;
+  friend class TraceInstrMappingAnalysis;
 
   /// Maps each source MI to the ordered (program-order) list of IR
   /// instructions it was translated into.
@@ -70,7 +71,7 @@ private:
   }
 
 public:
-  MIToIRMapping() = default;
+  TraceInstrMapping() = default;
 
   /// \returns the IR instructions \p MI was translated into, in program order,
   /// or an empty range if \p MI has no translated IR instructions.
@@ -133,25 +134,26 @@ public:
     return llvm::make_range(ir_to_mi_begin(), ir_to_mi_end());
   }
 
-  bool invalidate(llvm::Function &F, const llvm::PreservedAnalyses &PA,
-                  llvm::FunctionAnalysisManager::Invalidator &Inv);
+  bool invalidate(llvm::MachineFunction &MF, const llvm::PreservedAnalyses &PA,
+                  llvm::MachineFunctionAnalysisManager::Invalidator &Inv);
 };
 
-/// \brief A \c llvm::Function analysis that provides a bidirectional
+/// \brief A \c llvm::MachineFunction analysis that provides a bidirectional
 /// mapping between a lifted machine function's \c llvm::MachineInstr s and the
 /// \c llvm::Instruction s they were translated into.
-class MIToIRMappingAnalysis
-    : public llvm::AnalysisInfoMixin<MIToIRMappingAnalysis> {
-  friend llvm::AnalysisInfoMixin<MIToIRMappingAnalysis>;
+class TraceInstrMappingAnalysis
+    : public llvm::AnalysisInfoMixin<TraceInstrMappingAnalysis> {
+  friend llvm::AnalysisInfoMixin<TraceInstrMappingAnalysis>;
 
   static llvm::AnalysisKey Key;
 
 public:
-  using Result = MIToIRMapping;
+  using Result = TraceInstrMapping;
 
-  MIToIRMappingAnalysis() = default;
+  TraceInstrMappingAnalysis() = default;
 
-  Result run(llvm::Function &F, llvm::FunctionAnalysisManager &FAM);
+  Result run(llvm::MachineFunction &MF,
+             llvm::MachineFunctionAnalysisManager &MFAM);
 };
 
 } // namespace luthier
