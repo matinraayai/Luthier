@@ -21,11 +21,13 @@
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
-#include "luthier/ToolCodeGen/MIToIRMappingAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
+#include "luthier/ToolCodeGen/MIRToIRTranslationAnalysis.h"
+#include "luthier/ToolCodeGen/MIToIRMappingAnalysis.h"
 #include "luthier/ToolCodeGen/ProcessIntrinsicsAtIRLevelPass.h"
+#include "luthier/ToolCodeGen/RegValueMapAnalysis.h"
 #include "luthier/ToolCodeGenTesting/AMDGPUMockLoaderPrinter.h"
 #include "luthier/ToolCodeGenTesting/CodeObjectManagerAnalysis.h"
 // #include "luthier/ToolCodeGen/IntrinsicMIRLoweringPass.h"
@@ -43,6 +45,9 @@
 #include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
 #include "luthier/ToolCodeGen/TraceCallGraph.h"
 #include <llvm/CodeGen/MIRPrinter.h>
+#include <llvm/CodeGen/MachineBasicBlock.h>
+#include <llvm/CodeGen/MachineFunctionAnalysis.h>
+#include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Plugins/PassPlugin.h>
 #include <llvm/Support/TargetSelect.h>
@@ -66,6 +71,62 @@ static CodeDiscoveryPassOptions CodeDiscoveryOptions;
 /// instrumentation driver. The plugin has no \c HSATool to own one, so it
 /// keeps a static; it is no longer a \c Singleton<> type.
 static IntrinsicProcessorRegistry IntrinsicProcessorRegistryStorage;
+
+/// Test-only pass: marks every MBB of every lifted machine function dirty on
+/// the \c TranslationState. Lets lit tests exercise the
+/// mark-serialize-flush cycle through the pipeline
+struct MarkRetranslateTestPass
+    : public llvm::PassInfoMixin<MarkRetranslateTestPass> {
+  llvm::PreservedAnalyses run(llvm::Module &M,
+                              llvm::ModuleAnalysisManager &MAM) {
+    auto &FAM =
+        MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(M).getManager();
+    auto &MFAM =
+        MAM.getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(M)
+            .getManager();
+    for (llvm::Function &F : M) {
+      if (F.isDeclaration())
+        continue;
+      llvm::MachineFunction &MF =
+          FAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
+      if (MF.empty())
+        continue;
+      auto &Translation = MFAM.getResult<MIRToIRTranslationAnalysis>(MF);
+      for (const llvm::MachineBasicBlock &MBB : MF)
+        Translation.markDirty(MBB);
+    }
+    return llvm::PreservedAnalyses::all();
+  }
+};
+
+/// Test-only pass: flushes every lifted machine function's translation
+struct FlushTranslationTestPass
+    : public llvm::PassInfoMixin<FlushTranslationTestPass> {
+  llvm::PreservedAnalyses run(llvm::Module &M,
+                              llvm::ModuleAnalysisManager &MAM) {
+    auto &FAM =
+        MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(M).getManager();
+    auto &MFAM =
+        MAM.getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(M)
+            .getManager();
+    for (llvm::Function &F : M) {
+      if (F.isDeclaration())
+        continue;
+      llvm::MachineFunction &MF =
+          FAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
+      if (MF.empty())
+        continue;
+      if (llvm::Error Err =
+              MFAM.getResult<MIRToIRTranslationAnalysis>(MF).flush())
+        M.getContext().emitError(llvm::toString(std::move(Err)));
+    }
+    /// Flushing rewrites the lifted IR bodies wholesale
+    llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
+    PA.preserve<llvm::MachineFunctionAnalysisManagerModuleProxy>();
+    PA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
+    return PA;
+  }
+};
 
 struct MockAMDGPULoaderInitialEntryPointParser
     : public llvm::cl::parser<
@@ -343,7 +404,12 @@ llvmGetPassPluginInfo() {
           MFAM.registerPass(
               []() { return luthier::InstructionTracesAnalysis(); });
           MFAM.registerPass(
-              []() { return luthier::MIToIRMappingAnalysis(); });
+              []() { return luthier::MIRToIRTranslationAnalysis(); });
+        });
+    PB.registerAnalysisRegistrationCallback(
+        [](llvm::FunctionAnalysisManager &FAM) {
+          FAM.registerPass([]() { return luthier::MIToIRMappingAnalysis(); });
+          FAM.registerPass([]() { return luthier::RegValueMapAnalysis(); });
         });
 
     PB.registerPipelineParsingCallback(
@@ -366,6 +432,18 @@ llvmGetPassPluginInfo() {
           if (Name == "luthier-code-discovery") {
             MPM.addPass(
                 luthier::CodeDiscoveryPass(luthier::CodeDiscoveryOptions));
+            return true;
+          }
+          if (Name == "luthier-reg-value-map-printer") {
+            MPM.addPass(luthier::RegValueMapPrinter(llvm::outs()));
+            return true;
+          }
+          if (Name == "luthier-mark-retranslate-test") {
+            MPM.addPass(luthier::MarkRetranslateTestPass());
+            return true;
+          }
+          if (Name == "luthier-flush-translation-test") {
+            MPM.addPass(luthier::FlushTranslationTestPass());
             return true;
           }
           if (Name == "trace-callgraph-printer") {

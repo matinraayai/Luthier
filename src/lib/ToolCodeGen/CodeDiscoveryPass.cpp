@@ -26,6 +26,7 @@
 #include "luthier/ToolCodeGen/InitialExecutionPointAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
 #include "luthier/ToolCodeGen/MIRConvenience.h"
+#include "luthier/ToolCodeGen/MIRToIRTranslationAnalysis.h"
 #include "luthier/ToolCodeGen/MIRToIRTranslator.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 #include "luthier/ToolCodeGen/PseudoOpcodeAndRegMapper.h"
@@ -1676,19 +1677,16 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
     PA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
     TargetMAM.invalidate(TargetModule, PA);
 
-    llvm::Error Err = llvm::Error::success();
-
-    /// Translate the machine function to LLVM IR
-    MIRToIRTranslator Translator{MF, Err};
-
-    if (Err) {
+    /// Translate the machine function to LLVM IR through the pinned
+    /// translation analysis; the initial flush performs the full translation
+    TranslationState &Translation =
+        MFAM.getResult<MIRToIRTranslationAnalysis>(MF);
+    if (llvm::Error Err = Translation.flush()) {
       Ctx.emitError(llvm::toString(std::move(Err)));
-      /// MF is fully populated with MIR and the translator ctor may have
-      /// started emitting IR, so nothing is preserved.
+      /// MF is fully populated with MIR and the translator may have started
+      /// emitting IR, so nothing is preserved.
       return llvm::PreservedAnalyses::none();
     }
-
-    Translator.translate();
 
     /// Go over all discovered call target addresses and add them to be visited
     /// (if not visited already)

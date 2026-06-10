@@ -14,13 +14,16 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file MIToIRMappingAnalysis.h
-/// Describes the \c MIToIRMappingAnalysis, a \c llvm::MachineFunction analysis
+/// Describes the \c MIToIRMappingAnalysis, a \c llvm::Function analysis
 /// that provides a bidirectional mapping between the \c llvm::MachineInstr s of
 /// a lifted machine function and the \c llvm::Instruction s they were
 /// translated into by the \c MIRToIRTranslator. The mapping is reconstructed by
 /// matching the \c TargetMachineInstrMDNode (PC sections) metadata that the
 /// translator copies, by pointer, from each source MI onto every IR instruction
-/// it emits for that MI.
+/// it emits for that MI. It is a function (not machine function) analysis
+/// because its result holds \c llvm::Instruction pointers: any pass that
+/// rewrites the lifted IR invalidates it through the normal function-level
+/// \c llvm::PreservedAnalyses channel.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_MI_TO_IR_MAPPING_ANALYSIS_H
 #define LUTHIER_TOOL_CODE_GEN_MI_TO_IR_MAPPING_ANALYSIS_H
@@ -130,11 +133,11 @@ public:
     return llvm::make_range(ir_to_mi_begin(), ir_to_mi_end());
   }
 
-  bool invalidate(llvm::MachineFunction &MF, const llvm::PreservedAnalyses &PA,
-                  llvm::MachineFunctionAnalysisManager::Invalidator &Inv);
+  bool invalidate(llvm::Function &F, const llvm::PreservedAnalyses &PA,
+                  llvm::FunctionAnalysisManager::Invalidator &Inv);
 };
 
-/// \brief A \c llvm::MachineFunction analysis that provides a bidirectional
+/// \brief A \c llvm::Function analysis that provides a bidirectional
 /// mapping between a lifted machine function's \c llvm::MachineInstr s and the
 /// \c llvm::Instruction s they were translated into.
 class MIToIRMappingAnalysis
@@ -148,8 +151,7 @@ public:
 
   MIToIRMappingAnalysis() = default;
 
-  Result run(llvm::MachineFunction &MF,
-             llvm::MachineFunctionAnalysisManager &FAM);
+  Result run(llvm::Function &F, llvm::FunctionAnalysisManager &FAM);
 };
 
 } // namespace luthier

@@ -20,6 +20,8 @@
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
+#include <llvm/CodeGen/MachineFunction.h>
+#include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instruction.h>
@@ -32,9 +34,9 @@
 
 namespace luthier {
 
-bool MIToIRMapping::invalidate(
-    llvm::MachineFunction &, const llvm::PreservedAnalyses &PA,
-    llvm::MachineFunctionAnalysisManager::Invalidator &) {
+bool MIToIRMapping::invalidate(llvm::Function &,
+                               const llvm::PreservedAnalyses &PA,
+                               llvm::FunctionAnalysisManager::Invalidator &) {
   // The mapping holds raw MachineInstr/Instruction pointers, so any pass that
   // adds or removes instructions in either representation invalidates it.
   // Unless it is preserved explicitly, recompute it.
@@ -45,9 +47,12 @@ bool MIToIRMapping::invalidate(
 llvm::AnalysisKey MIToIRMappingAnalysis::Key;
 
 MIToIRMappingAnalysis::Result
-MIToIRMappingAnalysis::run(llvm::MachineFunction &MF,
-                           llvm::MachineFunctionAnalysisManager &) {
+MIToIRMappingAnalysis::run(llvm::Function &F,
+                           llvm::FunctionAnalysisManager &FAM) {
   MIToIRMapping Result;
+
+  llvm::MachineFunction &MF =
+      FAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
 
   LLVM_DEBUG(luthier::dbgs() << "[MIToIRMapping] Running analysis for "
                              << MF.getName() << "\n";);
@@ -77,7 +82,6 @@ MIToIRMappingAnalysis::run(llvm::MachineFunction &MF,
   // Pass 2: walk the lifted IR body (the same Function that backs this machine
   // function) in program order and join each IR instruction to its source MI
   // through the shared PC sections MDNode pointer.
-  llvm::Function &F = MF.getFunction();
   for (llvm::BasicBlock &BB : F) {
     for (llvm::Instruction &I : BB) {
       auto *MD = llvm::dyn_cast_or_null<TargetMachineInstrMDNode>(

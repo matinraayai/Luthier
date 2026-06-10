@@ -49,9 +49,10 @@
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include "luthier/ToolCodeGen/InitialExecutionPointAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
-#include "luthier/ToolCodeGen/MIToIRMappingAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
 #include "luthier/ToolCodeGen/InstrumentationPass.h"
+#include "luthier/ToolCodeGen/MIRToIRTranslationAnalysis.h"
+#include "luthier/ToolCodeGen/MIToIRMappingAnalysis.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 #include "luthier/ToolCodeGen/Metadata.h"
 #include "luthier/ToolCodeGen/MetadataParserAnalysis.h"
@@ -112,14 +113,15 @@ public:
   void registerInstrumentationAnalyses(
       const llvm::amdhsa::kernel_descriptor_t &KD, llvm::TargetMachine &TM,
       llvm::MachineModuleInfo &MMI, amdgpu::hsamd::MetadataParser &MDParser,
-      llvm::ModuleAnalysisManager &MAM,
+      llvm::ModuleAnalysisManager &MAM, llvm::FunctionAnalysisManager &FAM,
       llvm::MachineFunctionAnalysisManager &MFAM) {
     Derived &D = derived();
     (void)TM;
 
     MAM.registerPass([&] { return llvm::MachineModuleAnalysis(MMI); });
     MFAM.registerPass([] { return luthier::InstructionTracesAnalysis(); });
-    MFAM.registerPass([] { return luthier::MIToIRMappingAnalysis(); });
+    FAM.registerPass([] { return luthier::MIToIRMappingAnalysis(); });
+    MFAM.registerPass([] { return luthier::MIRToIRTranslationAnalysis(); });
     MAM.registerPass([&] {
       return luthier::InitialEntryPointAnalysis(
           [&](llvm::Module &, llvm::ModuleAnalysisManager &) {
@@ -206,7 +208,7 @@ public:
 
     luthier::amdgpu::hsamd::MetadataParser MetadataParserInstance;
     registerInstrumentationAnalyses(KD, *TM, MMI, MetadataParserInstance, MAM,
-                                    MFAM);
+                                    FAM, MFAM);
 
     llvm::SmallVector<char, 0> ObjBuf;
     llvm::raw_svector_ostream ObjOS(ObjBuf);

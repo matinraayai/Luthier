@@ -1924,6 +1924,191 @@ void MIRToIRTranslator::raiseMachineInstr(const llvm::MachineInstr &MI,
   }
 }
 
+void MIRToIRTranslator::translateMBBBody(llvm::MachineBasicBlock &MBB) {
+  llvm::LLVMContext &Ctx = MF.getFunction().getContext();
+  LLVM_DEBUG(luthier::dbgs()
+             << "[MIRToIRTranslator] Processing MBB " << MBB.getNumber()
+             << " with " << MBB.size() << " instructions\n");
+  auto *BB = const_cast<llvm::BasicBlock *>(MBB.getBasicBlock());
+  for (llvm::MachineInstr &MI : MBB) {
+    LLVM_DEBUG(luthier::dbgs() << "[MIRToIRTranslator] Translating MI: ";
+               MI.print(luthier::dbgs()););
+    llvm::IRBuilder<llvm::InstSimplifyFolder, llvm::IRBuilderCallbackInserter>
+        Builder(Ctx, llvm::InstSimplifyFolder{MF.getDataLayout()},
+                llvm::IRBuilderCallbackInserter{[&](llvm::Instruction *I) {
+                  if (MI.getPCSections())
+                    I->setMetadata(llvm::LLVMContext::MD_pcsections,
+                                   MI.getPCSections());
+                  LLVM_DEBUG(luthier::dbgs()
+                             << "[MIRToIRTranslator] Inserting translated "
+                                "instruction "
+                             << *I << "\n");
+                }});
+    Builder.SetInsertPoint(BB);
+    raiseMachineInstr(MI, Builder);
+  }
+  /// An empty MBB has no terminator instruction, so it trivially "ends in"
+  /// no branch — guard \c MBB.back() against the empty case to avoid
+  /// dereferencing \c --end().
+  bool EndsInBranch = !MBB.empty() && MBB.back().isBranch();
+  if (MBB.canFallThrough() && !EndsInBranch && !BB->getTerminatorOrNull()) {
+    if (const llvm::MachineBasicBlock *NextMBB = MBB.getNextNode()) {
+      auto *NextBB = const_cast<llvm::BasicBlock *>(NextMBB->getBasicBlock());
+      llvm::IRBuilder{BB}.CreateBr(NextBB);
+    }
+  }
+  /// Safety net: a well-formed trace block ends in a terminator (branch,
+  /// return/tail-call, or endpgm) or falls through to a successor. If a block
+  /// is still terminator-less here — e.g. a truncated trace whose last MBB
+  /// ends in a non-terminator with no fall-through successor — close it with
+  /// \c unreachable so the translated function stays valid IR rather than
+  /// tripping the verifier in a downstream pass.
+  if (!BB->getTerminatorOrNull())
+    llvm::IRBuilder<>{BB}.CreateUnreachable();
+}
+
+llvm::Expected<bool> MIRToIRTranslator::retranslateMBB(
+    const llvm::MachineBasicBlock &ConstMBB,
+    llvm::SmallVectorImpl<llvm::Instruction *> &PendingDeadInsts) {
+  auto &MBB = const_cast<llvm::MachineBasicBlock &>(ConstMBB);
+  auto *BodyBB = const_cast<llvm::BasicBlock *>(MBB.getBasicBlock());
+  if (!BodyBB)
+    return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+        "MBB {0} has no translated IR block to re-translate", MBB.getNumber()));
+
+  LLVM_DEBUG(luthier::dbgs() << "[MIRToIRTranslator] Re-translating MBB "
+                             << MBB.getNumber() << "\n");
+
+  /// Snapshot the old boundary register-value state: every value the old
+  /// body exported to other blocks is reachable from here by RegFileKey
+  RegValueMap OldState;
+  if (auto It = VM.find(MBB); It != VM.end()) {
+    OldState = std::move(It->second);
+    VM.erase(It);
+  }
+
+  /// Detach (but do not delete) the old body so external uses stay
+  /// resolvable until they are replaced below
+  llvm::SmallPtrSet<llvm::Instruction *, 32> OldInsts;
+  llvm::SmallVector<llvm::Instruction *> OldInstList;
+  while (!BodyBB->empty()) {
+    llvm::Instruction &I = BodyBB->back();
+    I.removeFromParent();
+    OldInsts.insert(&I);
+    OldInstList.push_back(&I);
+  }
+
+  /// Re-seed the entry state if this is the function's entry block
+  if (&MBB == &MF.front()) {
+    llvm::IRBuilder EntryBuilder{BodyBB};
+    if (MF.getFunction().getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL)
+      initKernelEntryRegs(EntryBuilder);
+    else
+      initDeviceFunctionEntryRegs(EntryBuilder);
+  }
+
+  translateMBBBody(MBB);
+
+  /// Vector MBBs: boundary placeholder PHIs must live in the CheckBB, whose
+  /// IR predecessors are the MIR predecessors' IR blocks (the BodyBB's only
+  /// IR predecessors are the Check/Skip scaffolding)
+  if (auto It = VectorCheckBBs.find(&MBB); It != VectorCheckBBs.end()) {
+    llvm::BasicBlock *CheckBB = It->second;
+    while (auto *Phi = llvm::dyn_cast<llvm::PHINode>(&BodyBB->front()))
+      Phi->moveBefore(*CheckBB, CheckBB->begin());
+  }
+
+  fixupPhis();
+
+  /// Repair cross-block dataflow: re-materialize every register value the
+  /// old body exported and replace the old value's remaining uses. Values
+  /// that were not instructions of the old body (constants, arguments,
+  /// values defined in other blocks) are still live and need no repair
+  llvm::DenseMap<llvm::Value *, llvm::Value *> Replacements;
+  for (auto &[Key, OldVTM] : OldState) {
+    for (auto &[Ty, OldV] : OldVTM) {
+      auto *OldInst = llvm::dyn_cast<llvm::Instruction>(OldV);
+      if (!OldInst || !OldInsts.contains(OldInst) || OldInst->use_empty())
+        continue;
+      llvm::IRBuilder<llvm::InstSimplifyFolder> Builder(
+          BodyBB->getContext(), llvm::InstSimplifyFolder{MF.getDataLayout()});
+      Builder.SetInsertPoint(BodyBB->getTerminator());
+      llvm::Value &NewV = getOperandAsValue(MBB, Key, Builder, Ty);
+      OldInst->replaceAllUsesWith(&NewV);
+      Replacements[OldInst] = &NewV;
+    }
+  }
+  /// Boundary PHIs created by the repair itself may need resolving
+  fixupPhis();
+
+  /// Other blocks' register caches may still point at old body values;
+  /// remap repaired entries and drop unrepaired ones so later reads
+  /// re-materialize them
+  for (auto &[OtherMBB, State] : VM) {
+    if (&OtherMBB.get() == &MBB)
+      continue;
+    for (auto &[Key, VTM] : State)
+      for (auto It = VTM.begin(); It != VTM.end();)
+        if (auto *I = llvm::dyn_cast<llvm::Instruction>(It->second);
+            I && OldInsts.contains(I)) {
+          auto RIt = Replacements.find(I);
+          if (RIt != Replacements.end())
+            (It++)->second = RIt->second;
+          else
+            VTM.erase(It++);
+        } else
+          ++It;
+  }
+
+  /// Drop the detached old body for good. An old instruction that still has
+  /// uses is an intermediate value that escaped this block without a
+  /// register-file key (e.g. forwarded by single-incoming PHI collapse); its
+  /// role is no longer recoverable, so in-place repair is impossible and the
+  /// caller must fall back to a full re-translation. The orphans are parked
+  /// in \c PendingDeadInsts until the full translate drops their users
+  bool NeedFullRetranslate = false;
+  for (llvm::Instruction *I : OldInstList)
+    I->dropAllReferences();
+  for (llvm::Instruction *I : OldInstList) {
+    if (I->use_empty()) {
+      I->deleteValue();
+    } else {
+      LLVM_DEBUG(luthier::dbgs()
+                     << "[MIRToIRTranslator] Unkeyed escaped value; falling "
+                        "back to full re-translation: "
+                     << *I << "\n";);
+      PendingDeadInsts.push_back(I);
+      NeedFullRetranslate = true;
+    }
+  }
+  return NeedFullRetranslate;
+}
+
+bool MIRToIRTranslator::irSuccessorsMatchMIR(
+    const llvm::MachineBasicBlock &MBB) const {
+  const llvm::BasicBlock *BodyBB = MBB.getBasicBlock();
+  if (!BodyBB || !BodyBB->getTerminator())
+    return false;
+  /// Each MIR successor is entered through its BodyBB, or through its
+  /// CheckBB when it is a vector block. The match must hold in both
+  /// directions: an IR edge to a block outside the translated successors
+  /// means an edge was removed, and a translated successor missing from the
+  /// IR terminator means one was added
+  llvm::SmallPtrSet<const llvm::BasicBlock *, 8> IRSuccs{
+      llvm::succ_begin(BodyBB), llvm::succ_end(BodyBB)};
+  llvm::SmallPtrSet<const llvm::BasicBlock *, 8> Allowed;
+  for (const llvm::MachineBasicBlock *Succ : MBB.successors()) {
+    const llvm::BasicBlock *Entry = Succ->getBasicBlock();
+    if (auto It = VectorCheckBBs.find(Succ); It != VectorCheckBBs.end())
+      Entry = It->second;
+    if (!Entry || !IRSuccs.contains(Entry))
+      return false;
+    Allowed.insert(Entry);
+  }
+  return llvm::all_of(
+      IRSuccs, [&](const llvm::BasicBlock *S) { return Allowed.contains(S); });
+}
+
 void MIRToIRTranslator::translate() {
   auto &F = const_cast<llvm::Function &>(MF.getFunction());
   llvm::LLVMContext &Ctx = F.getContext();
@@ -1935,9 +2120,14 @@ void MIRToIRTranslator::translate() {
              << "[MIRToIRTranslator] Translating machine function '"
              << MF.getName() << "' with " << MF.size() << " MBBs\n");
 
-  /// Delete any basic blocks already present in the IR Function
-  if (!F.empty())
+  /// Delete any basic blocks already present in the IR Function. References
+  /// are dropped up front so cross-block uses don't trip the use-after-def
+  /// check while the blocks are erased one by one
+  if (!F.empty()) {
+    for (llvm::BasicBlock &BB : F)
+      BB.dropAllReferences();
     (void)F.erase(F.begin(), F.end());
+  }
 
   /// Create BBs associated with every MBB in the MF
   for (llvm::MachineBasicBlock &MBB : MF) {
@@ -1959,47 +2149,8 @@ void MIRToIRTranslator::translate() {
 
   /// Iterate over the MBBs and raise the machine instructions in each MBB to
   /// LLVM IR
-  for (llvm::MachineBasicBlock &MBB : MF) {
-    LLVM_DEBUG(luthier::dbgs()
-               << "[MIRToIRTranslator] Processing MBB " << MBB.getNumber()
-               << " with " << MBB.size() << " instructions\n");
-    auto *BB = const_cast<llvm::BasicBlock *>(MBB.getBasicBlock());
-    for (llvm::MachineInstr &MI : MBB) {
-      LLVM_DEBUG(luthier::dbgs() << "[MIRToIRTranslator] Translating MI: ";
-                 MI.print(luthier::dbgs()););
-      llvm::IRBuilder<llvm::InstSimplifyFolder, llvm::IRBuilderCallbackInserter>
-          Builder(Ctx, llvm::InstSimplifyFolder{MF.getDataLayout()},
-                  llvm::IRBuilderCallbackInserter{[&](llvm::Instruction *I) {
-                    if (MI.getPCSections())
-                      I->setMetadata(llvm::LLVMContext::MD_pcsections,
-                                     MI.getPCSections());
-                    LLVM_DEBUG(luthier::dbgs()
-                               << "[MIRToIRTranslator] Inserting translated "
-                                  "instruction "
-                               << *I << "\n");
-                  }});
-      Builder.SetInsertPoint(BB);
-      raiseMachineInstr(MI, Builder);
-    }
-    /// An empty MBB has no terminator instruction, so it trivially "ends in"
-    /// no branch — guard \c MBB.back() against the empty case to avoid
-    /// dereferencing \c --end().
-    bool EndsInBranch = !MBB.empty() && MBB.back().isBranch();
-    if (MBB.canFallThrough() && !EndsInBranch && !BB->getTerminatorOrNull()) {
-      if (const llvm::MachineBasicBlock *NextMBB = MBB.getNextNode()) {
-        auto *NextBB = const_cast<llvm::BasicBlock *>(NextMBB->getBasicBlock());
-        llvm::IRBuilder{BB}.CreateBr(NextBB);
-      }
-    }
-    /// Safety net: a well-formed trace block ends in a terminator (branch,
-    /// return/tail-call, or endpgm) or falls through to a successor. If a block
-    /// is still terminator-less here — e.g. a truncated trace whose last MBB
-    /// ends in a non-terminator with no fall-through successor — close it with
-    /// \c unreachable so the translated function stays valid IR rather than
-    /// tripping the verifier in a downstream pass.
-    if (!BB->getTerminatorOrNull())
-      llvm::IRBuilder<>{BB}.CreateUnreachable();
-  }
+  for (llvm::MachineBasicBlock &MBB : MF)
+    translateMBBBody(MBB);
 
   /// Pass 3: insert an EXEC-mask predicate check before every vector MBB's
   /// BodyBB. The check BB receives all of the BodyBB's existing predecessor
