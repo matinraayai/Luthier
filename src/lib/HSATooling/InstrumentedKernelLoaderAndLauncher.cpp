@@ -20,12 +20,16 @@
 #include "luthier/HSA/Agent.h"
 #include "luthier/HSA/CodeObjectReader.h"
 #include "luthier/HSA/Executable.h"
+#include "luthier/HSA/ExecutableSymbol.h"
 #include "luthier/HSA/HsaError.h"
 #include "luthier/HSA/LoadedCodeObject.h"
 #include "luthier/HSA/Memory.h"
-#include "luthier/HSATooling/DeviceToolCodeLoader.h"
+#include "luthier/HSA/MemoryPool.h"
+#include "luthier/HSA/SVM.h"
+#include "luthier/HSA/VMEM.h"
 #include "luthier/Linker/Linker.h"
 #include "luthier/Object/AMDGCNObjectFile.h"
+#include "luthier/Object/ObjectFileUtils.h"
 
 #include <cstring>
 #include <llvm/ADT/STLExtras.h>
@@ -36,6 +40,7 @@
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Support/Process.h>
 #include <llvm/Support/SmallVectorMemoryBuffer.h>
 #include <vector>
 
@@ -47,9 +52,7 @@ namespace {
 
 /// Scan \p Obj for the \c __luthier_kernarg_layout symbol emitted by
 /// \c TargetModulePatcherPass and deserialize the \c CustomKernargLayout POD it
-/// anchors. Mirrors \c DeviceToolCodeLoader's \c readSubtargetMarker symbol
-/// scan. Returns \c std::nullopt when the object carries no such record (the
-/// kernel does not use a custom kernarg buffer).
+/// anchors. Returns \c std::nullopt when the object carries no such record.
 std::optional<CustomKernargLayout>
 readCustomKernargLayout(const llvm::object::ObjectFile &Obj) {
   for (const auto &Sym : Obj.symbols()) {
@@ -92,12 +95,23 @@ readCustomKernargLayout(const llvm::object::ObjectFile &Obj) {
   return std::nullopt;
 }
 
+/// \returns true if \p Obj carries the \c __luthier_uses_hostcall marker
+/// symbol.
+bool objectUsesHostcall(const llvm::object::ObjectFile &Obj) {
+  for (const auto &Sym : Obj.symbols()) {
+    auto NameOrErr = Sym.getName();
+    if (!NameOrErr) {
+      llvm::consumeError(NameOrErr.takeError());
+      continue;
+    }
+    if (*NameOrErr == HostcallMarkerGlobalName)
+      return true;
+  }
+  return false;
+}
+
 /// Construct the ROCclr-style COV5 hidden/implicit kernel arguments for \p P
-/// into the \p ImplicitSize-byte region at \p Impl. Mirrors the host-side
-/// hidden-arg construction ROCclr performs when reusing the application's
-/// kernarg buffer. Pointer-valued hidden args (hostcall buffer, heap, queues,
-/// multigrid sync, completion action) are left zero — they are provisioned by
-/// the deferred host-call work, not by this kernel-argument framework.
+/// into the \p ImplicitSize-byte region at \p Impl.
 void fillCov5ImplicitArgs(uint8_t *Impl, size_t ImplicitSize,
                           const hsa_kernel_dispatch_packet_t &P) {
   std::memset(Impl, 0, ImplicitSize);
@@ -133,6 +147,25 @@ void fillCov5ImplicitArgs(uint8_t *Impl, size_t ImplicitSize,
   Wr16(cov5::GridDims, Dims);
 }
 
+/// Walk the parsed ELF and find the single kernel-function symbol.
+llvm::Expected<object::AMDGCNKernelFuncSymbolRef>
+findSingleKernel(const object::AMDGCNObjectFile &Obj) {
+  llvm::Error IterErr = llvm::Error::success();
+  std::optional<object::AMDGCNKernelFuncSymbolRef> Found;
+  unsigned KernelCount = 0;
+  for (const auto &KSym : Obj.kernel_functions(IterErr)) {
+    ++KernelCount;
+    Found = KSym;
+  }
+  LUTHIER_RETURN_ON_ERROR(std::move(IterErr));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      KernelCount == 1,
+      llvm::formatv("Instrumented relocatable must contain exactly one "
+                    "kernel function; found {0}",
+                    KernelCount)));
+  return *Found;
+}
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -143,9 +176,8 @@ InstrumentedKernelLoaderAndLauncher::InstrumentedKernelLoaderAndLauncher(
     const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
     const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExt,
     const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
-        &Loader,
-    DeviceToolCodeLoader &DeviceCode)
-    : CoreApi(CoreApi), AmdExt(AmdExt), Loader(Loader), DeviceCode(DeviceCode) {
+        &Loader)
+    : CoreApi(CoreApi), AmdExt(AmdExt), Loader(Loader) {
   LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher] ctor\n");
 }
 
@@ -162,15 +194,13 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::eraseRecordLocked(
     llvm::DenseMap<Key, InstrumentedRecord, KeyDenseMapInfo>::iterator It) {
   LLVM_DEBUG(luthier::dbgs()
              << "[InstrumentedKernelLoaderAndLauncher] eraseRecordLocked KD="
-             << It->first.KD << " preset=" << It->first.Preset << " instrKO=0x"
-             << llvm::Twine::utohexstr(It->second.InstrumentedKO) << "\n");
+             << It->first.KD << " preset=" << It->first.Preset << "\n");
   llvm::Error E = llvm::Error::success();
   InstrumentedRecord &R = It->second;
   const auto Core = CoreApi.getTable();
 
   // Executable first (releases its references into the reader's host
-  // memory), then reader. The retained MemoryBuffer drops with the map
-  // entry below.
+  // memory), then reader.
   E = llvm::joinErrors(std::move(E), hsa::executableDestroy(Core, R.Exec));
   E = llvm::joinErrors(std::move(E),
                        hsa::codeObjectReaderDestroy(R.Reader, Core));
@@ -182,12 +212,16 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::eraseRecordLocked(
     R.CustomKernargAlloc = nullptr;
   }
 
+  // Managed-variable storage is shared across instrumented copies and owned at
+  // the launcher level (SharedManagedVars); it is NOT freed per record — other
+  // records may still reference it. It is reclaimed in unloadAll.
+
   ByOriginal.erase(It);
   return E;
 }
 
 //===----------------------------------------------------------------------===//
-// unloadAll
+// unloadAll / unloadInstrumentedIfExists
 //===----------------------------------------------------------------------===//
 
 llvm::Error InstrumentedKernelLoaderAndLauncher::unloadAll() {
@@ -200,64 +234,69 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::unloadAll() {
     auto Curr = It++;
     E = llvm::joinErrors(std::move(E), eraseRecordLocked(Curr));
   }
+
+  // Reclaim the shared managed-variable buffers now that no instrumented copy
+  // references them.
+  const auto AmdExtTbl = AmdExt.getTable();
+  for (auto &KV : SharedManagedVars)
+    E = llvm::joinErrors(std::move(E),
+                         freeManagedStorage(AmdExtTbl, KV.second));
+  SharedManagedVars.clear();
   return E;
 }
-
-//===----------------------------------------------------------------------===//
-// unloadInstrumentedIfExists
-//===----------------------------------------------------------------------===//
 
 llvm::Error InstrumentedKernelLoaderAndLauncher::unloadInstrumentedIfExists(
     const llvm::amdhsa::kernel_descriptor_t *OriginalKD, uint64_t Preset) {
   llvm::sys::ScopedWriter W(Mutex);
-  LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher] "
-                                "unloadInstrumentedIfExists KD="
-                             << OriginalKD << " preset=" << Preset << "\n");
   auto It = ByOriginal.find(Key{OriginalKD, Preset});
-  if (It == ByOriginal.end()) {
-    LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
-                                  "no matching record\n");
+  if (It == ByOriginal.end())
     return llvm::Error::success();
-  }
   return eraseRecordLocked(It);
 }
 
 //===----------------------------------------------------------------------===//
-// overrideWithInstrumented
+// lookupGlobalVariable
+//===----------------------------------------------------------------------===//
+
+llvm::Expected<hsa_executable_symbol_t>
+InstrumentedKernelLoaderAndLauncher::lookupGlobalVariable(
+    llvm::StringRef Name, const llvm::amdhsa::kernel_descriptor_t *OriginalKD,
+    uint64_t Preset) {
+  llvm::sys::ScopedReader R(Mutex);
+  auto It = ByOriginal.find(Key{OriginalKD, Preset});
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      It != ByOriginal.end(),
+      llvm::formatv("No instrumented variant cached for kernel_descriptor "
+                    "{0:x} preset {1}",
+                    reinterpret_cast<uint64_t>(OriginalKD), Preset)));
+  auto SymIt = It->second.NameToVarSymbol.find(Name);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      SymIt != It->second.NameToVarSymbol.end(),
+      llvm::formatv("Global variable '{0}' not found in the instrumented "
+                    "executable for the requested kernel/preset.",
+                    Name)));
+  return SymIt->second;
+}
+
+//===----------------------------------------------------------------------===//
+// overrideWithInstrumented + custom kernarg
 //===----------------------------------------------------------------------===//
 
 llvm::Error InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented(
     hsa_kernel_dispatch_packet_t &Packet, uint64_t Preset) {
-  // Writer lock: when the kernel uses a custom kernarg buffer we allocate and
-  // record a per-launch buffer (mutating the record), so the reader lock the
-  // pure-swap path used is not sufficient.
   llvm::sys::ScopedWriter W(Mutex);
   const auto *KD = reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
       Packet.kernel_object);
-  LLVM_DEBUG(
-      luthier::dbgs()
-      << "[InstrumentedKernelLoaderAndLauncher] overrideWithInstrumented "
-         "origKO=0x"
-      << llvm::Twine::utohexstr(Packet.kernel_object) << " preset=" << Preset
-      << "\n");
   auto It = ByOriginal.find(Key{KD, Preset});
-  if (It == ByOriginal.end()) {
-    LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
-                                  "no cached instrumented variant\n");
+  if (It == ByOriginal.end())
     return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
         "No instrumented variant cached for kernel_object {0:x} preset {1}",
         Packet.kernel_object, Preset));
-  }
 
   InstrumentedRecord &Rec = It->second;
   Packet.kernel_object = Rec.InstrumentedKO;
   Packet.private_segment_size =
       std::max<uint32_t>(Packet.private_segment_size, Rec.PrivateSegmentSize);
-  LLVM_DEBUG(luthier::dbgs()
-             << "[InstrumentedKernelLoaderAndLauncher]   "
-                "swapped to instrKO=0x"
-             << llvm::Twine::utohexstr(Rec.InstrumentedKO)
-             << " privSegSize=" << Packet.private_segment_size << "\n");
 
   if (Rec.HasCustomKernarg) {
     if (auto Err = buildCustomKernargBuffer(Rec, Packet))
@@ -271,9 +310,6 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::buildCustomKernargBuffer(
   const auto Core = CoreApi.getTable();
   const CustomKernargLayout &L = Rec.KernargLayout;
 
-  // Reclaim the previous launch's buffer. Tools serialize dispatches of a given
-  // kernel and wait on its completion signal before issuing the next, so the
-  // prior buffer is no longer referenced by the device here.
   if (Rec.CustomKernargAlloc) {
     llvm::consumeError(hsa::memoryFree(Core, Rec.CustomKernargAlloc));
     Rec.CustomKernargAlloc = nullptr;
@@ -290,17 +326,25 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::buildCustomKernargBuffer(
   LUTHIER_RETURN_ON_ERROR(AllocOrErr.takeError());
   void *CustomBuf = *AllocOrErr;
 
-  // Stage the buffer contents on the host, then copy them into the kernarg
-  // allocation in one shot.
   std::vector<uint8_t> Stage(L.TotalSize, 0);
   const uint64_t OrigKernarg =
       reinterpret_cast<uint64_t>(Packet.kernarg_address);
   std::memcpy(Stage.data() + L.OrigKernargPtrOffset, &OrigKernarg,
               sizeof(uint64_t));
-  // Tool explicit args occupy [ExplicitOffset, ExplicitOffset + ExplicitSize);
-  // zero-filled until the explicit-arg declaration API lands (ExplicitSize=0).
   fillCov5ImplicitArgs(Stage.data() + L.ImplicitOffset,
                        L.TotalSize - L.ImplicitOffset, Packet);
+
+  if (Rec.UsesHostcall) {
+    auto HcBufOrErr = getOrCreateHostcallBuffer(Rec.Agent);
+    if (!HcBufOrErr) {
+      llvm::consumeError(hsa::memoryFree(Core, CustomBuf));
+      return HcBufOrErr.takeError();
+    }
+    const uint64_t HcPtr = reinterpret_cast<uint64_t>(*HcBufOrErr);
+    const size_t Off = L.ImplicitOffset + cov5::HostcallPtr;
+    if (Off + sizeof(uint64_t) <= L.TotalSize)
+      std::memcpy(Stage.data() + Off, &HcPtr, sizeof(uint64_t));
+  }
 
   if (auto Err = hsa::memoryCopy(Core, CustomBuf, Stage.data(), L.TotalSize)) {
     llvm::consumeError(hsa::memoryFree(Core, CustomBuf));
@@ -309,12 +353,20 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::buildCustomKernargBuffer(
 
   Rec.CustomKernargAlloc = CustomBuf;
   Packet.kernarg_address = CustomBuf;
-  LLVM_DEBUG(luthier::dbgs()
-             << "[InstrumentedKernelLoaderAndLauncher]   custom kernarg buffer "
-                "@"
-             << CustomBuf << " size=" << L.TotalSize << " orig kernarg=0x"
-             << llvm::Twine::utohexstr(OrigKernarg) << "\n");
   return llvm::Error::success();
+}
+
+llvm::Expected<void *>
+InstrumentedKernelLoaderAndLauncher::getOrCreateHostcallBuffer(
+    hsa_agent_t Agent) {
+  auto It = HostcallConsumersByAgent.find(Agent.handle);
+  if (It != HostcallConsumersByAgent.end())
+    return It->second->getBufferPointer();
+  auto ConsumerOrErr = HostcallConsumer::create(CoreApi, AmdExt, Agent);
+  LUTHIER_RETURN_ON_ERROR(ConsumerOrErr.takeError());
+  void *Buf = (*ConsumerOrErr)->getBufferPointer();
+  HostcallConsumersByAgent.try_emplace(Agent.handle, std::move(*ConsumerOrErr));
+  return Buf;
 }
 
 //===----------------------------------------------------------------------===//
@@ -324,20 +376,12 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::buildCustomKernargBuffer(
 llvm::Error InstrumentedKernelLoaderAndLauncher::invalidateOriginalExec(
     hsa_executable_t Exec) {
   llvm::sys::ScopedWriter W(Mutex);
-  LLVM_DEBUG(luthier::dbgs()
-             << "[InstrumentedKernelLoaderAndLauncher] invalidateOriginalExec "
-                "exec="
-             << Exec.handle << "\n");
   llvm::Error E = llvm::Error::success();
 
-  // Collect the loaded device-memory ranges of every LCO owned by the
-  // about-to-be-destroyed executable.
   llvm::SmallVector<hsa_loaded_code_object_t, 2> LCOs;
   if (auto Err =
           hsa::executableGetLoadedCodeObjects(Loader.getTable(), Exec, LCOs))
     return llvm::joinErrors(std::move(E), std::move(Err));
-  LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
-                             << LCOs.size() << " LCO(s)\n");
 
   struct Range {
     uint64_t Start;
@@ -354,28 +398,18 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::invalidateOriginalExec(
     }
     const uint64_t Start = reinterpret_cast<uint64_t>(LoadedMemOrErr->data());
     Ranges.push_back(Range{Start, Start + LoadedMemOrErr->size()});
-    LLVM_DEBUG(luthier::dbgs()
-               << "[InstrumentedKernelLoaderAndLauncher]   LCO range [0x"
-               << llvm::Twine::utohexstr(Start) << ", 0x"
-               << llvm::Twine::utohexstr(Start + LoadedMemOrErr->size())
-               << ")\n");
   }
 
-  // Snapshot the victim keys first so we don't invalidate map iterators
-  // while erasing.
   llvm::SmallVector<Key, 4> Victims;
   for (const auto &[K, _] : ByOriginal) {
     const auto Addr = reinterpret_cast<uint64_t>(K.KD);
-    for (const Range &R : Ranges) {
-      if (Addr >= R.Start && Addr < R.End) {
+    for (const Range &Rng : Ranges) {
+      if (Addr >= Rng.Start && Addr < Rng.End) {
         Victims.push_back(K);
         break;
       }
     }
   }
-  LLVM_DEBUG(luthier::dbgs()
-             << "[InstrumentedKernelLoaderAndLauncher]   " << Victims.size()
-             << " victim record(s) of " << ByOriginal.size() << " total\n");
 
   for (const Key &K : Victims) {
     auto It = ByOriginal.find(K);
@@ -386,100 +420,253 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::invalidateOriginalExec(
 }
 
 //===----------------------------------------------------------------------===//
-// loadInstrumented
+// Managed-variable storage allocation (HMM-aware)
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-/// Walk the parsed ELF and find the single kernel-function symbol.
-/// Errors unless exactly one kernel function exists.
-llvm::Expected<object::AMDGCNKernelFuncSymbolRef>
-findSingleKernel(const object::AMDGCNObjectFile &Obj) {
-  llvm::Error IterErr = llvm::Error::success();
-  std::optional<object::AMDGCNKernelFuncSymbolRef> Found;
-  unsigned KernelCount = 0;
-  for (const auto &KSym : Obj.kernel_functions(IterErr)) {
-    ++KernelCount;
-    Found = KSym;
-  }
-  LUTHIER_RETURN_ON_ERROR(std::move(IterErr));
-  LLVM_DEBUG(luthier::dbgs()
-             << "[InstrumentedKernelLoaderAndLauncher]   findSingleKernel: "
-             << KernelCount << " kernel function(s)\n");
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      KernelCount == 1,
-      llvm::formatv("Instrumented relocatable must contain exactly one "
-                    "kernel function; found {0}",
-                    KernelCount)));
-  return *Found;
+llvm::Expected<hsa_amd_memory_pool_t>
+InstrumentedKernelLoaderAndLauncher::selectManagedVarPool(
+    const hsa::ApiTableContainer<::AmdExtTable> &AmdExt, hsa_agent_t CpuAgent) {
+  hsa_amd_memory_pool_t Found{};
+  bool DidFind = false;
+  LUTHIER_RETURN_ON_ERROR(hsa::agentIterateMemoryPools(
+      AmdExt, CpuAgent, [&](hsa_amd_memory_pool_t Pool) -> llvm::Error {
+        if (DidFind)
+          return llvm::Error::success();
+        llvm::Expected<bool> FGOrErr =
+            hsa::memoryPoolIsFineGrained(AmdExt, Pool);
+        LUTHIER_RETURN_ON_ERROR(FGOrErr.takeError());
+        if (!*FGOrErr)
+          return llvm::Error::success();
+        llvm::Expected<bool> AllocOrErr =
+            hsa::memoryPoolGetRuntimeAllocAllowed(AmdExt, Pool);
+        LUTHIER_RETURN_ON_ERROR(AllocOrErr.takeError());
+        if (!*AllocOrErr)
+          return llvm::Error::success();
+        Found = Pool;
+        DidFind = true;
+        return llvm::Error::success();
+      }));
+  if (!DidFind)
+    return LUTHIER_MAKE_HSA_ERROR(
+        "No host fine-grain memory pool available for managed-var allocation.");
+  return Found;
 }
 
-/// Pair of (UND global variable name, its resolved device address) the
-/// caller will feed into \c hsa_executable_agent_global_variable_define.
-struct ExternRef {
-  std::string Name;
-  void *Address;
-};
+llvm::Expected<bool> InstrumentedKernelLoaderAndLauncher::getHmmSupported() {
+  if (HmmSupportedCache)
+    return *HmmSupportedCache;
+  auto SupportedOrErr = hsa::systemIsSvmSupported(CoreApi.getTable());
+  if (!SupportedOrErr)
+    return SupportedOrErr.takeError();
+  HmmSupportedCache = *SupportedOrErr;
+  return *HmmSupportedCache;
+}
 
-/// Walk \p Obj 's symbol table. For every undefined global/weak symbol
-/// of object type, resolve it via \p DeviceCode on \p Agent and queue
-/// it. Errors if any undefined symbol is a function (the codegen
-/// pipeline must not emit inter-module function references).
-llvm::Expected<llvm::SmallVector<ExternRef, 4>>
-collectExternals(const hsa::ApiTableContainer<::CoreApiTable> &Core,
-                 const object::AMDGCNObjectFile &Obj,
-                 DeviceToolCodeLoader &DeviceCode, hsa_agent_t Agent) {
-  LLVM_DEBUG(luthier::dbgs()
-             << "[InstrumentedKernelLoaderAndLauncher]   collectExternals "
-                "for agent "
-             << Agent.handle << "\n");
-  llvm::SmallVector<ExternRef, 4> Out;
-  for (const auto &Sym : Obj.symbols()) {
-    auto FlagsOrErr = Sym.getFlags();
-    LUTHIER_RETURN_ON_ERROR(FlagsOrErr.takeError());
-    if (!(*FlagsOrErr & llvm::object::SymbolRef::SF_Undefined))
-      continue;
+llvm::Expected<InstrumentedKernelLoaderAndLauncher::ManagedAlloc>
+InstrumentedKernelLoaderAndLauncher::allocateManagedStorage(
+    const hsa::ApiTableContainer<::AmdExtTable> &AmdExt,
+    llvm::ArrayRef<hsa_agent_t> GpuAgents, hsa_amd_memory_pool_t Pool,
+    size_t Size, unsigned Align, bool HmmSupported) {
+  if (Size == 0)
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        "allocateManagedStorage: zero-sized request.");
 
-    auto NameOrErr = Sym.getName();
-    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
-    if (NameOrErr->empty())
-      continue;
-
-    const uint8_t EType = Sym.getELFType();
-    if (EType == llvm::ELF::STT_FUNC) {
+  if (HmmSupported) {
+    const size_t PageSize = llvm::sys::Process::getPageSizeEstimate();
+    if (Align > PageSize)
       return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-          "Instrumented relocatable references undefined function "
-          "symbol '{0}'; inter-module function references are not "
-          "supported by the launcher",
-          *NameOrErr));
+          "Managed-var alignment ({0}) exceeds system page size ({1}); "
+          "over-aligned managed vars are not modelled on the HMM path.",
+          Align, PageSize));
+    const size_t RoundedSize = (Size + PageSize - 1) & ~(PageSize - 1);
+
+    llvm::Expected<void *> VAOrErr = hsa::vmemAddressReserveAlign(
+        AmdExt, RoundedSize, /*Address=*/0, /*Alignment=*/PageSize,
+        HSA_AMD_VMEM_ADDRESS_NO_REGISTER);
+    if (!VAOrErr)
+      return VAOrErr.takeError();
+
+    llvm::SmallVector<hsa_amd_svm_attribute_pair_t, 8> Attrs;
+    Attrs.reserve(GpuAgents.size());
+    for (hsa_agent_t Agent : GpuAgents)
+      Attrs.push_back({HSA_AMD_SVM_ATTRIB_AGENT_ACCESSIBLE, Agent.handle});
+
+    if (!Attrs.empty()) {
+      if (auto E = hsa::svmAttributesSet(AmdExt, *VAOrErr, RoundedSize, Attrs))
+        return llvm::joinErrors(
+            std::move(E), hsa::vmemAddressFree(AmdExt, *VAOrErr, RoundedSize));
     }
-    if (EType != llvm::ELF::STT_OBJECT && EType != llvm::ELF::STT_NOTYPE)
-      continue;
 
-    const uint8_t Binding = Sym.getBinding();
-    if (Binding != llvm::ELF::STB_GLOBAL && Binding != llvm::ELF::STB_WEAK)
-      continue;
-
-    auto ExtSymOrErr = DeviceCode.lookupGlobalVariable(*NameOrErr, Agent);
-    LUTHIER_RETURN_ON_ERROR(ExtSymOrErr.takeError());
-    auto AddrOrErr = hsa::executableSymbolGetAddress(Core, *ExtSymOrErr);
-    LUTHIER_RETURN_ON_ERROR(AddrOrErr.takeError());
-    LLVM_DEBUG(luthier::dbgs()
-               << "[InstrumentedKernelLoaderAndLauncher]     resolved extern "
-               << *NameOrErr << " -> 0x" << llvm::Twine::utohexstr(*AddrOrErr)
-               << "\n");
-
-    Out.push_back(
-        ExternRef{NameOrErr->str(), reinterpret_cast<void *>(*AddrOrErr)});
+    return ManagedAlloc{*VAOrErr, RoundedSize, /*ViaSvm=*/true};
   }
-  LLVM_DEBUG(luthier::dbgs()
-             << "[InstrumentedKernelLoaderAndLauncher]   collectExternals "
-                "produced "
-             << Out.size() << " entries\n");
-  return Out;
+
+  llvm::Expected<void *> AllocOrErr =
+      hsa::memoryPoolAllocate(AmdExt, Pool, Size, /*Flags=*/0);
+  if (!AllocOrErr)
+    return AllocOrErr.takeError();
+
+  if (!GpuAgents.empty()) {
+    if (auto E = hsa::agentsAllowAccess(AmdExt, GpuAgents, *AllocOrErr))
+      return llvm::joinErrors(std::move(E),
+                              hsa::memoryPoolFree(AmdExt, *AllocOrErr));
+  }
+  return ManagedAlloc{*AllocOrErr, Size, /*ViaSvm=*/false};
 }
 
-} // namespace
+llvm::Error InstrumentedKernelLoaderAndLauncher::freeManagedStorage(
+    const hsa::ApiTableContainer<::AmdExtTable> &AmdExt,
+    const ManagedAlloc &Alloc) {
+  if (Alloc.Ptr == nullptr)
+    return llvm::Error::success();
+  if (Alloc.ViaSvm)
+    return hsa::vmemAddressFree(AmdExt, Alloc.Ptr, Alloc.AllocSize);
+  return hsa::memoryPoolFree(AmdExt, Alloc.Ptr);
+}
+
+//===----------------------------------------------------------------------===//
+// loadManagedVarsForRecord
+//===----------------------------------------------------------------------===//
+
+llvm::Error InstrumentedKernelLoaderAndLauncher::loadManagedVarsForRecord(
+    const llvm::object::ObjectFile &Obj, InstrumentedRecord &Rec) {
+  const auto Core = CoreApi.getTable();
+  const auto AmdExtTbl = AmdExt.getTable();
+
+  // Walk the instrumented object's symbol table for managed-variable companions
+  // (symbols named "<base>.managed"). Each one is allocated host-coherent
+  // storage owned by this instrumented copy.
+  static constexpr llvm::StringLiteral ManagedSuffix = ".managed";
+
+  llvm::Expected<bool> HmmOrErr = getHmmSupported();
+  LUTHIER_RETURN_ON_ERROR(HmmOrErr.takeError());
+  const bool HmmSupported = *HmmOrErr;
+
+  // CPU fine-grain pool: resolved lazily on the first non-HMM allocation.
+  hsa_amd_memory_pool_t Pool{};
+  size_t Granule = 0;
+  bool PoolResolved = false;
+  auto EnsurePool = [&]() -> llvm::Error {
+    if (PoolResolved)
+      return llvm::Error::success();
+    llvm::SmallVector<hsa_agent_t, 1> CpuAgents;
+    LUTHIER_RETURN_ON_ERROR(
+        hsa::getAllAgentsWithDeviceType<HSA_DEVICE_TYPE_CPU>(Core, CpuAgents));
+    if (CpuAgents.empty())
+      return LUTHIER_MAKE_HSA_ERROR(
+          "No CPU agent available for managed-var allocation.");
+    auto PoolOrErr = selectManagedVarPool(AmdExtTbl, CpuAgents.front());
+    LUTHIER_RETURN_ON_ERROR(PoolOrErr.takeError());
+    Pool = *PoolOrErr;
+    auto GranuleOrErr = hsa::memoryPoolGetRuntimeAllocGranule(AmdExtTbl, Pool);
+    LUTHIER_RETURN_ON_ERROR(GranuleOrErr.takeError());
+    Granule = *GranuleOrErr;
+    PoolResolved = true;
+    return llvm::Error::success();
+  };
+
+  const llvm::SmallVector<hsa_agent_t, 1> Agents{Rec.Agent};
+
+  for (const auto &Sym : Obj.symbols()) {
+    auto NameOrErr = Sym.getName();
+    if (!NameOrErr) {
+      llvm::consumeError(NameOrErr.takeError());
+      continue;
+    }
+    if (!NameOrErr->ends_with(ManagedSuffix))
+      continue;
+    llvm::StringRef BaseName = NameOrErr->drop_back(ManagedSuffix.size());
+
+    auto SectionOrErr = Sym.getSection();
+    if (!SectionOrErr) {
+      llvm::consumeError(SectionOrErr.takeError());
+      continue;
+    }
+    if (*SectionOrErr == Obj.section_end())
+      continue;
+    uint64_t Size = (*SectionOrErr)->getSize();
+    auto SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
+    if (SymSize != 0)
+      Size = SymSize;
+    if (Size == 0)
+      continue;
+    const unsigned Align = (*SectionOrErr)->getAlignment().value();
+
+    // Initial bytes live in the .managed companion's section contents.
+    auto ContentsOrErr = (*SectionOrErr)->getContents();
+    llvm::StringRef InitBytes;
+    if (ContentsOrErr)
+      InitBytes = *ContentsOrErr;
+    else
+      llvm::consumeError(ContentsOrErr.takeError());
+
+    // Reuse the shared allocation if an earlier instrumented copy already
+    // created this managed variable; otherwise allocate it once for the life
+    // of the tool. Every instrumented copy of a given managed variable shares
+    // one buffer, so the single host shadow stays unambiguous. A later copy
+    // declaring a different size for the same variable is an error.
+    ManagedAlloc *Shared = nullptr;
+    auto SharedIt = SharedManagedVars.find(BaseName);
+    if (SharedIt != SharedManagedVars.end()) {
+      if (SharedIt->second.Size != Size)
+        return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+            "Managed variable '{0}' was first loaded with size {1} but a "
+            "later instrumented copy declares size {2}.",
+            BaseName, SharedIt->second.Size, Size));
+      Shared = &SharedIt->second;
+    } else {
+      if (!HmmSupported) {
+        LUTHIER_RETURN_ON_ERROR(EnsurePool());
+        if (Align > Granule)
+          return LUTHIER_MAKE_HSA_ERROR(llvm::formatv(
+              "Managed variable {0} alignment ({1}) exceeds pool granule "
+              "({2}); over-aligned managed vars are not modelled.",
+              BaseName, Align, Granule));
+      }
+      auto AllocOrErr = allocateManagedStorage(AmdExtTbl, Agents, Pool, Size,
+                                               Align, HmmSupported);
+      LUTHIER_RETURN_ON_ERROR(AllocOrErr.takeError());
+      ManagedAlloc Alloc = *AllocOrErr;
+      Alloc.Size = Size;
+      if (!InitBytes.empty())
+        std::memcpy(Alloc.Ptr, InitBytes.data(),
+                    std::min<size_t>(InitBytes.size(), Size));
+      // The single host shadow is unambiguous now that the buffer is shared
+      // across every instrumented copy of this managed variable.
+      auto ShadowIt = ManagedVarHostShadows.find(BaseName);
+      if (ShadowIt != ManagedVarHostShadows.end() &&
+          ShadowIt->second != nullptr)
+        *ShadowIt->second = Alloc.Ptr;
+      Shared = &SharedManagedVars.insert({BaseName, Alloc}).first->second;
+      LLVM_DEBUG(luthier::dbgs()
+                 << "[InstrumentedKernelLoaderAndLauncher]   managed-var "
+                 << BaseName << " allocated (shared) at " << Alloc.Ptr << "\n");
+    }
+
+    // Publish the shared buffer into THIS executable's loaded base symbol so
+    // its device code dereferences the same storage as every other copy.
+    auto SymIt = Rec.NameToVarSymbol.find(BaseName);
+    if (SymIt != Rec.NameToVarSymbol.end()) {
+      auto AddrOrErr = hsa::executableSymbolGetAddress(Core, SymIt->second);
+      LUTHIER_RETURN_ON_ERROR(AddrOrErr.takeError());
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+          Core.callFunction<hsa_memory_copy>(
+              reinterpret_cast<void *>(*AddrOrErr), &Shared->Ptr,
+              sizeof(void *)),
+          llvm::formatv("hsa_memory_copy failed publishing managed-var "
+                        "pointer for {0}",
+                        BaseName)));
+    } else {
+      LLVM_DEBUG(luthier::dbgs()
+                 << "[InstrumentedKernelLoaderAndLauncher]   base symbol "
+                 << BaseName << " not found in instrumented executable\n");
+    }
+  }
+  return llvm::Error::success();
+}
+
+//===----------------------------------------------------------------------===//
+// loadInstrumented
+//===----------------------------------------------------------------------===//
 
 llvm::Expected<hsa_executable_symbol_t>
 InstrumentedKernelLoaderAndLauncher::loadInstrumented(
@@ -487,8 +674,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
     const llvm::amdhsa::kernel_descriptor_t *OriginalKD, uint64_t Preset) {
   LLVM_DEBUG(luthier::dbgs()
              << "[InstrumentedKernelLoaderAndLauncher] loadInstrumented KD="
-             << OriginalKD << " preset=" << Preset << " relocSize="
-             << (Relocatable ? Relocatable->getBufferSize() : 0) << "\n");
+             << OriginalKD << " preset=" << Preset << "\n");
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Relocatable != nullptr,
       "Null relocatable MemoryBuffer passed to loadInstrumented"));
@@ -499,10 +685,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   const auto Core = CoreApi.getTable();
 
   // Resolve the agent that owns the kernel-descriptor allocation via
-  // hsa_amd_pointer_info. This works regardless of whether the KD was
-  // published through the HSA loader (the loader path) or allocated
-  // directly out of an HSA memory pool — the latter case can't be
-  // resolved through the LoadedCodeObjectCache.
+  // hsa_amd_pointer_info (works for loader-published and pool allocations).
   auto KDAddr = reinterpret_cast<uint64_t>(OriginalKD);
   hsa_amd_pointer_info_t PointerInfo{};
   PointerInfo.size = sizeof(hsa_amd_pointer_info_t);
@@ -520,95 +703,57 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
                     "allocation",
                     KDAddr)));
   hsa_agent_t Agent = PointerInfo.agentOwner;
-  LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
-                                "owning agent "
-                             << Agent.handle << "\n");
 
   llvm::sys::ScopedWriter W(Mutex);
 
-  // Duplicate-key check.
-  if (ByOriginal.contains(Key{OriginalKD, Preset})) {
-    LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
-                                  "duplicate key, refusing\n");
+  if (ByOriginal.contains(Key{OriginalKD, Preset}))
     return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
         "An instrumented variant for kernel_descriptor {0:x} preset {1} "
         "is already loaded",
         KDAddr, Preset));
-  }
 
-  // The instrumented bytes come out of `NewPMAsmPrinter` as a REL
-  // (relocatable) — no `.dynsym`, so `kernel_functions()` (which iterates
-  // dynamic symbols) yields 0, and HSA's executable loader rejects it
-  // outright. Link to a shared object via `ld.lld` so we get a proper
-  // `.dynsym` + PT_DYNAMIC layout that downstream code expects.
+  // The instrumented bytes come out of NewPMAsmPrinter as a REL; link to a
+  // shared object so we get a proper .dynsym + PT_DYNAMIC layout.
   llvm::SmallVector<char, 0> LinkedBuf;
   LUTHIER_RETURN_ON_ERROR(linker::linkRelocatableToExecutable(
       llvm::ArrayRef<char>(Relocatable->getBufferStart(),
                            Relocatable->getBufferSize()),
       LinkedBuf));
-  LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
-                                "linked relocatable -> "
-                             << LinkedBuf.size() << " bytes\n");
   auto Linked = std::make_unique<llvm::SmallVectorMemoryBuffer>(
       std::move(LinkedBuf), "luthier.instrumented.linked",
       /*RequiresNullTerminator=*/false);
   Relocatable = std::move(Linked);
 
-  // Parse the linked executable as an AMDGCN ELF. The parse is non-owning
-  // over the MemoryBuffer's bytes.
   llvm::MemoryBufferRef RelocRef = Relocatable->getMemBufferRef();
   auto ParsedOrErr = object::AMDGCNObjectFile::createAMDGCNObjectFile(RelocRef);
   LUTHIER_RETURN_ON_ERROR(ParsedOrErr.takeError());
   std::unique_ptr<object::AMDGCNObjectFile> Parsed = std::move(*ParsedOrErr);
 
-  // Pick up the custom kernarg buffer layout, if the patcher emitted one.
   std::optional<CustomKernargLayout> KernargLayout =
       readCustomKernargLayout(*Parsed);
-  LLVM_DEBUG(
-      if (KernargLayout) luthier::dbgs()
-      << "[InstrumentedKernelLoaderAndLauncher]   custom kernarg layout: "
-         "total="
-      << KernargLayout->TotalSize
-      << " implicitOff=" << KernargLayout->ImplicitOffset << "\n");
 
-  // The relocatable is expected to contain exactly one kernel function;
-  // we make no claim about its name — the codegen pipeline picks it.
   auto KernelSymOrErr = findSingleKernel(*Parsed);
   LUTHIER_RETURN_ON_ERROR(KernelSymOrErr.takeError());
   auto KernelNameOrErr = KernelSymOrErr->getName();
   LUTHIER_RETURN_ON_ERROR(KernelNameOrErr.takeError());
   std::string KernelName(*KernelNameOrErr);
   std::string KDName = KernelName + ".kd";
-  LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
-                                "kernel='"
-                             << KernelName << "', KD='" << KDName << "'\n");
 
-  auto ExternsOrErr = collectExternals(Core, *Parsed, DeviceCode, Agent);
-  LUTHIER_RETURN_ON_ERROR(ExternsOrErr.takeError());
-
-  // Stand up the HSA executable. From here on, every failure path must
-  // tear down whatever has been built so far.
+  // Stand up the HSA executable. The instrumented relocatable is self-contained
+  // (its device globals are defined in its own copy), so there are no UND
+  // globals to resolve against a global tool image.
   auto ExecOrErr = hsa::executableCreate(Core);
   LUTHIER_RETURN_ON_ERROR(ExecOrErr.takeError());
   hsa_executable_t Exec = *ExecOrErr;
 
-  auto FailExec = [&](llvm::Error E) -> llvm::Error {
-    return llvm::joinErrors(std::move(E), hsa::executableDestroy(Core, Exec));
-  };
-
-  for (const ExternRef &Ext : *ExternsOrErr) {
-    if (auto Err = hsa::executableDefineExternalAgentGlobalVariable(
-            Core, Exec, Agent, Ext.Name, Ext.Address))
-      return FailExec(std::move(Err));
-  }
-
   auto ReaderOrErr =
       hsa::codeObjectReaderCreateFromMemory(Core, RelocRef.getBuffer());
   if (!ReaderOrErr)
-    return FailExec(ReaderOrErr.takeError());
+    return llvm::joinErrors(ReaderOrErr.takeError(),
+                            hsa::executableDestroy(Core, Exec));
   hsa_code_object_reader_t Reader = *ReaderOrErr;
 
-  auto FailExecAndReader = [&](llvm::Error E) -> llvm::Error {
+  auto Fail = [&](llvm::Error E) -> llvm::Error {
     return llvm::joinErrors(
         llvm::joinErrors(std::move(E), hsa::executableDestroy(Core, Exec)),
         hsa::codeObjectReaderDestroy(Reader, Core));
@@ -616,17 +761,17 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
 
   if (auto Err = hsa::executableLoadAgentCodeObject(Core, Exec, Reader, Agent)
                      .takeError())
-    return FailExecAndReader(std::move(Err));
+    return Fail(std::move(Err));
 
   if (auto Err = hsa::executableFreeze(Core, Exec))
-    return FailExecAndReader(std::move(Err));
+    return Fail(std::move(Err));
 
   auto InstrSymOrErr =
       hsa::executableGetSymbolByName(Core, Exec, KDName, Agent);
   if (!InstrSymOrErr)
-    return FailExecAndReader(InstrSymOrErr.takeError());
+    return Fail(InstrSymOrErr.takeError());
   if (!InstrSymOrErr->has_value())
-    return FailExecAndReader(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+    return Fail(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
         "Instrumented executable does not expose a kernel descriptor "
         "named '{0}'",
         KDName)));
@@ -634,17 +779,12 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
 
   auto InstrKOOrErr = hsa::executableSymbolGetAddress(Core, InstrSym);
   if (!InstrKOOrErr)
-    return FailExecAndReader(InstrKOOrErr.takeError());
+    return Fail(InstrKOOrErr.takeError());
 
   auto PrivSizeOrErr =
       hsa::executableSymbolGetKernelPrivateSegmentSize(Core, InstrSym);
   if (!PrivSizeOrErr)
-    return FailExecAndReader(PrivSizeOrErr.takeError());
-
-  LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
-                                "instrumented KO=0x"
-                             << llvm::Twine::utohexstr(*InstrKOOrErr)
-                             << " privSegSize=" << *PrivSizeOrErr << "\n");
+    return Fail(PrivSizeOrErr.takeError());
 
   InstrumentedRecord Rec;
   Rec.RelocatableBuffer = std::move(Relocatable);
@@ -658,15 +798,34 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
     Rec.HasCustomKernarg = true;
     Rec.KernargLayout = *KernargLayout;
   }
+  Rec.UsesHostcall = objectUsesHostcall(*Parsed);
+
+  // Harvest this executable's device-global variable symbols for host readback.
+  auto HarvestCb = [&](hsa_executable_symbol_t Sym) -> llvm::Error {
+    auto KindOrErr = hsa::executableSymbolGetType(Core, Sym);
+    LUTHIER_RETURN_ON_ERROR(KindOrErr.takeError());
+    if (*KindOrErr != HSA_SYMBOL_KIND_VARIABLE)
+      return llvm::Error::success();
+    auto NameOrErr = hsa::executableSymbolGetName(Core, Sym);
+    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
+    Rec.NameToVarSymbol[*NameOrErr] = Sym;
+    return llvm::Error::success();
+  };
+  if (auto Err =
+          hsa::executableIterateAgentSymbols(Core, Exec, Agent, HarvestCb))
+    return Fail(std::move(Err));
+
+  // Allocate (first sighting) or re-publish (subsequent) the shared managed
+  // variables this instrumented copy carries. Shared buffers persist past a
+  // failed load and are reclaimed in unloadAll.
+  if (auto Err = loadManagedVarsForRecord(*Parsed, Rec))
+    return Fail(std::move(Err));
 
   auto [It, Inserted] =
       ByOriginal.try_emplace(Key{OriginalKD, Preset}, std::move(Rec));
   assert(Inserted && "Concurrent insert into ByOriginal under writer lock");
   (void)Inserted;
 
-  LLVM_DEBUG(luthier::dbgs() << "[InstrumentedKernelLoaderAndLauncher]   "
-                                "record inserted; total now "
-                             << ByOriginal.size() << "\n");
   return InstrSym;
 }
 

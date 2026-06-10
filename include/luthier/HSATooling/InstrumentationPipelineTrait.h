@@ -40,7 +40,7 @@
 #define LUTHIER_TOOLING_INSTRUMENTATION_PIPELINE_TRAIT_H
 
 #include "luthier/Common/ErrorCheck.h"
-#include "luthier/HSATooling/DeviceToolCodeLoader.h"
+#include "luthier/HSATooling/DeviceToolCodeParser.h"
 #include "luthier/HSATooling/HsaMemoryAllocationAccessor.h"
 #include "luthier/HSATooling/LoadedCodeObjectCache.h"
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
@@ -234,7 +234,7 @@ public:
             return D.createInstrumentationModule(IModCtx);
           } else {
             auto ModOrErr =
-                D.getEmbeddedModule(ToolTriple, ToolCPU, ToolFeatures, IModCtx);
+                D.parseModule(ToolTriple, ToolCPU, ToolFeatures, IModCtx);
             if (!ModOrErr)
               llvm::report_fatal_error(ModOrErr.takeError());
             return std::move(*ModOrErr);

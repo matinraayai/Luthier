@@ -66,6 +66,7 @@
 #include <luthier/ToolCodeGen/InstructionTracesAnalysis.h>
 #include <luthier/ToolCodeGen/InstrumentationPMDriver.h>
 #include <luthier/ToolCodeGen/InstrumentationPass.h>
+#include <luthier/ToolCodeGen/LuthierCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/NewPMAsmPrinter.h>
@@ -318,15 +319,19 @@ void InstrCountTool::onPackets(
         Core.callFunction<&::CoreApiTable::hsa_signal_load_scacquire_fn>(
             DispatchPacket->completion_signal);
 
+    // Capture the ORIGINAL kernel descriptor before any override swaps
+    // DispatchPacket->kernel_object to the instrumented variant. The launcher
+    // cache (and the device-global readback below) are keyed by this pointer.
+    const auto *OrigKD =
+        reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
+            DispatchPacket->kernel_object);
+
     if (ActiveRegion) {
       luthier::errs() << "Kernel is being instrumented.\n";
 
       // If the (kernel_object, preset) pair isn't already cached, run the
       // pipeline and load the resulting relocatable into the launcher.
       // overrideWithInstrumented succeeds iff the cache has the variant.
-      const auto *KD =
-          reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
-              DispatchPacket->kernel_object);
       // Probe the cache; on miss, run the pipeline + load and re-try the
       // override. The probe Error MUST be bound to a local so its
       // destructor doesn't trip the unhandled-error abort.
@@ -335,11 +340,11 @@ void InstrCountTool::onPackets(
         llvm::consumeError(std::move(MissErr));
         std::unique_ptr<llvm::MemoryBuffer> ObjBuf;
         LUTHIER_REPORT_FATAL_ON_ERROR(
-            this->runInstrumentationPipelineForDispatch(*KD, Opts.DriverOpts,
-                                                        Opts.DiscoveryOpts)
+            this->runInstrumentationPipelineForDispatch(
+                    *OrigKD, Opts.DriverOpts, Opts.DiscoveryOpts)
                 .moveInto(ObjBuf));
         LUTHIER_REPORT_FATAL_ON_ERROR(
-            this->loadInstrumented(std::move(ObjBuf), KD, 0).takeError());
+            this->loadInstrumented(std::move(ObjBuf), OrigKD, 0).takeError());
         LUTHIER_REPORT_FATAL_ON_ERROR(
             this->overrideWithInstrumented(*DispatchPacket, 0));
       }
@@ -368,47 +373,33 @@ void InstrCountTool::onPackets(
           "Failed to destroy the dispatch packet's completion signal."));
     }
 
-    // Read Counter back from the device and accumulate. Counter is now
-    // `__device__` (was `__managed__`), so host access goes through
-    // an explicit `hsa_memory_copy` from the symbol's per-agent device
-    // address. Agent comes from the same `hsa_amd_pointer_info(KD)`
-    // call the dispatch path already uses; counter address comes from
-    // the device-tool code loader's HSA executable symbol record.
+    // Read Counter back from the device and accumulate. Counter is a
+    // `__device__` global baked into this dispatch's own instrumented
+    // executable (each instrumented variant has its own copy), so its symbol
+    // is resolved from the launcher's per-(KD, preset) record rather than from
+    // a global tool image. Host access then goes through an explicit
+    // `hsa_memory_copy` from the symbol's device address.
     if (ActiveRegion) {
-      const auto *KernelDesc =
-          reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
-              DispatchPacket->kernel_object);
-      hsa_amd_pointer_info_t CounterAgentInfo{};
-      CounterAgentInfo.size = sizeof(CounterAgentInfo);
-      hsa_status_t PInfoStatus = AmdExt.callFunction<hsa_amd_pointer_info>(
-          const_cast<void *>(reinterpret_cast<const void *>(KernelDesc)),
-          &CounterAgentInfo,
-          /*alloc=*/nullptr, /*num_agents_accessible=*/nullptr,
-          /*accessible=*/nullptr);
-      if (PInfoStatus == HSA_STATUS_SUCCESS &&
-          CounterAgentInfo.type != HSA_EXT_POINTER_TYPE_UNKNOWN) {
-        hsa_agent_t Agent = CounterAgentInfo.agentOwner;
-        auto SymOrErr =
-            this->lookupGlobalVariable(&InstrCountTool::Counter, Agent);
-        if (!SymOrErr) {
-          llvm::consumeError(SymOrErr.takeError());
+      auto SymOrErr = this->lookupGlobalVariable(&InstrCountTool::Counter,
+                                                 OrigKD, /*Preset=*/0);
+      if (!SymOrErr) {
+        llvm::consumeError(SymOrErr.takeError());
+      } else {
+        auto AddrOrErr =
+            luthier::hsa::executableSymbolGetAddress(Core, *SymOrErr);
+        if (!AddrOrErr) {
+          llvm::consumeError(AddrOrErr.takeError());
         } else {
-          auto AddrOrErr =
-              luthier::hsa::executableSymbolGetAddress(Core, *SymOrErr);
-          if (!AddrOrErr) {
-            llvm::consumeError(AddrOrErr.takeError());
-          } else {
-            uint64_t CounterSnapshot = 0;
-            hsa_status_t RC = Core.callFunction<hsa_memory_copy>(
-                &CounterSnapshot, reinterpret_cast<void *>(*AddrOrErr),
-                sizeof(CounterSnapshot));
-            if (RC == HSA_STATUS_SUCCESS) {
-              TotalNumInstructions += CounterSnapshot;
-              // Zero the device-side counter for the next dispatch.
-              const uint64_t Zero = 0;
-              (void)Core.callFunction<hsa_memory_copy>(
-                  reinterpret_cast<void *>(*AddrOrErr), &Zero, sizeof(Zero));
-            }
+          uint64_t CounterSnapshot = 0;
+          hsa_status_t RC = Core.callFunction<hsa_memory_copy>(
+              &CounterSnapshot, reinterpret_cast<void *>(*AddrOrErr),
+              sizeof(CounterSnapshot));
+          if (RC == HSA_STATUS_SUCCESS) {
+            TotalNumInstructions += CounterSnapshot;
+            // Zero the device-side counter for the next dispatch.
+            const uint64_t Zero = 0;
+            (void)Core.callFunction<hsa_memory_copy>(
+                reinterpret_cast<void *>(*AddrOrErr), &Zero, sizeof(Zero));
           }
         }
       }

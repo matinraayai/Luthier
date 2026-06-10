@@ -54,6 +54,17 @@ inline constexpr const char *CustomKernargLayoutSectionName =
 inline constexpr const char *CustomKernargLayoutGlobalName =
     "__luthier_kernarg_layout";
 
+/// Section/symbol marking an instrumented object whose payload makes device
+/// hostcalls (e.g. the indirect-branch resolver's slow path). Its presence
+/// tells the launcher to provision a hostcall buffer + listener and publish the
+/// buffer pointer into the kernel's COV5 hostcall implicit arg
+/// (\c cov5::HostcallPtr). Hostcall implies a custom kernarg buffer (the
+/// hostcall pointer rides the COV5 block).
+inline constexpr const char *HostcallMarkerSectionName =
+    ".luthier.uses_hostcall";
+inline constexpr const char *HostcallMarkerGlobalName =
+    "__luthier_uses_hostcall";
+
 /// Byte offsets, relative to the start of the COV5 implicit-args block, of each
 /// hidden argument. Sourced from LLVM's
 /// \c AMDGPU::ImplicitArg::Offset_COV5 (SIDefines.h) and

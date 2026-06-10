@@ -1,5 +1,18 @@
 # Phase 0: `luthier-tool-compile` Driver Inventory
 
+> **Superseded (2026-06-05).** The `luthier-tool-compile` C++ driver was
+> removed; the entire device-compile → unbundle → rebundle → host-compile →
+> link pipeline now lives in CMake (`luthier_create_offload_bundle` in
+> `cmake/modules/LuthierCreateOffloadBundle.cmake`). The ISA matrix is no
+> longer auto-enumerated: the user supplies complete offload target IDs via
+> the `LUTHIER_HIP_TARGETS` cache variable (or the per-call `TARGETS`
+> argument), and CMake parses each into the `--offload-arch=` target ID
+> (xnack/sramecc) plus standalone `-m` flags (wavefrontsize64/cumode). When
+> unset, one bare target per `CMAKE_HIP_ARCHITECTURES` arch is synthesized.
+> The flag contract below (device/host compile flags, bundle label format,
+> alignment, probes) still describes what the CMake commands emit.
+
+
 This document catalogues every behavior the existing `luthier_add_tool`
 CMake helper relies on, so that the upcoming custom driver
 (`luthier-tool-compile`) honors the same contract. It also captures the
@@ -107,7 +120,7 @@ The final `.hipfb` is a Clang offload bundle:
   `hipv4-amdgcn-amd-amdhsa--gfxN[:feat±[:feat±]]` (LLVM AMDGPU
   target-ID feature syntax — see "Bundle label format" below).
 
-The loader's `DeviceToolCodeLoader::parseOffloadBundle` reads this with
+The loader's `DeviceToolCodeParser::parseOffloadBundle` reads this with
 `llvm::object::OffloadBundleFatBin::create`, walks the entries, and
 extracts each AMDGCN slice's bytes. Each slice carries the
 `SubtargetMarkerPass`-emitted `__luthier_subtarget` ELF symbol that the

@@ -19,7 +19,10 @@
 ///   - \c InstrumentedKernelLoaderAndLauncher: non-templated base.
 ///     Owns the per-tool cache of loaded instrumented-kernel HSA
 ///     executables keyed by the original kernel-descriptor pointer
-///     on the device.
+///     on the device. Each cached executable is self-contained (its
+///     device globals / managed variables are baked into its own copy),
+///     so the launcher also owns per-record device-global symbol lookup
+///     and managed-variable allocation / host-shadow publishing.
 ///   - \c InstrumentedKernelLoaderAndLauncherTrait<Derived>: header-only
 ///     CRTP trait that extends the base and installs an
 ///     \c hsa_executable_destroy interceptor driving
@@ -31,29 +34,38 @@
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Common/Singleton.h"
+#include "luthier/HSA/Agent.h"
 #include "luthier/HSA/ExecutableSymbol.h"
+#include "luthier/HSATooling/HostcallConsumer.h"
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
 #include "luthier/Rocprofiler/ApiTableWrapperInstaller.h"
 #include "luthier/ToolCodeGen/CustomKernargLayout.h"
 #include <cstdint>
 #include <hsa/hsa.h>
 #include <hsa/hsa_api_trace.h>
+#include <hsa/hsa_ext_amd.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseMapInfo.h>
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/ADT/StringMap.h>
 #include <llvm/Support/AMDHSAKernelDescriptor.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/RWMutex.h>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <utility>
 
-namespace luthier {
+namespace llvm {
+namespace object {
+class ObjectFile;
+} // namespace object
+} // namespace llvm
 
-class DeviceToolCodeLoader;
+namespace luthier {
 
 /// \brief Per-tool cache of instrumented HSA kernel executables.
 ///
@@ -62,31 +74,28 @@ class DeviceToolCodeLoader;
 /// to the kernel descriptor on the device — the same value that lives in
 /// \c hsa_kernel_dispatch_packet_t::kernel_object), the relocatable ELF
 /// bytes (owned), the HSA code-object reader created over them, the HSA
-/// executable they were loaded into, and the resulting instrumented
-/// kernel symbol + descriptor address + private segment size.
+/// executable they were loaded into, the resulting instrumented kernel
+/// symbol + descriptor address + private segment size, the harvested
+/// device-global variable symbols, and any managed-variable allocations
+/// made for this instrumented copy.
 ///
 /// \c loadInstrumented is the cold-path entry point; it takes ownership
 /// of \p Relocatable so the HSA code-object reader's view into host
 /// memory stays valid for the record's lifetime. The relocatable is
-/// expected to contain exactly one kernel function; the launcher does
-/// not validate its name against any expected name.
+/// expected to contain exactly one kernel function and to be
+/// self-contained (its device globals are defined in its own copy — the
+/// launcher does not resolve UND globals against a global tool image).
 /// \c overrideWithInstrumented is the hot path called from a packet
 /// interceptor and is reader-locked.
-///
-/// \c invalidateOriginalExec is invoked by the
-/// \c InstrumentedKernelLoaderAndLauncherTrait subclass from inside its
-/// \c hsa_executable_destroy interceptor whenever an application
-/// executable is about to be torn down. It walks the executable's
-/// loaded code objects and erases any cache records whose original KD
-/// pointer falls inside one of those loaded ranges.
+/// TODO: Make passes register "handle records" so that the loader is able
+/// to accumulate and publish the handles correctly
 class InstrumentedKernelLoaderAndLauncher {
 public:
   InstrumentedKernelLoaderAndLauncher(
       const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
       const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExt,
       const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
-          &Loader,
-      DeviceToolCodeLoader &DeviceCode);
+          &Loader);
 
   ~InstrumentedKernelLoaderAndLauncher();
 
@@ -97,36 +106,19 @@ public:
 
   /// Parse \p Relocatable as an AMDGCN ELF, require it contain exactly
   /// one kernel function (any name — assumed to be the instrumented
-  /// kernel), resolve the relocatable's UND globals against the
-  /// per-agent symbols published by the tool's \c DeviceToolCodeLoader
-  /// on the agent that owns \p OriginalKD (resolved via the application
-  /// \c LoadedCodeObjectCache), create + load + freeze a fresh HSA
-  /// executable, and cache the resulting kernel symbol under the key
+  /// kernel), create + load + freeze a fresh HSA executable, harvest its
+  /// device-global variable symbols, allocate + publish any managed
+  /// variables it carries, and cache everything under the key
   /// <tt>(OriginalKD, Preset)</tt>.
   ///
-  /// Takes ownership of \p Relocatable for the lifetime of the
-  /// resulting record — the HSA code-object reader keeps a pointer
-  /// into it.
+  /// Takes ownership of \p Relocatable for the lifetime of the resulting
+  /// record — the HSA code-object reader keeps a pointer into it.
   ///
-  /// \param OriginalKD pointer to the kernel descriptor on the device
-  /// of the original (un-instrumented) kernel. This is the value of the
-  /// \c kernel_object field on \c hsa_kernel_dispatch_packet_t cast to
-  /// \c const \c llvm::amdhsa::kernel_descriptor_t*. The agent that
-  /// owns the KD's allocation is queried via \c hsa_amd_pointer_info,
-  /// which works regardless of whether the KD was published through
-  /// the HSA loader or allocated directly out of an HSA memory pool.
-  ///
-  /// Errors:
-  ///   - an entry for the same <tt>(OriginalKD, Preset)</tt>
-  ///     already exists
-  ///   - the ELF contains zero or more than one kernel function
-  ///   - \c hsa_amd_pointer_info fails or reports the pointer as
-  ///     not owned by an HSA allocation
-  ///   - any UND global symbol does not resolve in the
-  ///     \c DeviceToolCodeLoader
-  ///   - any UND function symbol is present
-  ///   - any HSA failure (create / define / load / freeze /
-  ///     symbol lookup)
+  /// \param OriginalKD pointer to the kernel descriptor on the device of
+  /// the original (un-instrumented) kernel. The agent that owns the KD's
+  /// allocation is queried via \c hsa_amd_pointer_info, which works
+  /// regardless of whether the KD was published through the HSA loader or
+  /// allocated directly out of an HSA memory pool.
   llvm::Expected<hsa_executable_symbol_t>
   loadInstrumented(std::unique_ptr<llvm::MemoryBuffer> Relocatable,
                    const llvm::amdhsa::kernel_descriptor_t *OriginalKD,
@@ -146,6 +138,16 @@ public:
   llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
                                        uint64_t Preset = 0);
 
+  /// Resolve a device-global variable \p Name to its
+  /// \c hsa_executable_symbol_t inside the instrumented executable cached
+  /// under <tt>(OriginalKD, Preset)</tt>. The symbol lives in that one
+  /// instrumented copy; callers derive the loaded address / size via
+  /// \c hsa::executableSymbolGet*. Errors if no such record or symbol.
+  llvm::Expected<hsa_executable_symbol_t>
+  lookupGlobalVariable(llvm::StringRef Name,
+                       const llvm::amdhsa::kernel_descriptor_t *OriginalKD,
+                       uint64_t Preset = 0);
+
   /// Tear down every cached record. Joins all HSA destruction errors
   /// and returns the joined \c llvm::Error (success only if every
   /// teardown succeeded). Idempotent.
@@ -153,33 +155,66 @@ public:
 
   /// Walk \p Exec 's loaded code objects and erase any cache records
   /// whose original KD pointer falls inside one of those loaded ranges.
-  /// Returns a joined \c llvm::Error of any HSA failures collected
-  /// along the way. Called by the trait subclass from inside the
-  /// \c hsa_executable_destroy interceptor before chaining to the next
-  /// wrapper.
+  /// Called by the trait subclass from inside the
+  /// \c hsa_executable_destroy interceptor.
   llvm::Error invalidateOriginalExec(hsa_executable_t Exec);
+
+  /// Register a tool managed-variable host shadow: the \c void** the HIP
+  /// \c __hipRegisterManagedVar emitted, keyed by the managed variable's
+  /// device base symbol \p Name. On \c loadInstrumented the launcher writes
+  /// the per-instrumented-copy device allocation pointer into the matching
+  /// shadow. Called once per managed var by \c HSATool at construction.
+  void registerManagedVarHostShadow(llvm::StringRef Name, void **Shadow) {
+    llvm::sys::ScopedWriter W(Mutex);
+    ManagedVarHostShadows[Name] = Shadow;
+  }
+
+  /// Accessors for the HSA API-table snapshots. These expose the underlying,
+  /// pre-interception function pointers so sibling traits (e.g. the
+  /// instrumentation pipeline) can drive HSA from inside a \c withInstance()
+  /// callback. (The tool-code loader is HSA-free and no longer holds these;
+  /// the launcher is now the canonical owner.)
+  const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &
+  getCoreApiTableSnapshot() const {
+    return CoreApi;
+  }
+  const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &
+  getAmdExtTableSnapshot() const {
+    return AmdExt;
+  }
+  const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER> &
+  getLoaderTableSnapshot() const {
+    return Loader;
+  }
 
 protected:
   const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi;
-  /// AMD extension table — needed for \c hsa_amd_pointer_info to resolve
-  /// the agent that owns the kernel descriptor allocation. This path
-  /// works for both loader-published allocations and direct memory-pool
-  /// allocations, so the launcher doesn't have to assume the KD lives
-  /// inside a cached loaded code object.
+  /// AMD extension table — needed for \c hsa_amd_pointer_info and the
+  /// managed-variable allocation paths (memory pools / SVM).
   const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExt;
   const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
       &Loader;
-  DeviceToolCodeLoader &DeviceCode;
 
   /// Reader/writer lock: \c overrideWithInstrumented takes the reader
-  /// lock; every cache mutation path (\c loadInstrumented,
-  /// \c unloadInstrumentedIfExists, \c unloadAll,
-  /// \c invalidateOriginalExec) takes the writer lock.
+  /// lock; every cache mutation path takes the writer lock.
   mutable llvm::sys::RWMutex Mutex;
 
-  /// One per <tt>(OriginalKD, Preset)</tt> entry. Stores the
-  /// instrumented HSA executable and reader the launcher owns, plus
-  /// the cached scalar fields needed by the override hot path.
+  /// Result of one managed-variable storage allocation. Captures everything
+  /// the free path needs so it doesn't have to re-decide the API path.
+  struct ManagedAlloc {
+    void *Ptr{nullptr};
+    /// Bytes actually reserved — page-rounded on the SVM/HMM path, equal to
+    /// the requested size on the pool path.
+    size_t AllocSize{0};
+    /// The managed variable's declared size (from its \c .managed companion
+    /// symbol). Used to reject a later instrumented copy that claims a
+    /// different size for the same managed variable.
+    size_t Size{0};
+    /// True iff this allocation took the SVM/HMM path.
+    bool ViaSvm{false};
+  };
+
+  /// One per <tt>(OriginalKD, Preset)</tt> entry.
   struct InstrumentedRecord {
     /// Caller-supplied relocatable bytes. Outlives \c Reader — the HSA
     /// code-object reader holds a non-owning view into this buffer.
@@ -187,34 +222,30 @@ protected:
     hsa_code_object_reader_t Reader{};
     hsa_executable_t Exec{};
     hsa_executable_symbol_t InstrumentedKernelSym{};
-    /// Cached \c hsa_executable_symbol_get_info(KERNEL_OBJECT) of
-    /// \c InstrumentedKernelSym. Goes into the dispatch packet on
+    /// Cached kernel-object address; goes into the dispatch packet on
     /// override.
     uint64_t InstrumentedKO{0};
-    /// Cached \c
-    /// hsa_executable_symbol_get_info(KERNEL_PRIVATE_SEGMENT_SIZE) of
-    /// \c InstrumentedKernelSym. \c overrideWithInstrumented bumps
+    /// Cached private segment size; \c overrideWithInstrumented bumps
     /// \c Packet.private_segment_size to at least this value.
     uint32_t PrivateSegmentSize{0};
-    /// Agent the kernel runs on. Held for diagnostics / future use.
+    /// Agent the kernel runs on.
     hsa_agent_t Agent{};
-    /// True when the instrumented object carries a \c .luthier.kernarg_layout
-    /// section — i.e. the kernel is launched with a Luthier-managed custom
-    /// kernarg buffer that \c overrideWithInstrumented must build + fill.
+    /// Device-global variable symbols harvested from this instrumented
+    /// executable (name → symbol), for host readback via
+    /// \c lookupGlobalVariable.
+    llvm::StringMap<hsa_executable_symbol_t> NameToVarSymbol;
+    /// True when the instrumented object carries a custom kernarg layout.
     bool HasCustomKernarg{false};
-    /// Parsed custom kernarg buffer layout (meaningful iff \c
-    /// HasCustomKernarg).
     CustomKernargLayout KernargLayout{};
     /// Most-recent custom kernarg buffer allocated by
-    /// \c overrideWithInstrumented for this record (kernarg-pool memory). Freed
-    /// on the next override (the prior launch has completed by then — tools
-    /// wait on the dispatch's completion signal) and on record teardown. Null
-    /// when no custom buffer is in flight.
+    /// \c overrideWithInstrumented for this record (kernarg-pool memory).
     void *CustomKernargAlloc{nullptr};
+    /// True when the instrumented object carries a \c .luthier.uses_hostcall
+    /// marker. Implies \c HasCustomKernarg.
+    bool UsesHostcall{false};
   };
 
-  /// Cache key — original KD pointer + preset. \c overrideWithInstrumented
-  /// builds the key from \c Packet.kernel_object cast to KD*.
+  /// Cache key — original KD pointer + preset.
   struct Key {
     const llvm::amdhsa::kernel_descriptor_t *KD;
     uint64_t Preset;
@@ -239,46 +270,88 @@ protected:
   /// Authoritative storage of every cached record.
   llvm::DenseMap<Key, InstrumentedRecord, KeyDenseMapInfo> ByOriginal;
 
-  /// Destroy the HSA executable + reader pointed to by \p It and erase
-  /// the entry from \c ByOriginal. Caller must hold the writer lock.
-  /// Returns the joined HSA destruction errors (success if both
-  /// teardowns succeeded).
+  /// Tool managed-variable host shadows: device base symbol name → \c void**
+  /// the HIP runtime registered. Populated by
+  /// \c registerManagedVarHostShadow; consulted on \c loadInstrumented.
+  llvm::StringMap<void **> ManagedVarHostShadows;
+
+  /// One shared allocation per managed variable (keyed by device base symbol
+  /// name), allocated the first time any instrumented copy declares it and
+  /// reused — re-published into each subsequent copy's base symbol — for the
+  /// life of the tool. Every instrumented copy of a given managed variable
+  /// therefore sees the SAME storage (and the single host shadow is
+  /// unambiguous). Freed in \c unloadAll. A later copy declaring a different
+  /// size for the same variable is an error.
+  llvm::StringMap<ManagedAlloc> SharedManagedVars;
+
+  /// One hostcall buffer + listener per GPU agent (keyed by \c hsa_agent_t
+  /// handle), shared across all instrumented kernels on that agent.
+  llvm::DenseMap<uint64_t, std::unique_ptr<HostcallConsumer>>
+      HostcallConsumersByAgent;
+
+  /// Cached \c HSA_AMD_SYSTEM_INFO_SVM_SUPPORTED query result.
+  std::optional<bool> HmmSupportedCache;
+
+  /// Return the device-visible hostcall buffer pointer for \p Agent, creating
+  /// the per-agent consumer on first use. Caller must hold the writer lock.
+  llvm::Expected<void *> getOrCreateHostcallBuffer(hsa_agent_t Agent);
+
+  /// Destroy the HSA executable + reader pointed to by \p It, free any managed
+  /// allocations and in-flight kernarg buffer, and erase the entry from
+  /// \c ByOriginal. Caller must hold the writer lock.
   llvm::Error eraseRecordLocked(
       llvm::DenseMap<Key, InstrumentedRecord, KeyDenseMapInfo>::iterator It);
 
   /// Allocate, fill, and install a Luthier-managed custom kernarg buffer for a
-  /// dispatch of the kernel cached in \p Rec: writes the application's original
-  /// \c kernarg_address into the buffer's first slot, constructs the ROCclr
-  /// COV5 hidden args from \p Packet, repoints \c Packet.kernarg_address at the
-  /// buffer, and stores the allocation in \p Rec for reclamation. Caller must
-  /// hold the writer lock. Only called when \c Rec.HasCustomKernarg.
+  /// dispatch of the kernel cached in \p Rec. Caller must hold the writer lock.
   llvm::Error buildCustomKernargBuffer(InstrumentedRecord &Rec,
                                        hsa_kernel_dispatch_packet_t &Packet);
+
+  /// Allocate + publish every managed variable carried by the instrumented
+  /// executable \p Rec just loaded: for each \c <base>.managed ELF symbol,
+  /// allocate host-coherent storage, copy the init bytes in, publish the
+  /// device base symbol to point at it (via \c hsa_memory_copy), and write the
+  /// tool's host shadow (if registered). Allocations are recorded in \p Rec.
+  /// Caller must hold the writer lock.
+  llvm::Error loadManagedVarsForRecord(const llvm::object::ObjectFile &Obj,
+                                       InstrumentedRecord &Rec);
+
+  //===-------------------------------------------------------------------===//
+  // Managed-variable storage allocation (HMM-aware), moved here from the tool
+  // code loader: each instrumented copy owns its managed-var storage.
+  //===-------------------------------------------------------------------===//
+
+  /// Pick a host fine-grain memory pool suitable for backing managed
+  /// variables (the non-HMM path).
+  static llvm::Expected<hsa_amd_memory_pool_t>
+  selectManagedVarPool(const hsa::ApiTableContainer<::AmdExtTable> &AmdExt,
+                       hsa_agent_t CpuAgent);
+
+  /// HMM-aware managed-storage allocation. On HMM systems reserves a
+  /// page-aligned SVM range accessible from \p GpuAgents; otherwise allocates
+  /// from \p Pool and grants \p GpuAgents access.
+  static llvm::Expected<ManagedAlloc>
+  allocateManagedStorage(const hsa::ApiTableContainer<::AmdExtTable> &AmdExt,
+                         llvm::ArrayRef<hsa_agent_t> GpuAgents,
+                         hsa_amd_memory_pool_t Pool, size_t Size,
+                         unsigned Align, bool HmmSupported);
+
+  /// Free a \c ManagedAlloc produced by \c allocateManagedStorage.
+  static llvm::Error
+  freeManagedStorage(const hsa::ApiTableContainer<::AmdExtTable> &AmdExt,
+                     const ManagedAlloc &Alloc);
+
+  /// Lazily probe \c HSA_AMD_SYSTEM_INFO_SVM_SUPPORTED and cache the result.
+  /// Caller must hold the writer lock.
+  llvm::Expected<bool> getHmmSupported();
 };
 
 /// \brief CRTP trait that adds an \c hsa_executable_destroy interceptor
 /// on top of \c InstrumentedKernelLoaderAndLauncher.
-///
-/// The wrapper runs the base's \c invalidateOriginalExec on the
-/// to-be-destroyed executable before chaining to whatever
-/// \c hsa_executable_destroy implementation was previously installed in
-/// the HSA table (typically the \c LoadedCodeObjectCacheTrait wrapper,
-/// then the real HSA function). This ordering guarantees that no
-/// cached instrumented variant references an \c hsa_executable_t whose
-/// teardown is already in flight.
-///
-/// Following the convention used by \c PacketMonitorTrait and
-/// \c LoadedCodeObjectCacheTrait, the wrapper is NOT uninstalled at
-/// trait teardown — uninstalling while the runtime may still call us
-/// would cause a race condition. The wrapper does its tool-specific work inside
-/// <tt>Singleton<Derived>::withInstance()</tt>.
 template <typename Derived>
 class InstrumentedKernelLoaderAndLauncherTrait
     : public InstrumentedKernelLoaderAndLauncher {
 private:
-  /// Saved pointer to the prior \c hsa_executable_destroy entry. Set by
-  /// the wrapper installer; consulted by \c hsaExecutableDestroyWrapper
-  /// to chain through.
   inline static decltype(hsa_executable_destroy)
       *UnderlyingHsaExecutableDestroyFn{};
 
@@ -307,9 +380,8 @@ public:
       const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExt,
       const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
           &Loader,
-      DeviceToolCodeLoader &DeviceCode, llvm::Error &Err)
-      : InstrumentedKernelLoaderAndLauncher(CoreApi, AmdExt, Loader,
-                                            DeviceCode) {
+      llvm::Error &Err)
+      : InstrumentedKernelLoaderAndLauncher(CoreApi, AmdExt, Loader) {
     llvm::ErrorAsOutParameter EAO(Err);
     HsaWrapperInstaller = std::make_unique<
         rocprofiler::HsaApiTableWrapperInstaller<::CoreApiTable>>(

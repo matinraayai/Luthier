@@ -77,7 +77,7 @@ static constexpr llvm::StringLiteral InjectedPayloadAttribute{
 #define InitialEntryPointAttr   "luthier.function.initial_entrypoint"
 
 /// Annotation strings attached to the inline-static \c llvm::ArrayRef slots
-/// on \c DeviceToolCodeFatBinaryLoader. \c LoadHIPFATBinaryInfoPass matches
+/// on \c DeviceToolCodeFatBinaryParser. \c LoadHIPFATBinaryInfoPass matches
 /// by string and rewrites each slot's initializer to the appropriate
 /// constant-array view.
 ///

@@ -19,7 +19,42 @@ tablegen(LuthierSIInstrSemanticsGen SIInstrSemantics.inc -gen-si-instr-semantics
         "${CMAKE_SOURCE_DIR}/include/luthier/InstSemantics/")
 add_public_tablegen_target(LuthierSIInstrSemanticsGen)
 
+
+# ---------------------------------------------------------------------------
+# Indirect-branch resolver offload bundle.
+#
+# LuthierIndirectResolve.hip is compiled into a Luthier offload bundle (raw
+# LLVM bitcode slices for the device resolver) and embedded into its own host
+# object via -fcuda-include-gpubinary. That host object both carries the
+# DeviceToolCodeFatBinaryParser fat-binary slots (populated by the IR plugin)
+# and defines luthier::addIndirectBranchResolverPass, which the tool-code-gen
+# library calls. Created here — after Plugins — so the IR/CXX plugin targets
+# the bundle is compiled with already exist. No plugin<->library cycle: the IR
+# plugin is built from LuthierToolIRCompilation (not LuthierToolCodeGen).
+# ---------------------------------------------------------------------------
+include(LuthierCreateOffloadBundle)
+luthier_create_offload_bundle(LuthierIndirectBranchResolverPass
+        IndirectBranchResolverPass.hip
+        DEVICE_OBJECT_LIBRARIES LuthierIndirectBranchResolverPass_DEVICE_TARGET)
+target_include_directories(LuthierIndirectBranchResolverPass PRIVATE
+        ${LLVM_INCLUDE_DIRS}
+        ${hsa-runtime64_INCLUDE_DIRS}
+        PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+        "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
+
+foreach (_DEVICE_TARGET IN LISTS LuthierIndirectBranchResolverPass_DEVICE_TARGET)
+    target_include_directories(${_DEVICE_TARGET} PRIVATE
+            ${LLVM_INCLUDE_DIRS}
+            ${hsa-runtime64_INCLUDE_DIRS}
+            PUBLIC
+            "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+            "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
+    target_link_libraries(${_DEVICE_TARGET} PRIVATE hip::device)
+endforeach ()
+
 add_library(LuthierToolCodeGen OBJECT
+        $<TARGET_OBJECTS:LuthierIndirectBranchResolverPass>
         PseudoOpcodeAndRegMapper.cpp
         TargetMachineInstrMDNode.cpp
         CodeDiscoveryPass.cpp
@@ -66,6 +101,7 @@ add_library(LuthierToolCodeGen OBJECT
 add_dependencies(LuthierToolCodeGen LuthierRealToPseudoOpcodeMap)
 add_dependencies(LuthierToolCodeGen LuthierRealToPseudoRegEnumMap)
 add_dependencies(LuthierToolCodeGen LuthierSIInstrSemanticsGen)
+add_dependencies(LuthierToolCodeGen LuthierIndirectBranchResolverPass)
 
 target_compile_definitions(LuthierToolCodeGen PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
 

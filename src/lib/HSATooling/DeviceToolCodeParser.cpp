@@ -111,7 +111,7 @@ parseSliceISA(llvm::StringRef ID) {
     // convert it to `+wavefrontsize32` to match IR's feature string
     if (Name == "wavefrontsize64")
       FS.AddFeature(Enable ? "wavefrontsize64" : "wavefrontsize32",
-                          /*Enable=*/true);
+                    /*Enable=*/true);
     else
       FS.AddFeature(Name, Enable);
   }
@@ -310,7 +310,6 @@ DeviceToolCodeParser::DeviceToolCodeParser(
              << Slices.size() << " slice(s)" << (SpirvSlice ? " + SPIR-V" : "")
              << "\n");
 }
-
 
 llvm::Expected<std::unique_ptr<llvm::Module>>
 DeviceToolCodeParser::translateSpirvFallback(

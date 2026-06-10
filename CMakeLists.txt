@@ -2,12 +2,15 @@ cmake_minimum_required(VERSION 3.21)
 
 project(luthier
         VERSION 0.1.0
-        LANGUAGES CXX
+        LANGUAGES CXX HIP
         DESCRIPTION "Dynamic Binary Instrumentation for AMD GPUs"
         HOMEPAGE_URL "https://github.com/matinraayai/Luthier"
 )
 
 set(CMAKE_CXX_STANDARD 23)
+# The indirect-branch resolver's HIP TU (LuthierIndirectResolve.hip) includes
+# Luthier/LLVM C++ headers on its host side, so the HIP language must match.
+set(CMAKE_HIP_STANDARD 23)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # User Options =========================================================================================================

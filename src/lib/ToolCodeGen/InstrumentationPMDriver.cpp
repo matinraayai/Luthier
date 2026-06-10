@@ -21,6 +21,7 @@
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/ToolCodeGen/ForwardISAStateToCalleesPass.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
+#include "luthier/ToolCodeGen/IndirectBranchResolverPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAccessedRegsAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadPEIPass.h"
@@ -419,6 +420,15 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
       for (const auto &Plugin : PassPlugins)
         Plugin.registerPreIROptimizationPasses(IMPM);
 
+      {
+        llvm::Error ResolverErr = llvm::Error::success();
+        IndirectBranchResolverPass ResolverPass(ResolverErr);
+        if (ResolverErr) {
+          Context.emitError(llvm::toString(std::move(ResolverErr)));
+          return llvm::PreservedAnalyses::all();
+        }
+        IMPM.addPass(std::move(ResolverPass));
+      }
       IMPM.addPass(
           PB.buildPerModuleDefaultPipeline(optLevelFromUnsigned(OptLevelVal)));
       PreIRIntrinsicLoweringCallback(IMPM);

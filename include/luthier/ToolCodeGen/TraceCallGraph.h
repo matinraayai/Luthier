@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file TraceCallGraph.h
+/// \file
 /// Declares the \c TraceCallGraph target module analysis that recovers the
 /// call graph of a Luthier-translated target IR module.
 ///
@@ -65,8 +65,6 @@ private:
 
 public:
   /// == Call targets (indirect CallInst → list of resolved Function*) =========
-  /// Only indirect calls (those without a compile-time Function* callee) appear
-  /// here; direct calls are already resolved by the IR.
 
   using call_targets_iterator = CallTargetsMapT::const_iterator;
 

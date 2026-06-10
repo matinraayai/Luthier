@@ -63,7 +63,6 @@ namespace luthier {
 /// for multiple GPU targets. For multiple TUs, use multiple instances.
 class DeviceToolCodeParser {
 protected:
-
   /// Guards \c Slices and the SPIR-V JIT cache insertion. Recursive so a
   /// derived class can re-enter through \c getEmbeddedModule.
   std::recursive_mutex Mutex;
@@ -104,8 +103,8 @@ protected:
   /// passes, caches the serialized bitcode under \p Key, and returns the
   /// freshly built module. Caller must hold \c Mutex. Errors if no SPIR-V slice
   /// is present or the translator was not built into this binary.
-  llvm::Expected<std::unique_ptr<llvm::Module>>
-  translateSpirvFallback(const llvm::Triple &T, llvm::StringRef CPU,
+  llvm::Expected<std::unique_ptr<llvm::Module>> translateSpirvFallback(
+      const llvm::Triple &T, llvm::StringRef CPU,
       const llvm::SubtargetFeatures &Features, llvm::StringRef Key,
       llvm::LLVMContext &Ctx,
       llvm::OptimizationLevel OptLevel = llvm::OptimizationLevel::O3);
