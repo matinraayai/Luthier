@@ -49,6 +49,7 @@
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include "luthier/ToolCodeGen/InitialExecutionPointAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
+#include "luthier/ToolCodeGen/MIToIRMappingAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
 #include "luthier/ToolCodeGen/InstrumentationPass.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
@@ -118,6 +119,7 @@ public:
 
     MAM.registerPass([&] { return llvm::MachineModuleAnalysis(MMI); });
     MFAM.registerPass([] { return luthier::InstructionTracesAnalysis(); });
+    MFAM.registerPass([] { return luthier::MIToIRMappingAnalysis(); });
     MAM.registerPass([&] {
       return luthier::InitialEntryPointAnalysis(
           [&](llvm::Module &, llvm::ModuleAnalysisManager &) {

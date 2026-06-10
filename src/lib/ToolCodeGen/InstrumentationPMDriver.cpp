@@ -23,8 +23,8 @@
 #include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAccessedRegsAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
-#include "luthier/ToolCodeGen/InjectedPayloadPreserveLiveRegsPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadPEIPass.h"
+#include "luthier/ToolCodeGen/InjectedPayloadPreserveLiveRegsPass.h"
 #include "luthier/ToolCodeGen/IntrinsicMIRLoweringPass.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
 #include "luthier/ToolCodeGen/ProcessIntrinsicsAtIRLevelPass.h"
@@ -197,9 +197,8 @@ llvm::Error parseCodeGenPipeline(llvm::StringRef PipelineStr,
       llvm::AnalysisID AfterID = AfterPI->getTypeInfo();
       std::string Banner =
           "After " + std::string(AfterPI->getPassName()) + " (Luthier)";
-      TPC.insertPass(AfterID,
-                     llvm::createMachineFunctionPrinterPass(*MIRPrintStream,
-                                                            Banner));
+      TPC.insertPass(AfterID, llvm::createMachineFunctionPrinterPass(
+                                  *MIRPrintStream, Banner));
       UserInsertedMIRPrint = true;
       continue;
     }
@@ -388,7 +387,6 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
 
   SI.registerCallbacks(PIC, &IMAM);
 
-  // TODO: re-enable when production-pipeline deps are compiled in:
   IMAM.registerPass([&]() { return InjectedPayloadAndInstPointAnalysis(); });
   IMAM.registerPass([&]() { return IntrinsicsProcessorsAnalysis(Registry); });
 
@@ -417,7 +415,6 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
           Options.IModuleOptLevel.getNumOccurrences() > 0
               ? Options.IModuleOptLevel.getValue()
               : static_cast<unsigned>(TargetAppTM.getOptLevel());
-      // TODO: IR pipeline — uncomment when deps are available:
       PreIROptimizationCallback(IMPM);
       for (const auto &Plugin : PassPlugins)
         Plugin.registerPreIROptimizationPasses(IMPM);
@@ -487,8 +484,8 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
     std::unique_ptr<llvm::ToolOutputFile> OutFile;
     if (MustDumpMIR) {
       std::error_code EC;
-      OutFile = std::make_unique<llvm::ToolOutputFile>(
-          OutPath, EC, llvm::sys::fs::OF_Text);
+      OutFile = std::make_unique<llvm::ToolOutputFile>(OutPath, EC,
+                                                       llvm::sys::fs::OF_Text);
       if (EC) {
         Context.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
             "Failed to open imodule output file '" + Options.IModuleOutput +
@@ -566,8 +563,7 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
       AddModulePass(new TargetModulePatcherPass(),
                     "Luthier TargetModulePatcher");
     } else if (MIRPassPipelineSpecifiedAndNotEmpty) {
-      llvm::raw_ostream *PrintStream =
-          MustDumpMIR ? &OutFile->os() : nullptr;
+      llvm::raw_ostream *PrintStream = MustDumpMIR ? &OutFile->os() : nullptr;
       llvm::Error ModifiedOrErr = parseCodeGenPipeline(
           Options.IModuleMIRPasses.getValue(), *MIRLegacyPM, *TPC, PrintStream,
           UserInsertedMIRPrint);

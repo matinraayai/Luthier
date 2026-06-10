@@ -21,6 +21,7 @@
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
+#include "luthier/ToolCodeGen/MIToIRMappingAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
@@ -341,6 +342,8 @@ llvmGetPassPluginInfo() {
         [](llvm::MachineFunctionAnalysisManager &MFAM) {
           MFAM.registerPass(
               []() { return luthier::InstructionTracesAnalysis(); });
+          MFAM.registerPass(
+              []() { return luthier::MIToIRMappingAnalysis(); });
         });
 
     PB.registerPipelineParsingCallback(

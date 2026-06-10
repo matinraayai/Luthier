@@ -24,6 +24,7 @@ add_library(LuthierToolCodeGen OBJECT
         TargetMachineInstrMDNode.cpp
         CodeDiscoveryPass.cpp
         InstructionTracesAnalysis.cpp
+        MIToIRMappingAnalysis.cpp
         MemoryAllocationAccessor.cpp
         SVStorageAndLoadLocations.cpp
         SVAPhysVGPRPinPass.cpp
@@ -58,7 +59,6 @@ add_library(LuthierToolCodeGen OBJECT
         FunctionAnnotations.cpp
         TraceCallGraph.cpp
         PredicatedMachineBasicBlock.cpp
-
 )
 
 add_dependencies(LuthierToolCodeGen LuthierRealToPseudoOpcodeMap)
