@@ -100,8 +100,7 @@ static void printELFType(const llvm::object::ELF64LE::Phdr &Phdr,
 }
 
 AMDGPUMockLoaderPrinter::AMDGPUMockLoaderPrinter(llvm::raw_ostream &OS)
-    : OS(OS) {
-}
+    : OS(OS) {}
 
 llvm::PreservedAnalyses
 AMDGPUMockLoaderPrinter::run(llvm::Module &M,
@@ -129,10 +128,9 @@ AMDGPUMockLoaderPrinter::run(llvm::Module &M,
     std::string Error;
     const llvm::Target *Target = llvm::TargetRegistry::lookupTarget(TT, Error);
     if (auto Err = LUTHIER_GENERIC_ERROR_CHECK(
-            Target,
-            llvm::formatv("Failed to lookup target {0} in LLVM. Reason "
-                          "according to LLVM: {1}.",
-                          TT.normalize(), Error))) {
+            Target, llvm::formatv("Failed to lookup target {0} in LLVM. Reason "
+                                  "according to LLVM: {1}.",
+                                  TT.normalize(), Error))) {
       Ctx.emitError(llvm::toString(std::move(Err)));
       return llvm::PreservedAnalyses::all();
     }
@@ -199,7 +197,7 @@ AMDGPUMockLoaderPrinter::run(llvm::Module &M,
       return llvm::PreservedAnalyses::all();
     }
 
-    llvm::MCContext MCCtx(TT, MAI.get(), MRI.get(), STI.get());
+    llvm::MCContext MCCtx(TT, *MAI, *MRI, *STI);
 
     auto DisAsm = std::unique_ptr<llvm::MCDisassembler>(
         Target->createMCDisassembler(*STI, MCCtx));
@@ -288,8 +286,8 @@ AMDGPUMockLoaderPrinter::run(llvm::Module &M,
           auto DecodeResult = DisAsm->getInstruction(
               Inst, InstSize, ReadBytes, SegmentCurrAddr, llvm::nulls());
           if (DecodeResult != llvm::MCDisassembler::Success) {
-            Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
-                llvm::formatv(
+            Ctx.emitError(
+                llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
                     "Failed to disassemble instruction at address {0:x}",
                     SegmentCurrAddr))));
             break;

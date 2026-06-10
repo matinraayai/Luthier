@@ -32,8 +32,10 @@
 //   rdna4-instruction-set-architecture.pdf, page 175.
 def S_ADDK_I32_sem : InstSISemantic<S_ADDK_I32> {
   let Semantic = [
-    (DefVal $tmp_add, (LLVMAdd (GetNamedOperand $src0), (GetNamedOperand $simm16))),
-    SetSCCImplicit<(LLVMCmp LLVMICmpUGE, (GetVal $tmp_add), (ConstantInt si_llvm_i32_ty, 0x100000000))>.ret,
+    (DefVal $tmp_add,
+      (LLVMAdd (LLVMZExt (GetNamedOperand $src0), si_llvm_i64_ty),
+               (LLVMZExt (GetNamedOperand $simm16), si_llvm_i64_ty))),
+    SetSCCImplicit<(LLVMCmp LLVMICmpUGE, (GetVal $tmp_add), (ConstantInt si_llvm_i64_ty, 0x100000000))>.ret,
     (SetNamedOperand $sdst, (LLVMTrunc (GetVal $tmp_add), si_llvm_i32_ty))
   ];
 }
@@ -443,7 +445,7 @@ def S_CBRANCH_I_FORK_sem : InstSISemantic<S_CBRANCH_I_FORK> {
 //    (DefVal $pass_mask, (LLVMAnd (ImplicitUse EXEC), (GetNamedOperand $sdst))),
 //    (DefVal $fail_mask, (LLVMAnd (ImplicitUse EXEC),
 //                               (LLVMXor (GetNamedOperand $sdst),
-//                                        (ConstantInt si_llvm_i64_ty, -1)))),
+//                                        (ConstantSignedInt si_llvm_i64_ty, -1)))),
 //    // Get CSP from MODE register (hwmode = 5953, returns i32)
 //    (DefVal $csp, (LLVMIntrinsic si_llvm_i32_ty, int_amdgcn_s_getreg,
 //      [(ConstantInt si_llvm_i16_ty, 5953)]<dag>)),
@@ -481,7 +483,7 @@ def S_CBRANCH_I_FORK_sem : InstSISemantic<S_CBRANCH_I_FORK> {
 //    (DefVal $pass_mask, (LLVMAnd (ImplicitUse EXEC), (GetNamedOperand $sdst))),
 //    (DefVal $fail_mask, (LLVMAnd (ImplicitUse EXEC),
 //                               (LLVMXor (GetNamedOperand $sdst),
-//                                        (ConstantInt si_llvm_i64_ty, -1)))),
+//                                        (ConstantSignedInt si_llvm_i64_ty, -1)))),
 //    (DefVal $csp, (LLVMIntrinsic si_llvm_i32_ty, int_amdgcn_s_getreg,
 //      [(ConstantInt si_llvm_i16_ty, 5953)]<dag>)),
 //    (DefVal $sgpr0_3, (LLVMBitCast (ImplicitUse SGPR0_SGPR1_SGPR2_SGPR3), si_llvm_i128_ty)),
@@ -514,7 +516,7 @@ def S_CBRANCH_I_FORK_sem : InstSISemantic<S_CBRANCH_I_FORK> {
 //    (DefVal $pass_mask, (LLVMAnd (ImplicitUse EXEC), (GetNamedOperand $sdst))),
 //    (DefVal $fail_mask, (LLVMAnd (ImplicitUse EXEC),
 //                               (LLVMXor (GetNamedOperand $sdst),
-//                                        (ConstantInt si_llvm_i64_ty, -1)))),
+//                                        (ConstantSignedInt si_llvm_i64_ty, -1)))),
 //    (DefVal $csp, (LLVMIntrinsic si_llvm_i32_ty, int_amdgcn_s_getreg,
 //      [(ConstantInt si_llvm_i16_ty, 5953)]<dag>)),
 //    (DefVal $sgpr0_3, (LLVMBitCast (ImplicitUse SGPR0_SGPR1_SGPR2_SGPR3), si_llvm_i128_ty)),

@@ -692,9 +692,9 @@ class LaneBitFromWaveMask<dag mask> {
       (LLVMLShr mask,
         (LLVMZExtOrTrunc
           (LLVMIntrinsic si_llvm_i32_ty, int_amdgcn_mbcnt_hi,
-            [(ConstantInt si_llvm_i32_ty, -1),
+            [(ConstantSignedInt si_llvm_i32_ty, -1),
              (LLVMIntrinsic si_llvm_i32_ty, int_amdgcn_mbcnt_lo,
-               [(ConstantInt si_llvm_i32_ty, -1),
+               [(ConstantSignedInt si_llvm_i32_ty, -1),
                 (ConstantInt si_llvm_i32_ty, 0)])]),
           (LLVMIntNTy (GetWavefrontSize)))),
       (ConstantInt (LLVMIntNTy (GetWavefrontSize)), 1)),

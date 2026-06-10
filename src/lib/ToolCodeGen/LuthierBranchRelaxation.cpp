@@ -1,4 +1,4 @@
-//===-- LuthierBranchRelaxation.cpp ------------------------------*- C++ -*-===//
+//===-- LuthierBranchRelaxation.cpp -----------------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -94,9 +94,8 @@ void emitLuthierLongBranch(llvm::MachineBasicBlock &MBB,
   llvm::Register PCReg =
       MRI.createVirtualRegister(&llvm::AMDGPU::SReg_64RegClass);
 
-  const bool FlushSGPRWrites =
-      (ST.isWave64() && ST.hasVALUMaskWriteHazard()) ||
-      ST.hasVALUReadSGPRHazard();
+  const bool FlushSGPRWrites = (ST.isWave64() && ST.hasVALUMaskWriteHazard()) ||
+                               ST.hasVALUReadSGPRHazard();
   auto ApplyHazardWorkarounds = [&]() {
     if (FlushSGPRWrites)
       llvm::BuildMI(MBB, I, DL, TII->get(llvm::AMDGPU::S_WAITCNT_DEPCTR))
@@ -119,11 +118,11 @@ void emitLuthierLongBranch(llvm::MachineBasicBlock &MBB,
       MCCtx.createTempSymbol("luthier_offset_hi", /*AlwaysAddSuffix=*/true);
   llvm::BuildMI(MBB, I, DL, TII->get(llvm::AMDGPU::S_ADD_U32))
       .addReg(PCReg, llvm::RegState::Define, llvm::AMDGPU::sub0)
-      .addReg(PCReg, 0, llvm::AMDGPU::sub0)
+      .addReg(PCReg, llvm::RegState::NoFlags, llvm::AMDGPU::sub0)
       .addSym(OffsetLo, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
   llvm::BuildMI(MBB, I, DL, TII->get(llvm::AMDGPU::S_ADDC_U32))
       .addReg(PCReg, llvm::RegState::Define, llvm::AMDGPU::sub1)
-      .addReg(PCReg, 0, llvm::AMDGPU::sub1)
+      .addReg(PCReg, llvm::RegState::NoFlags, llvm::AMDGPU::sub1)
       .addSym(OffsetHi, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
   ApplyHazardWorkarounds();
 
@@ -139,8 +138,7 @@ void emitLuthierLongBranch(llvm::MachineBasicBlock &MBB,
   } else {
     RS.enterBasicBlockEnd(MBB);
     Scav = RS.scavengeRegisterBackwards(
-        llvm::AMDGPU::SReg_64RegClass,
-        llvm::MachineBasicBlock::iterator(GetPC),
+        llvm::AMDGPU::SReg_64RegClass, llvm::MachineBasicBlock::iterator(GetPC),
         /*RestoreAfter=*/false, /*SPAdj=*/0, /*AllowSpill=*/false);
     if (!Scav) {
       // No globally-free reg. Invoke the SVA-lane sink with explicit
@@ -165,14 +163,17 @@ void emitLuthierLongBranch(llvm::MachineBasicBlock &MBB,
   MRI.replaceRegWith(PCReg, Scav);
   MRI.clearVirtRegs();
 
-  auto *DestLabel = !ScavengerSpilled ? DestBB.getSymbol() : RestoreBB.getSymbol();
+  auto *DestLabel =
+      !ScavengerSpilled ? DestBB.getSymbol() : RestoreBB.getSymbol();
   auto *Offset = llvm::MCBinaryExpr::createSub(
       llvm::MCSymbolRefExpr::create(DestLabel, MCCtx),
       llvm::MCSymbolRefExpr::create(PostGetPCLabel, MCCtx), MCCtx);
   auto *Mask = llvm::MCConstantExpr::create(0xFFFFFFFFULL, MCCtx);
-  OffsetLo->setVariableValue(llvm::MCBinaryExpr::createAnd(Offset, Mask, MCCtx));
+  OffsetLo->setVariableValue(
+      llvm::MCBinaryExpr::createAnd(Offset, Mask, MCCtx));
   auto *ShAmt = llvm::MCConstantExpr::create(32, MCCtx);
-  OffsetHi->setVariableValue(llvm::MCBinaryExpr::createAShr(Offset, ShAmt, MCCtx));
+  OffsetHi->setVariableValue(
+      llvm::MCBinaryExpr::createAShr(Offset, ShAmt, MCCtx));
   (void)BrOffset;
 }
 
@@ -211,7 +212,8 @@ class LuthierBranchRelaxationWorker {
 
   bool relaxBranchInstructions();
   void scanFunction();
-  llvm::MachineBasicBlock *createNewBlockAfter(llvm::MachineBasicBlock &OrigMBB);
+  llvm::MachineBasicBlock *
+  createNewBlockAfter(llvm::MachineBasicBlock &OrigMBB);
   llvm::MachineBasicBlock *createNewBlockAfter(llvm::MachineBasicBlock &OrigMBB,
                                                const llvm::BasicBlock *BB);
   llvm::MachineBasicBlock *
@@ -277,9 +279,8 @@ void LuthierBranchRelaxationWorker::adjustBlockOffsets(
 void LuthierBranchRelaxationWorker::adjustBlockOffsets(
     llvm::MachineBasicBlock &Start, llvm::MachineFunction::iterator End) {
   unsigned PrevNum = Start.getNumber();
-  for (auto &MBB :
-       llvm::make_range(std::next(llvm::MachineFunction::iterator(Start)),
-                        End)) {
+  for (auto &MBB : llvm::make_range(
+           std::next(llvm::MachineFunction::iterator(Start)), End)) {
     unsigned Num = MBB.getNumber();
     BlockInfo[Num].Offset = BlockInfo[PrevNum].postOffset(MBB);
     PrevNum = Num;
@@ -331,10 +332,9 @@ bool LuthierBranchRelaxationWorker::isBlockInRange(
   int64_t DestOffset = BlockInfo[DestBB.getNumber()].Offset;
   const auto *SrcBB = MI.getParent();
   return TII->isBranchOffsetInRange(
-      MI.getOpcode(),
-      SrcBB->getSectionID() != DestBB.getSectionID()
-          ? TM->getMaxCodeSize()
-          : DestOffset - BrOffset);
+      MI.getOpcode(), SrcBB->getSectionID() != DestBB.getSectionID()
+                          ? TM->getMaxCodeSize()
+                          : DestOffset - BrOffset);
 }
 
 bool LuthierBranchRelaxationWorker::fixupConditionalBranch(
@@ -473,8 +473,7 @@ bool LuthierBranchRelaxationWorker::fixupUnconditionalBranch(
   llvm::DebugLoc DL = MI.getDebugLoc();
   MI.eraseFromParent();
 
-  auto *RestoreBB =
-      createNewBlockAfter(MF->back(), DestBB->getBasicBlock());
+  auto *RestoreBB = createNewBlockAfter(MF->back(), DestBB->getBasicBlock());
   std::prev(RestoreBB->getIterator())
       ->setIsEndSection(RestoreBB->isEndSection());
   RestoreBB->setIsEndSection(false);

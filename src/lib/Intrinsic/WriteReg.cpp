@@ -149,7 +149,7 @@ llvm::Error writeRegMIRProcessor(
       auto SubReg = VirtRegBuilder(InputSubRegClass);
       MIBuilder(llvm::AMDGPU::COPY)
           .addReg(SubReg, llvm::RegState::Define)
-          .addReg(InputReg, 0, SubIdx);
+          .addReg(InputReg, llvm::RegState::NoFlags, SubIdx);
       WritePhysRegSlots.insert({TRI->getSubReg(Dest, SubIdx), SubReg});
     }
   } else if (DestRegSize == 32 || DestRegSize == 1) {

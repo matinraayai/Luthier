@@ -213,9 +213,6 @@ protected:
     static Key getEmptyKey() {
       return Key{PtrInfo::getEmptyKey(), U64Info::getEmptyKey()};
     }
-    static Key getTombstoneKey() {
-      return Key{PtrInfo::getTombstoneKey(), U64Info::getTombstoneKey()};
-    }
     static unsigned getHashValue(const Key &K) {
       return llvm::detail::combineHashValue(PtrInfo::getHashValue(K.KD),
                                             U64Info::getHashValue(K.Preset));

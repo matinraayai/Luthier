@@ -103,11 +103,11 @@ static const llvm::DenseMap<StateValueArrayStorage::StorageKind,
          [](const llvm::GCNSubtarget &ST) { return !ST.hasGFX90AInsts(); }},
         {StateValueArrayStorage::SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs,
          [](const llvm::GCNSubtarget &ST) {
-           return !ST.flatScratchIsArchitected();
+           return !ST.hasArchitectedFlatScratch();
          }},
         {StateValueArrayStorage::SVS_SPILLED_WITH_ONE_SGPR_architected_fs,
          [](const llvm::GCNSubtarget &ST) {
-           return ST.flatScratchIsArchitected();
+           return ST.hasArchitectedFlatScratch();
          }}};
 
 bool StateValueArrayStorage::isSupportedOnSubTarget(
@@ -501,7 +501,8 @@ static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 };
 
 static void
-emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI, const TwoAGPRValueStorage &SrcSVS,
+emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
+                    const TwoAGPRValueStorage &SrcSVS,
                     const AGPRWithThreeSGPRSValueStorage &TargetSVS) {
   (void)createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
@@ -533,7 +534,8 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI, const TwoAGPRValueSto
 };
 
 static void
-emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI, const TwoAGPRValueStorage &SrcSVS,
+emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
+                    const TwoAGPRValueStorage &SrcSVS,
                     const SpilledWithThreeSGPRsValueStorage &TargetSVS) {
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,

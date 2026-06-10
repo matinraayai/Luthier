@@ -157,7 +157,7 @@ InstructionTraces::discoverTraces(EntryPoint EP,
                                   const llvm::TargetMachine &TM,
                                   llvm::MCContext &MCCtx) {
   auto Out = std::unique_ptr<InstructionTraces>(new InstructionTraces(EP));
-  size_t MaxInstSize = TM.getMCAsmInfo()->getMaxInstLength();
+  size_t MaxInstSize = TM.getMCAsmInfo().getMaxInstLength();
 
   const llvm::MCInstrInfo &MII = *TM.getMCInstrInfo();
 
@@ -171,7 +171,7 @@ InstructionTraces::discoverTraces(EntryPoint EP,
   InstructionAddrSet UnvisitedTraceAddresses{InitialEntryPointAddr};
 
   std::unique_ptr<llvm::MCDisassembler> DisAsm(
-      TM.getTarget().createMCDisassembler(*TM.getMCSubtargetInfo(), MCCtx));
+      TM.getTarget().createMCDisassembler(TM.getMCSubtargetInfo(), MCCtx));
 
   if (!DisAsm) {
     return LUTHIER_MAKE_GENERIC_ERROR("Failed to create an MC Disassembler");
@@ -180,8 +180,8 @@ InstructionTraces::discoverTraces(EntryPoint EP,
   std::unique_ptr<llvm::MCInstPrinter> IP{nullptr};
 
   LLVM_DEBUG(IP.reset(TM.getTarget().createMCInstPrinter(
-      TM.getTargetTriple(), TM.getMCAsmInfo()->getAssemblerDialect(),
-      *TM.getMCAsmInfo(), *TM.getMCInstrInfo(), *TM.getMCRegisterInfo())););
+      TM.getTargetTriple(), TM.getMCAsmInfo().getAssemblerDialect(),
+      TM.getMCAsmInfo(), *TM.getMCInstrInfo(), TM.getMCRegisterInfo())););
 
   while (!UnvisitedTraceAddresses.empty()) {
     /// Process the lowest unvisited address first. \c InstructionAddrSet is an

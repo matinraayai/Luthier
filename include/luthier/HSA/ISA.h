@@ -226,11 +226,6 @@ template <> struct llvm::DenseMapInfo<hsa_isa_t> {
         {DenseMapInfo<decltype(hsa_isa_t::handle)>::getEmptyKey()});
   }
 
-  static hsa_isa_t getTombstoneKey() {
-    return hsa_isa_t(
-        {DenseMapInfo<decltype(hsa_isa_t::handle)>::getTombstoneKey()});
-  }
-
   static unsigned getHashValue(const hsa_isa_t &ISA) {
     return DenseMapInfo<decltype(hsa_isa_t::handle)>::getHashValue(ISA.handle);
   }

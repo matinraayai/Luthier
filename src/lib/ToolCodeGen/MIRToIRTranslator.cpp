@@ -26,7 +26,7 @@
 #include "luthier/ToolCodeGen/Metadata.h"
 #include "luthier/ToolCodeGen/RegValueMetadata.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
-#include <AMDGPUMachineFunction.h>
+#include <AMDGPUMachineFunctionInfo.h>
 #include <GCNSubtarget.h>
 #include <SIDefines.h>
 #include <SIInstrInfo.h>
@@ -634,7 +634,7 @@ MIRToIRTranslator::getOperandAsValue(const llvm::MachineBasicBlock &MBB,
   auto *BB = const_cast<llvm::BasicBlock *>(MBB.getBasicBlock());
   assert(BB && "MBB does not have an IR basic block");
 
-  llvm::Instruction *TermInst = BB->getTerminator();
+  llvm::Instruction *TermInst = BB->getTerminatorOrNull();
 
   llvm::IRBuilder<llvm::InstSimplifyFolder, llvm::IRBuilderCallbackInserter>
       Builder(BB->getContext(), llvm::InstSimplifyFolder{MF.getDataLayout()},
@@ -995,7 +995,7 @@ void MIRToIRTranslator::initKernelEntryRegs(llvm::IRBuilderBase &Builder) {
   /// the low 32.
   llvm::MCRegister Exec = TRI.getExec();
   unsigned ExecWidth = TRI.getRegSizeInBits(Exec, MF.getRegInfo());
-  llvm::Value *ExecInit = Builder.getIntN(ExecWidth, ~0ULL);
+  llvm::Value *ExecInit = Builder.getInt(llvm::APInt::getAllOnes(ExecWidth));
   seedRegValue(MF.front(), Exec, ExecInit);
 
   /// SCC is zero on kernel entry.
@@ -1284,7 +1284,7 @@ llvm::Value *MIRToIRTranslator::getRegisterFile(const llvm::MachineInstr &MI,
   assert(MBB && "MI has no parent MBB");
   auto *BB = const_cast<llvm::BasicBlock *>(MBB->getBasicBlock());
   assert(BB && "MBB has no IR basic block");
-  llvm::Instruction *TermInst = BB->getTerminator();
+  llvm::Instruction *TermInst = BB->getTerminatorOrNull();
 
   llvm::MCRegister BaseReg = std::get<0>(getRegFileKey(Register));
 
@@ -1310,7 +1310,7 @@ void MIRToIRTranslator::setRegisterFile(const llvm::MachineInstr &MI,
   assert(MBB && "MI has no parent MBB");
   auto *BB = const_cast<llvm::BasicBlock *>(MBB->getBasicBlock());
   assert(BB && "MBB has no IR basic block");
-  llvm::Instruction *TermInst = BB->getTerminator();
+  llvm::Instruction *TermInst = BB->getTerminatorOrNull();
 
   llvm::MCRegister BaseReg = std::get<0>(getRegFileKey(Reg));
 
@@ -1609,8 +1609,11 @@ MIRToIRTranslator::getOperandAsValue(const llvm::MachineOperand &Op,
       }
       OutType = llvm::IntegerType::get(Ctx, SizeInBytes * 8);
     }
+    // MIR immediates are stored as raw 64-bit values; allow implicit
+    // truncation to the slot width (no longer the default).
     if (OutType->isIntegerTy())
-      return *llvm::ConstantInt::getSigned(OutType, Op.getImm());
+      return *llvm::ConstantInt::getSigned(OutType, Op.getImm(),
+                                           /*ImplicitTrunc=*/true);
     // Non-integer destination type (e.g. the <2 x float>/<2 x i16> packed
     // operand types requested by VOP3P semantics such as V_PK_MUL_F32):
     // materialize the raw immediate bits as an integer of the same width and
@@ -1619,7 +1622,7 @@ MIRToIRTranslator::getOperandAsValue(const llvm::MachineOperand &Op,
     // matches how the integer path interprets Op.getImm().
     unsigned Bits = OutType->getPrimitiveSizeInBits();
     auto *RawInt = llvm::ConstantInt::getSigned(
-        llvm::IntegerType::get(Ctx, Bits), Op.getImm());
+        llvm::IntegerType::get(Ctx, Bits), Op.getImm(), /*ImplicitTrunc=*/true);
     return *llvm::ConstantExpr::getBitCast(RawInt, OutType);
   }
   case llvm::MachineOperand::MO_GlobalAddress:
@@ -1667,7 +1670,7 @@ void MIRToIRTranslator::setRegOperandValue(const llvm::MachineInstr &MI,
   auto *BB = const_cast<llvm::BasicBlock *>(MBB->getBasicBlock());
   assert(BB && "MBB has no IR basic block");
 
-  llvm::Instruction *TermInst = BB->getTerminator();
+  llvm::Instruction *TermInst = BB->getTerminatorOrNull();
   std::string ValueName = getRegValueName(Reg);
   llvm::IRBuilder<llvm::InstSimplifyFolder, llvm::IRBuilderCallbackInserter>
       Builder(BB->getContext(), llvm::InstSimplifyFolder{MF.getDataLayout()},
@@ -1982,7 +1985,7 @@ void MIRToIRTranslator::translate() {
     /// no branch — guard \c MBB.back() against the empty case to avoid
     /// dereferencing \c --end().
     bool EndsInBranch = !MBB.empty() && MBB.back().isBranch();
-    if (MBB.canFallThrough() && !EndsInBranch && !BB->getTerminator()) {
+    if (MBB.canFallThrough() && !EndsInBranch && !BB->getTerminatorOrNull()) {
       if (const llvm::MachineBasicBlock *NextMBB = MBB.getNextNode()) {
         auto *NextBB = const_cast<llvm::BasicBlock *>(NextMBB->getBasicBlock());
         llvm::IRBuilder{BB}.CreateBr(NextBB);
@@ -1994,7 +1997,7 @@ void MIRToIRTranslator::translate() {
     /// ends in a non-terminator with no fall-through successor — close it with
     /// \c unreachable so the translated function stays valid IR rather than
     /// tripping the verifier in a downstream pass.
-    if (!BB->getTerminator())
+    if (!BB->getTerminatorOrNull())
       llvm::IRBuilder<>{BB}.CreateUnreachable();
   }
 
@@ -2135,7 +2138,7 @@ llvm::Value &MIRToIRTranslator::emitIndexedVGPRSrc(const llvm::MachineInstr &MI,
   assert(MBB && "MI has no parent MBB");
   auto *BB = const_cast<llvm::BasicBlock *>(MBB->getBasicBlock());
   assert(BB && "MBB has no IR basic block");
-  llvm::Instruction *TermInst = BB->getTerminator();
+  llvm::Instruction *TermInst = BB->getTerminatorOrNull();
 
   llvm::IRBuilder<llvm::InstSimplifyFolder, llvm::IRBuilderCallbackInserter>
       Builder(BB->getContext(), llvm::InstSimplifyFolder{MF.getDataLayout()},
@@ -2199,7 +2202,7 @@ void MIRToIRTranslator::emitIndexedVGPRDst(const llvm::MachineInstr &MI,
   assert(MBB && "MI has no parent MBB");
   auto *BB = const_cast<llvm::BasicBlock *>(MBB->getBasicBlock());
   assert(BB && "MBB has no IR basic block");
-  llvm::Instruction *TermInst = BB->getTerminator();
+  llvm::Instruction *TermInst = BB->getTerminatorOrNull();
 
   llvm::IRBuilder<llvm::InstSimplifyFolder, llvm::IRBuilderCallbackInserter>
       Builder(BB->getContext(), llvm::InstSimplifyFolder{MF.getDataLayout()},

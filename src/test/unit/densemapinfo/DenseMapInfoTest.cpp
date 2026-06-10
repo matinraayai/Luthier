@@ -161,7 +161,8 @@ TEST(DenseMapInfoTest, GrowthAndRehash) {
 //===----------------------------------------------------------------------===//
 
 TEST(DenseMapInfoTest, ConstQualifiedKey) {
-  // reference_wrapper<const int> threads const through DenseMapInfo<const int*>.
+  // reference_wrapper<const int> threads const through DenseMapInfo<const
+  // int*>.
   const int A = 1, B = 2;
   llvm::DenseMap<std::reference_wrapper<const int>, int> Map;
   Map[std::cref(A)] = 10;
@@ -195,26 +196,21 @@ TEST(DenseMapInfoTest, NonTrivialReferentType) {
 
 TEST(DenseMapInfoTest, DirectTraitInvariants) {
   RefInt Empty = Info::getEmptyKey();
-  RefInt Tombstone = Info::getTombstoneKey();
 
-  // The two sentinels are reflexively equal and distinct from each other.
+  // The sentinel is reflexively equal to itself.
   EXPECT_TRUE(Info::isEqual(Empty, Empty));
-  EXPECT_TRUE(Info::isEqual(Tombstone, Tombstone));
-  EXPECT_FALSE(Info::isEqual(Empty, Tombstone));
 
-  // The sentinel addresses round-trip to the underlying T* sentinels, so they
-  // never alias a real object and hash consistently with DenseMapInfo<T*>.
+  // The sentinel address round-trips to the underlying T* sentinel, so it
+  // never aliases a real object and hashes consistently with DenseMapInfo<T*>.
   EXPECT_EQ(&Empty.get(), llvm::DenseMapInfo<int *>::getEmptyKey());
-  EXPECT_EQ(&Tombstone.get(), llvm::DenseMapInfo<int *>::getTombstoneKey());
 
   int A = 42;
   EXPECT_TRUE(Info::isEqual(std::ref(A), std::ref(A)));
   EXPECT_EQ(Info::getHashValue(std::ref(A)),
             llvm::DenseMapInfo<int *>::getHashValue(&A));
 
-  // A real key is equal to neither sentinel.
+  // A real key is not equal to the sentinel.
   EXPECT_FALSE(Info::isEqual(std::ref(A), Empty));
-  EXPECT_FALSE(Info::isEqual(std::ref(A), Tombstone));
 }
 
 } // namespace

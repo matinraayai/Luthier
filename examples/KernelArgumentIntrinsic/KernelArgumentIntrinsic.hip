@@ -44,16 +44,16 @@
 #include <luthier/ToolCodeGen/CodeDiscoveryPass.h>
 #include <luthier/ToolCodeGen/EntryPoint.h>
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
+#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
 #include <luthier/ToolCodeGen/InstrumentationPMDriver.h>
 #include <luthier/ToolCodeGen/InstrumentationPass.h>
-#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
-#include <luthier/ToolCodeGen/LuthierCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/NewPMAsmPrinter.h>
 #include <luthier/ToolCodeGen/PrePostAmbleEmitter.h>
+#include <luthier/ToolCodeGen/TraceCallGraph.h>
 #include <mutex>
 
 #undef DEBUG_TYPE
@@ -129,11 +129,10 @@ LUTHIER_HOOK_MEMBER_ATTR void KernelArgumentIntrinsicTool::accessKernelArg() {
 
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
-static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>
-    *AmdExtSnapshot{nullptr};
+static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable> *AmdExtSnapshot{
+    nullptr};
 static luthier::rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
     *LoaderSnapshot{nullptr};
-
 
 luthier::InstrumentationPreservedAnalyses
 KernelArgumentIntrinsicTool::runInstrumentationPass(
@@ -141,9 +140,9 @@ KernelArgumentIntrinsicTool::runInstrumentationPass(
     llvm::MachineFunction &MF, llvm::FunctionAnalysisManager &) {
   if (MF.empty())
     return luthier::InstrumentationPreservedAnalyses{};
-  LUTHIER_REPORT_FATAL_ON_ERROR(this->createInjectedPayload(
-      &KernelArgumentIntrinsicTool::accessKernelArg, IModule,
-      MF.begin()->front(), {}));
+  LUTHIER_REPORT_FATAL_ON_ERROR(
+      this->createInjectedPayload(&KernelArgumentIntrinsicTool::accessKernelArg,
+                                  IModule, MF.begin()->front(), {}));
   return luthier::InstrumentationPreservedAnalyses{};
 }
 
@@ -209,9 +208,9 @@ void KernelArgumentIntrinsicTool::onPackets(
             DispatchPacket->completion_signal, HSA_SIGNAL_CONDITION_LT,
             SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
     if (Current >= SignalValue)
-      llvm::report_fatal_error(llvm::formatv(
-          "Wait timeout for signal {0:x}",
-          DispatchPacket->completion_signal.handle));
+      llvm::report_fatal_error(
+          llvm::formatv("Wait timeout for signal {0:x}",
+                        DispatchPacket->completion_signal.handle));
     if (MustDestroySignalAfterLaunch) {
       LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
           Core.callFunction<&::CoreApiTable::hsa_signal_destroy_fn>(
@@ -266,9 +265,8 @@ static void atToolInit(void *) {
     if (Err)
       llvm::report_fatal_error(std::move(Err));
 
-    KernelArgumentIntrinsicTool::createInstance(*CoreApiSnapshot,
-                                                *AmdExtSnapshot, *LoaderSnapshot,
-                                                Err);
+    KernelArgumentIntrinsicTool::createInstance(
+        *CoreApiSnapshot, *AmdExtSnapshot, *LoaderSnapshot, Err);
     if (Err)
       llvm::report_fatal_error(std::move(Err));
 

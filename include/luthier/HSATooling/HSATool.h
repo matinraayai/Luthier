@@ -45,7 +45,7 @@
 #include <llvm/Support/Error.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Target/TargetMachine.h>
-#include <llvm/TargetParser/TargetParser.h>
+#include <llvm/TargetParser/AMDGPUTargetParser.h>
 
 namespace luthier {
 
@@ -217,9 +217,9 @@ public:
                                          : "wavefrontsize64");
       // WGP_MODE set => the kernel runs in WGP mode (cumode disabled); clear
       // => CU mode (cumode enabled).
-      const bool IsWGPMode = AMDHSA_BITS_GET(
-          KD->compute_pgm_rsrc1,
-          llvm::amdhsa::COMPUTE_PGM_RSRC1_GFX10_PLUS_WGP_MODE);
+      const bool IsWGPMode =
+          AMDHSA_BITS_GET(KD->compute_pgm_rsrc1,
+                          llvm::amdhsa::COMPUTE_PGM_RSRC1_GFX10_PLUS_WGP_MODE);
       FeaturesOrErr->AddFeature("cumode", /*Enable=*/!IsWGPMode);
     }
 

@@ -39,15 +39,15 @@
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
 #include <luthier/ToolCodeGen/CodeDiscoveryPass.h>
 #include <luthier/ToolCodeGen/EntryPoint.h>
+#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
 #include <luthier/ToolCodeGen/InstrumentationPMDriver.h>
 #include <luthier/ToolCodeGen/InstrumentationPass.h>
-#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
-#include <luthier/ToolCodeGen/LuthierCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/PrePostAmbleEmitter.h>
+#include <luthier/ToolCodeGen/TraceCallGraph.h>
 #include <mutex>
 #include <unordered_set>
 
@@ -83,8 +83,8 @@ struct LiftLaunchedKernelsTool
 
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
-static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>
-    *AmdExtSnapshot{nullptr};
+static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable> *AmdExtSnapshot{
+    nullptr};
 static luthier::rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
     *LoaderSnapshot{nullptr};
 
@@ -144,7 +144,7 @@ void LiftLaunchedKernelsTool::onPackets(
       MAM.registerPass([&] {
         return luthier::MetadataParserAnalysis(MetadataParserInstance);
       });
-      MAM.registerPass([] { return luthier::LuthierCallGraphAnalysis(); });
+      MAM.registerPass([] { return luthier::TraceCallGraphAnalysis(); });
       MAM.registerPass(
           [] { return luthier::FunctionPreambleDescriptorAnalysis(); });
       MAM.registerPass([] { return luthier::IPPredCFGAnalysis(); });
@@ -211,10 +211,9 @@ static void atToolInit(void *) {
     const auto Argv = "";
     luthier::registerDebugCLOptions();
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        llvm::cl::ParseCommandLineOptions(0, &Argv,
-                                          "Luthier Lift Launched Kernel Tool",
-                                          &luthier::errs(), nullptr,
-                                          "LUTHIER_ARGS"),
+        llvm::cl::ParseCommandLineOptions(
+            0, &Argv, "Luthier Lift Launched Kernel Tool", &luthier::errs(),
+            nullptr, "LUTHIER_ARGS"),
         "Failed to parse the command line arguments."));
     llvm::EnablePrettyStackTrace();
     luthier::printStackTraceOnFatalSignal();

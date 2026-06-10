@@ -45,7 +45,8 @@ llvm::raw_fd_ostream &outs() {
   LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_ERROR_CHECK(
       !EC, "Failed to initialize the standard output raw_fd_stream."));
 #endif
-  static NeverDestroyed<llvm::raw_fd_ostream> S("-", EC, llvm::sys::fs::OF_None);
+  static NeverDestroyed<llvm::raw_fd_ostream> S("-", EC,
+                                                llvm::sys::fs::OF_None);
   LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       !EC, "Failed to initialize the standard output raw_fd_stream."));
   // The stream is never destroyed, so its destructor will not flush the
@@ -85,7 +86,8 @@ namespace {
 unsigned debugBufferSize() {
   if (!llvm::EnableDebugBuffering || !llvm::DebugFlag)
     return 0;
-  llvm::StringMap<llvm::cl::Option *> &Opts = llvm::cl::getRegisteredOptions();
+  llvm::DenseMap<llvm::StringRef, llvm::cl::Option *> &Opts =
+      llvm::cl::getRegisteredOptions();
   auto It = Opts.find("debug-buffer-size");
   if (It == Opts.end())
     return 0;

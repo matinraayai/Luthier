@@ -102,10 +102,6 @@ template <> struct llvm::DenseMapInfo<luthier::EntryPoint> {
     return luthier::EntryPoint(DenseMapInfo<uint64_t>::getEmptyKey());
   }
 
-  static luthier::EntryPoint getTombstoneKey() {
-    return luthier::EntryPoint(DenseMapInfo<uint64_t>::getTombstoneKey());
-  }
-
   static unsigned getHashValue(const luthier::EntryPoint &EP) {
     if (const amdhsa::kernel_descriptor_t *KD = EP.getKernelDescriptor()) {
       return DenseMapInfo<llvm::amdhsa::kernel_descriptor_t *>::getHashValue(

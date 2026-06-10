@@ -213,11 +213,6 @@ template <> struct llvm::DenseMapInfo<hsa_executable_t> {
         {DenseMapInfo<decltype(hsa_executable_t::handle)>::getEmptyKey()});
   }
 
-  static hsa_executable_t getTombstoneKey() {
-    return hsa_executable_t(
-        {DenseMapInfo<decltype(hsa_executable_t::handle)>::getTombstoneKey()});
-  }
-
   static unsigned getHashValue(const hsa_executable_t &Executable) {
     return DenseMapInfo<decltype(hsa_executable_t::handle)>::getHashValue(
         Executable.handle);

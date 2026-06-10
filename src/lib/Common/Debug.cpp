@@ -66,7 +66,8 @@ struct DebugOnlyOpt {
       return;
     llvm::DebugFlag = true;
     llvm::SmallVector<llvm::StringRef, 8> Split;
-    llvm::StringRef(Val).split(Split, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
+    llvm::StringRef(Val).split(Split, ',', /*MaxSplit=*/-1,
+                               /*KeepEmpty=*/false);
     std::vector<std::string> Owned;
     Owned.reserve(Split.size());
     for (llvm::StringRef S : Split)
@@ -91,9 +92,8 @@ void registerDebug() {
 
 void registerDebugOnly() {
   static NeverDestroyed<DebugOnlyOpt> Loc;
-  static NeverDestroyed<
-      llvm::cl::opt<DebugOnlyOpt, /*ExternalStorage=*/true,
-                    llvm::cl::parser<std::string>>>
+  static NeverDestroyed<llvm::cl::opt<DebugOnlyOpt, /*ExternalStorage=*/true,
+                                      llvm::cl::parser<std::string>>>
       Opt("debug-only",
           llvm::cl::desc("Enable a specific type of debug output (comma "
                          "separated list of types)"),
@@ -117,11 +117,13 @@ void registerDebugCLOptions() {
   // Let LLVM register its own -debug* options if this LLVM has debug support.
   // Idempotent: the underlying options are ManagedStatics constructed once.
   llvm::initDebugOptions();
-  // Opt into buffered debug output so luthier::dbgs() honors -debug-buffer-size.
+  // Opt into buffered debug output so luthier::dbgs() honors
+  // -debug-buffer-size.
   llvm::EnableDebugBuffering = true;
   // Fill in whatever LLVM did not register (i.e. LLVM built without debug
   // support). The count() guard avoids a duplicate-option fatal otherwise.
-  llvm::StringMap<llvm::cl::Option *> &Opts = llvm::cl::getRegisteredOptions();
+  llvm::DenseMap<llvm::StringRef, llvm::cl::Option *> &Opts =
+      llvm::cl::getRegisteredOptions();
   if (!Opts.count("debug"))
     registerDebug();
   if (!Opts.count("debug-only"))

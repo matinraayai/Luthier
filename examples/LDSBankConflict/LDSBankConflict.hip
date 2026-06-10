@@ -51,16 +51,16 @@
 #include <luthier/ToolCodeGen/CodeDiscoveryPass.h>
 #include <luthier/ToolCodeGen/EntryPoint.h>
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
+#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
 #include <luthier/ToolCodeGen/InstrumentationPMDriver.h>
 #include <luthier/ToolCodeGen/InstrumentationPass.h>
-#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
-#include <luthier/ToolCodeGen/LuthierCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/NewPMAsmPrinter.h>
 #include <luthier/ToolCodeGen/PrePostAmbleEmitter.h>
+#include <luthier/ToolCodeGen/TraceCallGraph.h>
 #include <mutex>
 
 #undef DEBUG_TYPE
@@ -74,19 +74,23 @@ struct LDSBankConflictTool
   __attribute__((device)) static uint64_t NumSingleAddressLDSInstructions;
   __attribute__((device)) static uint64_t NumDoubleAddressLDSInstructions;
 
-  LUTHIER_HOOK_MEMBER_ATTR static void countUniqueBanksPerWarpSingleAddress(
-      unsigned M0, unsigned VAddr, short Offset, short CacheSizeLog2);
-  LUTHIER_HOOK_MEMBER_ATTR static void countUniqueBanksPerWarpDoubleAddress(
-      unsigned M0, unsigned VAddr, uint8_t Offset0, uint8_t Offset1,
-      short CacheSizeLog2);
   LUTHIER_HOOK_MEMBER_ATTR static void
-  countUniqueBanksPerWarpDoubleAddressTwoSource32(
-      unsigned M0, unsigned VAddr, uint16_t Offset0, uint16_t Offset1,
-      uint16_t CacheSizeLog2);
+  countUniqueBanksPerWarpSingleAddress(unsigned M0, unsigned VAddr,
+                                       short Offset, short CacheSizeLog2);
   LUTHIER_HOOK_MEMBER_ATTR static void
-  countUniqueBanksPerWarpDoubleAddressTwoSource64(
-      unsigned M0, unsigned VAddr, uint16_t Offset0, uint16_t Offset1,
-      uint16_t CacheSizeLog2);
+  countUniqueBanksPerWarpDoubleAddress(unsigned M0, unsigned VAddr,
+                                       uint8_t Offset0, uint8_t Offset1,
+                                       short CacheSizeLog2);
+  LUTHIER_HOOK_MEMBER_ATTR static void
+  countUniqueBanksPerWarpDoubleAddressTwoSource32(unsigned M0, unsigned VAddr,
+                                                  uint16_t Offset0,
+                                                  uint16_t Offset1,
+                                                  uint16_t CacheSizeLog2);
+  LUTHIER_HOOK_MEMBER_ATTR static void
+  countUniqueBanksPerWarpDoubleAddressTwoSource64(unsigned M0, unsigned VAddr,
+                                                  uint16_t Offset0,
+                                                  uint16_t Offset1,
+                                                  uint16_t CacheSizeLog2);
 
   struct Options {
     llvm::cl::OptionCategory Cat{"LDS Bank Conflict Options"};
@@ -137,8 +141,10 @@ struct LDSBankConflictTool
 };
 
 __attribute__((device)) float LDSBankConflictTool::NumBankConflicts;
-__attribute__((device)) uint64_t LDSBankConflictTool::NumSingleAddressLDSInstructions;
-__attribute__((device)) uint64_t LDSBankConflictTool::NumDoubleAddressLDSInstructions;
+__attribute__((
+    device)) uint64_t LDSBankConflictTool::NumSingleAddressLDSInstructions;
+__attribute__((
+    device)) uint64_t LDSBankConflictTool::NumDoubleAddressLDSInstructions;
 
 LUTHIER_HOOK_MEMBER_ATTR void
 LDSBankConflictTool::countUniqueBanksPerWarpSingleAddress(unsigned M0,
@@ -159,9 +165,11 @@ LDSBankConflictTool::countUniqueBanksPerWarpSingleAddress(unsigned M0,
 }
 
 LUTHIER_HOOK_MEMBER_ATTR void
-LDSBankConflictTool::countUniqueBanksPerWarpDoubleAddress(
-    unsigned M0, unsigned VAddr, uint8_t Offset0, uint8_t Offset1,
-    short CacheSizeLog2) {
+LDSBankConflictTool::countUniqueBanksPerWarpDoubleAddress(unsigned M0,
+                                                          unsigned VAddr,
+                                                          uint8_t Offset0,
+                                                          uint8_t Offset1,
+                                                          short CacheSizeLog2) {
   unsigned long long ExecMask = __builtin_amdgcn_read_exec();
   const uint32_t LaneId = __lane_id() + 1;
   unsigned FirstActiveThreadId = __ffsll(ExecMask);
@@ -259,11 +267,10 @@ LDSBankConflictTool::countUniqueBanksPerWarpDoubleAddressTwoSource64(
 
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
-static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>
-    *AmdExtSnapshot{nullptr};
+static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable> *AmdExtSnapshot{
+    nullptr};
 static luthier::rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
     *LoaderSnapshot{nullptr};
-
 
 luthier::InstrumentationPreservedAnalyses
 LDSBankConflictTool::runInstrumentationPass(llvm::Module &IModule,
@@ -272,7 +279,7 @@ LDSBankConflictTool::runInstrumentationPass(llvm::Module &IModule,
                                             llvm::FunctionAnalysisManager &) {
   auto &Ctx = IModule.getContext();
   auto *BankSizeArg = llvm::ConstantInt::get(llvm::Type::getInt16Ty(Ctx),
-                                              Opts.Log2BankSize, false);
+                                             Opts.Log2BankSize, false);
 
   for (auto &MBB : MF) {
     const auto &STI = MF.getSubtarget<llvm::GCNSubtarget>();
@@ -295,16 +302,16 @@ LDSBankConflictTool::runInstrumentationPass(llvm::Module &IModule,
             MI.getOperand(AddrOpIdx).getReg().asMCReg();
         int OffsetOpIdx = llvm::AMDGPU::getNamedOperandIdx(
             MI.getOpcode(), llvm::AMDGPU::OpName::offset);
-        auto *ShortArg = llvm::ConstantInt::get(
-            llvm::Type::getInt16Ty(Ctx),
-            MI.getOperand(OffsetOpIdx).getImm(), false);
+        auto *ShortArg =
+            llvm::ConstantInt::get(llvm::Type::getInt16Ty(Ctx),
+                                   MI.getOperand(OffsetOpIdx).getImm(), false);
         LUTHIER_REPORT_FATAL_ON_ERROR(this->createInjectedPayload(
             &LDSBankConflictTool::countUniqueBanksPerWarpSingleAddress, IModule,
             MI,
             {InjectedPayloadCreationPass::RegArg{llvm::AMDGPU::M0,
-                                                  llvm::Type::getInt32Ty(Ctx)},
+                                                 llvm::Type::getInt32Ty(Ctx)},
              InjectedPayloadCreationPass::RegArg{AddrOpVGPR,
-                                                  llvm::Type::getInt32Ty(Ctx)},
+                                                 llvm::Type::getInt32Ty(Ctx)},
              ShortArg, BankSizeArg}));
       }
 
@@ -318,10 +325,10 @@ LDSBankConflictTool::runInstrumentationPass(llvm::Module &IModule,
             MI.getOpcode(), llvm::AMDGPU::OpName::addr);
         llvm::MCRegister AddrOpVGPR =
             MI.getOperand(AddrOpIdx).getReg().asMCReg();
-        int O0Idx = llvm::AMDGPU::getNamedOperandIdx(MI.getOpcode(),
-                                                     llvm::AMDGPU::OpName::offset0);
-        int O1Idx = llvm::AMDGPU::getNamedOperandIdx(MI.getOpcode(),
-                                                     llvm::AMDGPU::OpName::offset1);
+        int O0Idx = llvm::AMDGPU::getNamedOperandIdx(
+            MI.getOpcode(), llvm::AMDGPU::OpName::offset0);
+        int O1Idx = llvm::AMDGPU::getNamedOperandIdx(
+            MI.getOpcode(), llvm::AMDGPU::OpName::offset1);
 
         const void *HostHandle = reinterpret_cast<const void *>(
             &LDSBankConflictTool::countUniqueBanksPerWarpDoubleAddress);
@@ -341,16 +348,16 @@ LDSBankConflictTool::runInstrumentationPass(llvm::Module &IModule,
                   countUniqueBanksPerWarpDoubleAddressTwoSource64);
           OffsetTy = llvm::Type::getInt16Ty(Ctx);
         }
-        auto *O0 = llvm::ConstantInt::get(
-            OffsetTy, MI.getOperand(O0Idx).getImm(), false);
-        auto *O1 = llvm::ConstantInt::get(
-            OffsetTy, MI.getOperand(O1Idx).getImm(), false);
+        auto *O0 = llvm::ConstantInt::get(OffsetTy,
+                                          MI.getOperand(O0Idx).getImm(), false);
+        auto *O1 = llvm::ConstantInt::get(OffsetTy,
+                                          MI.getOperand(O1Idx).getImm(), false);
         LUTHIER_REPORT_FATAL_ON_ERROR(this->createInjectedPayload(
             HostHandle, IModule, MI,
             {InjectedPayloadCreationPass::RegArg{llvm::AMDGPU::M0,
-                                                  llvm::Type::getInt32Ty(Ctx)},
+                                                 llvm::Type::getInt32Ty(Ctx)},
              InjectedPayloadCreationPass::RegArg{AddrOpVGPR,
-                                                  llvm::Type::getInt32Ty(Ctx)},
+                                                 llvm::Type::getInt32Ty(Ctx)},
              O0, O1, BankSizeArg}));
       }
     }
@@ -417,9 +424,9 @@ void LDSBankConflictTool::onPackets(
             DispatchPacket->completion_signal, HSA_SIGNAL_CONDITION_LT,
             SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
     if (Current >= SignalValue)
-      llvm::report_fatal_error(llvm::formatv(
-          "Wait timeout for signal {0:x}",
-          DispatchPacket->completion_signal.handle));
+      llvm::report_fatal_error(
+          llvm::formatv("Wait timeout for signal {0:x}",
+                        DispatchPacket->completion_signal.handle));
     if (MustDestroySignalAfterLaunch) {
       LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
           Core.callFunction<&::CoreApiTable::hsa_signal_destroy_fn>(
@@ -542,10 +549,9 @@ static void atToolInit(void *) {
     const auto Argv = "";
     luthier::registerDebugCLOptions();
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        llvm::cl::ParseCommandLineOptions(0, &Argv,
-                                          "Luthier LDS Bank Conflict Tool",
-                                          &luthier::errs(), nullptr,
-                                          "LUTHIER_ARGS"),
+        llvm::cl::ParseCommandLineOptions(
+            0, &Argv, "Luthier LDS Bank Conflict Tool", &luthier::errs(),
+            nullptr, "LUTHIER_ARGS"),
         "Failed to parse the command line arguments."));
     llvm::EnablePrettyStackTrace();
     luthier::printStackTraceOnFatalSignal();

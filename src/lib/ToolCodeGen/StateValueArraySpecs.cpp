@@ -101,7 +101,7 @@ StateValueArraySpecs::getSVASpecs(const llvm::Module &M,
 
   if (!M.empty()) {
     const auto &ST = TM.getSubtarget<llvm::GCNSubtarget>(*M.begin());
-    bool IsArchitectedFS = ST.flatScratchIsArchitected();
+    bool IsArchitectedFS = ST.hasArchitectedFlatScratch();
     bool HasFS = ST.enableFlatScratch();
 #ifdef _DEBUG
     /// Check if all functions have the same scratch accessing instructions
@@ -109,7 +109,7 @@ StateValueArraySpecs::getSVASpecs(const llvm::Module &M,
     /// is more of a sanity check than something that can happen in Luthier
     for (const llvm::Function &F : M) {
       const auto &FuncST = TM.getSubtarget<llvm::GCNSubtarget>(*M.begin());
-      bool FuncHasArchitectedFS = FuncST.flatScratchIsArchitected();
+      bool FuncHasArchitectedFS = FuncST.hasArchitectedFlatScratch();
       bool FuncHasFS = FuncST.enableFlatScratch();
       assert(FuncHasArchitectedFS == IsArchitectedFS && FuncHasFS == HasFS &&
              "Functions has different scratch access requirements");
@@ -135,8 +135,8 @@ StateValueArraySpecs::getSVASpecs(const llvm::Module &M,
     };
 
     // std::make_integer_sequence<T, N> produces [0, N-1]; the inclusive
-     // SCALAR_VALUE_ARGUMENT_LAST sentinel is the highest valid enumerator,
-     // so the count is LAST+1 to cover every SA in [FIRST, LAST].
+    // SCALAR_VALUE_ARGUMENT_LAST sentinel is the highest valid enumerator,
+    // so the count is LAST+1 to cover every SA in [FIRST, LAST].
     constexpr auto SVArgSequence =
         std::make_integer_sequence<SVArgUnderlyingType,
                                    SCALAR_VALUE_ARGUMENT_LAST + 1>{};

@@ -1440,7 +1440,7 @@ foreach desc = [
     def : InstSISemantic<noretInst, [
       (DefVal $tmp, (LLVMLoad desc.Ty, DSAddr<(GetNamedOperand $addr), (GetNamedOperand $offset)>.ret)),
       (LLVMStore (LLVMOr (LLVMAnd (GetVal $tmp),
-                                    (LLVMXor (GetNamedOperand $data0), (ConstantInt desc.Ty, -1))),
+                                    (LLVMXor (GetNamedOperand $data0), (ConstantSignedInt desc.Ty, -1))),
                           (GetNamedOperand $data1)),
                  DSAddr<(GetNamedOperand $addr), (GetNamedOperand $offset)>.ret)
     ]>;
@@ -1449,7 +1449,7 @@ foreach desc = [
     def : InstSISemantic<rtnInst, [
       (DefVal $tmp, (LLVMLoad desc.Ty, DSAddr<(GetNamedOperand $addr), (GetNamedOperand $offset)>.ret)),
       (LLVMStore (LLVMOr (LLVMAnd (GetVal $tmp),
-                                    (LLVMXor (GetNamedOperand $data0), (ConstantInt desc.Ty, -1))),
+                                    (LLVMXor (GetNamedOperand $data0), (ConstantSignedInt desc.Ty, -1))),
                           (GetNamedOperand $data1)),
                  DSAddr<(GetNamedOperand $addr), (GetNamedOperand $offset)>.ret),
       (SetNamedOperand $vdst, (GetVal $tmp))
@@ -1696,9 +1696,9 @@ class DSAddTidAddr {
         (ConstantInt si_llvm_i32_ty, 0xFFFF)),
       (LLVMMul
         (LLVMIntrinsic si_llvm_i32_ty, int_amdgcn_mbcnt_hi,
-          [(ConstantInt si_llvm_i32_ty, -1),
+          [(ConstantSignedInt si_llvm_i32_ty, -1),
            (LLVMIntrinsic si_llvm_i32_ty, int_amdgcn_mbcnt_lo,
-             [(ConstantInt si_llvm_i32_ty, -1),
+             [(ConstantSignedInt si_llvm_i32_ty, -1),
               (ConstantInt si_llvm_i32_ty, 0)])]),
         (ConstantInt si_llvm_i32_ty, 4))),
     local_ptr_ty);

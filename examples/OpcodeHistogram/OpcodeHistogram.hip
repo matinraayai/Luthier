@@ -50,16 +50,16 @@
 #include <luthier/ToolCodeGen/CodeDiscoveryPass.h>
 #include <luthier/ToolCodeGen/EntryPoint.h>
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
+#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
 #include <luthier/ToolCodeGen/InstrumentationPMDriver.h>
 #include <luthier/ToolCodeGen/InstrumentationPass.h>
-#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
-#include <luthier/ToolCodeGen/LuthierCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/NewPMAsmPrinter.h>
 #include <luthier/ToolCodeGen/PrePostAmbleEmitter.h>
+#include <luthier/ToolCodeGen/TraceCallGraph.h>
 #include <memory>
 #include <mutex>
 
@@ -77,7 +77,8 @@ struct OpcodeHistogramTool
   LUTHIER_HOOK_MEMBER_ATTR static void
   countOpcodeHistogramVector(bool CountWaveFrontLevel, int OpcodeNumber);
 
-  LUTHIER_HOOK_MEMBER_ATTR static void countOpcodeHistogramScalar(int OpcodeNumber);
+  LUTHIER_HOOK_MEMBER_ATTR static void
+  countOpcodeHistogramScalar(int OpcodeNumber);
 
   struct Options {
     llvm::cl::OptionCategory Cat{"Opcode Histogram Tool Options"};
@@ -132,8 +133,9 @@ struct OpcodeHistogramTool
 __attribute__((device)) uint64_t
     OpcodeHistogramTool::KernelHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];
 
-LUTHIER_HOOK_MEMBER_ATTR void OpcodeHistogramTool::countOpcodeHistogramVector(
-    bool CountWaveFrontLevel, int OpcodeNumber) {
+LUTHIER_HOOK_MEMBER_ATTR void
+OpcodeHistogramTool::countOpcodeHistogramVector(bool CountWaveFrontLevel,
+                                                int OpcodeNumber) {
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   const uint32_t LaneId = __lane_id() + 1;
   uint32_t FirstActiveThreadId = __ffsll(ExecMask);
@@ -156,11 +158,10 @@ OpcodeHistogramTool::countOpcodeHistogramScalar(int OpcodeNumber) {
 
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
-static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>
-    *AmdExtSnapshot{nullptr};
+static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable> *AmdExtSnapshot{
+    nullptr};
 static luthier::rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
     *LoaderSnapshot{nullptr};
-
 
 luthier::InstrumentationPreservedAnalyses
 OpcodeHistogramTool::runInstrumentationPass(llvm::Module &IModule,
@@ -255,9 +256,9 @@ void OpcodeHistogramTool::onPackets(
             DispatchPacket->completion_signal, HSA_SIGNAL_CONDITION_LT,
             SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
     if (Current >= SignalValue)
-      llvm::report_fatal_error(llvm::formatv(
-          "Wait timeout for signal {0:x}",
-          DispatchPacket->completion_signal.handle));
+      llvm::report_fatal_error(
+          llvm::formatv("Wait timeout for signal {0:x}",
+                        DispatchPacket->completion_signal.handle));
     if (MustDestroySignalAfterLaunch) {
       LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
           Core.callFunction<&::CoreApiTable::hsa_signal_destroy_fn>(
@@ -322,10 +323,9 @@ static void atToolInit(void *) {
     const auto Argv = "";
     luthier::registerDebugCLOptions();
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        llvm::cl::ParseCommandLineOptions(0, &Argv,
-                                          "Luthier Opcode Histogram Tool",
-                                          &luthier::errs(), nullptr,
-                                          "LUTHIER_ARGS"),
+        llvm::cl::ParseCommandLineOptions(
+            0, &Argv, "Luthier Opcode Histogram Tool", &luthier::errs(),
+            nullptr, "LUTHIER_ARGS"),
         "Failed to parse the command line arguments."));
     llvm::EnablePrettyStackTrace();
     luthier::printStackTraceOnFatalSignal();

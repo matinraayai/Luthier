@@ -170,7 +170,7 @@ llvm::Error readRegMIRProcessor(
         "read map (sub-32 read must declare its 32-bit super-reg)"));
     (void)MIBuilder(llvm::AMDGPU::COPY)
         .addReg(Output, llvm::RegState::Define)
-        .addReg(VReg, 0, SubIdx);
+        .addReg(VReg, llvm::RegState::NoFlags, SubIdx);
   }
 
   return llvm::Error::success();

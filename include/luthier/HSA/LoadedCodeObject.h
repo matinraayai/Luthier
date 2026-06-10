@@ -209,11 +209,6 @@ template <> struct llvm::DenseMapInfo<hsa_loaded_code_object_t> {
         decltype(hsa_loaded_code_object_t::handle)>::getEmptyKey()});
   }
 
-  static hsa_loaded_code_object_t getTombstoneKey() {
-    return hsa_loaded_code_object_t({DenseMapInfo<
-        decltype(hsa_loaded_code_object_t::handle)>::getTombstoneKey()});
-  }
-
   static unsigned getHashValue(const hsa_loaded_code_object_t &LCO) {
     return DenseMapInfo<
         decltype(hsa_loaded_code_object_t::handle)>::getHashValue(LCO.handle);

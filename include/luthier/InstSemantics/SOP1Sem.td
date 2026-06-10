@@ -426,7 +426,7 @@ def S_XOR_SAVEEXEC_B64_sem : InstSISemantic<S_XOR_SAVEEXEC_B64> {
 def S_NAND_SAVEEXEC_B32_sem : InstSISemantic<S_NAND_SAVEEXEC_B32> {
   let Semantic = [
     (DefVal $old_exec, (ImplicitUse EXEC_LO)),
-    (DefVal $new_exec, (LLVMXor (LLVMAnd (GetNamedOperand $src0), (GetVal $old_exec)), (ConstantInt si_llvm_i32_ty, -1))),
+    (DefVal $new_exec, (LLVMXor (LLVMAnd (GetNamedOperand $src0), (GetVal $old_exec)), (ConstantSignedInt si_llvm_i32_ty, -1))),
     (ImplicitDef EXEC_LO, (GetVal $new_exec)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $new_exec), (ConstantInt si_llvm_i32_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $old_exec))
@@ -436,7 +436,7 @@ def S_NAND_SAVEEXEC_B32_sem : InstSISemantic<S_NAND_SAVEEXEC_B32> {
 def S_NAND_SAVEEXEC_B64_sem : InstSISemantic<S_NAND_SAVEEXEC_B64> {
   let Semantic = [
     (DefVal $old_exec, (ImplicitUse EXEC)),
-    (DefVal $new_exec, (LLVMXor (LLVMAnd (GetNamedOperand $src0), (GetVal $old_exec)), (ConstantInt si_llvm_i64_ty, -1))),
+    (DefVal $new_exec, (LLVMXor (LLVMAnd (GetNamedOperand $src0), (GetVal $old_exec)), (ConstantSignedInt si_llvm_i64_ty, -1))),
     (ImplicitDef EXEC, (GetVal $new_exec)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $new_exec), (ConstantInt si_llvm_i64_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $old_exec))
@@ -457,7 +457,7 @@ def S_NAND_SAVEEXEC_B64_sem : InstSISemantic<S_NAND_SAVEEXEC_B64> {
 def S_NOR_SAVEEXEC_B32_sem : InstSISemantic<S_NOR_SAVEEXEC_B32> {
   let Semantic = [
     (DefVal $old_exec, (ImplicitUse EXEC_LO)),
-    (DefVal $new_exec, (LLVMXor (LLVMOr (GetNamedOperand $src0), (GetVal $old_exec)), (ConstantInt si_llvm_i32_ty, -1))),
+    (DefVal $new_exec, (LLVMXor (LLVMOr (GetNamedOperand $src0), (GetVal $old_exec)), (ConstantSignedInt si_llvm_i32_ty, -1))),
     (ImplicitDef EXEC_LO, (GetVal $new_exec)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $new_exec), (ConstantInt si_llvm_i32_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $old_exec))
@@ -467,7 +467,7 @@ def S_NOR_SAVEEXEC_B32_sem : InstSISemantic<S_NOR_SAVEEXEC_B32> {
 def S_NOR_SAVEEXEC_B64_sem : InstSISemantic<S_NOR_SAVEEXEC_B64> {
   let Semantic = [
     (DefVal $old_exec, (ImplicitUse EXEC)),
-    (DefVal $new_exec, (LLVMXor (LLVMOr (GetNamedOperand $src0), (GetVal $old_exec)), (ConstantInt si_llvm_i64_ty, -1))),
+    (DefVal $new_exec, (LLVMXor (LLVMOr (GetNamedOperand $src0), (GetVal $old_exec)), (ConstantSignedInt si_llvm_i64_ty, -1))),
     (ImplicitDef EXEC, (GetVal $new_exec)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $new_exec), (ConstantInt si_llvm_i64_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $old_exec))
@@ -488,7 +488,7 @@ def S_NOR_SAVEEXEC_B64_sem : InstSISemantic<S_NOR_SAVEEXEC_B64> {
 def S_XNOR_SAVEEXEC_B32_sem : InstSISemantic<S_XNOR_SAVEEXEC_B32> {
   let Semantic = [
     (DefVal $old_exec, (ImplicitUse EXEC_LO)),
-    (DefVal $new_exec, (LLVMXor (LLVMXor (GetNamedOperand $src0), (GetVal $old_exec)), (ConstantInt si_llvm_i32_ty, -1))),
+    (DefVal $new_exec, (LLVMXor (LLVMXor (GetNamedOperand $src0), (GetVal $old_exec)), (ConstantSignedInt si_llvm_i32_ty, -1))),
     (ImplicitDef EXEC_LO, (GetVal $new_exec)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $new_exec), (ConstantInt si_llvm_i32_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $old_exec))
@@ -498,7 +498,7 @@ def S_XNOR_SAVEEXEC_B32_sem : InstSISemantic<S_XNOR_SAVEEXEC_B32> {
 def S_XNOR_SAVEEXEC_B64_sem : InstSISemantic<S_XNOR_SAVEEXEC_B64> {
   let Semantic = [
     (DefVal $old_exec, (ImplicitUse EXEC)),
-    (DefVal $new_exec, (LLVMXor (LLVMXor (GetNamedOperand $src0), (GetVal $old_exec)), (ConstantInt si_llvm_i64_ty, -1))),
+    (DefVal $new_exec, (LLVMXor (LLVMXor (GetNamedOperand $src0), (GetVal $old_exec)), (ConstantSignedInt si_llvm_i64_ty, -1))),
     (ImplicitDef EXEC, (GetVal $new_exec)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $new_exec), (ConstantInt si_llvm_i64_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $old_exec))
@@ -520,7 +520,7 @@ def S_XNOR_SAVEEXEC_B64_sem : InstSISemantic<S_XNOR_SAVEEXEC_B64> {
 def S_ANDN1_SAVEEXEC_B32_sem : InstSISemantic<S_ANDN1_SAVEEXEC_B32> {
   let Semantic = [
     (DefVal $old_exec, (ImplicitUse EXEC_LO)),
-    (DefVal $new_exec, (LLVMAnd (LLVMXor (GetNamedOperand $src0), (ConstantInt si_llvm_i32_ty, -1)), (GetVal $old_exec))),
+    (DefVal $new_exec, (LLVMAnd (LLVMXor (GetNamedOperand $src0), (ConstantSignedInt si_llvm_i32_ty, -1)), (GetVal $old_exec))),
     (ImplicitDef EXEC_LO, (GetVal $new_exec)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $new_exec), (ConstantInt si_llvm_i32_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $old_exec))
@@ -530,7 +530,7 @@ def S_ANDN1_SAVEEXEC_B32_sem : InstSISemantic<S_ANDN1_SAVEEXEC_B32> {
 def S_ANDN1_SAVEEXEC_B64_sem : InstSISemantic<S_ANDN1_SAVEEXEC_B64> {
   let Semantic = [
     (DefVal $old_exec, (ImplicitUse EXEC)),
-    (DefVal $new_exec, (LLVMAnd (LLVMXor (GetNamedOperand $src0), (ConstantInt si_llvm_i64_ty, -1)), (GetVal $old_exec))),
+    (DefVal $new_exec, (LLVMAnd (LLVMXor (GetNamedOperand $src0), (ConstantSignedInt si_llvm_i64_ty, -1)), (GetVal $old_exec))),
     (ImplicitDef EXEC, (GetVal $new_exec)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $new_exec), (ConstantInt si_llvm_i64_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $old_exec))
@@ -553,7 +553,7 @@ def S_ANDN1_SAVEEXEC_B64_sem : InstSISemantic<S_ANDN1_SAVEEXEC_B64> {
 def S_ANDN2_SAVEEXEC_B32_sem : InstSISemantic<S_ANDN2_SAVEEXEC_B32> {
   let Semantic = [
     (DefVal $old_exec, (ImplicitUse EXEC)),
-    (DefVal $new_exec, (LLVMAnd (GetNamedOperand $src0), (LLVMXor (GetVal $old_exec), (ConstantInt si_llvm_i32_ty, -1)))),
+    (DefVal $new_exec, (LLVMAnd (GetNamedOperand $src0), (LLVMXor (GetVal $old_exec), (ConstantSignedInt si_llvm_i32_ty, -1)))),
     (ImplicitDef EXEC_LO, (GetVal $new_exec)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $new_exec), (ConstantInt si_llvm_i32_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $old_exec))
@@ -563,7 +563,7 @@ def S_ANDN2_SAVEEXEC_B32_sem : InstSISemantic<S_ANDN2_SAVEEXEC_B32> {
 def S_ANDN2_SAVEEXEC_B64_sem : InstSISemantic<S_ANDN2_SAVEEXEC_B64> {
   let Semantic = [
     (DefVal $old_exec, (ImplicitUse EXEC)),
-    (DefVal $new_exec, (LLVMAnd (GetNamedOperand $src0), (LLVMXor (GetVal $old_exec), (ConstantInt si_llvm_i64_ty, -1)))),
+    (DefVal $new_exec, (LLVMAnd (GetNamedOperand $src0), (LLVMXor (GetVal $old_exec), (ConstantSignedInt si_llvm_i64_ty, -1)))),
     (ImplicitDef EXEC, (GetVal $new_exec)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $new_exec), (ConstantInt si_llvm_i64_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $old_exec))
@@ -585,7 +585,7 @@ def S_ANDN2_SAVEEXEC_B64_sem : InstSISemantic<S_ANDN2_SAVEEXEC_B64> {
 def S_ORN1_SAVEEXEC_B32_sem : InstSISemantic<S_ORN1_SAVEEXEC_B32> {
   let Semantic = [
     (DefVal $old_exec, (ImplicitUse EXEC)),
-    (DefVal $new_exec, (LLVMOr (LLVMXor (GetNamedOperand $src0), (ConstantInt si_llvm_i32_ty, -1)), (GetVal $old_exec))),
+    (DefVal $new_exec, (LLVMOr (LLVMXor (GetNamedOperand $src0), (ConstantSignedInt si_llvm_i32_ty, -1)), (GetVal $old_exec))),
     (ImplicitDef EXEC_LO, (GetVal $new_exec)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $new_exec), (ConstantInt si_llvm_i32_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $old_exec))
@@ -595,7 +595,7 @@ def S_ORN1_SAVEEXEC_B32_sem : InstSISemantic<S_ORN1_SAVEEXEC_B32> {
 def S_ORN1_SAVEEXEC_B64_sem : InstSISemantic<S_ORN1_SAVEEXEC_B64> {
   let Semantic = [
     (DefVal $old_exec, (ImplicitUse EXEC)),
-    (DefVal $new_exec, (LLVMOr (LLVMXor (GetNamedOperand $src0), (ConstantInt si_llvm_i64_ty, -1)), (GetVal $old_exec))),
+    (DefVal $new_exec, (LLVMOr (LLVMXor (GetNamedOperand $src0), (ConstantSignedInt si_llvm_i64_ty, -1)), (GetVal $old_exec))),
     (ImplicitDef EXEC, (GetVal $new_exec)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $new_exec), (ConstantInt si_llvm_i64_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $old_exec))
@@ -618,7 +618,7 @@ def S_ORN1_SAVEEXEC_B64_sem : InstSISemantic<S_ORN1_SAVEEXEC_B64> {
 def S_ORN2_SAVEEXEC_B32_sem : InstSISemantic<S_ORN2_SAVEEXEC_B32> {
   let Semantic = [
     (DefVal $old_exec, (ImplicitUse EXEC)),
-    (DefVal $new_exec, (LLVMOr (GetNamedOperand $src0), (LLVMXor (GetVal $old_exec), (ConstantInt si_llvm_i32_ty, -1)))),
+    (DefVal $new_exec, (LLVMOr (GetNamedOperand $src0), (LLVMXor (GetVal $old_exec), (ConstantSignedInt si_llvm_i32_ty, -1)))),
     (ImplicitDef EXEC_LO, (GetVal $new_exec)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $new_exec), (ConstantInt si_llvm_i32_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $old_exec))
@@ -628,7 +628,7 @@ def S_ORN2_SAVEEXEC_B32_sem : InstSISemantic<S_ORN2_SAVEEXEC_B32> {
 def S_ORN2_SAVEEXEC_B64_sem : InstSISemantic<S_ORN2_SAVEEXEC_B64> {
   let Semantic = [
     (DefVal $old_exec, (ImplicitUse EXEC)),
-    (DefVal $new_exec, (LLVMOr (GetNamedOperand $src0), (LLVMXor (GetVal $old_exec), (ConstantInt si_llvm_i64_ty, -1)))),
+    (DefVal $new_exec, (LLVMOr (GetNamedOperand $src0), (LLVMXor (GetVal $old_exec), (ConstantSignedInt si_llvm_i64_ty, -1)))),
     (ImplicitDef EXEC, (GetVal $new_exec)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $new_exec), (ConstantInt si_llvm_i64_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $old_exec))
@@ -792,7 +792,7 @@ def S_BREV_B64_sem : InstSISemantic<S_BREV_B64> {
 def S_FF0_I32_B32_sem : InstSISemantic<S_FF0_I32_B32> {
   let Semantic = [
     (DefVal $not_src, (LLVMXor (GetNamedOperand $src0),
-                                (ConstantInt si_llvm_i32_ty, -1))),
+                                (ConstantSignedInt si_llvm_i32_ty, -1))),
     (DefVal $ctz, (LLVMIntrinsic si_llvm_i32_ty, int_cttz, [(GetVal $not_src, si_llvm_i32_ty), (ConstantFalse si_llvm_i1_ty)])),
     (DefVal $result, (LLVMSelect
       (LLVMCmp LLVMICmpEQ, (GetVal $not_src), (ConstantInt si_llvm_i32_ty, 0)),
@@ -818,7 +818,7 @@ def S_FF0_I32_B32_sem : InstSISemantic<S_FF0_I32_B32> {
 def S_FF0_I32_B64_sem : InstSISemantic<S_FF0_I32_B64> {
   let Semantic = [
     (DefVal $not_src, (LLVMXor (GetNamedOperand $src0),
-                                (ConstantInt si_llvm_i64_ty, -1))),
+                                (ConstantSignedInt si_llvm_i64_ty, -1))),
     (DefVal $ctz, (LLVMIntrinsic si_llvm_i64_ty, int_cttz, [(GetVal $not_src, si_llvm_i64_ty), (ConstantFalse si_llvm_i1_ty)])),
     (DefVal $ctz32, (LLVMTrunc (GetVal $ctz), si_llvm_i32_ty)),
     (DefVal $result, (LLVMSelect
@@ -1019,7 +1019,7 @@ def S_BITSET0_B32_sem : InstSISemantic<S_BITSET0_B32> {
                                (ConstantInt si_llvm_i32_ty, 31))),
     (DefVal $mask, (LLVMXor (LLVMShl (ConstantInt si_llvm_i32_ty, 1),
                                       (GetVal $bitpos)),
-                             (ConstantInt si_llvm_i32_ty, -1))),
+                             (ConstantSignedInt si_llvm_i32_ty, -1))),
     (DefVal $result, (LLVMAnd (GetNamedOperand $sdst_in), (GetVal $mask))),
     (SetNamedOperand $sdst, (GetVal $result))
   ];
@@ -1045,7 +1045,7 @@ def S_BITSET0_B64_sem : InstSISemantic<S_BITSET0_B64> {
                                 si_llvm_i64_ty)),
     (DefVal $mask, (LLVMXor (LLVMShl (ConstantInt si_llvm_i64_ty, 1),
                                       (GetVal $bitpos)),
-                             (ConstantInt si_llvm_i64_ty, -1))),
+                             (ConstantSignedInt si_llvm_i64_ty, -1))),
     (DefVal $result, (LLVMAnd (GetNamedOperand $sdst_in), (GetVal $mask))),
     (SetNamedOperand $sdst, (GetVal $result))
   ];
@@ -1148,7 +1148,7 @@ def S_BITREPLICATE_B64_B32_sem : InstSISemantic<S_BITREPLICATE_B64_B32> {
 def S_ANDN1_WREXEC_B32_sem : InstSISemantic<S_ANDN1_WREXEC_B32> {
   let Semantic = [
     (DefVal $temp, (LLVMAnd (LLVMXor (GetNamedOperand $src0),
-                                      (ConstantInt si_llvm_i32_ty, -1)),
+                                      (ConstantSignedInt si_llvm_i32_ty, -1)),
                              (ImplicitUse EXEC))),
     (ImplicitDef EXEC_LO, (GetVal $temp)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $temp),
@@ -1160,7 +1160,7 @@ def S_ANDN1_WREXEC_B32_sem : InstSISemantic<S_ANDN1_WREXEC_B32> {
 def S_ANDN1_WREXEC_B64_sem : InstSISemantic<S_ANDN1_WREXEC_B64> {
   let Semantic = [
     (DefVal $temp, (LLVMAnd (LLVMXor (GetNamedOperand $src0),
-                                      (ConstantInt si_llvm_i64_ty, -1)),
+                                      (ConstantSignedInt si_llvm_i64_ty, -1)),
                              (ImplicitUse EXEC))),
     (ImplicitDef EXEC, (GetVal $temp)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $temp),
@@ -1191,7 +1191,7 @@ def S_ANDN2_WREXEC_B32_sem : InstSISemantic<S_ANDN2_WREXEC_B32> {
   let Semantic = [
     (DefVal $temp, (LLVMAnd (GetNamedOperand $src0),
                     (LLVMXor (ImplicitUse EXEC),
-                              (ConstantInt si_llvm_i32_ty, -1)))),
+                              (ConstantSignedInt si_llvm_i32_ty, -1)))),
     (ImplicitDef EXEC_LO, (GetVal $temp)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $temp),
                                        (ConstantInt si_llvm_i32_ty, 0))>.ret,
@@ -1203,7 +1203,7 @@ def S_ANDN2_WREXEC_B64_sem : InstSISemantic<S_ANDN2_WREXEC_B64> {
   let Semantic = [
     (DefVal $temp, (LLVMAnd (GetNamedOperand $src0),
                     (LLVMXor (ImplicitUse EXEC),
-                              (ConstantInt si_llvm_i64_ty, -1)))),
+                              (ConstantSignedInt si_llvm_i64_ty, -1)))),
     (ImplicitDef EXEC, (GetVal $temp)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $temp),
                                        (ConstantInt si_llvm_i64_ty, 0))>.ret,

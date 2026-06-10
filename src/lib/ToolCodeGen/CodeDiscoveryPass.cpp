@@ -166,7 +166,7 @@ parseKDRsrc1(const llvm::amdhsa::kernel_descriptor_t &KD,
 
   /// Lift ENABLE_IEEE_MODE if gfx11-; DISABLE_PERF is reserved (gfx12+) and
   /// is set to zero by the AsmPrinter
-  if (ST.hasIEEEMode()) {
+  if (ST.hasDX10ClampAndIEEEMode()) {
     F.addFnAttr("amdgpu-ieee",
                 AMDHSA_BITS_GET(
                     KD.compute_pgm_rsrc1,
@@ -594,12 +594,12 @@ parseKDKernelCodeAttrs(const llvm::amdhsa::kernel_descriptor_t &KD,
           llvm::amdhsa::KERNEL_CODE_PROPERTY_ENABLE_SGPR_DISPATCH_ID) == 0)
     F.addFnAttr("amdgpu-no-dispatch-id");
 
-  // FLAT_SCRATCH_INIT is subtarget-dependent: under flatScratchIsArchitected
+  // FLAT_SCRATCH_INIT is subtarget-dependent: under hasArchitectedFlatScratch
   // (gfx10.3+, gfx11+, gfx12) the FS is preloaded into a fixed architectural
   // register and the user-SGPR FS-init path is never used, so the negative
   // attr is correct unconditionally. On non-architected targets the attr
   // mirrors the KD bit.
-  if (ST.flatScratchIsArchitected() ||
+  if (ST.hasArchitectedFlatScratch() ||
       AMDHSA_BITS_GET(
           KD.kernel_code_properties,
           llvm::amdhsa::KERNEL_CODE_PROPERTY_ENABLE_SGPR_FLAT_SCRATCH_INIT) ==
@@ -627,7 +627,7 @@ parseKDKernelCode(const llvm::amdhsa::kernel_descriptor_t &KD,
       TM.getSubtargetImpl(F)->getRegisterInfo());
   auto &ST = TM.getSubtarget<llvm::GCNSubtarget>(F);
 
-  if (!ST.flatScratchIsArchitected()) {
+  if (!ST.hasArchitectedFlatScratch()) {
     if (AMDHSA_BITS_GET(
             KD.kernel_code_properties,
             llvm::amdhsa::
@@ -661,7 +661,7 @@ parseKDKernelCode(const llvm::amdhsa::kernel_descriptor_t &KD,
     MFI->addDispatchID(*TRI);
   }
 
-  if (ST.flatScratchIsArchitected()) {
+  if (ST.hasArchitectedFlatScratch()) {
     if (AMDHSA_BITS_GET(
             KD.kernel_code_properties,
             llvm::amdhsa::KERNEL_CODE_PROPERTY_ENABLE_SGPR_FLAT_SCRATCH_INIT) ==
@@ -937,13 +937,13 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   /// The private-segment wave byte offset is the last system SGPR. The backend
   /// allocates it for every entry function on targets WITHOUT architected flat
   /// scratch and never on architected ones (see SIMachineFunctionInfo's ctor,
-  /// gated on \c !flatScratchIsArchitected()). It is NOT gated on the
+  /// gated on \c !hasArchitectedFlatScratch()). It is NOT gated on the
   /// \c COMPUTE_PGM_RSRC2_ENABLE_PRIVATE_SEGMENT bit — that bit is an
   /// architected-flat-scratch-only "uses scratch" flag (the
   /// \c .amdhsa_enable_private_segment directive is rejected on non-architected
   /// targets), so it would be set exactly where the wave-offset SGPR does NOT
   /// exist. Mirror the backend's predicate directly.
-  if (!ST.flatScratchIsArchitected())
+  if (!ST.hasArchitectedFlatScratch())
     MFI->addPrivateSegmentWaveByteOffset();
 
   /// Kernel functions are 2^8 byte aligned
@@ -1075,7 +1075,7 @@ convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
                  << "\n");
       unsigned RegNum = RealToPseudoRegisterMapTable(MCOp.getReg());
       const bool IsDef = MCOpIdx < MCID.getNumDefs();
-      unsigned Flags = 0;
+      llvm::RegState Flags = llvm::RegState::NoFlags;
       const llvm::MCOperandInfo &OpInfo = MCID.operands().begin()[MCOpIdx];
       if (IsDef && !OpInfo.isOptionalDef()) {
         Flags |= llvm::RegState::Define;
@@ -1187,7 +1187,12 @@ convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
                      MissingExpOpIdx));
       auto OpType = MCID.operands()[MissingExpOpIdx].OperandType;
       if (OpType == llvm::MCOI::OPERAND_IMMEDIATE ||
-          OpType == llvm::AMDGPU::OPERAND_KIMM32) {
+          OpType == llvm::AMDGPU::OPERAND_KIMM32 ||
+          // Untyped immediate slots (e.g. the defaulted-to-zero i1 $IsAsync
+          // flag on legacy LDS-DMA loads) report OPERAND_UNKNOWN with no
+          // register class
+          (OpType == llvm::MCOI::OPERAND_UNKNOWN &&
+           MCID.operands()[MissingExpOpIdx].RegClass == -1)) {
         LLVM_DEBUG(luthier::dbgs()
                        << "[CodeDiscoveryPass] Adding 0-immediate for "
                           "missing operand\n";);
@@ -1212,7 +1217,24 @@ convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
                          llvm::printReg(Def.getReg(),
                                         MF->getSubtarget().getRegisterInfo()),
                          MissingExpOpIdx, TiedToIdx));
-          (void)MIBuilder.addReg(Def.getReg(), 0);
+          (void)MIBuilder.addReg(Def.getReg(), llvm::RegState::NoFlags);
+          continue;
+        }
+      }
+      // Singleton register class (e.g. the explicit $m0 slot on LDS-DMA
+      // loads): the slot can only name one register, which is never encoded
+      // in the MCInst — synthesize it directly.
+      if (int16_t RC = MCID.operands()[MissingExpOpIdx].RegClass; RC != -1) {
+        const llvm::TargetRegisterClass &TRC =
+            *MF->getSubtarget().getRegisterInfo()->getRegClass(RC);
+        if (TRC.getNumRegs() == 1) {
+          LLVM_DEBUG(luthier::dbgs() << llvm::formatv(
+                         "[CodeDiscoveryPass] Synthesizing singleton register "
+                         "{0} at operand index {1}\n",
+                         llvm::printReg(TRC.getRegister(0),
+                                        MF->getSubtarget().getRegisterInfo()),
+                         MissingExpOpIdx));
+          (void)MIBuilder.addReg(TRC.getRegister(0));
           continue;
         }
       }
@@ -1243,11 +1265,11 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
 
   MF.push_back(CurrentMBB);
 
-  const llvm::MCRegisterInfo &MRI = *TM.getMCRegisterInfo();
+  const llvm::MCRegisterInfo &MRI = TM.getMCRegisterInfo();
 
   std::unique_ptr<llvm::MCInstPrinter> IP(TM.getTarget().createMCInstPrinter(
-      TM.getTargetTriple(), TM.getMCAsmInfo()->getAssemblerDialect(),
-      *TM.getMCAsmInfo(), *TM.getMCInstrInfo(), MRI));
+      TM.getTargetTriple(), TM.getMCAsmInfo().getAssemblerDialect(),
+      TM.getMCAsmInfo(), *TM.getMCInstrInfo(), MRI));
 
   llvm::MCContext &MCContext = MF.getContext();
 

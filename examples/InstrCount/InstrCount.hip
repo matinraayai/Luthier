@@ -60,17 +60,17 @@
 #include <luthier/ToolCodeGen/CodeDiscoveryPass.h>
 #include <luthier/ToolCodeGen/EntryPoint.h>
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
+#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
 #include <luthier/ToolCodeGen/InstructionTracesAnalysis.h>
 #include <luthier/ToolCodeGen/InstrumentationPMDriver.h>
 #include <luthier/ToolCodeGen/InstrumentationPass.h>
-#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
-#include <luthier/ToolCodeGen/LuthierCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/NewPMAsmPrinter.h>
 #include <luthier/ToolCodeGen/PrePostAmbleEmitter.h>
+#include <luthier/ToolCodeGen/TraceCallGraph.h>
 #include <memory>
 #include <mutex>
 
@@ -194,11 +194,9 @@ struct InstrCountTool
   // InstrumentationPMDriver for each MachineFunction in the discovered
   // target module.
   //===---------------------------------------------------------------===//
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &IModule,
-                         llvm::ModuleAnalysisManager &IMAM,
-                         llvm::MachineFunction &MF,
-                         llvm::FunctionAnalysisManager &TargetFAM);
+  luthier::InstrumentationPreservedAnalyses runInstrumentationPass(
+      llvm::Module &IModule, llvm::ModuleAnalysisManager &IMAM,
+      llvm::MachineFunction &MF, llvm::FunctionAnalysisManager &TargetFAM);
 };
 
 //===----------------------------------------------------------------------===//
@@ -207,8 +205,8 @@ struct InstrCountTool
 
 __attribute__((device)) uint64_t InstrCountTool::Counter;
 
-LUTHIER_HOOK_MEMBER_ATTR void InstrCountTool::countInstructionsVector(
-    bool CountWaveFrontLevel) {
+LUTHIER_HOOK_MEMBER_ATTR void
+InstrCountTool::countInstructionsVector(bool CountWaveFrontLevel) {
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   const uint32_t LaneId = __lane_id() + 1;
   uint32_t FirstActiveThreadId = __ffsll(ExecMask);
@@ -237,8 +235,8 @@ LUTHIER_HOOK_MEMBER_ATTR void InstrCountTool::countInstructionsScalar() {
 
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
-static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>
-    *AmdExtSnapshot{nullptr};
+static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable> *AmdExtSnapshot{
+    nullptr};
 static luthier::rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
     *LoaderSnapshot{nullptr};
 
@@ -252,8 +250,8 @@ InstrCountTool::runInstrumentationPass(llvm::Module &IModule,
                                        llvm::MachineFunction &MF,
                                        llvm::FunctionAnalysisManager &) {
   luthier::errs() << "[InstrCountTool] runInstrumentationPass for MF '"
-                  << MF.getName() << "' starting at instr idx "
-                  << NextInstrIdx << "\n";
+                  << MF.getName() << "' starting at instr idx " << NextInstrIdx
+                  << "\n";
   unsigned StartIdx = NextInstrIdx;
   auto *CountWavefrontLevelConstVal = llvm::ConstantInt::getBool(
       IModule.getContext(), Opts.CountWavefrontLevel);
@@ -278,8 +276,8 @@ InstrCountTool::runInstrumentationPass(llvm::Module &IModule,
     }
   }
   luthier::errs() << "[InstrCountTool] runInstrumentationPass for MF '"
-                  << MF.getName() << "' visited "
-                  << (NextInstrIdx - StartIdx) << " MI(s)\n";
+                  << MF.getName() << "' visited " << (NextInstrIdx - StartIdx)
+                  << " MI(s)\n";
   return luthier::InstrumentationPreservedAnalyses{};
 }
 
@@ -348,9 +346,10 @@ void InstrCountTool::onPackets(
     }
 
     auto T1 = std::chrono::high_resolution_clock::now();
-    constexpr auto Timeout = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                 std::chrono::seconds{300})
-                                 .count();
+    constexpr auto Timeout =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::seconds{300})
+            .count();
     PacketWriter(DispatchPacket, 1);
 
     const hsa_signal_value_t CurrentSignal =
@@ -358,9 +357,9 @@ void InstrCountTool::onPackets(
             DispatchPacket->completion_signal, HSA_SIGNAL_CONDITION_LT,
             SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
     if (CurrentSignal >= SignalValue)
-      llvm::report_fatal_error(llvm::formatv(
-          "Wait timeout reached for signal handle {0:x}",
-          DispatchPacket->completion_signal.handle));
+      llvm::report_fatal_error(
+          llvm::formatv("Wait timeout reached for signal handle {0:x}",
+                        DispatchPacket->completion_signal.handle));
 
     if (MustDestroySignalAfterLaunch) {
       LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
@@ -401,8 +400,7 @@ void InstrCountTool::onPackets(
           } else {
             uint64_t CounterSnapshot = 0;
             hsa_status_t RC = Core.callFunction<hsa_memory_copy>(
-                &CounterSnapshot,
-                reinterpret_cast<void *>(*AddrOrErr),
+                &CounterSnapshot, reinterpret_cast<void *>(*AddrOrErr),
                 sizeof(CounterSnapshot));
             if (RC == HSA_STATUS_SUCCESS) {
               TotalNumInstructions += CounterSnapshot;
@@ -477,8 +475,8 @@ static void atToolInit(void *) {
     luthier::registerDebugCLOptions();
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         llvm::cl::ParseCommandLineOptions(
-            0, &Argv, "Luthier ROCm Instruction Counter Tool",
-            &luthier::errs(), nullptr, "LUTHIER_ARGS"),
+            0, &Argv, "Luthier ROCm Instruction Counter Tool", &luthier::errs(),
+            nullptr, "LUTHIER_ARGS"),
         "Failed to parse the command line arguments."));
     llvm::EnablePrettyStackTrace();
     luthier::printStackTraceOnFatalSignal();

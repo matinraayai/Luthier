@@ -38,7 +38,7 @@ namespace luthier {
 MIInlineAsmEmitter::MIInlineAsmEmitter(llvm::TargetMachine &TM)
     : MCCtx(std::make_unique<llvm::MCContext>(
           TM.getTargetTriple(), TM.getMCAsmInfo(), TM.getMCRegisterInfo(),
-          TM.getMCSubtargetInfo(), nullptr, &TM.Options.MCOptions, false)),
+          TM.getMCSubtargetInfo(), nullptr, /*DoAutoReset=*/false)),
       TM(TM) {}
 
 llvm::Expected<std::unique_ptr<MIInlineAsmEmitter>>
@@ -61,8 +61,8 @@ MIInlineAsmEmitter::get(llvm::TargetMachine &TM) {
   Emitter->AP.reset(AsmPrinter);
 
   Emitter->IP.reset(TM.getTarget().createMCInstPrinter(
-      TM.getTargetTriple(), TM.getMCAsmInfo()->getAssemblerDialect(),
-      *TM.getMCAsmInfo(), *TM.getMCInstrInfo(), *TM.getMCRegisterInfo()));
+      TM.getTargetTriple(), TM.getMCAsmInfo().getAssemblerDialect(),
+      TM.getMCAsmInfo(), *TM.getMCInstrInfo(), TM.getMCRegisterInfo()));
 
   return std::move(Emitter);
 }
@@ -97,9 +97,9 @@ void MIInlineAsmEmitter::emitInlineAsm(
 
   std::string AsmStr = emitAsmString(MI);
 
-  LLVM_DEBUG(
-      luthier::dbgs() << "[InlineAsmEmitter] Obtained instruction asm string: "
-                   << AsmStr << "\n");
+  LLVM_DEBUG(luthier::dbgs()
+             << "[InlineAsmEmitter] Obtained instruction asm string: " << AsmStr
+             << "\n");
 
   struct RegOperandInfo {
     const llvm::MachineOperand *Op;
@@ -222,7 +222,7 @@ void MIInlineAsmEmitter::emitInlineAsm(
                           llvm::Attribute::NoUnwind);
 
   if (Defs.size() == 1) {
-     OutputRegValMap(Defs[0].Op->getReg(), *CI);
+    OutputRegValMap(Defs[0].Op->getReg(), *CI);
   } else if (Defs.size() > 1) {
     for (const auto &[Idx, Def] : llvm::enumerate(Defs)) {
       llvm::Value *DefVal = Builder.CreateExtractValue(CI, Idx);

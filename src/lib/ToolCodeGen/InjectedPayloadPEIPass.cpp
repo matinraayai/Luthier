@@ -72,7 +72,7 @@ getFrameSpillSlotsForTarget(const llvm::GCNSubtarget &ST,
                             const StateValueArraySpecs &Specs) {
   llvm::SmallVector<std::pair<llvm::MCRegister, uint8_t>> Out;
   Out.push_back({llvm::AMDGPU::SGPR32, Specs.getStackPointerRegSpillLane()});
-  if (!ST.flatScratchIsArchitected()) {
+  if (!ST.hasArchitectedFlatScratch()) {
     Out.push_back(
         {llvm::AMDGPU::FLAT_SCR_LO, Specs.getFramePointerRegSpillLane()});
   }
@@ -88,7 +88,7 @@ getFrameLoadSlotsForTarget(const llvm::GCNSubtarget &ST,
                            const StateValueArraySpecs &Specs) {
   llvm::SmallVector<std::pair<llvm::MCRegister, uint8_t>> Out;
   Out.push_back({llvm::AMDGPU::SGPR32, Specs.getStackPointerStoreLane()});
-  if (!ST.flatScratchIsArchitected()) {
+  if (!ST.hasArchitectedFlatScratch()) {
     if (auto FrameLane = Specs.getFrameRsrcOrScratchStoreLaneIfExists())
       Out.push_back({llvm::AMDGPU::FLAT_SCR_LO, *FrameLane});
   }

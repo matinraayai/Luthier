@@ -419,11 +419,6 @@ template <> struct llvm::DenseMapInfo<hsa_agent_t> {
         {DenseMapInfo<decltype(hsa_agent_t::handle)>::getEmptyKey()});
   }
 
-  static hsa_agent_t getTombstoneKey() {
-    return hsa_agent_t(
-        {DenseMapInfo<decltype(hsa_agent_t::handle)>::getTombstoneKey()});
-  }
-
   static unsigned getHashValue(const hsa_agent_t &Agent) {
     return DenseMapInfo<decltype(hsa_agent_t::handle)>::getHashValue(
         Agent.handle);

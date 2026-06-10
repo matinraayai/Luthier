@@ -43,7 +43,7 @@ memoryPoolGetSegment(const ApiTableContainer<::AmdExtTable> &AmdExt,
 /// \sa hsa_amd_memory_pool_get_info, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS
 llvm::Expected<uint32_t>
 memoryPoolGetGlobalFlags(const ApiTableContainer<::AmdExtTable> &AmdExt,
-                        hsa_amd_memory_pool_t Pool);
+                         hsa_amd_memory_pool_t Pool);
 
 /// Queries the total size (in bytes) of the \p Pool.
 /// \sa hsa_amd_memory_pool_get_info, HSA_AMD_MEMORY_POOL_INFO_SIZE
@@ -54,15 +54,17 @@ memoryPoolGetSize(const ApiTableContainer<::AmdExtTable> &AmdExt,
 /// Queries whether runtime allocation is allowed from the \p Pool.
 /// \sa hsa_amd_memory_pool_get_info,
 /// HSA_AMD_MEMORY_POOL_INFO_RUNTIME_ALLOC_ALLOWED
-llvm::Expected<bool> memoryPoolGetRuntimeAllocAllowed(
-    const ApiTableContainer<::AmdExtTable> &AmdExt, hsa_amd_memory_pool_t Pool);
+llvm::Expected<bool>
+memoryPoolGetRuntimeAllocAllowed(const ApiTableContainer<::AmdExtTable> &AmdExt,
+                                 hsa_amd_memory_pool_t Pool);
 
 /// Queries the minimum allocation granule of the \p Pool. Only valid if
 /// runtime allocation is allowed.
 /// \sa hsa_amd_memory_pool_get_info,
 /// HSA_AMD_MEMORY_POOL_INFO_RUNTIME_ALLOC_GRANULE
-llvm::Expected<size_t> memoryPoolGetRuntimeAllocGranule(
-    const ApiTableContainer<::AmdExtTable> &AmdExt, hsa_amd_memory_pool_t Pool);
+llvm::Expected<size_t>
+memoryPoolGetRuntimeAllocGranule(const ApiTableContainer<::AmdExtTable> &AmdExt,
+                                 hsa_amd_memory_pool_t Pool);
 
 /// Queries the recommended allocation granule of the \p Pool. Only valid if
 /// runtime allocation is allowed.
@@ -135,9 +137,9 @@ memoryPoolIsKernArgInit(const ApiTableContainer<::AmdExtTable> &AmdExt,
 /// stops iteration.
 /// \sa hsa_amd_agent_iterate_memory_pools
 template <typename CBType>
-llvm::Error agentIterateMemoryPools(
-    const ApiTableContainer<::AmdExtTable> &AmdExt, hsa_agent_t Agent,
-    const CBType &Callback) {
+llvm::Error
+agentIterateMemoryPools(const ApiTableContainer<::AmdExtTable> &AmdExt,
+                        hsa_agent_t Agent, const CBType &Callback) {
   struct CBData {
     const CBType &CB;
     llvm::Error Err;
@@ -164,9 +166,10 @@ llvm::Error agentIterateMemoryPools(
 }
 
 /// Collects all memory pools associated with \p Agent into \p Pools.
-llvm::Error getAllMemoryPoolsOfAgent(
-    const ApiTableContainer<::AmdExtTable> &AmdExt, hsa_agent_t Agent,
-    llvm::SmallVectorImpl<hsa_amd_memory_pool_t> &Pools);
+llvm::Error
+getAllMemoryPoolsOfAgent(const ApiTableContainer<::AmdExtTable> &AmdExt,
+                         hsa_agent_t Agent,
+                         llvm::SmallVectorImpl<hsa_amd_memory_pool_t> &Pools);
 
 //===----------------------------------------------------------------------===//
 // Allocation
@@ -177,8 +180,7 @@ llvm::Error getAllMemoryPoolsOfAgent(
 /// \sa hsa_amd_memory_pool_allocate
 llvm::Expected<void *>
 memoryPoolAllocate(const ApiTableContainer<::AmdExtTable> &AmdExt,
-                   hsa_amd_memory_pool_t Pool, size_t Size,
-                   uint32_t Flags = 0);
+                   hsa_amd_memory_pool_t Pool, size_t Size, uint32_t Flags = 0);
 
 /// Free a block of memory previously allocated by \c memoryPoolAllocate.
 /// \sa hsa_amd_memory_pool_free
@@ -188,9 +190,9 @@ llvm::Error memoryPoolFree(const ApiTableContainer<::AmdExtTable> &AmdExt,
 /// Enable direct access to \p Ptr (previously returned by
 /// \c memoryPoolAllocate) from the given \p Agents.
 /// \sa hsa_amd_agents_allow_access
-llvm::Error
-agentsAllowAccess(const ApiTableContainer<::AmdExtTable> &AmdExt,
-                  llvm::ArrayRef<hsa_agent_t> Agents, const void *Ptr);
+llvm::Error agentsAllowAccess(const ApiTableContainer<::AmdExtTable> &AmdExt,
+                              llvm::ArrayRef<hsa_agent_t> Agents,
+                              const void *Ptr);
 
 //===----------------------------------------------------------------------===//
 // Migration & relationships
@@ -217,8 +219,9 @@ llvm::Expected<uint32_t>
 agentMemoryPoolGetNumLinkHops(const ApiTableContainer<::AmdExtTable> &AmdExt,
                               hsa_agent_t Agent, hsa_amd_memory_pool_t Pool);
 
-/// \returns true if \p Agent can directly (with no \c hsa_amd_agents_allow_access
-/// call) access \p Pool — i.e., the access attribute is not
+/// \returns true if \p Agent can directly (with no \c
+/// hsa_amd_agents_allow_access call) access \p Pool — i.e., the access
+/// attribute is not
 /// \c HSA_AMD_MEMORY_POOL_ACCESS_NEVER_ALLOWED.
 llvm::Expected<bool>
 agentCanAccessMemoryPool(const ApiTableContainer<::AmdExtTable> &AmdExt,
@@ -234,11 +237,6 @@ template <> struct llvm::DenseMapInfo<hsa_amd_memory_pool_t> {
   static hsa_amd_memory_pool_t getEmptyKey() {
     return hsa_amd_memory_pool_t(
         {DenseMapInfo<decltype(hsa_amd_memory_pool_t::handle)>::getEmptyKey()});
-  }
-  static hsa_amd_memory_pool_t getTombstoneKey() {
-    return hsa_amd_memory_pool_t(
-        {DenseMapInfo<decltype(hsa_amd_memory_pool_t::handle)>::
-             getTombstoneKey()});
   }
   static unsigned getHashValue(const hsa_amd_memory_pool_t &P) {
     return DenseMapInfo<decltype(hsa_amd_memory_pool_t::handle)>::getHashValue(

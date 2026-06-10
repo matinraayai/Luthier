@@ -79,7 +79,7 @@ public:
   /// - We map each trace instruction to its device address
   /// - Instructions are inserted in the same order they are disassembled in
   /// the underlying map to provide fast iteration and lookup
-  using Trace = llvm::SmallMapVector<uint64_t, TraceInstr, 64>;
+  using Trace = llvm::SmallMapVector<uint64_t, TraceInstr, 32>;
 
   /// Holds on to a group of traces discovered for the entry point of the
   /// current machine function

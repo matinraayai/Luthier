@@ -122,10 +122,6 @@ template <> struct llvm::DenseMapInfo<hsa_region_t> {
     return hsa_region_t(
         {DenseMapInfo<decltype(hsa_region_t::handle)>::getEmptyKey()});
   }
-  static hsa_region_t getTombstoneKey() {
-    return hsa_region_t(
-        {DenseMapInfo<decltype(hsa_region_t::handle)>::getTombstoneKey()});
-  }
   static unsigned getHashValue(const hsa_region_t &R) {
     return DenseMapInfo<decltype(hsa_region_t::handle)>::getHashValue(R.handle);
   }

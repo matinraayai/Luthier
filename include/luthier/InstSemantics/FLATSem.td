@@ -2642,9 +2642,9 @@ class GlobalAddTidAddr<bit hasSaddr> {
   // increment in 4-byte units.
   dag laneId4 = (LLVMMul
     (LLVMIntrinsic si_llvm_i32_ty, int_amdgcn_mbcnt_hi,
-      [(ConstantInt si_llvm_i32_ty, -1),
+      [(ConstantSignedInt si_llvm_i32_ty, -1),
        (LLVMIntrinsic si_llvm_i32_ty, int_amdgcn_mbcnt_lo,
-         [(ConstantInt si_llvm_i32_ty, -1),
+         [(ConstantSignedInt si_llvm_i32_ty, -1),
           (ConstantInt si_llvm_i32_ty, 0)])]),
     (ConstantInt si_llvm_i32_ty, 4));
   // Final i64 byte address.

@@ -271,9 +271,9 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     const llvm::TargetRegisterClass *MergedRC =
         getSGPRRegClassForLanes(NumLanes);
     if (!MergedRC) {
-      Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-          "Unsupported scalar-arg lane count {0} for SA {1}", NumLanes,
-          static_cast<int>(SA)))));
+      Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
+          llvm::formatv("Unsupported scalar-arg lane count {0} for SA {1}",
+                        NumLanes, static_cast<int>(SA)))));
       SAResultCache[SA] = LaneRegs[0];
       return LaneRegs[0];
     }
@@ -393,9 +393,8 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     const llvm::TargetRegisterClass *RC =
         TRI->getCrossCopyRegClass(TRI->getPhysRegBaseClass(Channel));
     if (!RC) {
-      Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
-          llvm::formatv("Channel {0} has no copy reg class",
-                        llvm::printReg(Channel, TRI)))));
+      Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "Channel {0} has no copy reg class", llvm::printReg(Channel, TRI)))));
       return llvm::Register();
     }
     llvm::Register VReg = MRI.createVirtualRegister(RC);
@@ -435,9 +434,10 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
             const llvm::TargetRegisterClass *ChannelRegClass =
                 TRI->getPhysRegBaseClass(Channel);
             if (!ChannelRegClass) {
-              Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
-                  llvm::formatv("Physical register {0} doesn't have a reg class",
-                                llvm::printReg(Channel, TRI)))));
+              Ctx.emitError(
+                  llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+                      "Physical register {0} doesn't have a reg class",
+                      llvm::printReg(Channel, TRI)))));
               continue;
             }
             const llvm::TargetRegisterClass *ChannelCrossCopyRegClass =
@@ -460,7 +460,7 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
             } else {
               (void)MIBuilder(llvm::AMDGPU::COPY)
                   .addReg(SubVirtReg, llvm::RegState::Define)
-                  .addReg(VirtReg, 0, SubIdx);
+                  .addReg(VirtReg, llvm::RegState::NoFlags, SubIdx);
             }
             auto ChIt = PhysRegValueSSAUpdaters.find(Channel);
             if (ChIt == PhysRegValueSSAUpdaters.end()) {
@@ -506,10 +506,10 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
       std::optional<IntrinsicProcessor> Processor =
           IntrinsicsProcessors.getProcessorIfRegistered(IntrinsicName);
       if (!Processor.has_value()) {
-        Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-            "Intrinsic processor for {0} was not found in the "
-            "intrinsic processors.",
-            IntrinsicName))));
+        Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
+            llvm::formatv("Intrinsic processor for {0} was not found in the "
+                          "intrinsic processors.",
+                          IntrinsicName))));
         return Changed;
       }
 
@@ -789,8 +789,7 @@ void IntrinsicMIRLoweringPass::materializeReadlanes(
       assert(It != SubLaneToFI.end() && "SA sub-lane must have an FI");
       int FI = It->second.FI;
 
-      llvm::MachineInstr *ImplDef =
-          MRI.getUniqueVRegDef(Entry.SGPRPlaceholder);
+      llvm::MachineInstr *ImplDef = MRI.getUniqueVRegDef(Entry.SGPRPlaceholder);
       assert(ImplDef && ImplDef->isImplicitDef() &&
              "SVA lane placeholder must be defined by an IMPLICIT_DEF");
       llvm::MachineBasicBlock *DefMBB = ImplDef->getParent();

@@ -54,8 +54,13 @@ CreateAndEmbedIModulePass::run(llvm::Module &M,
 
   std::unique_ptr<llvm::Module> Clone = llvm::CloneModule(M);
 
+  // Pass an explicit null VFS: the defaulted vfs::getRealFileSystem() trips
+  // clang's cc1 IO sandbox when this pass runs inside the device compile, and
+  // none of the passes below touch the file system.
   llvm::ModuleAnalysisManager CloneMAM;
-  llvm::PassBuilder PB;
+  llvm::PassBuilder PB(/*TM=*/nullptr, llvm::PipelineTuningOptions(),
+                       /*PGOOpt=*/std::nullopt, /*PIC=*/nullptr,
+                       /*FS=*/nullptr);
   PB.registerModuleAnalyses(CloneMAM);
 
   llvm::ModulePassManager InnerMPM;
