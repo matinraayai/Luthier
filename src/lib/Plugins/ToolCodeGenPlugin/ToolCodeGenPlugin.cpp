@@ -38,6 +38,7 @@
 #include "luthier/ToolCodeGenTesting/MockAMDGPULoader.h"
 #include "luthier/ToolCodeGenTesting/MockLoadAMDGPUCodeObjects.h"
 #include "luthier/ToolCodeGenTesting/MockLoaderMemoryAccessor.h"
+#include "luthier/ToolCodeGenTesting/TranslationStateTestPasses.h"
 // #include "luthier/ToolCodeGen/IPVectorRegLiveness.h"
 // #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 // #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
@@ -71,62 +72,6 @@ static CodeDiscoveryPassOptions CodeDiscoveryOptions;
 /// instrumentation driver. The plugin has no \c HSATool to own one, so it
 /// keeps a static; it is no longer a \c Singleton<> type.
 static IntrinsicProcessorRegistry IntrinsicProcessorRegistryStorage;
-
-/// Test-only pass: marks every MBB of every lifted machine function dirty on
-/// the \c TranslationState. Lets lit tests exercise the
-/// mark-serialize-flush cycle through the pipeline
-struct MarkRetranslateTestPass
-    : public llvm::PassInfoMixin<MarkRetranslateTestPass> {
-  llvm::PreservedAnalyses run(llvm::Module &M,
-                              llvm::ModuleAnalysisManager &MAM) {
-    auto &FAM =
-        MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(M).getManager();
-    auto &MFAM =
-        MAM.getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(M)
-            .getManager();
-    for (llvm::Function &F : M) {
-      if (F.isDeclaration())
-        continue;
-      llvm::MachineFunction &MF =
-          FAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
-      if (MF.empty())
-        continue;
-      auto &Translation = MFAM.getResult<TraceIRTranslatorAnalysis>(MF);
-      for (const llvm::MachineBasicBlock &MBB : MF)
-        Translation.markDirty(MBB);
-    }
-    return llvm::PreservedAnalyses::all();
-  }
-};
-
-/// Test-only pass: flushes every lifted machine function's translation
-struct FlushTranslationTestPass
-    : public llvm::PassInfoMixin<FlushTranslationTestPass> {
-  llvm::PreservedAnalyses run(llvm::Module &M,
-                              llvm::ModuleAnalysisManager &MAM) {
-    auto &FAM =
-        MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(M).getManager();
-    auto &MFAM =
-        MAM.getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(M)
-            .getManager();
-    for (llvm::Function &F : M) {
-      if (F.isDeclaration())
-        continue;
-      llvm::MachineFunction &MF =
-          FAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
-      if (MF.empty())
-        continue;
-      if (llvm::Error Err =
-              MFAM.getResult<TraceIRTranslatorAnalysis>(MF).flush())
-        M.getContext().emitError(llvm::toString(std::move(Err)));
-    }
-    /// Flushing rewrites the lifted IR bodies wholesale
-    llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-    PA.preserve<llvm::MachineFunctionAnalysisManagerModuleProxy>();
-    PA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
-    return PA;
-  }
-};
 
 struct MockAMDGPULoaderInitialEntryPointParser
     : public llvm::cl::parser<
@@ -441,6 +386,10 @@ llvmGetPassPluginInfo() {
           }
           if (Name == "luthier-mark-retranslate-test") {
             MPM.addPass(luthier::MarkRetranslateTestPass());
+            return true;
+          }
+          if (Name == "luthier-warm-mark-flush-test") {
+            MPM.addPass(luthier::WarmMarkFlushTestPass());
             return true;
           }
           if (Name == "luthier-flush-translation-test") {

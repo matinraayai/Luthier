@@ -1,0 +1,83 @@
+# RUN: luthier-llc -x mir -mtriple=amdgcn-amd-amdhsa -mcpu=gfx908 \
+# RUN:   %luthier_tool_code_gen_plugin \
+# RUN:   '-passes=luthier-warm-mark-flush-test,print' \
+# RUN:   -debug-only=luthier-mir-to-ir,luthier-trace-ir-translator \
+# RUN:   %s -o /dev/null 2>&1 | %tee_out FileCheck %s
+
+# Orphan-escalation regression test for incremental re-translation. The
+# fixture starts marked, so the warm test pass first flushes (full lift,
+# creating the persistent translator), marks all MBBs, and flushes again.
+# The second flush attempts incremental retranslateMBB; the V_LSHLREV in
+# the vector block forwards its lifted shl across the block boundary
+# without a register-file key, which must be detected as irreparable and
+# escalate to a full re-lift, after which all marks are cleared.
+
+# CHECK: Incremental flush of 3 MBBs
+# CHECK: Unkeyed escaped value; falling back to full re-translation
+# CHECK: define amdgpu_kernel void @k()
+# CHECK-DAG: call i32 @llvm.amdgcn.mbcnt.lo(i32 -1, i32 0)
+# CHECK-DAG: shl i32
+# CHECK-NOT: !{i1 true}
+
+--- |
+  target datalayout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9"
+  target triple = "amdgcn-amd-amdhsa"
+
+  define amdgpu_kernel void @k() #0 {
+  b0:
+    br label %b1
+  b1:
+    br label %b2
+  b2:
+    unreachable
+  }
+
+  attributes #0 = { "amdgpu-num-sgpr"="16" "amdgpu-num-vgpr"="8" "amdgpu-no-dispatch-ptr" "amdgpu-no-queue-ptr" "amdgpu-no-flat-scratch-init" "amdgpu.kd.user_sgpr_count"="2" }
+
+  !0 = distinct !{!"luthier.machine_instr.tag", !1, !"luthier.machine_instr.trace_addr", !2, !"luthier.machine_instr.needs_retranslation", !30}
+  !1 = distinct !{i64 undef, i64 2, i64 undef, i64 4}
+  !2 = distinct !{i64 4096}
+  !30 = distinct !{i1 true}
+  !3 = distinct !{!"luthier.machine_instr.tag", !4, !"luthier.machine_instr.trace_addr", !5}
+  !4 = distinct !{i64 undef, i64 2}
+  !5 = distinct !{i64 4100}
+  !6 = distinct !{!"luthier.machine_instr.tag", !7, !"luthier.machine_instr.trace_addr", !8}
+  !7 = distinct !{i64 undef, i64 2}
+  !8 = distinct !{i64 4104}
+  !9 = distinct !{!"luthier.machine_instr.tag", !10, !"luthier.machine_instr.trace_addr", !11}
+  !10 = distinct !{i64 undef, i64 2}
+  !11 = distinct !{i64 4108}
+  !12 = distinct !{!"luthier.machine_instr.tag", !13, !"luthier.machine_instr.trace_addr", !14}
+  !13 = distinct !{i64 undef, i64 2}
+  !14 = distinct !{i64 4112}
+  !15 = distinct !{!"luthier.machine_instr.tag", !16, !"luthier.machine_instr.trace_addr", !17}
+  !16 = distinct !{i64 undef, i64 2}
+  !17 = distinct !{i64 4116}
+  !18 = distinct !{!"luthier.machine_instr.tag", !19, !"luthier.machine_instr.trace_addr", !20}
+  !19 = distinct !{i64 undef, i64 2}
+  !20 = distinct !{i64 4120}
+...
+---
+name:            k
+alignment:       256
+tracksRegLiveness: true
+liveins:
+  - { reg: '$vgpr0' }
+machineFunctionInfo: {}
+body: |
+  bb.0 (%ir-block.b0):
+    liveins: $vgpr0
+    $vgpr1 = V_MOV_B32_e32 5, implicit $exec, pcsections !0
+    $vcc = V_CMP_GT_U32_e64 10, $vgpr0, implicit $exec, pcsections !3
+    $sgpr0_sgpr1 = S_AND_SAVEEXEC_B64 $vcc, implicit-def $exec, implicit-def $scc, implicit $exec, pcsections !6
+
+  bb.1 (%ir-block.b1):
+    liveins: $vgpr0, $vgpr1, $exec
+    $vgpr2 = V_ADD_U32_e32 $vgpr0, $vgpr1, implicit $exec, pcsections !9
+    $vgpr3 = V_LSHLREV_B32_e32 2, $vgpr2, implicit $exec, pcsections !12
+
+  bb.2 (%ir-block.b2):
+    liveins: $vgpr3
+    $vgpr4 = V_ADD_U32_e32 1, $vgpr3, implicit $exec, pcsections !15
+    S_ENDPGM 0, pcsections !18
+...

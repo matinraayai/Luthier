@@ -1,0 +1,53 @@
+# RUN: luthier-llc -x mir -mtriple=amdgcn-amd-amdhsa -mcpu=gfx908 \
+# RUN:   %luthier_tool_code_gen_plugin \
+# RUN:   '-passes=luthier-mark-retranslate-test,luthier-flush-translation-test,luthier-mark-retranslate-test,print' \
+# RUN:   %s -o /dev/null 2>&1 | %tee_out FileCheck --check-prefix=MARK %s
+# RUN: luthier-llc -x mir -mtriple=amdgcn-amd-amdhsa -mcpu=gfx908 \
+# RUN:   %luthier_tool_code_gen_plugin \
+# RUN:   '-passes=luthier-mark-retranslate-test,luthier-flush-translation-test,luthier-mark-retranslate-test,luthier-flush-translation-test,print' \
+# RUN:   %s -o /dev/null 2>&1 | %tee_out FileCheck --check-prefix=FLUSH %s
+
+# Warm-path mark/flush cycle on a plain MIR fixture (no discovery). The
+# first mark dirties the untranslated function so the first flush performs
+# the initial lift (leaving a persistent translator in TranslationState
+# and making the pcsections nodes reachable from the lifted IR); the
+# second mark must persist a needs_retranslation annotation visible in the
+# printed metadata, and the final flush re-translates warm and clears it.
+
+# MARK: define amdgpu_kernel void @k()
+# MARK: !"luthier.machine_instr.needs_retranslation"
+# MARK: !{i1 true}
+
+# FLUSH: define amdgpu_kernel void @k()
+# FLUSH: call i32 @llvm.ssa.copy.i32(i32 0)
+# FLUSH: call void @llvm.amdgcn.endpgm()
+# FLUSH-NOT: !{i1 true}
+
+--- |
+  target datalayout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9"
+  target triple = "amdgcn-amd-amdhsa"
+
+  define amdgpu_kernel void @k() #0 {
+  body:
+    unreachable
+  }
+
+  attributes #0 = { "amdgpu-num-sgpr"="16" "amdgpu-num-vgpr"="8" "amdgpu-no-dispatch-ptr" "amdgpu-no-queue-ptr" "amdgpu-no-flat-scratch-init" "amdgpu.kd.user_sgpr_count"="2" }
+
+  !0 = distinct !{!"luthier.machine_instr.tag", !1, !"luthier.machine_instr.trace_addr", !2}
+  !1 = distinct !{i64 undef, i64 2}
+  !2 = distinct !{i64 4096}
+  !3 = distinct !{!"luthier.machine_instr.tag", !4, !"luthier.machine_instr.trace_addr", !5}
+  !4 = distinct !{i64 undef, i64 2}
+  !5 = distinct !{i64 4100}
+...
+---
+name:            k
+alignment:       256
+tracksRegLiveness: true
+machineFunctionInfo: {}
+body: |
+  bb.0 (%ir-block.body):
+    $sgpr0 = S_MOV_B32 0, pcsections !0
+    S_ENDPGM 0, pcsections !3
+...

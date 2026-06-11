@@ -19,8 +19,8 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/TraceIRTranslatorAnalysis.h"
 #include "luthier/LLVM/streams.h"
-#include "luthier/ToolCodeGen/TraceIRTranslator.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
+#include "luthier/ToolCodeGen/TraceIRTranslator.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/IR/BasicBlock.h>
@@ -108,18 +108,33 @@ bool TranslationState::isDirty() const {
 bool TranslationState::canFlushIncrementally() const {
   /// No translator (first flush, or the analysis was recomputed after
   /// serialization) or untranslated function: full lift required
-  if (!Translator || MF.getFunction().empty())
+  if (!Translator || MF.getFunction().empty()) {
+    LLVM_DEBUG(luthier::dbgs()
+                   << "[TraceIRTranslator] full flush: "
+                   << (Translator ? "empty function" : "no translator")
+                   << "\n";);
     return false;
+  }
   /// Erased or new MBBs change the block set; full re-translation
-  if (!ErasedBodyBBs.empty())
+  if (!ErasedBodyBBs.empty()) {
+    LLVM_DEBUG(luthier::dbgs()
+                   << "[TraceIRTranslator] full flush: erased MBBs pending\n";);
     return false;
+  }
   if (llvm::any_of(MF, [](const llvm::MachineBasicBlock &MBB) {
         return !MBB.getBasicBlock();
-      }))
+      })) {
+    LLVM_DEBUG(luthier::dbgs()
+                   << "[TraceIRTranslator] full flush: untranslated MBBs\n";);
     return false;
+  }
   /// CFG edge changes are beyond in-place body repair
   return llvm::all_of(DirtyMBBs, [&](const llvm::MachineBasicBlock *MBB) {
-    return Translator->irSuccessorsMatchMIR(*MBB);
+    bool Match = Translator->irSuccessorsMatchMIR(*MBB);
+    LLVM_DEBUG(if (!Match) luthier::dbgs()
+                   << "[TraceIRTranslator] full flush: CFG mismatch in MBB "
+                   << MBB->getNumber() << "\n";);
+    return Match;
   });
 }
 
@@ -183,7 +198,7 @@ llvm::AnalysisKey TraceIRTranslatorAnalysis::Key;
 
 TraceIRTranslatorAnalysis::Result
 TraceIRTranslatorAnalysis::run(llvm::MachineFunction &MF,
-                                llvm::MachineFunctionAnalysisManager &) {
+                               llvm::MachineFunctionAnalysisManager &) {
   return TranslationState{MF};
 }
 
