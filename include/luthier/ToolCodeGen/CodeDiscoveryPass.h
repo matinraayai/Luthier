@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file CodeDiscoveryPass.h
+/// \file
 /// Defines the \c CodeDiscoveryPass class.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_CODE_DISCOVERY_PASS_H
