@@ -367,12 +367,12 @@ function(luthier_create_offload_bundle target source)
           COMMAND "${_OFFLOAD_BUNDLER}" --type=o
           --targets=${_REBUNDLE_TARGET_ISAS}
           ${_REBUNDLE_SLICE_INPUTS}
-          --output="${_TARGET_FATBIN}" --bundle-align=8
+          --output=${_TARGET_FATBIN} --bundle-align=8
           DEPENDS ${_SLICE_OBJS}
           COMMENT "luthier_create_offload_bundle(${target}): bundle .hipfb"
           VERBATIM COMMAND_EXPAND_LISTS)
 
-  add_custom_target(${target}-fatbin DEPENDS "${_TARGET_FATBIN}")
+  add_custom_target(${target}-fatbin DEPENDS "${_TARGET_FATBIN}" ${_DEV_TARGETS})
 
   #---------------------------------------------------------------------------
   # Host compile → OBJECT library.
