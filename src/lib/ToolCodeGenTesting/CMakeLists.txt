@@ -4,7 +4,6 @@ add_library(LuthierToolCodeGenTesting OBJECT
         AMDGPUMockLoaderPrinter.cpp
         MockLoaderMemoryAccessor.cpp
         CodeObjectManagerAnalysis.cpp
-        TranslationStateTestPasses.cpp
         LuthierFile.cpp)
 
 target_compile_definitions(LuthierToolCodeGenTesting

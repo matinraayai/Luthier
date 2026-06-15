@@ -16,7 +16,7 @@
 /// \file TranslationStateTestPasses.cpp
 /// Implements the test-only \c TranslationState mark/flush passes.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGenTesting/TranslationStateTestPasses.h"
+#include "luthier/ToolCodeGen/TranslationStateTestPasses.h"
 #include "luthier/ToolCodeGen/TraceIRTranslatorAnalysis.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFunction.h>

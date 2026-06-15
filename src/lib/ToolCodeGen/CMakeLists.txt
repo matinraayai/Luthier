@@ -42,19 +42,22 @@ target_include_directories(LuthierIndirectBranchResolverPass PRIVATE
         PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
+target_link_libraries(LuthierIndirectBranchResolverPass PRIVATE LuthierAMDGPU)
 
 foreach (_DEVICE_TARGET IN LISTS LuthierIndirectBranchResolverPass_DEVICE_TARGET)
     target_include_directories(${_DEVICE_TARGET} PRIVATE
             ${LLVM_INCLUDE_DIRS}
             ${hsa-runtime64_INCLUDE_DIRS}
             PUBLIC
+            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
             "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
             "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
-    target_link_libraries(${_DEVICE_TARGET} PRIVATE hip::device)
+    target_link_libraries(${_DEVICE_TARGET} PRIVATE hip::device LuthierAMDGPU)
 endforeach ()
 
 add_library(LuthierToolCodeGen OBJECT
         $<TARGET_OBJECTS:LuthierIndirectBranchResolverPass>
+        DeviceToolCodeParser.cpp
         PseudoOpcodeAndRegMapper.cpp
         TargetMachineInstrMDNode.cpp
         CodeDiscoveryPass.cpp
@@ -96,6 +99,7 @@ add_library(LuthierToolCodeGen OBJECT
         FunctionAnnotations.cpp
         TraceCallGraph.cpp
         PredicatedMachineBasicBlock.cpp
+        TranslationStateTestPasses.cpp
 )
 
 add_dependencies(LuthierToolCodeGen LuthierRealToPseudoOpcodeMap)
@@ -117,3 +121,18 @@ target_include_directories(LuthierToolCodeGen
 )
 
 target_link_libraries(LuthierToolCodeGen PRIVATE LuthierAMDGPU)
+
+# Optional SPIR-V -> AMDGCN JIT fallback in DeviceToolCodeParser: when no
+# precompiled bitcode slice matches the requested ISA, translate the bundle's
+# SPIR-V slice and run the Luthier device tool passes on it. Compiled only when
+# the AMD SPIR-V translator was located (FindLLVMSPIRVTranslator). The translator
+# is linked PUBLIC so the final shared objects / executables that consume
+# LuthierToolCodeGen pull it in; the device passes live in LuthierToolIRCompilation
+# (linked by those consumers).
+if (NOT DEFINED LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
+    find_package(LLVMSPIRVTranslator QUIET)
+endif ()
+if (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
+    target_compile_definitions(LuthierToolCodeGen PRIVATE LUTHIER_HAS_SPIRV_TRANSLATOR)
+    target_link_libraries(LuthierToolCodeGen PUBLIC Luthier::LLVMSPIRVTranslator)
+endif ()
