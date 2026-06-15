@@ -1105,7 +1105,7 @@ def S_MUL_U64_sem : InstSISemantic<S_MUL_U64> {
 //     CSP++;  exec = mask_pass;  PC = src1;
 //   }
 //
-// CSP (Control Stack Pointer) lives in M0[5:2] and indexes one of 6 SGPR
+// CSP (Control Stack Pointer) lives in MODE[31:29] and indexes one of 6 SGPR
 // quads: s[0:3], s[4:7], s[8:11], s[12:15], s[16:19], s[20:23]. We model
 // the indexed write by emitting a `select(csp == i, entry, old_quad_i)`
 // per slot so liveness sees every potentially-defined quad. The actual
@@ -1189,7 +1189,7 @@ def S_CBRANCH_G_FORK_sem : InstSISemantic<S_CBRANCH_G_FORK> {
       (DefVal $entry, (LLVMOr (GetVal $saved_pc_128),
                               (GetVal $saved_exec_shifted))),
 
-      // Read CSP from M0[5:2] (HW reg encoding 5953 = M0_HWREG | (2 << 6) | (4 << 11)).
+      // Read CSP from MODE[31:29] (hwreg 5953 = MODE id 1 | (29 << 6) | ((3-1) << 11)).
       (DefVal $csp, (LLVMIntrinsic si_llvm_i32_ty, int_amdgcn_s_getreg,
                                    [(ConstantInt si_llvm_i32_ty, 5953)]<dag>))
     ],

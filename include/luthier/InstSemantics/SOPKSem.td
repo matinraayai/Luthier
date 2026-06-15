@@ -355,7 +355,7 @@ def S_SETREG_B32_sem : InstSISemantic<S_SETREG_B32> {
 // the actual target address here: $simm16 is a `SOPPBrTarget` operand
 // that lowers to MO_MachineBasicBlock at MIR time, so we use `pc + 4` as a
 // conservative saved-PC placeholder. Downstream analyses still see the
-// correct register-define set (the 6 SGPR quads, EXEC, M0[5:2]).
+// correct register-define set (the 6 SGPR quads, EXEC, MODE[31:29] = CSP).
 //
 // Reuses CSPStackSlot<> from SOP2Sem.td.
 //

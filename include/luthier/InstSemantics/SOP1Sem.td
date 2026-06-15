@@ -1632,15 +1632,77 @@ def S_WAKEUP_BARRIER_M0_sem : InstSISemantic<S_WAKEUP_BARRIER_M0> {
 // S_CBRANCH_JOIN
 //------------------------------------------------------------------------------
 
-// S_CBRANCH_JOIN: Return from fork by restoring EXEC register.
-// Reads 32-bit value from src0 and zero-extends to set EXEC.
-// Only available on GFX6-GFX9.
-// Sources:
-//   gcn3-instruction-set-architecture.pdf, page 113.
+// S_CBRANCH_JOIN: join point of a FORK/JOIN block (GFX6-GFX9 only).
+//
+// ISA pseudocode (gcn3 ISA p.4-7 / per-instr p.113):
+//   if (CSP == SGPR[arg0])            // arg0 = CSP saved when the FORK started
+//     PC += 4;                        // 2nd visit: both halves done, fall through
+//   else {
+//     CSP--;
+//     { PC, EXEC } = SGPR[CSP*4];     // 1st visit: pop entry, restore EXEC, jump
+//   }
+//
+// CSP lives in MODE[31:29] (hwreg 5953 = MODE id 1, offset 29, width 3). The
+// popped stack entry is the 128-bit { saved_pc(low 64), saved_exec(high 64) }
+// quad written by S_CBRANCH_{G,I}_FORK (see CSPStackSlot in SOP2Sem.td). We
+// model the analyzable register effects — EXEC restore + CSP decrement — and
+// read all 6 candidate quads so liveness sees the use. The PC redirect is a
+// hardware-stack control transfer with no direct IR analog (same as the FORK
+// side, where PC redirection is likewise not modeled).
 def S_CBRANCH_JOIN_sem : InstSISemantic<S_CBRANCH_JOIN> {
   let Semantic = [
-    (LLVMIntrinsic si_llvm_void_ty, int_amdgcn_init_exec,
-      [(LLVMZExt (GetNamedOperand $src0), si_llvm_i64_ty)]<dag>)
+    // Current CSP and the FORK-start CSP held in arg0.
+    (DefVal $csp, (LLVMIntrinsic si_llvm_i32_ty, int_amdgcn_s_getreg,
+                                 [(ConstantInt si_llvm_i32_ty, 5953)]<dag>)),
+    (DefVal $saved_csp, (GetNamedOperand $src0)),
+    (DefVal $is_second_join,
+            (LLVMCmp LLVMICmpEQ, (GetVal $csp), (GetVal $saved_csp))),
+    // Popped CSP (only taken on the 1st visit).
+    (DefVal $popped_csp, (LLVMSub (GetVal $csp),
+                                  (ConstantInt si_llvm_i32_ty, 1))),
+
+    // Read the 6 candidate stack quads (s[0:3] .. s[20:23]) as i128.
+    (DefVal $q0, (LLVMBitCast (ImplicitUse SuperRegFactory<[SGPR0,  SGPR1,  SGPR2,  SGPR3 ]>), si_llvm_i128_ty)),
+    (DefVal $q1, (LLVMBitCast (ImplicitUse SuperRegFactory<[SGPR4,  SGPR5,  SGPR6,  SGPR7 ]>), si_llvm_i128_ty)),
+    (DefVal $q2, (LLVMBitCast (ImplicitUse SuperRegFactory<[SGPR8,  SGPR9,  SGPR10, SGPR11]>), si_llvm_i128_ty)),
+    (DefVal $q3, (LLVMBitCast (ImplicitUse SuperRegFactory<[SGPR12, SGPR13, SGPR14, SGPR15]>), si_llvm_i128_ty)),
+    (DefVal $q4, (LLVMBitCast (ImplicitUse SuperRegFactory<[SGPR16, SGPR17, SGPR18, SGPR19]>), si_llvm_i128_ty)),
+    (DefVal $q5, (LLVMBitCast (ImplicitUse SuperRegFactory<[SGPR20, SGPR21, SGPR22, SGPR23]>), si_llvm_i128_ty)),
+    // entry = quad selected by popped_csp (nested select, default s[0:3]).
+    (DefVal $sel45, (LLVMSelect (LLVMCmp LLVMICmpEQ, (GetVal $popped_csp),
+                                         (ConstantInt si_llvm_i32_ty, 5)),
+                                (GetVal $q5), (GetVal $q4))),
+    (DefVal $sel345, (LLVMSelect (LLVMCmp LLVMICmpEQ, (GetVal $popped_csp),
+                                          (ConstantInt si_llvm_i32_ty, 4)),
+                                 (GetVal $sel45), (GetVal $q3))),
+    (DefVal $sel2345, (LLVMSelect (LLVMCmp LLVMICmpEQ, (GetVal $popped_csp),
+                                           (ConstantInt si_llvm_i32_ty, 3)),
+                                  (GetVal $sel345), (GetVal $q2))),
+    (DefVal $sel12345, (LLVMSelect (LLVMCmp LLVMICmpEQ, (GetVal $popped_csp),
+                                            (ConstantInt si_llvm_i32_ty, 2)),
+                                   (GetVal $sel2345), (GetVal $q1))),
+    (DefVal $entry, (LLVMSelect (LLVMCmp LLVMICmpEQ, (GetVal $popped_csp),
+                                         (ConstantInt si_llvm_i32_ty, 1)),
+                                (GetVal $sel12345), (GetVal $q0))),
+
+    // saved_exec = entry[127:64], truncated to the wave mask width (64 on
+    // GFX6-9, the only subtargets with FORK/JOIN).
+    (DefVal $entry_hi, (LLVMLShr (GetVal $entry),
+                                 (ConstantInt si_llvm_i128_ty, 64))),
+    (DefVal $saved_exec, (LLVMTrunc (GetVal $entry_hi),
+                                    (LLVMIntNTy (GetWavefrontSize)))),
+    (DefVal $cur_exec, (ImplicitUse EXEC)),
+    // 1st visit restores saved EXEC; 2nd visit leaves EXEC unchanged.
+    (DefVal $new_exec, (LLVMSelect (GetVal $is_second_join),
+                                   (GetVal $cur_exec), (GetVal $saved_exec))),
+    (ImplicitDef EXEC, (GetVal $new_exec)),
+
+    // CSP decrements on the 1st visit, unchanged on the 2nd.
+    (DefVal $new_csp, (LLVMSelect (GetVal $is_second_join),
+                                  (GetVal $csp), (GetVal $popped_csp))),
+    (LLVMIntrinsic si_llvm_void_ty, int_amdgcn_s_setreg,
+                   [(ConstantInt si_llvm_i32_ty, 5953),
+                    (GetVal $new_csp)]<dag>)
   ];
 }
 
