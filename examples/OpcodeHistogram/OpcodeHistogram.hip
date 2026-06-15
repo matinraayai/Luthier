@@ -19,6 +19,7 @@
 /// design. Inserts per-opcode counter increments and accumulates a global
 /// histogram across all instrumented dispatches.
 //===----------------------------------------------------------------------===//
+#undef SPIRV
 #include <SIInstrInfo.h>
 #include <chrono>
 #include <hip/hip_runtime.h>
@@ -105,7 +106,6 @@ struct OpcodeHistogramTool
         llvm::cl::desc("Demangle kernel names before printing"),
         llvm::cl::init(true), llvm::cl::NotHidden, llvm::cl::cat(Cat)};
     luthier::InstrumentationPMDriverOptions DriverOpts;
-    luthier::CodeDiscoveryPassOptions DiscoveryOpts;
   } Opts;
 
   std::recursive_mutex Mutex;
