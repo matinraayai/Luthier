@@ -20,6 +20,7 @@
 /// The tool uses \c CodeDiscoveryPass to materialize the dispatched kernel
 /// into the target module, then dumps the module to stderr.
 //===----------------------------------------------------------------------===//
+#undef SPIRV
 #include <hip/hip_runtime.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
@@ -60,7 +61,6 @@ struct LiftLaunchedKernelsTool
 
   struct Options {
     llvm::cl::OptionCategory Cat{"Lift Launched Kernels Tool Options"};
-    luthier::CodeDiscoveryPassOptions DiscoveryOpts;
   } Opts;
 
   std::recursive_mutex Mutex;

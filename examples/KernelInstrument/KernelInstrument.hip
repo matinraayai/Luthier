@@ -18,6 +18,7 @@
 /// Sample kernel-instrumentation tool demonstrating the \c writeReg intrinsic.
 /// Inserts an \c instrumentationHook before a fixed offset in the entry MBB.
 //===----------------------------------------------------------------------===//
+#undef SPIRV
 #include <SIDefines.h>
 #include <chrono>
 #include <hip/hip_runtime.h>
@@ -76,7 +77,6 @@ struct KernelInstrumentTool
   struct Options {
     llvm::cl::OptionCategory Cat{"Kernel Instrument Tool Options"};
     luthier::InstrumentationPMDriverOptions DriverOpts;
-    luthier::CodeDiscoveryPassOptions DiscoveryOpts;
   } Opts;
 
   std::mutex Mutex;

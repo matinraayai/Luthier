@@ -20,6 +20,7 @@
 /// inserts hooks that compute per-wavefront bank-conflict counts.
 //===----------------------------------------------------------------------===//
 #define HIP_ENABLE_WARP_SYNC_BUILTINS
+#undef SPIRV
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
 #include <chrono>
@@ -116,7 +117,6 @@ struct LDSBankConflictTool
         "log-two-bank-size", llvm::cl::desc("Log2 of the LDS bank size"),
         llvm::cl::init(11), llvm::cl::NotHidden, llvm::cl::cat(Cat)};
     luthier::InstrumentationPMDriverOptions DriverOpts;
-    luthier::CodeDiscoveryPassOptions DiscoveryOpts;
   } Opts;
 
   std::recursive_mutex Mutex;

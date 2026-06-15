@@ -19,6 +19,7 @@
 /// entry of each MachineFunction. The hook writes \c gridDim into a managed
 /// variable so host code can observe it after the kernel completes.
 //===----------------------------------------------------------------------===//
+#undef SPIRV
 #include <chrono>
 #include <hip/hip_runtime.h>
 #include <llvm/Demangle/Demangle.h>
@@ -105,7 +106,6 @@ struct KernelArgumentIntrinsicTool
         llvm::cl::init(true), llvm::cl::NotHidden, llvm::cl::cat(Cat)};
 
     luthier::InstrumentationPMDriverOptions DriverOpts;
-    luthier::CodeDiscoveryPassOptions DiscoveryOpts;
   } Opts;
 
   std::recursive_mutex Mutex;
