@@ -72,6 +72,7 @@ FinalizeIntrinsicsPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &) {
     Intrinsic->deleteBody();
     Intrinsic->setComdat(nullptr);
     Intrinsic->setLinkage(llvm::GlobalValue::ExternalLinkage);
+    Intrinsic->setVisibility(llvm::GlobalValue::DefaultVisibility);
     Intrinsic->setDSOLocal(false);
 
     llvm::StringRef MangledIntrinsicName = Intrinsic->getName();
