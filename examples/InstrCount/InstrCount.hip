@@ -23,6 +23,7 @@
 /// \c InstrumentedKernelLoaderAndLauncher, and overrides the dispatched
 /// packet to point at the instrumented variant.
 //===----------------------------------------------------------------------===//
+#undef SPIRV
 #include <SIInstrInfo.h>
 #include <chrono>
 #include <hip/hip_runtime.h>
@@ -66,7 +67,6 @@
 #include <luthier/ToolCodeGen/InstructionTracesAnalysis.h>
 #include <luthier/ToolCodeGen/InstrumentationPMDriver.h>
 #include <luthier/ToolCodeGen/InstrumentationPass.h>
-#include <luthier/ToolCodeGen/LuthierCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/NewPMAsmPrinter.h>
@@ -161,7 +161,6 @@ struct InstrCountTool
         llvm::cl::init(true), llvm::cl::NotHidden, llvm::cl::cat(Cat)};
 
     luthier::InstrumentationPMDriverOptions DriverOpts;
-    luthier::CodeDiscoveryPassOptions DiscoveryOpts;
   } Opts;
 
   std::recursive_mutex Mutex;
