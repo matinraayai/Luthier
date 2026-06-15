@@ -32,13 +32,13 @@
 #include "luthier/ToolCodeGenTesting/CodeObjectManagerAnalysis.h"
 // #include "luthier/ToolCodeGen/IntrinsicMIRLoweringPass.h"
 // #include "luthier/ToolCodeGen/LRCallgraph.h"
+#include "luthier/ToolCodeGen/TranslationStateTestPasses.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 #include "luthier/ToolCodeGen/MetadataParserAnalysis.h"
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/ToolCodeGenTesting/MockAMDGPULoader.h"
 #include "luthier/ToolCodeGenTesting/MockLoadAMDGPUCodeObjects.h"
 #include "luthier/ToolCodeGenTesting/MockLoaderMemoryAccessor.h"
-#include "luthier/ToolCodeGenTesting/TranslationStateTestPasses.h"
 // #include "luthier/ToolCodeGen/IPVectorRegLiveness.h"
 // #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 // #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
@@ -65,8 +65,6 @@ static InstrumentationPMDriverOptions InstrumentationPMOptions;
 static amdgpu::hsamd::MetadataParser MetadataParser;
 
 static MockAMDGPULoaderAnalysisOptions MockLoaderOptions;
-
-static CodeDiscoveryPassOptions CodeDiscoveryOptions;
 
 /// Per-process intrinsic processor registry used by the opt plugin's
 /// instrumentation driver. The plugin has no \c HSATool to own one, so it
@@ -376,8 +374,7 @@ llvmGetPassPluginInfo() {
             return true;
           };
           if (Name == "luthier-code-discovery") {
-            MPM.addPass(
-                luthier::CodeDiscoveryPass(luthier::CodeDiscoveryOptions));
+            MPM.addPass(luthier::CodeDiscoveryPass());
             return true;
           }
           if (Name == "luthier-reg-value-map-printer") {

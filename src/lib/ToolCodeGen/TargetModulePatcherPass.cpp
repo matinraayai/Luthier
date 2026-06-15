@@ -59,6 +59,7 @@
 #include <llvm/Linker/Linker.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/FormatVariadic.h>
+#include <llvm/TargetParser/AMDGPUTargetParser.h>
 #include <llvm/TargetParser/TargetParser.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <llvm/Transforms/Utils/ModuleUtils.h>

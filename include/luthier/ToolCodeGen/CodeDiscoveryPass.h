@@ -19,13 +19,8 @@
 #ifndef LUTHIER_TOOL_CODE_GEN_CODE_DISCOVERY_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_CODE_DISCOVERY_PASS_H
 #include <llvm/IR/PassManager.h>
-#include <llvm/Support/CommandLine.h>
 
 namespace luthier {
-
-/// \brief Command-line options for \c CodeDiscoveryPass.
-struct CodeDiscoveryPassOptions {
-};
 
 /// \brief Target module pass in charge of:
 /// - Discovering all statically reachable code and entry points from an
@@ -36,11 +31,9 @@ struct CodeDiscoveryPassOptions {
 /// - Translating each recovered machine function to equivalent LLVM IR for
 /// further semantics analysis
 class CodeDiscoveryPass : public llvm::PassInfoMixin<CodeDiscoveryPass> {
-  const CodeDiscoveryPassOptions &Opts;
 
 public:
-  explicit CodeDiscoveryPass(const CodeDiscoveryPassOptions &Opts)
-      : Opts(Opts) {}
+  CodeDiscoveryPass() = default;
 
   llvm::PreservedAnalyses run(llvm::Module &TargetModule,
                               llvm::ModuleAnalysisManager &TargetMAM);

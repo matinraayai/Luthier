@@ -163,8 +163,7 @@ public:
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>>
   runInstrumentationPipelineForDispatch(
       const llvm::amdhsa::kernel_descriptor_t &KD,
-      const InstrumentationPMDriverOptions &DriverOpts,
-      const CodeDiscoveryPassOptions &DiscoveryOpts) {
+      const InstrumentationPMDriverOptions &DriverOpts) {
     Derived &D = derived();
 
     if constexpr (requires(Derived &Tool) {
@@ -220,7 +219,7 @@ public:
     llvm::SubtargetFeatures ToolFeatures(TM->getTargetFeatureString());
 
     llvm::ModulePassManager MPM;
-    MPM.addPass(luthier::CodeDiscoveryPass(DiscoveryOpts));
+    MPM.addPass(luthier::CodeDiscoveryPass());
     MPM.addPass(luthier::InstrumentationPMDriver(
         DriverOpts, D.getIntrinsicProcessorRegistry(), /*Plugins=*/{},
         // IModule creator: a tool may override via createInstrumentationModule;
