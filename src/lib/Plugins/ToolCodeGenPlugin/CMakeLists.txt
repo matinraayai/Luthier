@@ -5,6 +5,7 @@ add_llvm_pass_plugin(LuthierToolCodeGenPlugin
         $<TARGET_OBJECTS:LuthierCommon>
         $<TARGET_OBJECTS:LuthierObject>
         $<TARGET_OBJECTS:LuthierLLVM>
+        $<TARGET_OBJECTS:LuthierPassPlugin>
         $<TARGET_OBJECTS:LuthierIntrinsic>
 )
 
