@@ -38,7 +38,6 @@ set(LLVM_LINK_COMPONENTS
 add_llvm_tool(luthier-llc
         llc.cpp
         NewPMDriver.cpp
-
         DEPENDS
         intrinsics_gen
         SUPPORT_PLUGINS
@@ -48,8 +47,6 @@ target_include_directories(luthier-llc PRIVATE ${LLVM_INCLUDE_DIRS} "${CMAKE_SOU
 
 target_link_libraries(luthier-llc PRIVATE
         LuthierToolCodeGenTesting
-        LuthierPassPlugin
-        LuthierIntrinsic
         LuthierObject
         LuthierLLVM
         LuthierCommon)
