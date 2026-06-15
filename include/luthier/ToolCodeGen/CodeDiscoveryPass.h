@@ -25,12 +25,6 @@ namespace luthier {
 
 /// \brief Command-line options for \c CodeDiscoveryPass.
 struct CodeDiscoveryPassOptions {
-  llvm::cl::opt<bool> EagerDiscoverCallReturnEntryPoint{
-      "eager-discover-call-ret-entry-point",
-      llvm::cl::desc(
-          "Eagerly enqueue the post-call return PC as an entry point to "
-          "be added to the set of entry points for the code discovery pass."),
-      llvm::cl::init(true)};
 };
 
 /// \brief Target module pass in charge of:
