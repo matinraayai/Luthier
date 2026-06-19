@@ -131,6 +131,14 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::unloadAll() {
     auto Curr = It++;
     E = llvm::joinErrors(std::move(E), eraseRecordLocked(Curr));
   }
+
+  // Reclaim the shared managed-variable buffers now that no instrumented copy
+  // references them.
+  const auto AmdExtTbl = AmdExt.getTable();
+  for (auto &KV : SharedManagedVars)
+    E = llvm::joinErrors(std::move(E),
+                         freeManagedStorage(AmdExtTbl, KV.second));
+  SharedManagedVars.clear();
   return E;
 }
 
