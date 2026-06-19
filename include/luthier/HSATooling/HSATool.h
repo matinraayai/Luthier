@@ -109,16 +109,6 @@ class HSATool : public Singleton<Derived>,
                 public IntrinsicProcessorRegistryTraitBase<Derived>,
                 public InstrumentationPipelineTrait<Derived, TargetUnitT>,
                 public PacketMonitorTrait<Derived> {
-private:
-  /// Sentinel \c __managed__ variable. Its only purpose is to give HIP-Clang's
-  /// host emission *something* to register so that every Luthier tool TU emits
-  /// \c __hipRegisterFatBinary + \c __hip_fatbin_wrapper + the bundle bytes
-  /// (via \c -fcuda-include-gpubinary) — even tools whose own code is purely
-  /// passthrough
-  /// \c inline lets the in-class initializer also serve as the definition;
-  /// \c used keeps the host TU from optimizing it away
-  static inline __attribute__((managed, used)) char LuthierMarker = 0;
-
 public:
   HSATool(typename Singleton<Derived>::CreationKey,
           const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
@@ -132,10 +122,6 @@ public:
         InstrumentedKernelLoaderAndLauncherTrait<Derived>(CoreApi, AmdExt,
                                                           VenLoader, Err),
         PacketMonitorTrait<Derived>(CoreApi, AmdExt, VenLoader, Err) {
-    /// Force instantiation of LuthierMarker so HIP-Clang's host emission
-    /// sees the managed variable even in tools that have no managed/device
-    /// statics of their own
-    (void)&LuthierMarker;
 
     // Hand the tool's __hipRegisterManagedVar host shadows to the launcher so
     // it can publish each per-instrumented-kernel managed-var allocation into
