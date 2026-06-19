@@ -89,7 +89,7 @@ protected:
   /// Determine a Clang offload bundle's total byte extent from its in-memory
   /// header alone, handling both the uncompressed (\c __CLANG_OFFLOAD_BUNDLE__)
   /// and compressed (\c CCOB) formats via LLVM's offload-bundle parsers
-  static uint64_t discoverBundleSize(const void *Bundle);
+  static llvm::Expected<uint64_t> calculateBundleSize(const void *Bundle);
 
   /// Insert a new \c Slices entry (or stash the SPIR-V slice) for one
   /// fat-binary slice, dispatching on its leading magic (LLVM bitcode or
@@ -110,12 +110,7 @@ protected:
       llvm::OptimizationLevel OptLevel = llvm::OptimizationLevel::O3);
 
 public:
-  /// Bundle-path constructor: takes ownership of \p Bundle and parses it as a
-  /// Clang FAT binary offload bundle. Sets \p Err on parse failure or if two
-  /// slices share the same LLVM ISA. A null \p Bundle is a legitimate
-  /// "host-only tool" (no slices).
-  DeviceToolCodeParser(std::unique_ptr<llvm::MemoryBuffer> Bundle,
-                       llvm::Error &Err);
+  DeviceToolCodeParser(const void *Bundle, llvm::Error &Err);
 
   DeviceToolCodeParser(const DeviceToolCodeParser &) = delete;
   DeviceToolCodeParser &operator=(const DeviceToolCodeParser &) = delete;
