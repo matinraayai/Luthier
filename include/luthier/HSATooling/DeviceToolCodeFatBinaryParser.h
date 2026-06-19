@@ -69,6 +69,11 @@ static_assert(sizeof(decltype(std::declval<llvm::ArrayRef<void *>>().size())) ==
 /// annotated slot (forced live by \c [[gnu::used]]).
 template <typename Derived>
 class DeviceToolCodeFatBinaryParser : public DeviceToolCodeParser {
+private:
+  /// Sentinel \c __managed__ variable that forces Clang to emit "host-visible"
+  /// device code
+  static inline __attribute__((managed, used)) char DeviceCodeMarker = 0;
+
 protected:
   /// Mapping between the void * host shadow handles from the globals in the
   /// device logic to their names
@@ -194,6 +199,10 @@ public:
   /// host-handle → device-name table from the IR-pass-populated slots.
   DeviceToolCodeFatBinaryParser(llvm::Error &Err)
       : DeviceToolCodeParser(buildBundleBuffer(HipFatBinary, Err), Err) {
+    /// Use of managed variable to ensure the host side of the tool gets a
+    /// HIP FAT binary slot regardless of the device logic written in the
+    /// tool
+    (void)&DeviceCodeMarker;
     llvm::ErrorAsOutParameter EAO(&Err);
     if (Err)
       return;
