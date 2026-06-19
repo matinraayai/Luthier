@@ -23,7 +23,6 @@
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
-
 #include <algorithm>
 #include <cstring>
 #include <llvm/ADT/STLExtras.h>
@@ -34,6 +33,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Object/OffloadBundle.h>
+#include <llvm/Support/CrashRecoveryContext.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/raw_ostream.h>
@@ -194,51 +194,70 @@ DeviceToolCodeParser::canonicalLLVMISAKey(const llvm::Triple &T,
   return OS.str();
 }
 
-uint64_t DeviceToolCodeParser::discoverBundleSize(const void *Bundle) {
+llvm::Expected<uint64_t>
+DeviceToolCodeParser::calculateBundleSize(const void *Bundle) {
   if (Bundle == nullptr)
     return 0;
-  const char *P = static_cast<const char *>(Bundle);
-  // Compressed bundle (CCOB): its header records the total (compressed) file
-  // size, so hand the header prefix to LLVM's parser and read it back. The
-  // compressed header is small and fixed (magic + version + method + sizes +
-  // hash, at most ~32 bytes for V3); 64 bytes covers any version with slack,
-  // and a real bundle is far larger than its header.
-  static constexpr llvm::StringRef CCOBMagic = "CCOB";
-  if (llvm::StringRef(P, CCOBMagic.size()) == CCOBMagic) {
-    auto HdrOrErr =
-        llvm::object::CompressedOffloadBundle::CompressedBundleHeader::tryParse(
-            llvm::StringRef(P, /*Length=*/64));
-    if (!HdrOrErr) {
-      llvm::consumeError(HdrOrErr.takeError());
-      return 0;
-    }
-    return HdrOrErr->FileSize.value_or(0);
-  }
+  auto *P = static_cast<const char *>(Bundle);
 
-  // Uncompressed bundle (__CLANG_OFFLOAD_BUNDLE__): there is no total-size
-  // field, so walk the entry table (located right after the magic, before the
-  // slice payloads) for the (offset + size) high-water mark, which is the
-  // bundle's end. Mirrors OffloadBundleFatBin::readEntries.
-  static constexpr llvm::StringRef BundleMagic = "__CLANG_OFFLOAD_BUNDLE__";
-  if (llvm::StringRef(P, BundleMagic.size()) != BundleMagic)
-    return 0;
-  P += BundleMagic.size();
-  auto ReadU64 = [&P]() {
-    uint64_t V;
-    std::memcpy(&V, P, sizeof(V));
-    P += sizeof(V);
-    return V;
-  };
-  const uint64_t NumEntries = ReadU64();
-  uint64_t MaxEnd = 0;
-  for (uint64_t I = 0; I < NumEntries; ++I) {
-    const uint64_t Off = ReadU64();
-    const uint64_t Sz = ReadU64();
-    const uint64_t IDLen = ReadU64();
-    P += IDLen;
-    MaxEnd = std::max(MaxEnd, Off + Sz);
+  constexpr size_t CompressedBundleMagicSize = llvm::StringRef("CCOB").size();
+  constexpr size_t ClangOffloadBundleMagicSize =
+      llvm::StringRef("__CLANG_OFFLOAD_BUNDLE__").size();
+
+  constexpr size_t MaxMagicSize =
+      std::max(CompressedBundleMagicSize, ClangOffloadBundleMagicSize);
+
+  llvm::StringRef BundleMagicBuffer{P, MaxMagicSize};
+
+  llvm::CrashRecoveryContext CRC;
+  llvm::Error Err = llvm::Error::success();
+  (void)Err.operator bool();
+  size_t BundleSize = 0;
+
+  bool Ok = CRC.RunSafely([&] {
+    llvm::file_magic BundleMagic = llvm::identify_magic(BundleMagicBuffer);
+    if (BundleMagic == llvm::file_magic::offload_bundle_compressed) {
+      auto HdrOrErr = llvm::object::CompressedOffloadBundle::
+          CompressedBundleHeader::tryParse(
+              llvm::StringRef(BundleMagicBuffer.data(), /*Length=*/64));
+      if (!HdrOrErr) {
+        Err = std::move(HdrOrErr.takeError());
+        return;
+      }
+      BundleSize = HdrOrErr->FileSize.value_or(0);
+    } else if (BundleMagic == llvm::file_magic::offload_bundle) {
+      P += ClangOffloadBundleMagicSize;
+      auto ReadU64 = [&P]() {
+        uint64_t V;
+        std::memcpy(&V, P, sizeof(V));
+        P += sizeof(V);
+        return V;
+      };
+      const uint64_t NumEntries = ReadU64();
+      uint64_t MaxEnd = 0;
+      for (uint64_t I = 0; I < NumEntries; ++I) {
+        const uint64_t Off = ReadU64();
+        const uint64_t Sz = ReadU64();
+        const uint64_t IDLen = ReadU64();
+        P += IDLen;
+        MaxEnd = std::max(MaxEnd, Off + Sz);
+      }
+      BundleSize = MaxEnd;
+    } else {
+      Err = LUTHIER_MAKE_GENERIC_ERROR(
+          llvm::formatv("Invalid file magic : {0}", BundleMagic));
+    }
+  });
+  if (!Ok) {
+    return llvm::joinErrors(
+        LUTHIER_MAKE_GENERIC_ERROR(
+            "Failed to determine the size of the FAT binary."),
+        std::move(Err));
   }
-  return MaxEnd;
+  if (Err)
+    return Err;
+
+  return BundleSize;
 }
 
 llvm::Error DeviceToolCodeParser::addSlice(llvm::MemoryBufferRef Slice,
@@ -277,22 +296,34 @@ llvm::Error DeviceToolCodeParser::addSlice(llvm::MemoryBufferRef Slice,
       "Fat-binary slice is neither LLVM bitcode nor SPIR-V.");
 }
 
-DeviceToolCodeParser::DeviceToolCodeParser(
-    std::unique_ptr<llvm::MemoryBuffer> Bundle, llvm::Error &Err) {
+DeviceToolCodeParser::DeviceToolCodeParser(const void *Bundle,
+                                           llvm::Error &Err) {
+  /// Enable crash recovery context for potential segfaults when parsing the
+  /// FAT binary
+  llvm::CrashRecoveryContext::Enable();
   llvm::ErrorAsOutParameter EAO(&Err);
   if (Err)
     return; // Upstream already recorded a failure; don't overwrite.
   if (!Bundle)
     return; // No bundle = no device-side logic.
 
-  LLVM_DEBUG(luthier::dbgs() << "[DeviceToolCodeParser] ctor(bundle): "
-                             << Bundle->getBufferSize() << " bytes\n");
-  llvm::MemoryBufferRef BundleRef = Bundle->getMemBufferRef();
-  RetainedBuffers.push_back(std::move(Bundle));
+  size_t BundleSize = 0;
+
+  Err = calculateBundleSize(Bundle).moveInto(BundleSize);
+  if (Err)
+    return;
+
+  auto BundleMemBuffer = llvm::MemoryBuffer::getMemBuffer(
+      llvm::StringRef{static_cast<const char *>(Bundle), BundleSize},
+      /*BufferName=*/"", /*RequiresNullTerminator=*/false);
+  llvm::MemoryBufferRef BundleRef = BundleMemBuffer->getMemBufferRef();
+
+  RetainedBuffers.push_back(std::move(BundleMemBuffer));
 
   llvm::SmallVector<BundleSlice, 4> SliceBufs;
   std::unique_ptr<llvm::MemoryBuffer> DecompressedHolder;
-  if (auto E = parseOffloadBundle(BundleRef, SliceBufs, DecompressedHolder)) {
+  if (llvm::Error E =
+          parseOffloadBundle(BundleRef, SliceBufs, DecompressedHolder)) {
     Err = std::move(E);
     return;
   }
