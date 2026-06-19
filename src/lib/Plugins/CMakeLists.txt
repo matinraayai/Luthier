@@ -6,6 +6,4 @@ add_subdirectory(ToolCodeGenPlugin)
 
 include(LuthierAddCompilerPlugin)
 include(LuthierAddClangPlugin)
-include(LuthierAddTool)
-include(LuthierAddTool)
-include(LuthierAddTool)
+include(LuthierCreateOffloadBundle)

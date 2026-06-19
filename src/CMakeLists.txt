@@ -13,6 +13,10 @@ find_package(LLVM REQUIRED CONFIG)
 
 find_package(Clang REQUIRED CONFIG)
 
+include(FindLLVMSPIRVTranslator)
+
+find_package(LLVMSPIRVTranslator QUIET)
+
 include(LuthierFetchLLVMSrc)
 
 if (NOT IS_DIRECTORY ${LUTHIER_LLVM_SRC_DIR})
