@@ -197,7 +197,7 @@ public:
   /// Construct the loader from this tool's embedded fat binary. HSA-free: the
   /// base parses the bundle into its slice cache; this class then builds the
   /// host-handle → device-name table from the IR-pass-populated slots.
-  DeviceToolCodeFatBinaryParser(llvm::Error &Err)
+  explicit DeviceToolCodeFatBinaryParser(llvm::Error &Err)
       : DeviceToolCodeParser(buildBundleBuffer(HipFatBinary, Err), Err) {
     /// Use of managed variable to ensure the host side of the tool gets a
     /// HIP FAT binary slot regardless of the device logic written in the
