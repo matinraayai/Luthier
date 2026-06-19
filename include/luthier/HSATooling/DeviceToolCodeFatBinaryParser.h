@@ -135,11 +135,10 @@ public:
   };
 
   //===--------------------------------------------------------------------===//
-  /// Annotated slots populated by \c LoadHIPFATBinaryInfoPass at IR-compile
-  /// time.
+  /// HIP's __Register* slots populated by \c LoadHIPFATBinaryInfoPass at
+  /// host IR-compile time.
   //===--------------------------------------------------------------------===//
-
-  /// The tool's single embedded fat binary
+protected:
   inline static __attribute__((used)) LUTHIER_ANNOTATE_VARIABLE(
       LUTHIER_HIP_FAT_BINARIES_ATTR) HipFatBinaryInfo HipFatBinary{};
 
@@ -194,9 +193,7 @@ public:
         /*RequiresNullTerminator=*/false);
   }
 
-  /// Construct the loader from this tool's embedded fat binary. HSA-free: the
-  /// base parses the bundle into its slice cache; this class then builds the
-  /// host-handle → device-name table from the IR-pass-populated slots.
+public:
   explicit DeviceToolCodeFatBinaryParser(llvm::Error &Err)
       : DeviceToolCodeParser(buildBundleBuffer(HipFatBinary, Err), Err) {
     /// Use of managed variable to ensure the host side of the tool gets a
