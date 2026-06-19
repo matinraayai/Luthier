@@ -2,9 +2,9 @@
 ##
 ## Each .hip imodule is compiled with the LuthierToolCXXCompilation plugin in
 ## --cuda-device-only mode, then run through the LuthierToolIRCompilation
-## worker passes (mark-annotations, finalize-hooks, finalize-intrinsics,
-## strip-kernels, externalize-globals, substitute-amdgcn-intrinsics) to
-## produce the canonical IModule IR that tests consume directly.
+## worker passes (mark-annotations, finalize-intrinsics,
+## substitute-amdgcn-intrinsics) to produce the canonical IModule IR that
+## tests consume directly.
 ##
 ## Produces ${CMAKE_BINARY_DIR}/test/imodule/<Name>-<gfx>.ll for each
 ## (imodule, arch) combination listed below.
@@ -34,7 +34,7 @@ set(LUTHIER_TEST_IMODULE_NAMES
         RegLogger)
 
 set(_ir_worker_pipeline
-        "luthier-mark-annotations,luthier-finalize-intrinsics,luthier-strip-kernels,luthier-externalize-globals,luthier-substitute-amdgcn-intrinsics")
+        "luthier-mark-annotations,luthier-finalize-intrinsics,luthier-substitute-amdgcn-intrinsics")
 
 set(_imodule_fixture_outputs "")
 

@@ -54,13 +54,15 @@ entry:
 ]
 
 ;
-; ArrayRef placeholders. We just need HipFatBinaries +
-; HipDeviceFunctions for this test (the device-function path is the
-; one we're exercising); the harvester skips slots with no entries.
+; Slot placeholders. We just need HipFatBinaries + HipDeviceFunctions for this
+; test (the device-function path is the one we're exercising); the harvester
+; skips slots with no entries. HipFatBinaries is a lone HipFatBinaryInfo
+; struct; HipDeviceFunctions is an ArrayRef.
 ;
 %"class.llvm::ArrayRef" = type { ptr, i64 }
+%"struct.luthier::DeviceToolCodeFatBinaryParser::HipFatBinaryInfo" = type { ptr, i64 }
 
-@HipFatBinaries     = dso_local global %"class.llvm::ArrayRef" zeroinitializer, align 8
+@HipFatBinaries     = dso_local global %"struct.luthier::DeviceToolCodeFatBinaryParser::HipFatBinaryInfo" zeroinitializer, align 8
 @HipDeviceFunctions = dso_local global %"class.llvm::ArrayRef" zeroinitializer, align 8
 
 @.str.fb  = private unnamed_addr constant [32 x i8] c"luthier.loader.hip_fat_binaries\00", section "llvm.metadata"
@@ -116,22 +118,22 @@ attributes #0 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protect
 ; --- After the pass: the device-functions slot points at a constant
 ; data array of three { HostHandle, DeviceName } records. ---
 
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceFunctionInfo" = type { ptr, ptr }
+; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceFunctionInfo" = type { ptr, ptr }
 
-; CHECK-DAG: @[[DEVFN_DATA:[._a-zA-Z0-9]+]] = private constant [3 x %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceFunctionInfo"]
+; CHECK-DAG: @[[DEVFN_DATA:[._a-zA-Z0-9]+]] = private constant [3 x %"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceFunctionInfo"]
 
 ; For shape (1) — non-templated C++ sibling: DeviceName is the IR
 ; symbol verbatim.
 ; CHECK-DAG: @[[DEV_MYHOOK:[._a-zA-Z0-9]+]] = private constant [11 x i8] c"_Z6myHookv\00"
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceFunctionInfo" { ptr @_Z6myHookv, ptr @[[DEV_MYHOOK]] }
+; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceFunctionInfo" { ptr @_Z6myHookv, ptr @[[DEV_MYHOOK]] }
 
 ; For shape (2) — extern "C" sibling: partialDemangle fails, fallback
 ; uses the IR symbol; the prefix isn't present, so DeviceName is the
 ; IR symbol verbatim.
 ; CHECK-DAG: @[[DEV_MYCHOOK:[._a-zA-Z0-9]+]] = private constant [8 x i8] c"myCHook\00"
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceFunctionInfo" { ptr @myCHook, ptr @[[DEV_MYCHOOK]] }
+; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceFunctionInfo" { ptr @myCHook, ptr @[[DEV_MYCHOOK]] }
 
 ; For shape (3) — templated handle: demangle succeeds, base name has
 ; the prefix, strip to recover the original specialization's mangling.
 ; CHECK-DAG: @[[DEV_SPEC:[._a-zA-Z0-9]+]] = private constant [16 x i8] c"_Z6mySpecIiEvT_\00"
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceFunctionInfo" { ptr @_Z49__luthier_builtin_dev_func_handle__Z6mySpecIiEvT_i, ptr @[[DEV_SPEC]] }
+; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceFunctionInfo" { ptr @_Z49__luthier_builtin_dev_func_handle__Z6mySpecIiEvT_i, ptr @[[DEV_SPEC]] }

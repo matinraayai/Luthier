@@ -404,8 +404,7 @@ llvm::Error cloneMFInto(
   for (const llvm::MCCFIInstruction &CFI : SrcMF->getFrameInstructions())
     (void)DstMF->addFrameInst(CFI);
 
-  if (!SrcMF->getLongjmpTargets().empty() ||
-      !SrcMF->getEHContTargets().empty())
+  if (!SrcMF->getLongjmpTargets().empty() || !SrcMF->getEHContTargets().empty())
     return llvm::make_error<luthier::LLVMError>(
         "cloning not implemented for machine function property");
 
@@ -436,7 +435,7 @@ llvm::Error cloneMFInto(
   // a body) into a target-side MF allocated through TargetFAM. Lit
   // fixtures don't exercise this path because their IModules only
   // contain payloads + hooks; runtime IModules from
-  // `getEmbeddedModule` carry many helpers.
+  // `parseModule` carry many helpers.
   //
   // We can't reach `MachineFunction::MFInfo` from outside (private,
   // no setter, write-once via `getInfo<>` or `cloneInfo<>`). Detect
