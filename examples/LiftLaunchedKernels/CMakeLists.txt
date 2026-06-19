@@ -7,9 +7,10 @@ set(CMAKE_HIP_STANDARD 20)
 find_package(hip REQUIRED CONFIG)
 find_package(LLVM REQUIRED CONFIG)
 
-# This example has no hooks (it only lifts + prints), so it doesn't need
-# the CXX compilation plugin for host-handle synthesis. But the device
-# .hip still goes through the IR compilation plugin — luthier_add_tool
-# wires that up automatically.
-luthier_add_tool(LiftLaunchedKernels
-        SOURCES LiftLaunchedKernels.hip)
+luthier_create_offload_bundle(LiftLaunchedKernels LiftLaunchedKernels.hip
+        DEVICE_OBJECT_LIBRARIES LiftLaunchedKernels_DEVICE_TARGETS)
+
+target_link_libraries(LiftLaunchedKernels PUBLIC LuthierTooling hip::host)
+foreach (_DEVICE_TARGET IN LISTS LiftLaunchedKernels_DEVICE_TARGETS)
+    target_link_libraries(${_DEVICE_TARGET} PRIVATE LuthierTooling hip::host)
+endforeach ()

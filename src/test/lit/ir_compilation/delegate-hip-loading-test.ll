@@ -41,21 +41,23 @@ declare dso_local void @__hipUnregisterFatBinary(ptr)
 declare dso_local i32 @atexit(ptr)
 
 ; --- After the pass: element structs exist, ArrayRef slots are init'd ---
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipKernelInfo" = type { ptr, ptr }
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipManagedVarInfo" = type { ptr, ptr, ptr, i64, i32 }
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceVarInfo" = type { ptr, ptr }
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipTextureInfo" = type { ptr, ptr }
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipSurfaceInfo" = type { ptr, ptr }
+; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipKernelInfo" = type { ptr, ptr }
+; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipManagedVarInfo" = type { ptr, ptr, ptr, i64, i32 }
+; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceVarInfo" = type { ptr, ptr }
+; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipTextureInfo" = type { ptr, ptr }
+; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipSurfaceInfo" = type { ptr, ptr }
 
 ;
-; The placeholders below mirror what Clang emits for the six
-; `inline static llvm::ArrayRef<T>` slots on
-; DeviceToolCodeFatBinaryLoader<Derived>. Each is a global of two-element
-; struct type `{ ptr Data; i64 Length; }` matching ArrayRef's ABI.
+; The placeholders below mirror what Clang emits for the slots on
+; DeviceToolCodeFatBinaryParser<Derived>. The five `inline static
+; llvm::ArrayRef<T>` slots are each a global of two-element struct type
+; `{ ptr Data; i64 Length; }` matching ArrayRef's ABI. HipFatBinaries is the
+; exception: it is a lone `HipFatBinaryInfo` (`{ ptr Bundle; i64 Size; }`).
 ;
 %"class.llvm::ArrayRef" = type { ptr, i64 }
+%"struct.luthier::DeviceToolCodeFatBinaryParser::HipFatBinaryInfo" = type { ptr, i64 }
 
-@HipFatBinaries = dso_local global %"class.llvm::ArrayRef" zeroinitializer, align 8
+@HipFatBinaries = dso_local global %"struct.luthier::DeviceToolCodeFatBinaryParser::HipFatBinaryInfo" zeroinitializer, align 8
 @HipFunctions   = dso_local global %"class.llvm::ArrayRef" zeroinitializer, align 8
 @HipDeviceVars  = dso_local global %"class.llvm::ArrayRef" zeroinitializer, align 8
 @HipManagedVars = dso_local global %"class.llvm::ArrayRef" zeroinitializer, align 8
@@ -84,25 +86,25 @@ declare dso_local i32 @atexit(ptr)
 ; --- VERIFY PROMOTED SLOTS ---
 ;
 ; Each ArrayRef slot is set in-place to a `{ ptr to data, i64 N }` initializer
-; that views a private constant data array.
+; that views a private constant data array. HipFatBinaries is the exception:
+; its lone HipFatBinaryInfo slot is set directly to `{ ptr Bundle, i64 Size }`.
 ;
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipFatBinaryInfo" = type { ptr, i64 }
-; CHECK-DAG: @[[FB_DATA:[._a-zA-Z0-9]+]] = private constant [1 x %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipFatBinaryInfo"] [%"struct.luthier::DeviceToolCodeFatBinaryLoader::HipFatBinaryInfo" { ptr @__hip_fatbin, i64 32 }]
-; CHECK-DAG: @HipFatBinaries = dso_local constant %"class.llvm::ArrayRef" { ptr @[[FB_DATA]], i64 1 }
+; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipFatBinaryInfo" = type { ptr, i64 }
+; CHECK-DAG: @HipFatBinaries = dso_local constant %"struct.luthier::DeviceToolCodeFatBinaryParser::HipFatBinaryInfo" { ptr @__hip_fatbin, i64 32 }
 ;
-; CHECK-DAG: @[[FN_DATA:[._a-zA-Z0-9]+]] = private constant [2 x %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipKernelInfo"]
+; CHECK-DAG: @[[FN_DATA:[._a-zA-Z0-9]+]] = private constant [2 x %"struct.luthier::DeviceToolCodeFatBinaryParser::HipKernelInfo"]
 ; CHECK-DAG: @HipFunctions = dso_local constant %"class.llvm::ArrayRef" { ptr @[[FN_DATA]], i64 2 }
 ;
-; CHECK-DAG: @[[MV_DATA:[._a-zA-Z0-9]+]] = private constant [1 x %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipManagedVarInfo"] [%"struct.luthier::DeviceToolCodeFatBinaryLoader::HipManagedVarInfo" { ptr @VarManaged, ptr @DummyManagedVariable, ptr @VarName, i64 0, i32 0 }]
+; CHECK-DAG: @[[MV_DATA:[._a-zA-Z0-9]+]] = private constant [1 x %"struct.luthier::DeviceToolCodeFatBinaryParser::HipManagedVarInfo"] [%"struct.luthier::DeviceToolCodeFatBinaryParser::HipManagedVarInfo" { ptr @VarManaged, ptr @DummyManagedVariable, ptr @VarName, i64 0, i32 0 }]
 ; CHECK-DAG: @HipManagedVars = dso_local constant %"class.llvm::ArrayRef" { ptr @[[MV_DATA]], i64 1 }
 ;
-; CHECK-DAG: @[[DV_DATA:[._a-zA-Z0-9]+]] = private constant [1 x %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceVarInfo"] [%"struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceVarInfo" { ptr @DummyVar, ptr @VarName }]
+; CHECK-DAG: @[[DV_DATA:[._a-zA-Z0-9]+]] = private constant [1 x %"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceVarInfo"] [%"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceVarInfo" { ptr @DummyVar, ptr @VarName }]
 ; CHECK-DAG: @HipDeviceVars = dso_local constant %"class.llvm::ArrayRef" { ptr @[[DV_DATA]], i64 1 }
 ;
-; CHECK-DAG: @[[TX_DATA:[._a-zA-Z0-9]+]] = private constant [2 x %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipTextureInfo"]
+; CHECK-DAG: @[[TX_DATA:[._a-zA-Z0-9]+]] = private constant [2 x %"struct.luthier::DeviceToolCodeFatBinaryParser::HipTextureInfo"]
 ; CHECK-DAG: @HipTextureVars = dso_local constant %"class.llvm::ArrayRef" { ptr @[[TX_DATA]], i64 2 }
 ;
-; CHECK-DAG: @[[SF_DATA:[._a-zA-Z0-9]+]] = private constant [1 x %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipSurfaceInfo"] [%"struct.luthier::DeviceToolCodeFatBinaryLoader::HipSurfaceInfo" { ptr @SurfaceAddr, ptr @SurName }]
+; CHECK-DAG: @[[SF_DATA:[._a-zA-Z0-9]+]] = private constant [1 x %"struct.luthier::DeviceToolCodeFatBinaryParser::HipSurfaceInfo"] [%"struct.luthier::DeviceToolCodeFatBinaryParser::HipSurfaceInfo" { ptr @SurfaceAddr, ptr @SurName }]
 ; CHECK-DAG: @HipSurfaceVars = dso_local constant %"class.llvm::ArrayRef" { ptr @[[SF_DATA]], i64 1 }
 
 ; --- VERIFY CONSTRUCTOR MODIFICATION ---
