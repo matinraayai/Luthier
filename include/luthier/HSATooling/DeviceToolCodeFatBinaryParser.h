@@ -69,15 +69,9 @@ static_assert(sizeof(decltype(std::declval<llvm::ArrayRef<void *>>().size())) ==
 /// annotated slot (forced live by \c [[gnu::used]]).
 template <typename Derived>
 class DeviceToolCodeFatBinaryParser : public DeviceToolCodeParser {
-private:
   /// Sentinel \c __managed__ variable that forces Clang to emit "host-visible"
   /// device code
   static inline __attribute__((managed, used)) char DeviceCodeMarker = 0;
-
-protected:
-  /// Mapping between the void * host shadow handles from the globals in the
-  /// device logic to their names
-  llvm::DenseMap<const void *, std::string> HandleToName;
 
 public:
   /// \brief Per-fat-binary entry produced from a \c __hipRegisterFatBinary
@@ -138,7 +132,7 @@ public:
   /// HIP's __Register* slots populated by \c LoadHIPFATBinaryInfoPass at
   /// host IR-compile time.
   //===--------------------------------------------------------------------===//
-protected:
+private:
   inline static __attribute__((used)) LUTHIER_ANNOTATE_VARIABLE(
       LUTHIER_HIP_FAT_BINARIES_ATTR) HipFatBinaryInfo HipFatBinary{};
 
@@ -165,37 +159,13 @@ protected:
   LUTHIER_ANNOTATE_VARIABLE(LUTHIER_HIP_SURFACE_VARS_ATTR)
       llvm::ArrayRef<HipSurfaceInfo> HipSurfaceVars{};
 
-  /// Build a non-owning \c MemoryBuffer wrapper around the fat binary recorded
-  /// in \p Slot. Returns \c nullptr if \p Slot has no bundle (host-only code).
-  /// A zero \c Size (the split-compile case, where the host TU
-  /// sees \c __hip_fatbin as an opaque \c extern) is recovered from the bundle
-  /// header via \c DeviceToolCodeParser::discoverBundleSize; sets \p Err if the
-  /// size still can't be determined.
-  static std::unique_ptr<llvm::MemoryBuffer>
-  buildBundleBuffer(const HipFatBinaryInfo &Slot, llvm::Error &Err) {
-    llvm::ErrorAsOutParameter EAO(&Err);
-    if (Err)
-      return nullptr;
-    if (Slot.Bundle == nullptr)
-      return nullptr;
-    uint64_t Size = Slot.Size;
-    if (Size == 0)
-      Size = discoverBundleSize(Slot.Bundle);
-    if (Size == 0) {
-      Err = LUTHIER_MAKE_GENERIC_ERROR(
-          "Cannot determine fat-bin bundle size: the HipFatBinary slot "
-          "recorded size 0 and the bundle header was not a recognized "
-          "(uncompressed or CCOB) Clang offload bundle.");
-      return nullptr;
-    }
-    return llvm::MemoryBuffer::getMemBuffer(
-        llvm::StringRef(static_cast<const char *>(Slot.Bundle), Size), "fatbin",
-        /*RequiresNullTerminator=*/false);
-  }
+  /// Mapping between the void * host shadow handles from the globals in the
+  /// device logic to their names
+  llvm::DenseMap<const void *, std::string> HandleToName;
 
 public:
   explicit DeviceToolCodeFatBinaryParser(llvm::Error &Err)
-      : DeviceToolCodeParser(buildBundleBuffer(HipFatBinary, Err), Err) {
+      : DeviceToolCodeParser(HipFatBinary.Bundle, Err) {
     /// Use of managed variable to ensure the host side of the tool gets a
     /// HIP FAT binary slot regardless of the device logic written in the
     /// tool
