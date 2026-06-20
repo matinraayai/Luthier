@@ -19,8 +19,8 @@
 /// or SPIR-V format and loads them into \c llvm::Module instances for use in
 /// the instrumentation pipeline.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_DEVICE_TOOL_CODE_PARSER_H
-#define LUTHIER_TOOLING_DEVICE_TOOL_CODE_PARSER_H
+#ifndef LUTHIER_TOOL_CODEGEN_DEVICE_TOOL_CODE_PARSER_H
+#define LUTHIER_TOOL_CODEGEN_DEVICE_TOOL_CODE_PARSER_H
 #include <cstdint>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
@@ -130,4 +130,4 @@ public:
 
 } // namespace luthier
 
-#endif // LUTHIER_TOOLING_DEVICE_TOOL_CODE_PARSER_H
+#endif // LUTHIER_TOOL_CODEGEN_DEVICE_TOOL_CODE_PARSER_H
