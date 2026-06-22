@@ -1,4 +1,4 @@
-//===-- DeviceToolCodeParser.h -----------------------------------*- C++-*-===//
+//===-- ToolDeviceCodeParser.h -----------------------------------*- C++-*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,7 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Defines the \c DeviceToolCodeParser, which parses a FAT binary bundle
+/// Defines the \c ToolDeviceCodeParser class, which parses a FAT binary bundle
 /// containing the device-side logic of a single luthier tool in LLVM IR bitcode
 /// or SPIR-V format and loads them into \c llvm::Module instances for use in
 /// the instrumentation pipeline.
@@ -61,7 +61,7 @@ namespace luthier {
 ///
 /// \note This class only handles the device code of one source (TU) compiled
 /// for multiple GPU targets. For multiple TUs, use multiple instances.
-class DeviceToolCodeParser {
+class ToolDeviceCodeParser {
 protected:
   /// Guards \c Slices and the SPIR-V JIT cache insertion. Recursive so a
   /// derived class can re-enter through \c parseModule.
@@ -110,12 +110,12 @@ protected:
       llvm::OptimizationLevel OptLevel = llvm::OptimizationLevel::O3);
 
 public:
-  DeviceToolCodeParser(const void *Bundle, llvm::Error &Err);
+  ToolDeviceCodeParser(const void *Bundle, llvm::Error &Err);
 
-  DeviceToolCodeParser(const DeviceToolCodeParser &) = delete;
-  DeviceToolCodeParser &operator=(const DeviceToolCodeParser &) = delete;
+  ToolDeviceCodeParser(const ToolDeviceCodeParser &) = delete;
+  ToolDeviceCodeParser &operator=(const ToolDeviceCodeParser &) = delete;
 
-  ~DeviceToolCodeParser() = default;
+  ~ToolDeviceCodeParser() = default;
 
   /// Parse the embedded tool bitcode for the requested LLVM ISA tuple into
   /// \p Ctx. On an exact-key miss, falls back to a SPIR-V → AMDGCN JIT
