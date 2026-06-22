@@ -29,7 +29,6 @@
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/MemoryBufferRef.h>
 #include <llvm/TargetParser/SubtargetFeature.h>
-#include <llvm/TargetParser/Triple.h>
 #include <memory>
 #include <mutex>
 #include <optional>
