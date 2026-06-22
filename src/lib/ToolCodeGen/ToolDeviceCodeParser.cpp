@@ -16,9 +16,9 @@
 /// \file
 /// Implements Clang-offload-bundle parsing + per-subtarget LLVM-bitcode
 /// extraction, with a SPIR-V → AMDGCN JIT fallback for ISAs not shipped as a
-/// precompiled bitcode slice in \c DeviceToolCodeParser.
+/// precompiled bitcode slice in \c ToolDeviceCodeParser.
 //===----------------------------------------------------------------------===//
-#include "luthier/HSATooling/DeviceToolCodeParser.h"
+#include "luthier/ToolCodeGen/ToolDeviceCodeParser.h"
 
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
@@ -128,7 +128,7 @@ llvm::Error
 parseOffloadBundle(llvm::MemoryBufferRef Bundle,
                    llvm::SmallVectorImpl<BundleSlice> &SliceBufs,
                    std::unique_ptr<llvm::MemoryBuffer> &DecompressedHolder) {
-  LLVM_DEBUG(luthier::dbgs() << "[DeviceToolCodeParser] parseOffloadBundle: "
+  LLVM_DEBUG(luthier::dbgs() << "[ToolDeviceCodeParser] parseOffloadBundle: "
                              << Bundle.getBufferSize() << " bytes\n");
   if (Bundle.getBufferSize() == 0)
     return LUTHIER_MAKE_GENERIC_ERROR("Empty fat-binary bundle.");
@@ -138,7 +138,7 @@ parseOffloadBundle(llvm::MemoryBufferRef Bundle,
   llvm::MemoryBufferRef ParseBuf = Bundle;
   bool Decompressed = false;
   if (Magic == llvm::file_magic::offload_bundle_compressed) {
-    LLVM_DEBUG(luthier::dbgs() << "[DeviceToolCodeParser] bundle is CCOB; "
+    LLVM_DEBUG(luthier::dbgs() << "[ToolDeviceCodeParser] bundle is CCOB; "
                                   "decompressing\n");
     auto Input = llvm::MemoryBuffer::getMemBuffer(
         Bundle, /*RequiresNullTerminator=*/false);
@@ -172,7 +172,7 @@ parseOffloadBundle(llvm::MemoryBufferRef Bundle,
       SliceBufs.push_back(
           {llvm::MemoryBufferRef{SliceBytes, "fat-binary slice"}, Entry.ID});
   }
-  LLVM_DEBUG(luthier::dbgs() << "[DeviceToolCodeParser] parseOffloadBundle "
+  LLVM_DEBUG(luthier::dbgs() << "[ToolDeviceCodeParser] parseOffloadBundle "
                                 "produced "
                              << SliceBufs.size() << " slice(s)\n");
   return llvm::Error::success();
@@ -181,7 +181,7 @@ parseOffloadBundle(llvm::MemoryBufferRef Bundle,
 } // namespace
 
 std::string
-DeviceToolCodeParser::canonicalLLVMISAKey(const llvm::Triple &T,
+ToolDeviceCodeParser::canonicalLLVMISAKey(const llvm::Triple &T,
                                           llvm::StringRef CPU,
                                           const llvm::SubtargetFeatures &F) {
   std::vector<std::string> Sorted = F.getFeatures();
@@ -195,7 +195,7 @@ DeviceToolCodeParser::canonicalLLVMISAKey(const llvm::Triple &T,
 }
 
 llvm::Expected<uint64_t>
-DeviceToolCodeParser::calculateBundleSize(const void *Bundle) {
+ToolDeviceCodeParser::calculateBundleSize(const void *Bundle) {
   if (Bundle == nullptr)
     return 0;
   auto *P = static_cast<const char *>(Bundle);
@@ -260,7 +260,7 @@ DeviceToolCodeParser::calculateBundleSize(const void *Bundle) {
   return BundleSize;
 }
 
-llvm::Error DeviceToolCodeParser::addSlice(llvm::MemoryBufferRef Slice,
+llvm::Error ToolDeviceCodeParser::addSlice(llvm::MemoryBufferRef Slice,
                                            llvm::StringRef ID) {
   const llvm::file_magic Magic = llvm::identify_magic(Slice.getBuffer());
   if (Magic == llvm::file_magic::bitcode) {
@@ -271,7 +271,7 @@ llvm::Error DeviceToolCodeParser::addSlice(llvm::MemoryBufferRef Slice,
     auto &[TT, CPU, Features] = *ISAOrErr;
 
     std::string Key = canonicalLLVMISAKey(TT, CPU, Features);
-    LLVM_DEBUG(luthier::dbgs() << "[DeviceToolCodeParser] addBitcodeSlice id=["
+    LLVM_DEBUG(luthier::dbgs() << "[ToolDeviceCodeParser] addBitcodeSlice id=["
                                << ID << "] key=[" << Key
                                << "] bcSize=" << Slice.getBufferSize() << "\n");
     if (Slices.contains(Key))
@@ -288,7 +288,7 @@ llvm::Error DeviceToolCodeParser::addSlice(llvm::MemoryBufferRef Slice,
           "Bundle carries more than one SPIR-V slice.");
     SpirvSlice = Slice;
     LLVM_DEBUG(luthier::dbgs()
-               << "[DeviceToolCodeParser] stashed SPIR-V slice ("
+               << "[ToolDeviceCodeParser] stashed SPIR-V slice ("
                << Slice.getBufferSize() << " bytes)\n");
     return llvm::Error::success();
   }
@@ -296,7 +296,7 @@ llvm::Error DeviceToolCodeParser::addSlice(llvm::MemoryBufferRef Slice,
       "Fat-binary slice is neither LLVM bitcode nor SPIR-V.");
 }
 
-DeviceToolCodeParser::DeviceToolCodeParser(const void *Bundle,
+ToolDeviceCodeParser::ToolDeviceCodeParser(const void *Bundle,
                                            llvm::Error &Err) {
   /// Enable crash recovery context for potential segfaults when parsing the
   /// FAT binary
@@ -337,13 +337,13 @@ DeviceToolCodeParser::DeviceToolCodeParser(const void *Bundle,
     }
   }
   LLVM_DEBUG(luthier::dbgs()
-             << "[DeviceToolCodeParser] ctor(bundle): registered "
+             << "[ToolDeviceCodeParser] ctor(bundle): registered "
              << Slices.size() << " slice(s)" << (SpirvSlice ? " + SPIR-V" : "")
              << "\n");
 }
 
 llvm::Expected<std::unique_ptr<llvm::Module>>
-DeviceToolCodeParser::translateSpirvFallback(
+ToolDeviceCodeParser::translateSpirvFallback(
     const llvm::Triple &T, llvm::StringRef CPU,
     const llvm::SubtargetFeatures &Features, llvm::StringRef Key,
     llvm::LLVMContext &Ctx, llvm::OptimizationLevel OptLevel) {
@@ -364,7 +364,7 @@ DeviceToolCodeParser::translateSpirvFallback(
         "carries no SPIR-V slice for the JIT fallback.");
 
   LLVM_DEBUG(luthier::dbgs()
-             << "[DeviceToolCodeParser] SPIR-V JIT fallback for [" << Key
+             << "[ToolDeviceCodeParser] SPIR-V JIT fallback for [" << Key
              << "]\n");
 
   // 1) SPIR-V -> LLVM IR into the caller's context.
@@ -435,25 +435,25 @@ DeviceToolCodeParser::translateSpirvFallback(
   Slices.insert({Key.str(), std::move(BcRef)});
 
   LLVM_DEBUG(luthier::dbgs()
-             << "[DeviceToolCodeParser] SPIR-V JIT produced + cached " << Key
+             << "[ToolDeviceCodeParser] SPIR-V JIT produced + cached " << Key
              << " (" << BcRef.getBufferSize() << " bytes)\n");
   return M;
 #endif
 }
 
 llvm::Expected<std::unique_ptr<llvm::Module>>
-DeviceToolCodeParser::parseModule(const llvm::Triple &T, llvm::StringRef CPU,
+ToolDeviceCodeParser::parseModule(const llvm::Triple &T, llvm::StringRef CPU,
                                   const llvm::SubtargetFeatures &Features,
                                   llvm::LLVMContext &Ctx,
                                   llvm::OptimizationLevel OptLevel) {
   std::lock_guard Lock(Mutex);
   std::string Key = canonicalLLVMISAKey(T, CPU, Features);
   LLVM_DEBUG(luthier::dbgs()
-             << "[DeviceToolCodeParser] parseModule key=[" << Key << "]\n");
+             << "[ToolDeviceCodeParser] parseModule key=[" << Key << "]\n");
   auto It = Slices.find(Key);
   if (It != Slices.end()) {
     LLVM_DEBUG(luthier::dbgs()
-               << "[DeviceToolCodeParser]   matched slice [" << It->first()
+               << "[ToolDeviceCodeParser]   matched slice [" << It->first()
                << "], parsing " << It->second.getBufferSize()
                << " bytes of bitcode\n");
     auto MOrErr = llvm::parseBitcodeFile(It->second, Ctx);
@@ -478,7 +478,7 @@ DeviceToolCodeParser::parseModule(const llvm::Triple &T, llvm::StringRef CPU,
             canonicalLLVMISAKey(llvm::Triple(M.getTargetTriple()), BCPU, BF);
         if (BKey != It->first())
           luthier::errs()
-              << "[DeviceToolCodeParser] WARNING: slice keyed by its bundle "
+              << "[ToolDeviceCodeParser] WARNING: slice keyed by its bundle "
                  "ID as ["
               << It->first() << "] but its bitcode reports ISA [" << BKey
               << "]\n";
