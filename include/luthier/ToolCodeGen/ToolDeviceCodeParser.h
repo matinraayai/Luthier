@@ -14,18 +14,14 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Defines the \c ToolDeviceCodeParser class, which parses a FAT binary bundle
-/// containing the device-side logic of a single luthier tool in LLVM IR bitcode
-/// or SPIR-V format and loads them into \c llvm::Module instances for use in
-/// the instrumentation pipeline.
+/// Defines the \c ToolDeviceCodeParser class, in charge of parsing and loading
+/// a collection of device logic in LLVM IR bitcode or SPIR-V format that
+/// belong to a single tool translation unit.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOL_CODEGEN_DEVICE_TOOL_CODE_PARSER_H
-#define LUTHIER_TOOL_CODEGEN_DEVICE_TOOL_CODE_PARSER_H
-#include <cstdint>
-#include <llvm/ADT/ArrayRef.h>
+#ifndef LUTHIER_TOOL_CODEGEN_TOOL_DEVICE_CODE_PARSER_H
+#define LUTHIER_TOOL_CODEGEN_TOOL_DEVICE_CODE_PARSER_H
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringMap.h>
-#include <llvm/ADT/StringRef.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Passes/OptimizationLevel.h>
@@ -33,7 +29,6 @@
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/MemoryBufferRef.h>
 #include <llvm/TargetParser/SubtargetFeature.h>
-#include <llvm/TargetParser/Triple.h>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -41,30 +36,32 @@
 
 namespace luthier {
 
-/// \brief Parses a FAT binary bundle containing the device-side logic of a
-/// single Luthier tool and serves a slice with the matching target ISA as a
-/// \c llvm::Module for the instrumentation pipeline.
+/// \brief A class in charge of parsing and loading a collection of device
+/// logic in LLVM IR bitcode or SPIR-V format that belong to a single tool
+/// translation unit.
 ///
-/// \details The bundle contains the associated LLVM IR bitcode for each full
-/// ISA string to be targeted for instrumentation. If SPIR-V translation support
-/// is enabled, the bundle can also contain the SPIR-V file of the translation
-/// unit to fallback on if the exact target ISA is absent in the bundle.
+/// \details As of right now, this class only accepts clang offload bundle files
+/// (i.e. both compressed and uncompressed FAT binaries). Each entry inside the
+/// bundle must be labeled with its associated \b complete LLVM ISA string
+/// \c <triple>-<ven>-<os>-<env>-<cpu>:<subtarget-features>. A mismatch between
+/// the ISA of the entry and its label will only be caught in the debug builds,
+/// hence it is the bundle provider's responsibility all entries are correctly
+/// labeled.
 ///
-/// Each slice is put in a cache keyed by canonical LLVM ISA tuple (ISA with
-/// its subtarget feature flags sorted). On request, this class loads the
-/// matching slice's bitcode as an \c llvm::Module. In cases where no
-/// precompiled slice matches the requested ISA and Luthier is compiled with
-/// AMD SPIR-V translation support, presence of an AMD-flavored SPIR-V slice is
-/// queried in the bundle cache. If present, the parser will JIT-translate the
-/// SPIR-V to LLVM IR for the requested target, runs the Luthier device tool
-/// compilation passes on it, and caches the result before returning it.
+/// When requested, this class loads a matching entry's bitcode into an
+/// \c llvm::Module. In cases where no precompiled slice matches the requested
+/// ISA and Luthier is compiled with AMD SPIR-V translation support, presence of
+/// an AMD-flavored SPIR-V slice is queried in the bundle cache. If present,
+/// the parser will JIT-translate the SPIR-V to LLVM IR for the requested
+/// target, runs the Luthier device tool compilation passes on it, and caches
+/// the result before returning the materialized module.
 ///
-/// \note This class only handles the device code of one source (TU) compiled
-/// for multiple GPU targets. For multiple TUs, use multiple instances.
+/// TODO: Support managing separately provided files for tools that don't use
+/// HIP
+/// TODO: Flesh out the SPIR-V support for graphics AMD triples as well
 class ToolDeviceCodeParser {
 protected:
-  /// Guards \c Slices and the SPIR-V JIT cache insertion. Recursive so a
-  /// derived class can re-enter through \c parseModule.
+  /// Mutex to protect internal state of slices.
   std::recursive_mutex Mutex;
 
   /// All slices, keyed by canonical LLVM ISA string. Populated at construction;
@@ -98,7 +95,7 @@ protected:
   /// Errors on a malformed ID, duplicate ISA, or an unrecognized slice.
   llvm::Error addSlice(llvm::MemoryBufferRef Slice, llvm::StringRef ID);
 
-  /// SPIR-V → AMDGCN JIT fallback. Translates \c SpirvSlice to LLVM IR for the
+  /// SPIR-V -> AMDGCN JIT fallback. Translates \c SpirvSlice to LLVM IR for the
   /// requested ISA, runs an O3 default pipeline + the Luthier device tool
   /// passes, caches the serialized bitcode under \p Key, and returns the
   /// freshly built module. Caller must hold \c Mutex. Errors if no SPIR-V slice
