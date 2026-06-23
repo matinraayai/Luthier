@@ -107,7 +107,14 @@ protected:
       llvm::OptimizationLevel OptLevel = llvm::OptimizationLevel::O3);
 
 public:
-  ToolDeviceCodeParser(const void *Bundle, llvm::Error &Err);
+  /// Owning buffer constructor: Call this when the parser should take over the
+  /// lifetime of \p Bundle
+  ToolDeviceCodeParser(std::unique_ptr<llvm::MemoryBuffer> Bundle,
+                       llvm::Error &Err);
+
+  /// Non-owning buffer constructor: Call this when the \p Bundle's lifetime
+  /// is externally managed
+  ToolDeviceCodeParser(llvm::MemoryBufferRef Bundle, llvm::Error &Err);
 
   ToolDeviceCodeParser(const ToolDeviceCodeParser &) = delete;
   ToolDeviceCodeParser &operator=(const ToolDeviceCodeParser &) = delete;

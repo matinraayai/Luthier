@@ -1,4 +1,4 @@
-//===-- DeviceToolCodeParser.cpp ----------------------------------*-C++-*-===//
+//===-- ToolDeviceCodeParser.cpp ----------------------------------*-C++-*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -194,72 +194,6 @@ ToolDeviceCodeParser::canonicalLLVMISAKey(const llvm::Triple &T,
   return OS.str();
 }
 
-llvm::Expected<uint64_t>
-ToolDeviceCodeParser::calculateBundleSize(const void *Bundle) {
-  if (Bundle == nullptr)
-    return 0;
-  auto *P = static_cast<const char *>(Bundle);
-
-  constexpr size_t CompressedBundleMagicSize = llvm::StringRef("CCOB").size();
-  constexpr size_t ClangOffloadBundleMagicSize =
-      llvm::StringRef("__CLANG_OFFLOAD_BUNDLE__").size();
-
-  constexpr size_t MaxMagicSize =
-      std::max(CompressedBundleMagicSize, ClangOffloadBundleMagicSize);
-
-  llvm::StringRef BundleMagicBuffer{P, MaxMagicSize};
-
-  llvm::CrashRecoveryContext CRC;
-  llvm::Error Err = llvm::Error::success();
-  (void)Err.operator bool();
-  size_t BundleSize = 0;
-
-  bool Ok = CRC.RunSafely([&] {
-    llvm::file_magic BundleMagic = llvm::identify_magic(BundleMagicBuffer);
-    if (BundleMagic == llvm::file_magic::offload_bundle_compressed) {
-      auto HdrOrErr = llvm::object::CompressedOffloadBundle::
-          CompressedBundleHeader::tryParse(
-              llvm::StringRef(BundleMagicBuffer.data(), /*Length=*/64));
-      if (!HdrOrErr) {
-        Err = std::move(HdrOrErr.takeError());
-        return;
-      }
-      BundleSize = HdrOrErr->FileSize.value_or(0);
-    } else if (BundleMagic == llvm::file_magic::offload_bundle) {
-      P += ClangOffloadBundleMagicSize;
-      auto ReadU64 = [&P]() {
-        uint64_t V;
-        std::memcpy(&V, P, sizeof(V));
-        P += sizeof(V);
-        return V;
-      };
-      const uint64_t NumEntries = ReadU64();
-      uint64_t MaxEnd = 0;
-      for (uint64_t I = 0; I < NumEntries; ++I) {
-        const uint64_t Off = ReadU64();
-        const uint64_t Sz = ReadU64();
-        const uint64_t IDLen = ReadU64();
-        P += IDLen;
-        MaxEnd = std::max(MaxEnd, Off + Sz);
-      }
-      BundleSize = MaxEnd;
-    } else {
-      Err = LUTHIER_MAKE_GENERIC_ERROR(
-          llvm::formatv("Invalid file magic : {0}", BundleMagic));
-    }
-  });
-  if (!Ok) {
-    return llvm::joinErrors(
-        LUTHIER_MAKE_GENERIC_ERROR(
-            "Failed to determine the size of the FAT binary."),
-        std::move(Err));
-  }
-  if (Err)
-    return Err;
-
-  return BundleSize;
-}
-
 llvm::Error ToolDeviceCodeParser::addSlice(llvm::MemoryBufferRef Slice,
                                            llvm::StringRef ID) {
   const llvm::file_magic Magic = llvm::identify_magic(Slice.getBuffer());
@@ -296,29 +230,13 @@ llvm::Error ToolDeviceCodeParser::addSlice(llvm::MemoryBufferRef Slice,
       "Fat-binary slice is neither LLVM bitcode nor SPIR-V.");
 }
 
-ToolDeviceCodeParser::ToolDeviceCodeParser(const void *Bundle,
+ToolDeviceCodeParser::ToolDeviceCodeParser(llvm::MemoryBufferRef BundleRef,
                                            llvm::Error &Err) {
-  /// Enable crash recovery context for potential segfaults when parsing the
-  /// FAT binary
-  llvm::CrashRecoveryContext::Enable();
   llvm::ErrorAsOutParameter EAO(&Err);
   if (Err)
-    return; // Upstream already recorded a failure; don't overwrite.
-  if (!Bundle)
-    return; // No bundle = no device-side logic.
-
-  size_t BundleSize = 0;
-
-  Err = calculateBundleSize(Bundle).moveInto(BundleSize);
-  if (Err)
     return;
-
-  auto BundleMemBuffer = llvm::MemoryBuffer::getMemBuffer(
-      llvm::StringRef{static_cast<const char *>(Bundle), BundleSize},
-      /*BufferName=*/"", /*RequiresNullTerminator=*/false);
-  llvm::MemoryBufferRef BundleRef = BundleMemBuffer->getMemBufferRef();
-
-  RetainedBuffers.push_back(std::move(BundleMemBuffer));
+  if (BundleRef.getBufferSize() == 0)
+    return; // No bundle = no device-side logic.
 
   llvm::SmallVector<BundleSlice, 4> SliceBufs;
   std::unique_ptr<llvm::MemoryBuffer> DecompressedHolder;
@@ -340,6 +258,15 @@ ToolDeviceCodeParser::ToolDeviceCodeParser(const void *Bundle,
              << "[ToolDeviceCodeParser] ctor(bundle): registered "
              << Slices.size() << " slice(s)" << (SpirvSlice ? " + SPIR-V" : "")
              << "\n");
+}
+
+ToolDeviceCodeParser::ToolDeviceCodeParser(
+    std::unique_ptr<llvm::MemoryBuffer> Bundle, llvm::Error &Err)
+    : ToolDeviceCodeParser(
+          Bundle ? Bundle->getMemBufferRef() : llvm::MemoryBufferRef(), Err) {
+  /// Take ownership of the bundle if it's not nullptr
+  if (Bundle)
+    RetainedBuffers.push_back(std::move(Bundle));
 }
 
 llvm::Expected<std::unique_ptr<llvm::Module>>
