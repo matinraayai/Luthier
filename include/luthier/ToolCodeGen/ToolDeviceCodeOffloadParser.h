@@ -34,17 +34,6 @@
 #include <mutex>
 #include <utility>
 
-/// Section-boundary symbols the linker synthesizes around the \c luthier_fatbin
-/// section. The \c ToolDeviceCodeOffloadParserPass places the embedded tool
-/// device-code bundle into this section, allowing all derived classes from the
-/// \c ToolDeviceCodeOffloadParserTrait to access the embedded tool fat binary.
-extern "C" {
-/// Bundle's load address start
-extern const char __start_luthier_fatbin[];
-/// Bundle's load boundry address
-extern const char __stop_luthier_fatbin[];
-}
-
 namespace luthier {
 /// \brief Base class for \c ToolDeviceCodeOffloadParserTrait; Contains all
 /// logic for the trait that doesn't require a \c static field
@@ -53,7 +42,7 @@ class ToolDeviceCodeOffloadParser : public ToolDeviceCodeParser {
   /// globals in the device logic to their names.
   llvm::DenseMap<const void *, llvm::StringRef> HandleToName;
 
-protected:
+public:
   /// Struct that holds the \c void * HIP shadow host handle of the globals in
   /// the HIP code and its associated variable name
   struct HipHandleInfo {
@@ -61,6 +50,7 @@ protected:
     const char *DeviceName{nullptr};
   };
 
+protected:
   ToolDeviceCodeOffloadParser(llvm::MemoryBufferRef Bundle,
                               llvm::ArrayRef<HipHandleInfo> HipHandles,
                               llvm::Error &Err)
@@ -120,18 +110,26 @@ class ToolDeviceCodeOffloadParserTrait : public ToolDeviceCodeOffloadParser {
   static __attribute__((managed)) char DeviceCodeMarker;
 
   //===--------------------------------------------------------------------===//
-  /// HIP's __Register* slot populated by \c ToolDeviceCodeOffloadParserPass at
-  /// host IR-compile time.
+  /// Slots populated by \c ToolDeviceCodeOffloadParserPass at host IR-compile
+  /// time.
   //===--------------------------------------------------------------------===//
+
+  /// Start and boundary (one-past-the-end) load addresses of the embedded tool
+  /// fat binary. The pass references the linker's \c luthier_fatbin
+  /// section-boundary symbols (\c __start_luthier_fatbin /
+  /// \c __stop_luthier_fatbin) and stores their addresses into these slots.
+  static const char *FatBinaryStart;
+  static const char *FatBinaryStop;
+
   static llvm::ArrayRef<HipHandleInfo> HipHandles;
 
 public:
   explicit ToolDeviceCodeOffloadParserTrait(llvm::Error &Err)
       : ToolDeviceCodeOffloadParser(
             llvm::MemoryBufferRef{
-                llvm::StringRef{__start_luthier_fatbin,
-                                static_cast<uint64_t>(__stop_luthier_fatbin -
-                                                      __start_luthier_fatbin)},
+                llvm::StringRef{
+                    FatBinaryStart,
+                    static_cast<uint64_t>(FatBinaryStop - FatBinaryStart)},
                 ""},
             HipHandles, Err) {
     /// Spurious use of the \c DeviceCodeMarker to force emission of
@@ -141,8 +139,12 @@ public:
 };
 
 #define LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(DERIVED)                    \
-  __attribute__((managed)) char ::luthier::ToolDeviceCodeOffloadParserTrait<   \
-      DERIVED>::DeviceCodeMarker;                                              \
+  __attribute__((managed, used)) char ::luthier::                              \
+      ToolDeviceCodeOffloadParserTrait<DERIVED>::DeviceCodeMarker;             \
+  __attribute__((used)) const char                                             \
+      * ::luthier::ToolDeviceCodeOffloadParserTrait<DERIVED>::FatBinaryStart;  \
+  __attribute__((used)) const char                                             \
+      * ::luthier::ToolDeviceCodeOffloadParserTrait<DERIVED>::FatBinaryStop;   \
   __attribute__((used)) llvm::ArrayRef<HipHandleInfo>::luthier::               \
       ToolDeviceCodeOffloadParserTrait<DERIVED>::HipHandles;
 
