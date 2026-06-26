@@ -13,11 +13,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file Consumers.h
-/// Defines <tt>clang::SemaConsumer</tt>s used in Luthier tool CXX compilation.
+/// \file
+/// Defines Sema and AST Consumers used in Luthier tool CXX compilation.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CXX_COMPILATION_CONSUMERS_H
 #define LUTHIER_TOOL_CXX_COMPILATION_CONSUMERS_H
+#include <clang/AST/ASTContext.h>
 #include <clang/AST/DeclGroup.h>
 #include <clang/Sema/SemaConsumer.h>
 #include <llvm/ADT/DenseMap.h>
@@ -30,23 +31,15 @@ class Sema;
 
 namespace luthier {
 
-/// \brief SemaConsumer that materializes host-side handles for tagged
-/// device functions and retargets host-context references to them.
-///
-/// \c LuthierExportFunctionHandleAttrInfo promotes every tagged
-/// \c __device__ function to \c __host__ \c __device__ so Sema accepts
-/// \c &deviceFn from host context at parse time, but doesn't otherwise
-/// touch the AST. This consumer walks every host-context
-/// \c DeclRefExpr; if the referent (or, for template specializations,
-/// the primary template) carries the export-handle annotation, it
-/// synthesizes a concrete \c __host__ \c FunctionDecl with a unique
-/// mangled-suffix name, empty body, and the export-handle annotation,
-/// then retargets the \c DeclRefExpr. After retargeting it drops
-/// \c CUDAHostAttr from the original so any future host reference falls
-/// back to the normal \c err_ref_bad_target diagnostic.
-class ExportDevFuncHostHandleConsumer : public clang::SemaConsumer {
+class EmitEmptyHostForDevFuncConsumer : public clang::SemaConsumer {
+  clang::Sema *SemaRef{nullptr};
+
+  /// Mapping between the device function declarations and their host handle
+  llvm::DenseMap<clang::FunctionDecl *, clang::FunctionDecl *>
+      DevToHostFuncDecl{};
+
 public:
-  ExportDevFuncHostHandleConsumer() = default;
+  EmitEmptyHostForDevFuncConsumer() = default;
 
   void InitializeSema(clang::Sema &S) override;
 
@@ -54,12 +47,7 @@ public:
 
   bool HandleTopLevelDecl(clang::DeclGroupRef DG) override;
 
-private:
-  clang::Sema *SemaRef = nullptr;
-
-  /// Canonical original FunctionDecl → its synthesized host handle.
-  /// Cleared per TU on \c InitializeSema.
-  llvm::DenseMap<clang::FunctionDecl *, clang::FunctionDecl *> OrigToHandle;
+  void HandleTranslationUnit(clang::ASTContext &Ctx) override;
 };
 
 } // namespace luthier
