@@ -21,7 +21,6 @@
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/DeclGroup.h>
 #include <clang/Sema/SemaConsumer.h>
-#include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringSet.h>
 
@@ -61,34 +60,20 @@ namespace luthier {
 class EmitHostHandleForDevFuncConsumer : public clang::SemaConsumer {
   clang::Sema *SemaRef{nullptr};
 
-  /// A \c __device__-only function and the \c __host__ overload synthesized for
-  /// it during parsing (the \c Host decl is body-less until finalization).
-  struct SynthHandle {
-    clang::FunctionDecl *Dev;
-    clang::FunctionDecl *Host;
-  };
-
-  /// Synthesized non-template host overloads, in source order.
-  llvm::SmallVector<SynthHandle, 16> Handles;
-
-  /// Synthesized host overloads of \c __device__ function templates, keyed by
-  /// the device template's canonical decl so each template is cloned once.
-  llvm::DenseMap<clang::FunctionTemplateDecl *, clang::FunctionTemplateDecl *>
-      TemplateHandles;
-
   /// \c __device__ functions that already had a host-callable counterpart (a
   /// user-written \c __host__ overload, or the function itself when it is
   /// \c __host__ \c __device__); their counterpart is annotated in place if the
   /// function turns out to be exported.
   llvm::SmallVector<clang::FunctionDecl *, 16> ExistingHosts;
 
-  /// Stable, ASTContext-independent location keys of the \c __device__-only
-  /// functions that need a \c __host__ overload synthesized — those lacking one
-  /// in the complete AST. Computed up front by a throwaway pre-parse (the real
-  /// parse can't answer "does a host overload exist?" reliably, since the
-  /// standard library declares host \c malloc/\c sqrt after their \c __device__
-  /// peers, so a streaming check sees a half-built AST).
+  /// Location keys of the \c __device__-only functions that need a
+  /// \c __host__ overload synthesized in the final AST. Computed in the
+  /// pre-parse step.
   llvm::StringSet<> Synthesize;
+
+  /// Keys already synthesized, so a function seen twice (separate declaration
+  /// and definition) does not get a duplicate host handle.
+  llvm::StringSet<> Synthesized;
 
 public:
   explicit EmitHostHandleForDevFuncConsumer(clang::CompilerInstance &CI);

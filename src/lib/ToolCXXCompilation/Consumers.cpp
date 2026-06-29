@@ -171,25 +171,14 @@ clang::FunctionDecl *cloneHostDecl(clang::Sema &S, clang::FunctionDecl *Dev,
   return Host;
 }
 
-/// Gives \p Host an empty body if no definition of it exists yet, then tags it
-/// with the export-handle marker and marks it referenced so it is emitted. When
-/// the tool defined its own \c __host__ overload, \p Host already merged with
-/// it; the existing definition is kept and only annotated.
-void finalizeHostHandle(clang::Sema &S, clang::FunctionDecl *Host) {
-  clang::ASTContext &Ctx = S.Context;
-  clang::FunctionDecl *Def = Host->getDefinition();
-  if (!Def) {
-    Host->setBody(clang::CompoundStmt::Create(
-        Ctx, /*Stmts=*/{}, clang::FPOptionsOverride(), Host->getLocation(),
-        Host->getLocation()));
-    Def = Host;
-  }
-  annotateExportHandle(Ctx, Def);
-  S.MarkFunctionReferenced(Def->getLocation(), Def, /*MightBeOdrUse=*/true);
-  // CodeGen already streamed past this decl during parsing (as a body-less
-  // declaration); re-feed it so the freshly attached body and annotation are
-  // emitted.
-  S.Consumer.HandleTopLevelDecl(clang::DeclGroupRef(Def));
+/// Gives \p FD an empty body and tags it with the export-handle marker. On a
+/// function template's pattern, the marker propagates to every instantiation,
+/// so each specialization is emitted annotated without further work.
+void defineAsHostHandle(clang::ASTContext &Ctx, clang::FunctionDecl *FD) {
+  FD->setBody(clang::CompoundStmt::Create(Ctx, /*Stmts=*/{},
+                                          clang::FPOptionsOverride(),
+                                          FD->getLocation(), FD->getLocation()));
+  annotateExportHandle(Ctx, FD);
 }
 
 //===----------------------------------------------------------------------===//
@@ -254,6 +243,11 @@ public:
 
   bool VisitFunctionDecl(clang::FunctionDecl *FD) {
     if (!SemaRef)
+      return true;
+    // Synthesis happens at the template level, so classify the pattern, not its
+    // instantiations: a specialization's concrete signature wouldn't match a
+    // host *template* overload's dependent one, falsely flagging it.
+    if (FD->getPrimaryTemplate())
       return true;
     if (SemaRef->CUDA().IdentifyTarget(FD) != clang::CUDAFunctionTarget::Device)
       return true;
@@ -332,9 +326,8 @@ EmitHostHandleForDevFuncConsumer::EmitHostHandleForDevFuncConsumer(
 
 void EmitHostHandleForDevFuncConsumer::InitializeSema(clang::Sema &S) {
   SemaRef = &S;
-  Handles.clear();
-  TemplateHandles.clear();
   ExistingHosts.clear();
+  Synthesized.clear();
 }
 
 void EmitHostHandleForDevFuncConsumer::ForgetSema() { SemaRef = nullptr; }
@@ -351,7 +344,7 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
   const clang::SourceManager &SM = S.getSourceManager();
 
   // Walks one declaration, recursing through namespace / linkage-spec scopes
-  // and the tool's own records, and synthesizes a body-less __host__ overload
+  // and the tool's own records, and synthesizes a finalized __host__ overload
   // for every __device__-only function the pre-pass flagged as lacking one.
   llvm::SmallVector<clang::Decl *, 16> Worklist(DG.begin(), DG.end());
   while (!Worklist.empty()) {
@@ -389,23 +382,30 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
     if (Target != clang::CUDAFunctionTarget::Device)
       continue;
 
-    if (!Synthesize.contains(keyOf(SM, Dev))) {
+    std::string Key = keyOf(SM, Dev);
+    if (!Synthesize.contains(Key)) {
       // The pre-pass saw a __host__ overload for this function (a user sibling
       // or the standard library's host peer); annotate it instead.
       ExistingHosts.push_back(Dev);
       continue;
     }
+    // A function with separate declaration + definition is seen twice; only the
+    // first encounter synthesizes the handle.
+    if (!Synthesized.insert(Key).second)
+      continue;
 
     clang::DeclContext *DC = Dev->getDeclContext();
     bool IsMember = DC->isRecord();
 
+    // The pre-pass guarantees no host overload exists, so the handle is
+    // finalized immediately: an empty body and the export annotation. For a
+    // template, both are placed on the pattern and inherited by every
+    // instantiation the host references trigger.
+    clang::FunctionDecl *HostPattern = cloneHostDecl(S, Dev, DC);
+    defineAsHostHandle(Ctx, HostPattern);
+
     if (DevTpl) {
-      clang::FunctionTemplateDecl *&HostTpl =
-          TemplateHandles[DevTpl->getCanonicalDecl()];
-      if (HostTpl)
-        continue;
-      clang::FunctionDecl *HostPattern = cloneHostDecl(S, Dev, DC);
-      HostTpl = clang::FunctionTemplateDecl::Create(
+      auto *HostTpl = clang::FunctionTemplateDecl::Create(
           Ctx, DC, DevTpl->getLocation(), DevTpl->getDeclName(),
           DevTpl->getTemplateParameters(), HostPattern);
       HostTpl->setAccess(DevTpl->getAccess());
@@ -414,11 +414,12 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
       if (!IsMember)
         S.PushOnScopeChains(HostTpl, S.TUScope, /*AddToContext=*/false);
     } else {
-      clang::FunctionDecl *Host = cloneHostDecl(S, Dev, DC);
-      DC->addDecl(Host);
+      DC->addDecl(HostPattern);
       if (!IsMember)
-        S.PushOnScopeChains(Host, S.TUScope, /*AddToContext=*/false);
-      Handles.push_back({Dev, Host});
+        S.PushOnScopeChains(HostPattern, S.TUScope, /*AddToContext=*/false);
+      S.MarkFunctionReferenced(HostPattern->getLocation(), HostPattern,
+                               /*MightBeOdrUse=*/true);
+      S.Consumer.HandleTopLevelDecl(clang::DeclGroupRef(HostPattern));
     }
   }
   return true;
@@ -433,44 +434,39 @@ void EmitHostHandleForDevFuncConsumer::HandleTranslationUnit(
 
   clang::Sema &S = *SemaRef;
 
-  /// A handle is exported when host code referenced it, or when its
-  /// \c __device__ source is \c used (a hook that must survive even without a
-  /// reference).
-  auto isExported = [](const clang::FunctionDecl *Dev,
-                       const clang::FunctionDecl *Host) {
-    return (Dev && Dev->hasAttr<clang::UsedAttr>()) || Host->isReferenced() ||
-           Host->isUsed();
+  auto annotateAndEmit = [&](clang::FunctionDecl *Def) {
+    annotateExportHandle(Ctx, Def);
+    S.Consumer.HandleTopLevelDecl(clang::DeclGroupRef(Def));
   };
 
-  // Non-template host overloads.
-  for (const SynthHandle &H : Handles)
-    if (isExported(H.Dev, H.Host))
-      finalizeHostHandle(S, H.Host);
-
-  // Template host overloads: finalize each specialization that host code
-  // instantiated (or all of them when the device template is `used`).
-  for (auto &[DevTpl, HostTpl] : TemplateHandles) {
-    bool DevUsed = DevTpl->getTemplatedDecl()->hasAttr<clang::UsedAttr>();
-    for (clang::FunctionDecl *Spec : HostTpl->specializations())
-      if (DevUsed || Spec->isReferenced() || Spec->isUsed())
-        finalizeHostHandle(S, Spec);
-  }
-
-  // __device__ functions that already had a host-callable counterpart (a user
-  // overload, or the function itself when __host__ __device__): annotate that
-  // counterpart in place — no body, no synthesis.
+  // Synthesized handles are finalized at creation; the only post-parse work is
+  // annotating __device__ functions that already had a host-callable
+  // counterpart (a user __host__ overload, or the function itself when it is
+  // __host__ __device__) and that turned out to be exported — i.e. host code
+  // referenced the counterpart, or the __device__ source is `used`.
   for (clang::FunctionDecl *Dev : ExistingHosts) {
+    bool DevUsed = Dev->hasAttr<clang::UsedAttr>();
     clang::FunctionDecl *Host =
         S.CUDA().IdentifyTarget(Dev) == clang::CUDAFunctionTarget::HostDevice
             ? Dev
             : findHostOverload(S, Dev);
-    if (!Host || !isExported(Dev, Host))
+    if (!Host)
       continue;
-    clang::FunctionDecl *Def = Host->getDefinition();
-    if (!Def)
+    // For a host template the annotation must land on each instantiation:
+    // annotating the pattern now wouldn't reach instantiations already emitted
+    // during parsing.
+    if (clang::FunctionTemplateDecl *FTD =
+            Host->getDescribedFunctionTemplate()) {
+      for (clang::FunctionDecl *Spec : FTD->specializations())
+        if ((DevUsed || Spec->isReferenced() || Spec->isUsed()) &&
+            Spec->getDefinition())
+          annotateAndEmit(Spec->getDefinition());
       continue;
-    annotateExportHandle(Ctx, Def);
-    S.Consumer.HandleTopLevelDecl(clang::DeclGroupRef(Def));
+    }
+    if (!DevUsed && !Host->isReferenced() && !Host->isUsed())
+      continue;
+    if (clang::FunctionDecl *Def = Host->getDefinition())
+      annotateAndEmit(Def);
   }
 }
 
