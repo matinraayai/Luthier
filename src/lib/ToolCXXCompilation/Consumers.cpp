@@ -27,6 +27,7 @@
 #include <clang/Frontend/FrontendAction.h>
 #include <clang/Sema/Sema.h>
 #include <clang/Sema/SemaCUDA.h>
+#include <llvm/ADT/SmallPtrSet.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/IOSandbox.h>
@@ -47,21 +48,15 @@ std::string keyOf(const clang::SourceManager &SM,
   return K->getCanonicalDecl()->getLocation().printToString(SM);
 }
 
-/// Returns true if any redeclaration of \p FD already carries an
-/// \c annotate(\p Tag) attribute.
-bool hasAnnotation(const clang::FunctionDecl *FD, llvm::StringRef Tag) {
-  for (const clang::FunctionDecl *ReDecl : FD->redecls())
-    for (const auto *A : ReDecl->specific_attrs<clang::AnnotateAttr>())
-      if (A->getAnnotation() == Tag)
-        return true;
-  return false;
-}
-
 /// Tags \p FD with the export-handle marker the IR pass harvests from
-/// \c @llvm.global.annotations, unless an equal annotation is already present.
+/// \c @llvm.global.annotations, unless \p FD itself already carries it. The
+/// check is on \p FD alone, not its redeclarations, so a declaration and its
+/// definition can both be tagged — CodeGen reads the annotation off whichever
+/// decl it emits.
 void annotateExportHandle(clang::ASTContext &Ctx, clang::FunctionDecl *FD) {
-  if (hasAnnotation(FD, ExportFunctionHandleMarker))
-    return;
+  for (const auto *A : FD->specific_attrs<clang::AnnotateAttr>())
+    if (A->getAnnotation() == ExportFunctionHandleMarker)
+      return;
   FD->addAttr(clang::AnnotateAttr::Create(Ctx, ExportFunctionHandleMarker,
                                           /*Args=*/nullptr, /*NumArgs=*/0,
                                           FD->getLocation()));
@@ -221,20 +216,86 @@ public:
   }
 };
 
-/// Walks the \e completed AST and records every \c __device__-only function
-/// that is referenced from host (\p Referenced) or \c used yet has no
-/// \c __host__ overload — the set the real parse must synthesize handles for.
+/// Collects the location keys of functions whose address is \e taken in host
+/// code, as opposed to being merely called — taking a device function's address
+/// is what warrants a host handle, a plain call does not. Device-\e only
+/// address-takes are ill-formed and surface as err_ref_bad_target (see
+/// \c BadRefCollector); this catches the legal case where a host-callable
+/// counterpart (a user \c __host__ overload, a \c __host__ \c __device__
+/// function, or an external like libm's \c sqrt) already exists.
+class AddrTakeCollector : public clang::RecursiveASTVisitor<AddrTakeCollector> {
+  clang::Sema &S;
+  llvm::StringSet<> &AddressTaken;
+  llvm::SmallVector<const clang::FunctionDecl *, 8> Enclosing;
+  llvm::SmallPtrSet<const clang::Stmt *, 32> CalleeRefs;
+
+  bool inHostContext() const {
+    if (Enclosing.empty())
+      return true; // file-scope initializer: runs on host
+    clang::CUDAFunctionTarget T = S.CUDA().IdentifyTarget(Enclosing.back());
+    return T == clang::CUDAFunctionTarget::Host ||
+           T == clang::CUDAFunctionTarget::HostDevice;
+  }
+
+public:
+  AddrTakeCollector(clang::Sema &S, llvm::StringSet<> &AddressTaken)
+      : S(S), AddressTaken(AddressTaken) {}
+
+  bool shouldVisitTemplateInstantiations() const { return true; }
+
+  bool TraverseFunctionDecl(clang::FunctionDecl *FD) {
+    Enclosing.push_back(FD);
+    bool Ok =
+        clang::RecursiveASTVisitor<AddrTakeCollector>::TraverseFunctionDecl(FD);
+    Enclosing.pop_back();
+    return Ok;
+  }
+  bool TraverseCXXMethodDecl(clang::CXXMethodDecl *MD) {
+    Enclosing.push_back(MD);
+    bool Ok =
+        clang::RecursiveASTVisitor<AddrTakeCollector>::TraverseCXXMethodDecl(MD);
+    Enclosing.pop_back();
+    return Ok;
+  }
+
+  bool VisitCallExpr(clang::CallExpr *CE) {
+    // Visited before the callee's DeclRefExpr (pre-order), so the callee is
+    // recorded by the time VisitDeclRefExpr sees it.
+    if (const clang::Expr *Callee = CE->getCallee())
+      CalleeRefs.insert(Callee->IgnoreParenImpCasts());
+    return true;
+  }
+
+  bool VisitDeclRefExpr(clang::DeclRefExpr *E) {
+    if (CalleeRefs.contains(E))
+      return true; // a call, not an address-take
+    auto *FD = llvm::dyn_cast<clang::FunctionDecl>(E->getDecl());
+    if (!FD || !inHostContext())
+      return true;
+    AddressTaken.insert(keyOf(S.getSourceManager(), FD));
+    return true;
+  }
+};
+
+/// Walks the \e completed AST and decides, for each \c __device__ function, how
+/// the real parse should make it host-addressable:
+///   - \c Synthesize: device-only with no host overload, taken-or-\c used from
+///     host — the real parse will emit a \c __host__ handle.
+///   - \c Annotate: a host-callable counterpart already exists (user overload,
+///     \c __host__ \c __device__, or external) — the real parse tags it.
 class ExportPlanConsumer
     : public clang::SemaConsumer,
       public clang::RecursiveASTVisitor<ExportPlanConsumer> {
   llvm::StringSet<> &Synthesize;
+  llvm::StringSet<> &Annotate;
   const llvm::StringSet<> &Referenced;
+  llvm::StringSet<> AddressTaken;
   clang::Sema *SemaRef{nullptr};
 
 public:
-  ExportPlanConsumer(llvm::StringSet<> &Synthesize,
+  ExportPlanConsumer(llvm::StringSet<> &Synthesize, llvm::StringSet<> &Annotate,
                      const llvm::StringSet<> &Referenced)
-      : Synthesize(Synthesize), Referenced(Referenced) {}
+      : Synthesize(Synthesize), Annotate(Annotate), Referenced(Referenced) {}
 
   void InitializeSema(clang::Sema &S) override { SemaRef = &S; }
   void ForgetSema() override { SemaRef = nullptr; }
@@ -244,54 +305,81 @@ public:
   bool VisitFunctionDecl(clang::FunctionDecl *FD) {
     if (!SemaRef)
       return true;
-    // Synthesis happens at the template level, so classify the pattern, not its
-    // instantiations: a specialization's concrete signature wouldn't match a
-    // host *template* overload's dependent one, falsely flagging it.
+    // Classify at the template level, not per instantiation: a specialization's
+    // concrete signature wouldn't match a host *template* overload's dependent
+    // one. (A taken specialization is still seen — AddressTaken keys it to the
+    // pattern.)
     if (FD->getPrimaryTemplate())
       return true;
-    if (SemaRef->CUDA().IdentifyTarget(FD) != clang::CUDAFunctionTarget::Device)
+    clang::Sema &S = *SemaRef;
+    const clang::SourceManager &SM = S.getSourceManager();
+    bool DevUsed = FD->hasAttr<clang::UsedAttr>();
+    clang::CUDAFunctionTarget T = S.CUDA().IdentifyTarget(FD);
+
+    // __host__ __device__: the function is its own host counterpart.
+    if (T == clang::CUDAFunctionTarget::HostDevice) {
+      std::string Key = keyOf(SM, FD);
+      if (DevUsed || AddressTaken.contains(Key))
+        Annotate.insert(Key);
       return true;
-    std::string Key = keyOf(SemaRef->getSourceManager(), FD);
-    if (!Referenced.contains(Key) && !FD->hasAttr<clang::UsedAttr>())
+    }
+    if (T != clang::CUDAFunctionTarget::Device)
       return true;
-    if (findHostOverload(*SemaRef, FD))
+
+    // A host-callable counterpart already exists: tag it if it is taken from
+    // host (a plain call doesn't warrant a handle) or the device source is used.
+    if (clang::FunctionDecl *Host = findHostOverload(S, FD)) {
+      std::string HostKey = keyOf(SM, Host);
+      if (DevUsed || AddressTaken.contains(HostKey))
+        Annotate.insert(HostKey);
       return true;
-    Synthesize.insert(Key);
+    }
+    // Device-only with no host overload: synthesize a handle if host code took
+    // its address (err_ref_bad_target, via Referenced) or it is `used`.
+    std::string Key = keyOf(SM, FD);
+    if (Referenced.contains(Key) || DevUsed)
+      Synthesize.insert(Key);
     return true;
   }
 
   void HandleTranslationUnit(clang::ASTContext &Ctx) override {
-    if (SemaRef)
-      TraverseDecl(Ctx.getTranslationUnitDecl());
+    if (!SemaRef)
+      return;
+    AddrTakeCollector(*SemaRef, AddressTaken)
+        .TraverseDecl(Ctx.getTranslationUnitDecl());
+    TraverseDecl(Ctx.getTranslationUnitDecl());
   }
 };
 
 class ExportPlanAction : public clang::ASTFrontendAction {
   llvm::StringSet<> &Synthesize;
+  llvm::StringSet<> &Annotate;
   const llvm::StringSet<> &Referenced;
 
 public:
-  ExportPlanAction(llvm::StringSet<> &Synthesize,
+  ExportPlanAction(llvm::StringSet<> &Synthesize, llvm::StringSet<> &Annotate,
                    const llvm::StringSet<> &Referenced)
-      : Synthesize(Synthesize), Referenced(Referenced) {}
+      : Synthesize(Synthesize), Annotate(Annotate), Referenced(Referenced) {}
 
   std::unique_ptr<clang::ASTConsumer>
   CreateASTConsumer(clang::CompilerInstance &, llvm::StringRef) override {
-    return std::make_unique<ExportPlanConsumer>(Synthesize, Referenced);
+    return std::make_unique<ExportPlanConsumer>(Synthesize, Annotate,
+                                                Referenced);
   }
 };
 
-/// Runs a throwaway, syntax-only pre-parse of \p MainCI's translation unit and
-/// returns the location keys of \c __device__-only functions that are
-/// referenced from host (or \c used) yet lack a \c __host__ overload. Unlike
-/// the streaming real parse, this inspects the \e complete AST, so the standard
-/// library's host \c malloc/\c sqrt (declared after their \c __device__ peers)
-/// are correctly recognized. Returns empty for non-host CUDA/HIP compiles.
-llvm::StringSet<> computeSynthesizeKeys(clang::CompilerInstance &MainCI) {
-  llvm::StringSet<> Synthesize;
+/// Runs a throwaway, syntax-only pre-parse of \p MainCI's translation unit to
+/// fill \p Synthesize (device-only functions needing a synthesized host handle)
+/// and \p Annotate (existing host counterparts to tag). Unlike the streaming
+/// real parse, this inspects the \e complete AST, so a host overload declared
+/// after its \c __device__ peer (the standard library's \c malloc/\c sqrt) is
+/// recognized. No-op for non-host CUDA/HIP compiles.
+void computeExportPlan(clang::CompilerInstance &MainCI,
+                       llvm::StringSet<> &Synthesize,
+                       llvm::StringSet<> &Annotate) {
   const clang::LangOptions &LO = MainCI.getLangOpts();
   if (!(LO.CUDA && !LO.CUDAIsDevice))
-    return Synthesize;
+    return;
 
   // The main compilation runs with the LLVM IO sandbox armed; our pre-pass
   // legitimately re-reads the same input files, so disable it for the duration.
@@ -313,20 +401,19 @@ llvm::StringSet<> computeSynthesizeKeys(clang::CompilerInstance &MainCI) {
   // Don't let the provoked errors trip the error limit and stop parsing early.
   PreCI.getDiagnostics().setErrorLimit(0);
 
-  ExportPlanAction Action(Synthesize, Referenced);
+  ExportPlanAction Action(Synthesize, Annotate, Referenced);
   PreCI.ExecuteAction(Action);
-  return Synthesize;
 }
 
 } // namespace
 
 EmitHostHandleForDevFuncConsumer::EmitHostHandleForDevFuncConsumer(
-    clang::CompilerInstance &CI)
-    : Synthesize(computeSynthesizeKeys(CI)) {}
+    clang::CompilerInstance &CI) {
+  computeExportPlan(CI, Synthesize, Annotate);
+}
 
 void EmitHostHandleForDevFuncConsumer::InitializeSema(clang::Sema &S) {
   SemaRef = &S;
-  ExistingHosts.clear();
   Synthesized.clear();
 }
 
@@ -344,8 +431,9 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
   const clang::SourceManager &SM = S.getSourceManager();
 
   // Walks one declaration, recursing through namespace / linkage-spec scopes
-  // and the tool's own records, and synthesizes a finalized __host__ overload
-  // for every __device__-only function the pre-pass flagged as lacking one.
+  // and the tool's own records. Per the pre-pass plan, it either annotates an
+  // existing host counterpart in place or synthesizes a finalized __host__
+  // overload for a device-only function that lacks one.
   llvm::SmallVector<clang::Decl *, 16> Worklist(DG.begin(), DG.end());
   while (!Worklist.empty()) {
     clang::Decl *D = Worklist.pop_back_val();
@@ -373,22 +461,22 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
     if (!Dev)
       continue;
 
-    clang::CUDAFunctionTarget Target = S.CUDA().IdentifyTarget(Dev);
-    if (Target == clang::CUDAFunctionTarget::HostDevice) {
-      // Already host-addressable; annotate later if it turns out exported.
-      ExistingHosts.push_back(Dev);
-      continue;
-    }
-    if (Target != clang::CUDAFunctionTarget::Device)
-      continue;
-
     std::string Key = keyOf(SM, Dev);
-    if (!Synthesize.contains(Key)) {
-      // The pre-pass saw a __host__ overload for this function (a user sibling
-      // or the standard library's host peer); annotate it instead.
-      ExistingHosts.push_back(Dev);
+
+    // Existing host counterpart (a user __host__ overload, a __host__ __device__
+    // function, or an external like libm's sqrt): tag the decl we're looking at
+    // right here, before CodeGen emits it. For a template the marker goes on the
+    // pattern and propagates to its instantiations. We don't re-feed it — it's a
+    // real source decl CodeGen will emit anyway.
+    if (Annotate.contains(Key)) {
+      annotateExportHandle(Ctx, Dev);
       continue;
     }
+
+    if (S.CUDA().IdentifyTarget(Dev) != clang::CUDAFunctionTarget::Device)
+      continue;
+    if (!Synthesize.contains(Key))
+      continue;
     // A function with separate declaration + definition is seen twice; only the
     // first encounter synthesizes the handle.
     if (!Synthesized.insert(Key).second)
@@ -423,51 +511,6 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
     }
   }
   return true;
-}
-
-void EmitHostHandleForDevFuncConsumer::HandleTranslationUnit(
-    clang::ASTContext &Ctx) {
-  if (!SemaRef)
-    return;
-  if (!(Ctx.getLangOpts().CUDA && !Ctx.getLangOpts().CUDAIsDevice))
-    return;
-
-  clang::Sema &S = *SemaRef;
-
-  auto annotateAndEmit = [&](clang::FunctionDecl *Def) {
-    annotateExportHandle(Ctx, Def);
-    S.Consumer.HandleTopLevelDecl(clang::DeclGroupRef(Def));
-  };
-
-  // Synthesized handles are finalized at creation; the only post-parse work is
-  // annotating __device__ functions that already had a host-callable
-  // counterpart (a user __host__ overload, or the function itself when it is
-  // __host__ __device__) and that turned out to be exported — i.e. host code
-  // referenced the counterpart, or the __device__ source is `used`.
-  for (clang::FunctionDecl *Dev : ExistingHosts) {
-    bool DevUsed = Dev->hasAttr<clang::UsedAttr>();
-    clang::FunctionDecl *Host =
-        S.CUDA().IdentifyTarget(Dev) == clang::CUDAFunctionTarget::HostDevice
-            ? Dev
-            : findHostOverload(S, Dev);
-    if (!Host)
-      continue;
-    // For a host template the annotation must land on each instantiation:
-    // annotating the pattern now wouldn't reach instantiations already emitted
-    // during parsing.
-    if (clang::FunctionTemplateDecl *FTD =
-            Host->getDescribedFunctionTemplate()) {
-      for (clang::FunctionDecl *Spec : FTD->specializations())
-        if ((DevUsed || Spec->isReferenced() || Spec->isUsed()) &&
-            Spec->getDefinition())
-          annotateAndEmit(Spec->getDefinition());
-      continue;
-    }
-    if (!DevUsed && !Host->isReferenced() && !Host->isUsed())
-      continue;
-    if (clang::FunctionDecl *Def = Host->getDefinition())
-      annotateAndEmit(Def);
-  }
 }
 
 } // namespace luthier

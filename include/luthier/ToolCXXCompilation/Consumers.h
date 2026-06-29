@@ -60,16 +60,13 @@ namespace luthier {
 class EmitHostHandleForDevFuncConsumer : public clang::SemaConsumer {
   clang::Sema *SemaRef{nullptr};
 
-  /// \c __device__ functions that already had a host-callable counterpart (a
-  /// user-written \c __host__ overload, or the function itself when it is
-  /// \c __host__ \c __device__); their counterpart is annotated in place if the
-  /// function turns out to be exported.
-  llvm::SmallVector<clang::FunctionDecl *, 16> ExistingHosts;
-
-  /// Location keys of the \c __device__-only functions that need a
-  /// \c __host__ overload synthesized in the final AST. Computed in the
-  /// pre-parse step.
+  /// Pre-parse verdict, keyed by stable source location:
+  /// \c Synthesize — \c __device__-only functions with no \c __host__ overload
+  /// that need one emitted; \c Annotate — existing host-callable counterparts
+  /// (user \c __host__ overloads, \c __host__ \c __device__ functions, or
+  /// externals) that should be tagged in place.
   llvm::StringSet<> Synthesize;
+  llvm::StringSet<> Annotate;
 
   /// Keys already synthesized, so a function seen twice (separate declaration
   /// and definition) does not get a duplicate host handle.
@@ -83,8 +80,6 @@ public:
   void ForgetSema() override;
 
   bool HandleTopLevelDecl(clang::DeclGroupRef DG) override;
-
-  void HandleTranslationUnit(clang::ASTContext &Ctx) override;
 };
 
 } // namespace luthier
