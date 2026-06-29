@@ -13,11 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file ToolCXXCompilationPlugin.cpp
+/// \file
 /// Clang plugin for running frontend actions and attributes required for
 /// processing Luthier tool source code.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCXXCompilation/Attributes.h"
 #include "luthier/ToolCXXCompilation/Consumers.h"
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/FrontendPluginRegistry.h>
@@ -30,8 +29,9 @@ namespace {
 class Action : public clang::PluginASTAction {
 public:
   std::unique_ptr<clang::ASTConsumer>
-  CreateASTConsumer(clang::CompilerInstance &, llvm::StringRef) override {
-    return std::make_unique<luthier::ExportDevFuncHostHandleConsumer>();
+  CreateASTConsumer(clang::CompilerInstance &CI, llvm::StringRef) override {
+    return std::make_unique<luthier::EmitHostHandleForDevFuncConsumer>(
+        luthier::computeDevFuncExportPlan(CI));
   }
 
   bool ParseArgs(const clang::CompilerInstance &,
@@ -39,18 +39,15 @@ public:
     return true;
   }
 
-  ActionType getActionType() override { return AddBeforeMainAction; }
+  // Cmdline (not Add*) so the action only runs when explicitly requested with
+  // -add-plugin. This lets the throwaway pre-pass (see computeDevFuncExportPlan)
+  // clear AddPluginActions on its cloned invocation and thereby avoid
+  // re-instantiating — and infinitely recursing into — this plugin.
+  ActionType getActionType() override { return CmdlineBeforeMainAction; }
 };
 
 } // namespace
 
 static clang::FrontendPluginRegistry::Add<Action>
-    XAction("luthier-export-device-function-host-handle",
-            "Exports host-side handles for tagged device functions");
-
-static clang::ParsedAttrInfoRegistry::Add<
-    luthier::LuthierExportFunctionHandleAttrInfo>
-    XAttr("luthier_export_function_handle",
-          "Marks a __device__ function as host-accessible; the Luthier "
-          "host-handle export plugin will generate a corresponding __host__ "
-          "stub for each ODR-use of the function from host code");
+    XAction("luthier-emit-device-function-host-handle",
+            "Emits host-side handles for all device function declarations");
