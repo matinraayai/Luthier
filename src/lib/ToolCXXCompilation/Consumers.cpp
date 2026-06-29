@@ -36,10 +36,11 @@ namespace luthier {
 
 namespace {
 
-/// A stable, ASTContext-independent key for a function: the canonical
-/// declaration location (or, for a template specialization, its primary
-/// template's location) printed as \c file:line:col. Identical source parsed
-/// twice yields identical keys, so the pre-pass and the real parse agree.
+/// Provides the printed canonical declaration location of a function (or, for
+/// a template specialization, its primary template's location) printed as
+/// \c file:line:col. As Identical source parsed twice yields identical
+/// locations, this can be used as a ASTContext-independent identifier for a
+/// function
 std::string keyOf(const clang::SourceManager &SM,
                   const clang::FunctionDecl *FD) {
   const clang::FunctionDecl *K = FD;
@@ -170,9 +171,9 @@ clang::FunctionDecl *cloneHostDecl(clang::Sema &S, clang::FunctionDecl *Dev,
 /// function template's pattern, the marker propagates to every instantiation,
 /// so each specialization is emitted annotated without further work.
 void defineAsHostHandle(clang::ASTContext &Ctx, clang::FunctionDecl *FD) {
-  FD->setBody(clang::CompoundStmt::Create(Ctx, /*Stmts=*/{},
-                                          clang::FPOptionsOverride(),
-                                          FD->getLocation(), FD->getLocation()));
+  FD->setBody(
+      clang::CompoundStmt::Create(Ctx, /*Stmts=*/{}, clang::FPOptionsOverride(),
+                                  FD->getLocation(), FD->getLocation()));
   annotateExportHandle(Ctx, FD);
 }
 
@@ -203,11 +204,13 @@ public:
 
   void HandleDiagnostic(clang::DiagnosticsEngine::Level,
                         const clang::Diagnostic &Info) override {
-    if (Info.getID() != clang::diag::err_ref_bad_target || Info.getNumArgs() < 4)
+    if (Info.getID() != clang::diag::err_ref_bad_target ||
+        Info.getNumArgs() < 4)
       return;
     if (Info.getArgKind(2) != clang::DiagnosticsEngine::ak_nameddecl)
       return;
-    if (asInt(Info, 0) != static_cast<int64_t>(clang::CUDAFunctionTarget::Device) ||
+    if (asInt(Info, 0) !=
+            static_cast<int64_t>(clang::CUDAFunctionTarget::Device) ||
         asInt(Info, 3) != static_cast<int64_t>(clang::CUDAFunctionTarget::Host))
       return;
     auto *ND = reinterpret_cast<clang::NamedDecl *>(Info.getRawArg(2));
@@ -253,7 +256,8 @@ public:
   bool TraverseCXXMethodDecl(clang::CXXMethodDecl *MD) {
     Enclosing.push_back(MD);
     bool Ok =
-        clang::RecursiveASTVisitor<AddrTakeCollector>::TraverseCXXMethodDecl(MD);
+        clang::RecursiveASTVisitor<AddrTakeCollector>::TraverseCXXMethodDecl(
+            MD);
     Enclosing.pop_back();
     return Ok;
   }
@@ -327,7 +331,8 @@ public:
       return true;
 
     // A host-callable counterpart already exists: tag it if it is taken from
-    // host (a plain call doesn't warrant a handle) or the device source is used.
+    // host (a plain call doesn't warrant a handle) or the device source is
+    // used.
     if (clang::FunctionDecl *Host = findHostOverload(S, FD)) {
       std::string HostKey = keyOf(SM, Host);
       if (DevUsed || AddressTaken.contains(HostKey))
@@ -385,7 +390,8 @@ void computeExportPlan(clang::CompilerInstance &MainCI,
   // legitimately re-reads the same input files, so disable it for the duration.
   auto SandboxOff = llvm::sys::sandbox::scopedDisable();
 
-  auto Inv = std::make_shared<clang::CompilerInvocation>(MainCI.getInvocation());
+  auto Inv =
+      std::make_shared<clang::CompilerInvocation>(MainCI.getInvocation());
   // Drop this plugin from the cloned invocation so the pre-pass does not
   // re-instantiate it and recurse: the plugin is a CmdlineBeforeMainAction,
   // which the frontend only runs when its name is listed in AddPluginActions.
@@ -463,11 +469,11 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
 
     std::string Key = keyOf(SM, Dev);
 
-    // Existing host counterpart (a user __host__ overload, a __host__ __device__
-    // function, or an external like libm's sqrt): tag the decl we're looking at
-    // right here, before CodeGen emits it. For a template the marker goes on the
-    // pattern and propagates to its instantiations. We don't re-feed it — it's a
-    // real source decl CodeGen will emit anyway.
+    // Existing host counterpart (a user __host__ overload, a __host__
+    // __device__ function, or an external like libm's sqrt): tag the decl we're
+    // looking at right here, before CodeGen emits it. For a template the marker
+    // goes on the pattern and propagates to its instantiations. We don't
+    // re-feed it — it's a real source decl CodeGen will emit anyway.
     if (Annotate.contains(Key)) {
       annotateExportHandle(Ctx, Dev);
       continue;
