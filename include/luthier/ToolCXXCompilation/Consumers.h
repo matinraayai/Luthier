@@ -36,25 +36,28 @@ class Sema;
 namespace luthier {
 
 /// A \c clang::SemaConsumer that makes \c __device__ functions referenced from
-/// host code (or carrying \c __attribute__((used))) host-addressable, so a
-/// later IR pass can harvest a host-side handle for each of them.
+/// host code (or carrying <tt>__attribute__((used))</tt>) host-addressable by
+/// emitting an identical \c __host__ function with an empty body for them.
+/// If an associated \c __host__ function already exists, or if the
+/// \c __device__ function itself is also \c __host__, then they are annotated
+/// to be the corresponding host handle. The synthesized host handles'
+/// prototypes will be identical to their device sibling in every way, only
+/// removing anything device-specific from them.
 ///
-/// Taking the address of a \c __device__ function from host code is normally
-/// ill-formed (\c err_ref_bad_target), and by the time the AST is complete the
-/// offending reference has already been rewritten into a \c RecoveryExpr — too
-/// late to repair. The fix therefore has to happen \e during parsing: as each
-/// top-level \c __device__-only function (or function template) is seen
-/// (\c HandleTopLevelDecl), a body-less \c __host__ overload of it is
-/// synthesized so that subsequent host references resolve against the host
-/// overload instead of erroring. A body is deliberately \e not emitted yet, so
-/// the synthesized declaration merges cleanly with any \c __host__ overload the
-/// tool itself defines later in the same translation unit.
-///
-/// Once parsing is complete (\c HandleTranslationUnit) every host overload that
-/// ended up referenced — or whose \c __device__ source was \c used — is
-/// finalized: given an empty body if the tool did not define one, reconciled
-/// with any user-written overload, and tagged with the export-handle
-/// annotation the IR pass looks for.
+/// \details Taking the address of a \c __device__ function from host code is
+/// normally ill-formed (\c clang::err_ref_bad_target), and by the time the AST
+/// is complete the offending reference has already been rewritten into a
+/// \c RecoveryExpr - too late to repair. Therefore, this consumer does its job
+/// in two steps:
+/// - Step 1: Perform a syntax-only front-end action before the main parse
+/// happens (i.e., on consumer construction) to figure out in advance which
+/// \c __device__ functions or templates require emitting a \c __host__ handle.
+/// This is so that we avoid pre-emptively declaring a \c __host__ sibling for
+/// a \c __device__ function and causing clashes with \c __host__ handles
+/// declared by the source code itself.
+/// - Step 2: Using the info accumulated from the previous step, emit the
+/// \c __host__ handle for \c __device__ functions that need it inside
+/// \c HandleTopLevelDecl.
 class EmitHostHandleForDevFuncConsumer : public clang::SemaConsumer {
   clang::Sema *SemaRef{nullptr};
 
@@ -88,7 +91,6 @@ class EmitHostHandleForDevFuncConsumer : public clang::SemaConsumer {
   llvm::StringSet<> Synthesize;
 
 public:
-  /// Runs the pre-parse over \p CI's translation unit to populate \c Synthesize.
   explicit EmitHostHandleForDevFuncConsumer(clang::CompilerInstance &CI);
 
   void InitializeSema(clang::Sema &S) override;
