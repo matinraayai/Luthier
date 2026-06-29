@@ -136,11 +136,10 @@ void copyHostAttrs(clang::ASTContext &Ctx, const clang::FunctionDecl *Src,
     Dst->addAttr(clang::CUDAHostAttr::CreateImplicit(Ctx));
 }
 
-/// Creates a body-less \c __host__ clone of the \c __device__ function \p Dev
-/// in \p DC, mirroring its name, signature and access specifier so the clone
-/// merges with any \c __host__ overload the tool defines for itself.
-clang::FunctionDecl *cloneHostDecl(clang::Sema &S, clang::FunctionDecl *Dev,
-                                   clang::DeclContext *DC) {
+/// Synthesizes a \c __host__ handle for the \c __device__ function \p Dev in
+/// \p DC.
+clang::FunctionDecl *makeHostHandle(clang::Sema &S, clang::FunctionDecl *Dev,
+                                    clang::DeclContext *DC) {
   clang::ASTContext &Ctx = S.Context;
   clang::FunctionDecl *Host;
   if (auto *MD = llvm::dyn_cast<clang::CXXMethodDecl>(Dev)) {
@@ -159,17 +158,11 @@ clang::FunctionDecl *cloneHostDecl(clang::Sema &S, clang::FunctionDecl *Dev,
   Host->setAccess(Dev->getAccess());
   cloneParams(Ctx, Dev, Host);
   copyHostAttrs(Ctx, Dev, Host);
-  return Host;
-}
-
-/// Gives \p FD an empty body and tags it with the export-handle marker. On a
-/// function template's pattern, the marker propagates to every instantiation,
-/// so each specialization is emitted annotated without further work.
-void defineAsHostHandle(clang::ASTContext &Ctx, clang::FunctionDecl *FD) {
-  FD->setBody(
+  Host->setBody(
       clang::CompoundStmt::Create(Ctx, /*Stmts=*/{}, clang::FPOptionsOverride(),
-                                  FD->getLocation(), FD->getLocation()));
-  annotateExportHandle(Ctx, FD);
+                                  Host->getLocation(), Host->getLocation()));
+  annotateExportHandle(Ctx, Host);
+  return Host;
 }
 
 //===----------------------------------------------------------------------===//
@@ -490,8 +483,7 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
     // finalized immediately: an empty body and the export annotation. For a
     // template, both are placed on the pattern and inherited by every
     // instantiation the host references trigger.
-    clang::FunctionDecl *HostPattern = cloneHostDecl(S, Dev, DC);
-    defineAsHostHandle(Ctx, HostPattern);
+    clang::FunctionDecl *HostPattern = makeHostHandle(S, Dev, DC);
 
     if (DevTpl) {
       auto *HostTpl = clang::FunctionTemplateDecl::Create(
