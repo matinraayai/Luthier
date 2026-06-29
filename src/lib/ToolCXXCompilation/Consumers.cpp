@@ -120,7 +120,8 @@ void cloneParams(clang::ASTContext &Ctx, const clang::FunctionDecl *Src,
 }
 
 /// Copies every non-device-only attribute of \p Src onto \p Dst (this carries
-/// \c used, visibility, etc.), then forces \p Dst \c __host__.
+/// \c used, visibility, etc.), then forces \p Dst \c __host__. Also skips
+/// \c ExportFunctionHandleMarker annotations if present in \p Src.
 void copyHostAttrs(clang::ASTContext &Ctx, const clang::FunctionDecl *Src,
                    clang::FunctionDecl *Dst) {
   for (const clang::Attr *A : Src->attrs()) {
