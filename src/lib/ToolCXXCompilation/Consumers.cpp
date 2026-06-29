@@ -90,9 +90,9 @@ clang::FunctionDecl *findHostOverload(clang::Sema &S,
         Other = FTD->getTemplatedDecl();
     if (!Other || Other->getCanonicalDecl() == Canon)
       continue;
-    // Ignore the exception specification: a __device__ function and its host
-    // peer routinely differ there (e.g. glibc's `malloc` is `__THROW` while
-    // HIP's __device__ `malloc` is not), yet they are the same overload.
+    /// Ignore the exception specification: a __device__ function and its host
+    /// peer routinely differ there (e.g. glibc's `malloc` is `__THROW` while
+    /// HIP's __device__ `malloc` is not), yet they are the same overload.
     if (!Ctx.hasSameFunctionTypeIgnoringExceptionSpec(Other->getType(),
                                                       Dev->getType()))
       continue;
