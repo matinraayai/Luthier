@@ -49,11 +49,8 @@ std::string keyOf(const clang::SourceManager &SM,
   return K->getCanonicalDecl()->getLocation().printToString(SM);
 }
 
-/// Tags \p FD with the export-handle marker the IR pass harvests from
-/// \c @llvm.global.annotations, unless \p FD itself already carries it. The
-/// check is on \p FD alone, not its redeclarations, so a declaration and its
-/// definition can both be tagged — CodeGen reads the annotation off whichever
-/// decl it emits.
+/// Annotates \p FD with the \c ExportFunctionHandleMarker if not already
+/// annotated. The check is on \p FD alone, not its re-declarations.
 void annotateExportHandle(clang::ASTContext &Ctx, clang::FunctionDecl *FD) {
   for (const auto *A : FD->specific_attrs<clang::AnnotateAttr>())
     if (A->getAnnotation() == ExportFunctionHandleMarker)
