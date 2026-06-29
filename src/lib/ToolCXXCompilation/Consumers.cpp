@@ -104,18 +104,19 @@ clang::FunctionDecl *findHostOverload(clang::Sema &S,
   return nullptr;
 }
 
-/// Deep-clones \p Src's parameters into \p Dst.
+/// Deep-clones \p Src's parameters and sets them as \p Dst's parameters.
 void cloneParams(clang::ASTContext &Ctx, const clang::FunctionDecl *Src,
-                 clang::FunctionDecl *Dst,
-                 llvm::SmallVectorImpl<clang::ParmVarDecl *> &Out) {
+                 clang::FunctionDecl *Dst) {
+  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
   for (const clang::ParmVarDecl *P : Src->parameters()) {
     auto *NP = clang::ParmVarDecl::Create(
         Ctx, Dst, P->getBeginLoc(), P->getLocation(), P->getIdentifier(),
         P->getType(), P->getTypeSourceInfo(), P->getStorageClass(),
         /*DefArg=*/nullptr);
-    NP->setScopeInfo(/*scopeDepth=*/0, /*parameterIndex=*/Out.size());
-    Out.push_back(NP);
+    NP->setScopeInfo(/*scopeDepth=*/0, /*parameterIndex=*/Params.size());
+    Params.push_back(NP);
   }
+  Dst->setParams(Params);
 }
 
 /// Copies every non-device-only attribute of \p Src onto \p Dst (this carries
@@ -155,11 +156,7 @@ clang::FunctionDecl *cloneHostDecl(clang::Sema &S, clang::FunctionDecl *Dev,
         /*hasWrittenPrototype=*/true, Dev->getConstexprKind());
   }
   Host->setAccess(Dev->getAccess());
-
-  llvm::SmallVector<clang::ParmVarDecl *, 4> Params;
-  cloneParams(Ctx, Dev, Host, Params);
-  Host->setParams(Params);
-
+  cloneParams(Ctx, Dev, Host);
   copyHostAttrs(Ctx, Dev, Host);
   return Host;
 }
