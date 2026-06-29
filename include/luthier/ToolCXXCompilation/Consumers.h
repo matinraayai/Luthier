@@ -24,7 +24,6 @@
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringSet.h>
-#include <memory>
 
 namespace clang {
 class CompilerInstance;
@@ -35,26 +34,6 @@ class Sema;
 } // namespace clang
 
 namespace luthier {
-
-/// The result of the pre-pass (see \c computeDevFuncExportPlan): the set of
-/// \c __device__-only functions that have \b no \c __host__ overload anywhere
-/// in the completed translation unit and therefore need one synthesized.
-/// Entries are stable, ASTContext-independent location keys (the function's
-/// canonical declaration location printed as \c file:line:col, or — for a
-/// template specialization — its primary template's location).
-struct DevFuncExportPlan {
-  llvm::StringSet<> Synthesize;
-};
-
-/// Runs a throwaway, syntax-only pre-parse of the same translation unit and
-/// returns which \c __device__-only functions lack a \c __host__ overload. The
-/// real parse can only ask "does a host overload already exist?" with a
-/// half-built AST (declaration order makes the answer unreliable — the standard
-/// library declares the host \c malloc/\c sqrt after their \c __device__ peers),
-/// whereas the pre-pass inspects the \e complete AST and gets it right. Returns
-/// an empty plan for non-host CUDA/HIP compiles.
-std::shared_ptr<const DevFuncExportPlan>
-computeDevFuncExportPlan(clang::CompilerInstance &CI);
 
 /// A \c clang::SemaConsumer that makes \c __device__ functions referenced from
 /// host code (or carrying \c __attribute__((used))) host-addressable, so a
@@ -100,14 +79,17 @@ class EmitHostHandleForDevFuncConsumer : public clang::SemaConsumer {
   /// function turns out to be exported.
   llvm::SmallVector<clang::FunctionDecl *, 16> ExistingHosts;
 
-  /// Pre-pass verdict: location keys of device functions that need a host
-  /// overload synthesized (those lacking one in the complete AST).
-  std::shared_ptr<const DevFuncExportPlan> Plan;
+  /// Stable, ASTContext-independent location keys of the \c __device__-only
+  /// functions that need a \c __host__ overload synthesized — those lacking one
+  /// in the complete AST. Computed up front by a throwaway pre-parse (the real
+  /// parse can't answer "does a host overload exist?" reliably, since the
+  /// standard library declares host \c malloc/\c sqrt after their \c __device__
+  /// peers, so a streaming check sees a half-built AST).
+  llvm::StringSet<> Synthesize;
 
 public:
-  explicit EmitHostHandleForDevFuncConsumer(
-      std::shared_ptr<const DevFuncExportPlan> Plan)
-      : Plan(std::move(Plan)) {}
+  /// Runs the pre-parse over \p CI's translation unit to populate \c Synthesize.
+  explicit EmitHostHandleForDevFuncConsumer(clang::CompilerInstance &CI);
 
   void InitializeSema(clang::Sema &S) override;
 

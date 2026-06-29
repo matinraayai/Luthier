@@ -30,8 +30,7 @@ class Action : public clang::PluginASTAction {
 public:
   std::unique_ptr<clang::ASTConsumer>
   CreateASTConsumer(clang::CompilerInstance &CI, llvm::StringRef) override {
-    return std::make_unique<luthier::EmitHostHandleForDevFuncConsumer>(
-        luthier::computeDevFuncExportPlan(CI));
+    return std::make_unique<luthier::EmitHostHandleForDevFuncConsumer>(CI);
   }
 
   bool ParseArgs(const clang::CompilerInstance &,
@@ -39,10 +38,10 @@ public:
     return true;
   }
 
-  // Cmdline (not Add*) so the action only runs when explicitly requested with
-  // -add-plugin. This lets the throwaway pre-pass (see computeDevFuncExportPlan)
-  // clear AddPluginActions on its cloned invocation and thereby avoid
-  // re-instantiating — and infinitely recursing into — this plugin.
+  /// \c Cmdline (not \c Add*) so the action only runs when explicitly requested
+  /// with \c -add-plugin. This lets \c EmitHostHandleForDevFuncConsumer's
+  /// pre-parsing stage clear \c AddPluginActions on its cloned invocation and
+  /// prevent itself from infinitely recursing into this plugin.
   ActionType getActionType() override { return CmdlineBeforeMainAction; }
 };
 
@@ -50,4 +49,4 @@ public:
 
 static clang::FrontendPluginRegistry::Add<Action>
     XAction("luthier-emit-device-function-host-handle",
-            "Emits host-side handles for all device function declarations");
+            "Emits host-side handles for used device functions");

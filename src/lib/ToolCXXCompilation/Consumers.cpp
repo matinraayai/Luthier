@@ -238,13 +238,14 @@ public:
 class ExportPlanConsumer
     : public clang::SemaConsumer,
       public clang::RecursiveASTVisitor<ExportPlanConsumer> {
-  DevFuncExportPlan &Plan;
+  llvm::StringSet<> &Synthesize;
   const llvm::StringSet<> &Referenced;
   clang::Sema *SemaRef{nullptr};
 
 public:
-  ExportPlanConsumer(DevFuncExportPlan &Plan, const llvm::StringSet<> &Referenced)
-      : Plan(Plan), Referenced(Referenced) {}
+  ExportPlanConsumer(llvm::StringSet<> &Synthesize,
+                     const llvm::StringSet<> &Referenced)
+      : Synthesize(Synthesize), Referenced(Referenced) {}
 
   void InitializeSema(clang::Sema &S) override { SemaRef = &S; }
   void ForgetSema() override { SemaRef = nullptr; }
@@ -261,7 +262,7 @@ public:
       return true;
     if (findHostOverload(*SemaRef, FD))
       return true;
-    Plan.Synthesize.insert(Key);
+    Synthesize.insert(Key);
     return true;
   }
 
@@ -272,27 +273,31 @@ public:
 };
 
 class ExportPlanAction : public clang::ASTFrontendAction {
-  DevFuncExportPlan &Plan;
+  llvm::StringSet<> &Synthesize;
   const llvm::StringSet<> &Referenced;
 
 public:
-  ExportPlanAction(DevFuncExportPlan &Plan, const llvm::StringSet<> &Referenced)
-      : Plan(Plan), Referenced(Referenced) {}
+  ExportPlanAction(llvm::StringSet<> &Synthesize,
+                   const llvm::StringSet<> &Referenced)
+      : Synthesize(Synthesize), Referenced(Referenced) {}
 
   std::unique_ptr<clang::ASTConsumer>
   CreateASTConsumer(clang::CompilerInstance &, llvm::StringRef) override {
-    return std::make_unique<ExportPlanConsumer>(Plan, Referenced);
+    return std::make_unique<ExportPlanConsumer>(Synthesize, Referenced);
   }
 };
 
-} // namespace
-
-std::shared_ptr<const DevFuncExportPlan>
-computeDevFuncExportPlan(clang::CompilerInstance &MainCI) {
-  auto Plan = std::make_shared<DevFuncExportPlan>();
+/// Runs a throwaway, syntax-only pre-parse of \p MainCI's translation unit and
+/// returns the location keys of \c __device__-only functions that are
+/// referenced from host (or \c used) yet lack a \c __host__ overload. Unlike
+/// the streaming real parse, this inspects the \e complete AST, so the standard
+/// library's host \c malloc/\c sqrt (declared after their \c __device__ peers)
+/// are correctly recognized. Returns empty for non-host CUDA/HIP compiles.
+llvm::StringSet<> computeSynthesizeKeys(clang::CompilerInstance &MainCI) {
+  llvm::StringSet<> Synthesize;
   const clang::LangOptions &LO = MainCI.getLangOpts();
   if (!(LO.CUDA && !LO.CUDAIsDevice))
-    return Plan;
+    return Synthesize;
 
   // The main compilation runs with the LLVM IO sandbox armed; our pre-pass
   // legitimately re-reads the same input files, so disable it for the duration.
@@ -314,10 +319,16 @@ computeDevFuncExportPlan(clang::CompilerInstance &MainCI) {
   // Don't let the provoked errors trip the error limit and stop parsing early.
   PreCI.getDiagnostics().setErrorLimit(0);
 
-  ExportPlanAction Action(*Plan, Referenced);
+  ExportPlanAction Action(Synthesize, Referenced);
   PreCI.ExecuteAction(Action);
-  return Plan;
+  return Synthesize;
 }
+
+} // namespace
+
+EmitHostHandleForDevFuncConsumer::EmitHostHandleForDevFuncConsumer(
+    clang::CompilerInstance &CI)
+    : Synthesize(computeSynthesizeKeys(CI)) {}
 
 void EmitHostHandleForDevFuncConsumer::InitializeSema(clang::Sema &S) {
   SemaRef = &S;
@@ -378,7 +389,7 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
     if (Target != clang::CUDAFunctionTarget::Device)
       continue;
 
-    if (!Plan->Synthesize.contains(keyOf(SM, Dev))) {
+    if (!Synthesize.contains(keyOf(SM, Dev))) {
       // The pre-pass saw a __host__ overload for this function (a user sibling
       // or the standard library's host peer); annotate it instead.
       ExistingHosts.push_back(Dev);
