@@ -176,10 +176,14 @@ clang::FunctionDecl *makeHostHandle(clang::Sema &S, clang::FunctionDecl *Dev,
 // library's host malloc/sqrt, declared after their __device__ peers, are seen).
 //===----------------------------------------------------------------------===//
 
-/// Collects the \c __device__ callees of host code from the bad-target
-/// diagnostics, keyed exactly like \c keyOf. Suppresses all output.
+/// Wraps the main compilation instance's \c clang::DiagnosticConsumer, and
+/// forwards all errors to it besides \c err_ref_bad_target errors caused by
+/// \c __device__ functions referenced inside \c __host__ code. The referenced
+/// \c __device__ functions are recorded for further processing by stage 2.
 class BadRefCollector : public clang::DiagnosticConsumer {
   llvm::StringSet<> &Referenced;
+  clang::DiagnosticConsumer &Inner;
+  bool DroppingNotes = false;
 
   static int64_t asInt(const clang::Diagnostic &Info, unsigned I) {
     return Info.getArgKind(I) == clang::DiagnosticsEngine::ak_uint
@@ -187,23 +191,37 @@ class BadRefCollector : public clang::DiagnosticConsumer {
                : Info.getArgSInt(I);
   }
 
-public:
-  explicit BadRefCollector(llvm::StringSet<> &R) : Referenced(R) {}
-
-  void HandleDiagnostic(clang::DiagnosticsEngine::Level,
-                        const clang::Diagnostic &Info) override {
+  static bool isDeviceFromHostBadRef(const clang::Diagnostic &Info) {
     if (Info.getID() != clang::diag::err_ref_bad_target ||
-        Info.getNumArgs() < 4)
+        Info.getNumArgs() < 4 ||
+        Info.getArgKind(2) != clang::DiagnosticsEngine::ak_nameddecl)
+      return false;
+    return asInt(Info, 0) ==
+               static_cast<int64_t>(clang::CUDAFunctionTarget::Device) &&
+           asInt(Info, 3) ==
+               static_cast<int64_t>(clang::CUDAFunctionTarget::Host);
+  }
+
+public:
+  BadRefCollector(llvm::StringSet<> &Referenced,
+                  clang::DiagnosticConsumer &Inner)
+      : Referenced(Referenced), Inner(Inner) {}
+
+  // Only HandleDiagnostic forwards to Inner; the base BeginSourceFile /
+  // EndSourceFile will be called by the main action
+  void HandleDiagnostic(clang::DiagnosticsEngine::Level L,
+                        const clang::Diagnostic &Info) override {
+    if (isDeviceFromHostBadRef(Info)) {
+      auto *ND = reinterpret_cast<clang::NamedDecl *>(Info.getRawArg(2));
+      if (auto *FD = llvm::dyn_cast<clang::FunctionDecl>(ND))
+        Referenced.insert(keyOf(FD->getASTContext().getSourceManager(), FD));
+      DroppingNotes = true; // also drop the bad-ref's "declared here" note(s)
       return;
-    if (Info.getArgKind(2) != clang::DiagnosticsEngine::ak_nameddecl)
+    }
+    if (L == clang::DiagnosticsEngine::Note && DroppingNotes)
       return;
-    if (asInt(Info, 0) !=
-            static_cast<int64_t>(clang::CUDAFunctionTarget::Device) ||
-        asInt(Info, 3) != static_cast<int64_t>(clang::CUDAFunctionTarget::Host))
-      return;
-    auto *ND = reinterpret_cast<clang::NamedDecl *>(Info.getRawArg(2));
-    if (auto *FD = llvm::dyn_cast<clang::FunctionDecl>(ND))
-      Referenced.insert(keyOf(FD->getASTContext().getSourceManager(), FD));
+    DroppingNotes = false;
+    Inner.HandleDiagnostic(L, Info);
   }
 };
 
@@ -361,12 +379,13 @@ public:
   }
 };
 
-/// Runs a throwaway, syntax-only pre-parse of \p MainCI's translation unit to
+/// Runs a syntax-only pre-parse of \p MainCI's translation unit to
 /// fill \p Synthesize (device-only functions needing a synthesized host handle)
 /// and \p Annotate (existing host counterparts to tag). Unlike the streaming
 /// real parse, this inspects the \e complete AST, so a host overload declared
 /// after its \c __device__ peer (the standard library's \c malloc/\c sqrt) is
-/// recognized. No-op for non-host CUDA/HIP compiles.
+/// recognized. Genuine (non-bad-ref) errors are routed through \p MainCI's own
+/// diagnostic client, so they are displayed and counted toward the exit status.
 void computeExportPlan(clang::CompilerInstance &MainCI,
                        llvm::StringSet<> &Synthesize,
                        llvm::StringSet<> &Annotate) {
@@ -387,12 +406,11 @@ void computeExportPlan(clang::CompilerInstance &MainCI,
 
   llvm::StringSet<> Referenced;
   clang::CompilerInstance PreCI(Inv, MainCI.getPCHContainerOperations());
-  // The collector records the device callees of host code and swallows all
-  // output; the bad-target references we provoke are expected, and any genuine
-  // error is reported by the real parse that follows.
-  PreCI.createDiagnostics(new BadRefCollector(Referenced),
-                          /*ShouldOwnClient=*/true);
-  // Don't let the provoked errors trip the error limit and stop parsing early.
+  /// Wrap the main diagnositcs handler with the \c BadRefCollector
+  PreCI.createDiagnostics(
+      new BadRefCollector(Referenced, *MainCI.getDiagnostics().getClient()),
+      /*ShouldOwnClient=*/true);
+  /// Don't let the provoked errors trip the error limit and stop parsing early
   PreCI.getDiagnostics().setErrorLimit(0);
 
   ExportPlanAction Action(Synthesize, Annotate, Referenced);
@@ -403,7 +421,12 @@ void computeExportPlan(clang::CompilerInstance &MainCI,
 
 EmitHostHandleForDevFuncConsumer::EmitHostHandleForDevFuncConsumer(
     clang::CompilerInstance &CI) {
+  /// The pre-pass forwards genuine errors to the main client; a bump in its
+  /// error count means a real error was reported, so the real parse must abort.
+  clang::DiagnosticConsumer *Client = CI.getDiagnostics().getClient();
+  unsigned ErrorsBefore = Client ? Client->getNumErrors() : 0;
   computeExportPlan(CI, Synthesize, Annotate);
+  PrePassFailed = Client && Client->getNumErrors() > ErrorsBefore;
 }
 
 void EmitHostHandleForDevFuncConsumer::InitializeSema(clang::Sema &S) {
@@ -415,6 +438,10 @@ void EmitHostHandleForDevFuncConsumer::ForgetSema() { SemaRef = nullptr; }
 
 bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
     clang::DeclGroupRef DG) {
+  /// The pre-parse already reported a genuine error through the main client;
+  /// abort the real parse so it neither re-reports nor emits anything.
+  if (PrePassFailed)
+    return false;
   if (!SemaRef)
     return true;
   clang::ASTContext &Ctx = SemaRef->Context;

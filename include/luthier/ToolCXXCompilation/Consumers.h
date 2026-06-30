@@ -72,6 +72,10 @@ class EmitHostHandleForDevFuncConsumer : public clang::SemaConsumer {
   /// and definition) does not get a duplicate host handle.
   llvm::StringSet<> Synthesized;
 
+  /// Set when the pre-parse forwarded a (non-bad-ref) error through the
+  /// main diagnostic client.
+  bool PrePassFailed{false};
+
 public:
   explicit EmitHostHandleForDevFuncConsumer(clang::CompilerInstance &CI);
 
