@@ -485,7 +485,7 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
 
     std::string Key = keyOf(SM, Dev);
 
-    /// Tag existing host handles or synthesize new one here
+    /// Annotate the decleration (regardless of it being already seen or not)
     if (Annotate.contains(Key)) {
       annotateExportHandle(Ctx, Dev);
       continue;
@@ -495,20 +495,18 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
       continue;
     if (!Synthesize.contains(Key))
       continue;
-    // A function with separate declaration + definition is seen twice; only the
-    // first encounter synthesizes the handle.
+    // Only synthesize the handle if not done so already
     if (!Synthesized.insert(Key).second)
       continue;
 
     clang::DeclContext *DC = Dev->getDeclContext();
     bool IsMember = DC->isRecord();
 
-    // The pre-pass guarantees no host overload exists, so the handle is
-    // finalized immediately: an empty body and the export annotation. For a
-    // template, both are placed on the pattern and inherited by every
-    // instantiation the host references trigger.
+    /// Synthesize the host handle
     clang::FunctionDecl *HostPattern = makeHostHandle(S, Dev, DC);
 
+    /// If this was the device function was described by a template, create
+    /// a host declaration for the synthesized host function handle
     if (DevTpl) {
       auto *HostTpl = clang::FunctionTemplateDecl::Create(
           Ctx, DC, DevTpl->getLocation(), DevTpl->getDeclName(),
