@@ -140,6 +140,9 @@ void copyHostAttrs(clang::ASTContext &Ctx, const clang::FunctionDecl *Src,
 /// \p DC.
 clang::FunctionDecl *makeHostHandle(clang::Sema &S, clang::FunctionDecl *Dev,
                                     clang::DeclContext *DC) {
+  /// Clone the canonical declaration, since a non-canonical redeclarations
+  /// doesn't have all the attributes of the canonical.
+  Dev = Dev->getCanonicalDecl();
   clang::ASTContext &Ctx = S.Context;
   clang::FunctionDecl *Host;
   if (auto *MD = llvm::dyn_cast<clang::CXXMethodDecl>(Dev)) {
@@ -452,9 +455,7 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
   const clang::SourceManager &SM = S.getSourceManager();
 
   // Walks one declaration, recursing through namespace / linkage-spec scopes
-  // and the tool's own records. Per the pre-pass plan, it either annotates an
-  // existing host counterpart in place or synthesizes a finalized __host__
-  // overload for a device-only function that lacks one.
+  // and the tool's own records
   llvm::SmallVector<clang::Decl *, 16> Worklist(DG.begin(), DG.end());
   while (!Worklist.empty()) {
     clang::Decl *D = Worklist.pop_back_val();
@@ -484,11 +485,7 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
 
     std::string Key = keyOf(SM, Dev);
 
-    // Existing host counterpart (a user __host__ overload, a __host__
-    // __device__ function, or an external like libm's sqrt): tag the decl we're
-    // looking at right here, before CodeGen emits it. For a template the marker
-    // goes on the pattern and propagates to its instantiations. We don't
-    // re-feed it — it's a real source decl CodeGen will emit anyway.
+    /// Tag existing host handles or synthesize new one here
     if (Annotate.contains(Key)) {
       annotateExportHandle(Ctx, Dev);
       continue;
