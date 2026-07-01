@@ -27,6 +27,7 @@
 #include <clang/Frontend/FrontendAction.h>
 #include <clang/Sema/Sema.h>
 #include <clang/Sema/SemaCUDA.h>
+#include <clang/Sema/Template.h>
 #include <llvm/ADT/SmallPtrSet.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/Casting.h>
@@ -502,15 +503,33 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
     clang::DeclContext *DC = Dev->getDeclContext();
     bool IsMember = DC->isRecord();
 
+    // For a device function template, give the host template its own
+    // template-parameter list rather than sharing the device template's: the
+    // parameter decls are owned by their template, so reusing them across two
+    // templates is unsound. An empty-argument SubstTemplateParams is the
+    // identity substitution Clang itself uses to clone a parameter list into a
+    // new owning context. Compute it (and bail on the unexpected failure)
+    // before creating the handle, so nothing is left half-built.
+    clang::TemplateParameterList *HostParams = nullptr;
+    if (DevTpl) {
+      clang::LocalInstantiationScope Scope(S);
+      clang::MultiLevelTemplateArgumentList NoArgs;
+      HostParams =
+          S.SubstTemplateParams(DevTpl->getTemplateParameters(), DC, NoArgs,
+                                /*EvaluateConstraints=*/false);
+      if (!HostParams)
+        continue;
+    }
+
     /// Synthesize the host handle
     clang::FunctionDecl *HostPattern = makeHostHandle(S, Dev, DC);
 
-    /// If this was the device function was described by a template, create
-    /// a host declaration for the synthesized host function handle
+    /// If the device function was described by a template, wrap the handle in a
+    /// host function template using the cloned parameter list
     if (DevTpl) {
       auto *HostTpl = clang::FunctionTemplateDecl::Create(
-          Ctx, DC, DevTpl->getLocation(), DevTpl->getDeclName(),
-          DevTpl->getTemplateParameters(), HostPattern);
+          Ctx, DC, DevTpl->getLocation(), DevTpl->getDeclName(), HostParams,
+          HostPattern);
       HostTpl->setAccess(DevTpl->getAccess());
       HostPattern->setDescribedFunctionTemplate(HostTpl);
       DC->addDecl(HostTpl);
