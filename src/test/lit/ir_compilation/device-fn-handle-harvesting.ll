@@ -1,49 +1,43 @@
-; RUN: opt %luthier_tool_ir_compilation_plugin_path -passes="luthier-load-hip-fat-binary-info-pass" %s -S | %tee_out FileCheck %s
+; RUN: opt %luthier_tool_ir_compilation_plugin_path -passes="luthier-tool-device-code-offload-parser-pass" %s -S | %tee_out FileCheck %s
 
-; Verifies that LoadHIPFATBinaryInfoPass's device-function-handle
-; harvester correctly populates the HipDeviceFunctions slot for the
-; three sibling-symbol shapes the CXX plugin can produce:
+; Verifies that ToolDeviceCodeOffloadParserPass's device-function-handle
+; harvester records every host function tagged with the
+; luthier.export_function_handle marker (in @llvm.global.annotations) into the
+; unified HipHandles trait slot as a { HostHandle, DeviceName } pair.
 ;
-;   * Non-templated C++ sibling (dual-overload): symbol is the
-;     Itanium mangling of the original device function's source name;
-;     DeviceName recovered as the symbol verbatim.
+; The CXX plugin gives the host sibling the original __device__ function's exact
+; symbol name, so the DeviceName recorded here is simply the host handle's IR
+; symbol verbatim — no demangling or prefix stripping. This is checked across
+; the shapes the plugin can produce:
 ;
-;   * Non-templated C-linkage sibling (extern "C"): symbol is the raw
-;     source identifier (no Itanium prefix); DeviceName recovered as
-;     the symbol verbatim. This exercises the partialDemangle-fail
-;     fallback that uses the IR symbol directly.
+;   * Non-templated C++ sibling: Itanium-mangled symbol (_Z6myHookv).
+;   * extern "C" sibling: raw source identifier (myCHook).
+;   * Templated per-specialization handle: the specialization's own Itanium
+;     mangling (_Z8tmplHookIiET_S0_).
 ;
-;   * Templated per-specialization handle (synthesized by the
-;     consumer): symbol is the Itanium mangling of
-;     <DevFuncHandlePrefix><orig-mangling>; DeviceName recovered by
-;     demangling and stripping the prefix.
+; A decoy function carrying a different annotation must NOT be recorded.
 
 target triple = "x86_64-unknown-linux-gnu"
 
-; Stand-in for any host bodies the rest of the loader needs to exist.
-@__hip_cuid_aabbccdd = global i8 0
-@__hip_gpubin_handle_aabbccdd = internal global ptr null, align 8
-
-; Minimum HIP-side declarations LoadHIPFATBinaryInfoPass touches. The
-; pass bails early if __hipRegisterFatBinary is absent.
+; Minimum HIP-side machinery the pass touches. The pass bails early if
+; __hipRegisterFatBinary is absent.
 declare dso_local ptr @__hipRegisterFatBinary(ptr)
 declare dso_local void @__hipUnregisterFatBinary(ptr)
 
 @__hip_fatbin = external constant i8, section ".hip_fatbin"
 @__hip_fatbin_wrapper = internal constant { i32, i32, ptr, ptr } { i32 1212764230, i32 1, ptr @__hip_fatbin, ptr null }, section ".hipFatBinSegment", align 8
+@__hip_gpubin_handle = internal global ptr null, align 8
 
 define internal void @__hip_module_ctor() {
 entry:
   %fb = call ptr @__hipRegisterFatBinary(ptr @__hip_fatbin_wrapper)
-  store ptr %fb, ptr @__hip_gpubin_handle_aabbccdd, align 8
+  store ptr %fb, ptr @__hip_gpubin_handle, align 8
   ret void
 }
-
 define internal void @__hip_module_dtor() {
 entry:
   ret void
 }
-
 define internal void @__hip_register_globals(ptr %0) {
 entry:
   ret void
@@ -53,87 +47,57 @@ entry:
   { i32, ptr, ptr } { i32 65535, ptr @__hip_module_ctor, ptr null }
 ]
 
-;
-; Slot placeholders. We just need HipFatBinaries + HipDeviceFunctions for this
-; test (the device-function path is the one we're exercising); the harvester
-; skips slots with no entries. HipFatBinaries is a lone HipFatBinaryInfo
-; struct; HipDeviceFunctions is an ArrayRef.
-;
+; The unified HipHandles trait slot: a linkonce_odr static member of
+; luthier::ToolDeviceCodeOffloadParserTrait<Derived>, laid out as
+; llvm::ArrayRef<HipHandleInfo> = { ptr Data; i64 Length; }. Detected by the
+; pass via its demangled name.
 %"class.llvm::ArrayRef" = type { ptr, i64 }
-%"struct.luthier::DeviceToolCodeFatBinaryParser::HipFatBinaryInfo" = type { ptr, i64 }
+@_ZN7luthier32ToolDeviceCodeOffloadParserTraitIiE10HipHandlesE = dso_local global %"class.llvm::ArrayRef" zeroinitializer, align 8
 
-@HipFatBinaries     = dso_local global %"struct.luthier::DeviceToolCodeFatBinaryParser::HipFatBinaryInfo" zeroinitializer, align 8
-@HipDeviceFunctions = dso_local global %"class.llvm::ArrayRef" zeroinitializer, align 8
-
-@.str.fb  = private unnamed_addr constant [32 x i8] c"luthier.loader.hip_fat_binaries\00", section "llvm.metadata"
-@.str.df  = private unnamed_addr constant [36 x i8] c"luthier.loader.hip_device_functions\00", section "llvm.metadata"
 @.str.exp = private unnamed_addr constant [31 x i8] c"luthier.export_function_handle\00", section "llvm.metadata"
+@.str.other = private unnamed_addr constant [12 x i8] c"some.marker\00", section "llvm.metadata"
 @.str.src = private unnamed_addr constant [14 x i8] c"/app/test.cpp\00", section "llvm.metadata"
 
-;
-; Three host-sibling functions, one per shape we care about.
-;
-
-; (1) Non-templated C++ sibling: same name as the original __device__
-; function. Itanium-mangled.
-define dso_local void @_Z6myHookv() #0 {
+; Host-sibling functions, one per shape, plus a decoy.
+define dso_local void @_Z6myHookv() {
+entry:
+  ret void
+}
+define dso_local void @myCHook() {
+entry:
+  ret void
+}
+define dso_local void @_Z8tmplHookIiET_S0_(i32 %0) {
+entry:
+  ret void
+}
+define dso_local void @_Z9decoyHookv() {
 entry:
   ret void
 }
 
-; (2) Non-templated C-linkage sibling (inside extern "C"). Symbol is
-; the raw source identifier.
-define dso_local void @myCHook() #0 {
-entry:
-  ret void
-}
-
-; (3) Templated per-specialization handle: the consumer mangles the
-; original ("_Z6mySpecIiEvT_" — a hypothetical `mySpec<int>(int)`)
-; into the source identifier
-; `__luthier_builtin_dev_func_handle__Z6mySpecIiEvT_`, then Clang
-; Itanium-mangles the whole thing.
-define dso_local void @_Z49__luthier_builtin_dev_func_handle__Z6mySpecIiEvT_i(i32 %0) #0 {
-entry:
-  ret void
-}
-
-attributes #0 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" }
-
-;
-; The export-handle annotations: one entry per host sibling.
-;
-@llvm.global.annotations = appending global [5 x { ptr, ptr, ptr, i32, ptr }] [
-  { ptr, ptr, ptr, i32, ptr } { ptr @HipFatBinaries,     ptr @.str.fb,  ptr @.str.src, i32 1, ptr null },
-  { ptr, ptr, ptr, i32, ptr } { ptr @HipDeviceFunctions, ptr @.str.df,  ptr @.str.src, i32 1, ptr null },
+; Three export-handle markers + one decoy annotation (different string).
+@llvm.global.annotations = appending global [4 x { ptr, ptr, ptr, i32, ptr }] [
   { ptr, ptr, ptr, i32, ptr } { ptr @_Z6myHookv, ptr @.str.exp, ptr @.str.src, i32 2, ptr null },
   { ptr, ptr, ptr, i32, ptr } { ptr @myCHook, ptr @.str.exp, ptr @.str.src, i32 3, ptr null },
-  { ptr, ptr, ptr, i32, ptr } { ptr @_Z49__luthier_builtin_dev_func_handle__Z6mySpecIiEvT_i, ptr @.str.exp, ptr @.str.src, i32 4, ptr null }
+  { ptr, ptr, ptr, i32, ptr } { ptr @_Z8tmplHookIiET_S0_, ptr @.str.exp, ptr @.str.src, i32 4, ptr null },
+  { ptr, ptr, ptr, i32, ptr } { ptr @_Z9decoyHookv, ptr @.str.other, ptr @.str.src, i32 5, ptr null }
 ], section "llvm.metadata"
 
-; Reannotate the device-functions slot too — it's the receiver.
-; The harvester appends *its* annotation entry of @HipDeviceFunctions
-; using the same .str.df at index 0 of the slot-detection scan.
+; --- After the pass: the HipHandles slot points at a constant data array of
+; three { HostHandle, DeviceName } records — one per marker, none for the
+; decoy. Each DeviceName is the host handle's IR symbol verbatim. ---
 
-; --- After the pass: the device-functions slot points at a constant
-; data array of three { HostHandle, DeviceName } records. ---
+; CHECK-DAG: %"struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo" = type { ptr, ptr }
 
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceFunctionInfo" = type { ptr, ptr }
-
-; CHECK-DAG: @[[DEVFN_DATA:[._a-zA-Z0-9]+]] = private constant [3 x %"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceFunctionInfo"]
-
-; For shape (1) — non-templated C++ sibling: DeviceName is the IR
-; symbol verbatim.
+; The recovered device-name strings (symbol verbatim).
 ; CHECK-DAG: @[[DEV_MYHOOK:[._a-zA-Z0-9]+]] = private constant [11 x i8] c"_Z6myHookv\00"
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceFunctionInfo" { ptr @_Z6myHookv, ptr @[[DEV_MYHOOK]] }
-
-; For shape (2) — extern "C" sibling: partialDemangle fails, fallback
-; uses the IR symbol; the prefix isn't present, so DeviceName is the
-; IR symbol verbatim.
 ; CHECK-DAG: @[[DEV_MYCHOOK:[._a-zA-Z0-9]+]] = private constant [8 x i8] c"myCHook\00"
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceFunctionInfo" { ptr @myCHook, ptr @[[DEV_MYCHOOK]] }
+; CHECK-DAG: @[[DEV_SPEC:[._a-zA-Z0-9]+]] = private constant [20 x i8] c"_Z8tmplHookIiET_S0_\00"
 
-; For shape (3) — templated handle: demangle succeeds, base name has
-; the prefix, strip to recover the original specialization's mangling.
-; CHECK-DAG: @[[DEV_SPEC:[._a-zA-Z0-9]+]] = private constant [16 x i8] c"_Z6mySpecIiEvT_\00"
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceFunctionInfo" { ptr @_Z49__luthier_builtin_dev_func_handle__Z6mySpecIiEvT_i, ptr @[[DEV_SPEC]] }
+; The slot ArrayRef is initialized to view the data array, with length 3.
+; CHECK-DAG: @_ZN7luthier32ToolDeviceCodeOffloadParserTraitIiE10HipHandlesE = dso_local constant %"class.llvm::ArrayRef" { ptr @[[DATA:[._a-zA-Z0-9]+]], i64 3 }
+
+; Exactly three handle records ([3 x ...], so the decoy is excluded), in
+; annotation order, each pairing the host handle with its verbatim device name.
+; CHECK-DAG: @[[DATA]] = private constant [3 x %"struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo"] [%"struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo" { ptr @_Z6myHookv, ptr @[[DEV_MYHOOK]] }, %"struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo" { ptr @myCHook, ptr @[[DEV_MYCHOOK]] }, %"struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo" { ptr @_Z8tmplHookIiET_S0_, ptr @[[DEV_SPEC]] }]

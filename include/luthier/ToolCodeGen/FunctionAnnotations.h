@@ -41,9 +41,6 @@ namespace luthier {
 #define LUTHIER_CAT(a, ...) LUTHIER_PRIMITIVE_CAT(a, __VA_ARGS__)
 #define LUTHIER_PRIMITIVE_CAT(a, ...) a##__VA_ARGS__
 
-/// Prefix appended to all host-accessible device functions' handle kernels
-#define LUTHIER_DEVICE_FUNCTION_HANDLE_PREFIX __luthier_builtin_dev_func_handle_
-
 /// All hooks in instrumentation modules must have this attribute
 #define LUTHIER_HOOK_ATTRIBUTE luthier.function.hook
 
@@ -60,9 +57,6 @@ namespace luthier {
 /// have this attribute
 #define LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE luthier.function.injected_payload
 
-static constexpr llvm::StringLiteral DevFuncHandlePrefix{
-    LUTHIER_STRINGIFY(LUTHIER_DEVICE_FUNCTION_HANDLE_PREFIX)};
-
 static constexpr llvm::StringLiteral HipCUIDPrefix{
     LUTHIER_STRINGIFY(LUTHIER_HIP_CUID_PREFIX)};
 
@@ -75,38 +69,6 @@ static constexpr llvm::StringLiteral InjectedPayloadAttribute{
 #define EntryPointAddrAttr "luthier.function.entrypoint.addr"
 
 #define InitialEntryPointAttr "luthier.function.initial_entrypoint"
-
-/// Annotation strings attached to the inline-static \c llvm::ArrayRef slots
-/// on \c DeviceToolCodeFatBinaryParser. \c LoadHIPFATBinaryInfoPass matches
-/// by string and rewrites each slot's initializer to the appropriate
-/// constant-array view.
-///
-/// Each annotation has two forms: a bare-token macro consumed by
-/// \c LUTHIER_ANNOTATE_VARIABLE for the \c __attribute__((annotate(...)))
-/// site, and a \c static \c constexpr \c StringLiteral for runtime
-/// comparisons in the IR pass.
-#define LUTHIER_HIP_FAT_BINARIES_ATTR luthier.loader.hip_fat_binaries
-#define LUTHIER_HIP_KERNELS_ATTR luthier.loader.hip_kernels
-#define LUTHIER_HIP_DEVICE_FUNCTIONS_ATTR luthier.loader.hip_device_functions
-#define LUTHIER_HIP_DEVICE_VARS_ATTR luthier.loader.hip_device_vars
-#define LUTHIER_HIP_MANAGED_VARS_ATTR luthier.loader.hip_managed_vars
-#define LUTHIER_HIP_TEXTURE_VARS_ATTR luthier.loader.hip_texture_vars
-#define LUTHIER_HIP_SURFACE_VARS_ATTR luthier.loader.hip_surface_vars
-
-static constexpr llvm::StringLiteral HipFatBinariesAttr{
-    LUTHIER_STRINGIFY(LUTHIER_HIP_FAT_BINARIES_ATTR)};
-static constexpr llvm::StringLiteral HipKernelsAttr{
-    LUTHIER_STRINGIFY(LUTHIER_HIP_KERNELS_ATTR)};
-static constexpr llvm::StringLiteral HipDeviceFunctionsAttr{
-    LUTHIER_STRINGIFY(LUTHIER_HIP_DEVICE_FUNCTIONS_ATTR)};
-static constexpr llvm::StringLiteral HipDeviceVarsAttr{
-    LUTHIER_STRINGIFY(LUTHIER_HIP_DEVICE_VARS_ATTR)};
-static constexpr llvm::StringLiteral HipManagedVarsAttr{
-    LUTHIER_STRINGIFY(LUTHIER_HIP_MANAGED_VARS_ATTR)};
-static constexpr llvm::StringLiteral HipTextureVarsAttr{
-    LUTHIER_STRINGIFY(LUTHIER_HIP_TEXTURE_VARS_ATTR)};
-static constexpr llvm::StringLiteral HipSurfaceVarsAttr{
-    LUTHIER_STRINGIFY(LUTHIER_HIP_SURFACE_VARS_ATTR)};
 
 static constexpr const char *InitialExecutionPointAttr =
     "luthier.function.initial_execution_point";
@@ -154,6 +116,23 @@ static constexpr const char *TargetInstrPointAttr =
 /// is host-addressable.
 inline constexpr llvm::StringLiteral ExportFunctionHandleMarker =
     "luthier.export_function_handle";
+
+/// Annotation added exclusively to \c __host__ sibling declarations that were
+/// synthesized by \c EmitHostHandleAttrInfo — as opposed to
+/// \c __host__ overloads written by the user. The
+/// \c EmitHostSiblingForDevFuncConsumer uses this tag to find synthesized
+/// siblings that still need an empty body and/or an access-specifier
+/// correction, while leaving user-defined overloads untouched.
+inline constexpr llvm::StringLiteral ExportFunctionHandleAutoGenMarker =
+    "luthier.export_function_handle.autogen";
+
+/// Prefix for the synthesized host-side handle function names for tagged
+/// \c __device__ function templates. The full handle name is
+/// \c BuiltinDevFuncHandlePrefix followed by the Itanium-mangled name of the
+/// original specialization. The prefix is chosen to be a valid C++ identifier
+/// that Clang can Itanium-mangle, producing a demangleable symbol.
+inline constexpr llvm::StringLiteral BuiltinDevFuncHandlePrefix =
+    "__luthier_builtin_dev_func_handle__";
 
 /// Tag a variable declaration with a Clang \c annotate attribute. \p Sym
 /// is a bare-token macro (e.g. \c LUTHIER_HIP_FAT_BINARIES_ATTR) that

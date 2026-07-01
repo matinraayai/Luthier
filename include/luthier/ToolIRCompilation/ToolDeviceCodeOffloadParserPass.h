@@ -1,4 +1,4 @@
-//===-- LoadHIPFATBinaryInfoPass.h --------------------------------*-C++-*-===//
+//===-- ToolDeviceCodeOffloadParserPass.h -------------------------*-C++-*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +13,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file LoadHIPFATBinaryInfoPass.h
-/// Deletes \c __hip_register* host-side functions and stores the
-/// information they would have registered so Luthier's tool executable
-/// loader can consume it at runtime. The pass operates on host code; on
-/// AMD GCN device modules it is a no-op.
+/// \file
+/// Implements the companion pass for the \c ToolDeviceCodeOffloadParser,
+/// which:
+/// - Deletes \c __hip_register* host-side functions to prevent them from ever
+/// being registered with the HIP runtime.
+/// - Stores the registration info in the appropriate static inline fields of
+/// (all) \c ToolDeviceCodeOffloadParser concrete instances declared
+/// in the current translation unit.
+/// - Also stores synthesized host handles of requested device functions by the
+/// CXX compiler plugin into the appropriate static inline field of all
+/// \c ToolDeviceCodeOffloadParser concrete instances.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOL_IR_COMPILATION_LOAD_HIP_FAT_BINARY_INFO_PASS_H
-#define LUTHIER_TOOL_IR_COMPILATION_LOAD_HIP_FAT_BINARY_INFO_PASS_H
+#ifndef LUTHIER_TOOL_IR_COMPILATION_TOOL_DEVICE_CODE_OFFLOAD_PARSER_PASS_H
+#define LUTHIER_TOOL_IR_COMPILATION_TOOL_DEVICE_CODE_OFFLOAD_PARSER_PASS_H
 #include <llvm/IR/PassManager.h>
 
 namespace llvm {
@@ -29,10 +35,11 @@ class Module;
 
 namespace luthier {
 
-class LoadHIPFATBinaryInfoPass
-    : public llvm::PassInfoMixin<LoadHIPFATBinaryInfoPass> {
+/// \brief Companion pass for the \c ToolDeviceCodeOffloadParserPass
+class ToolDeviceCodeOffloadParserPass
+    : public llvm::PassInfoMixin<ToolDeviceCodeOffloadParserPass> {
 public:
-  LoadHIPFATBinaryInfoPass() = default;
+  ToolDeviceCodeOffloadParserPass() = default;
 
   llvm::PreservedAnalyses run(llvm::Module &M,
                               llvm::ModuleAnalysisManager &MAM);
@@ -40,7 +47,7 @@ public:
   static bool isRequired() { return true; }
 
   static llvm::StringRef name() {
-    return "luthier-load-hip-fat-binary-info-pass";
+    return "luthier-tool-device-code-offload-parser-pass";
   }
 };
 
