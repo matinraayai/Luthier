@@ -388,7 +388,7 @@ function(luthier_create_offload_bundle target source)
   #   -Xclang -fcuda-include-gpubinary -Xclang <fatbin> : embed the bundle
   #       bytes (SHELL: keeps the paired -Xclang from collapsing under de-dup).
   #   -fpass-plugin=<ir>              : IR tool compiler plugin.
-  #   -fplugin=<cxx>                  : CXX tool compiler plugin.
+  #   -fplugin=<cxx>                  : load the CXX tool compiler plugin.
   # OBJECT_DEPENDS on the fatbin makes each object wait for and rebuild with it.
   #---------------------------------------------------------------------------
 
@@ -402,7 +402,8 @@ function(luthier_create_offload_bundle target source)
           --cuda-host-only -fno-gpu-rdc -fuse-cuid=none
           "SHELL:-Xclang -fcuda-include-gpubinary -Xclang ${_TARGET_FATBIN}"
           -fpass-plugin=${_LUTHIER_IR_PLUGIN}
-          -fplugin=${_LUTHIER_CXX_PLUGIN})
+          -fplugin=${_LUTHIER_CXX_PLUGIN}
+          "SHELL:-Xclang -add-plugin -Xclang luthier-emit-device-function-host-handle")
 
   add_dependencies(${target}
           ${target}-fatbin
