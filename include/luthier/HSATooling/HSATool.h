@@ -25,7 +25,6 @@
 #include "luthier/HSA/Agent.h"
 #include "luthier/HSA/HsaError.h"
 #include "luthier/HSA/ISA.h"
-#include "luthier/HSATooling/DeviceToolCodeFatBinaryParser.h"
 #include "luthier/HSATooling/InstrumentationPipelineTrait.h"
 #include "luthier/HSATooling/InstrumentedKernelLoaderAndLauncher.h"
 #include "luthier/HSATooling/LLVMUserTrait.h"
@@ -36,6 +35,7 @@
 #include "luthier/ToolCodeGen/InjectedPayloadCreationPass.h"
 #include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
+#include "luthier/ToolCodeGen/ToolDeviceCodeOffloadParser.h"
 #include <hsa/hsa_ext_amd.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/Demangle/Demangle.h>
@@ -69,7 +69,7 @@ public:
 
 /// \brief CRTP base for static HSA tools. Inherits the HIP fat-binary
 /// registration slots and per-agent HSA executable state from
-/// \c DeviceToolCodeFatBinaryParser, and the per-process singleton identity
+/// \c ToolDeviceCodeOffloadParser, and the per-process singleton identity
 /// from \c Singleton<Derived>; composes the per-subsystem traits.
 ///
 /// \c Singleton<Derived> is listed first so its subobject is constructed before
@@ -103,7 +103,7 @@ template <typename Derived, typename TargetUnitT = llvm::MachineFunction>
 class HSATool : public Singleton<Derived>,
                 public LLVMUserTrait<Derived>,
                 public LoadedCodeObjectCacheTrait<Derived>,
-                public DeviceToolCodeFatBinaryParser<Derived>,
+                public ToolDeviceCodeOffloadParser<Derived>,
                 public InstrumentedKernelLoaderAndLauncherTrait<Derived>,
                 public InjectedPayloadCreationPass<Derived, TargetUnitT>,
                 public IntrinsicProcessorRegistryTraitBase<Derived>,
@@ -118,7 +118,7 @@ public:
           llvm::Error &Err)
       : Singleton<Derived>(), LLVMUserTrait<Derived>(),
         LoadedCodeObjectCacheTrait<Derived>(CoreApi, VenLoader, Err),
-        DeviceToolCodeFatBinaryParser<Derived>(Err),
+        ToolDeviceCodeOffloadParser<Derived>(Err),
         InstrumentedKernelLoaderAndLauncherTrait<Derived>(CoreApi, AmdExt,
                                                           VenLoader, Err),
         PacketMonitorTrait<Derived>(CoreApi, AmdExt, VenLoader, Err) {
@@ -128,7 +128,7 @@ public:
     // them when that instrumented kernel is loaded.
     if (!Err)
       for (const auto &MV :
-           DeviceToolCodeFatBinaryParser<Derived>::HipManagedVars)
+           ToolDeviceCodeOffloadParser<Derived>::HipManagedVars)
         if (MV.Name != nullptr && MV.Pointer != nullptr)
           this->registerManagedVarHostShadow(MV.Name, MV.Pointer);
   }
@@ -238,8 +238,8 @@ public:
   /// Resolve a payload function's host shadow handle to the corresponding
   /// \c llvm::Function inside the given instrumentation module.
   ///
-  /// \c lookupNameByHandle returns the device-side mangled name as
-  /// recorded by \c LoadHIPFATBinaryInfoPass. For \c __global__ kernels
+  /// \c lookupHandleName returns the device-side mangled name as
+  /// recorded by \c ToolDeviceCodeOffloadParserPass. For \c __global__ kernels
   /// (HIP \c __hipRegisterFunction path) the recorded name is the
   /// kernel's natural Itanium mangling; for tagged \c __device__
   /// functions (CXX-plugin export-handle path) the IR pass already
@@ -249,7 +249,7 @@ public:
   /// payload.
   ///
   /// The handle is taken as a typed pointer so callers can pass
-  /// \c &MyTool::myHook directly; \c lookupNameByHandle does the cast to the
+  /// \c &MyTool::myHook directly; \c lookupHandleName does the cast to the
   /// opaque key internally.
   template <typename T>
   llvm::Expected<llvm::Function *>
@@ -299,7 +299,7 @@ public:
   /// Resolve a device-global host shadow handle (e.g. \c &MyTool::MyDeviceVar)
   /// to its \c hsa_executable_symbol_t inside the instrumented executable
   /// cached under <tt>(KD, Preset)</tt>. Converts the handle to its device
-  /// symbol name via \c lookupNameByHandle, then forwards to the launcher. The
+  /// symbol name via \c lookupHandleName, then forwards to the launcher. The
   /// handle is taken as a typed pointer so callers can pass \c &MyTool::Var
   /// directly.
   template <typename T>

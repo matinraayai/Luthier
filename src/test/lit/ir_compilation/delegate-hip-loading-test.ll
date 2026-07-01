@@ -1,4 +1,23 @@
-; RUN: opt %luthier_tool_ir_compilation_plugin_path -passes="luthier-load-hip-fat-binary-info-pass" %s -S | %tee_out FileCheck %s
+; RUN: opt %luthier_tool_ir_compilation_plugin_path \
+; RUN:   -passes="luthier-tool-device-code-offload-parser-pass" %s -S \
+; RUN:   | %tee_out FileCheck %s --implicit-check-not=__hipRegister \
+; RUN:     --implicit-check-not=__hipUnregisterFatBinary \
+; RUN:     --implicit-check-not=__hip_module_ctor \
+; RUN:     --implicit-check-not=__hip_module_dtor \
+; RUN:     --implicit-check-not=__hip_register_globals
+
+; Verifies the full ToolDeviceCodeOffloadParserPass lowering of a host module:
+;   * every __hipRegister* kind (kernels, device var, managed var, textures,
+;     surface) is harvested into the single unified HipHandles trait slot as a
+;     { HostHandle, DeviceName } pair;
+;   * the embedded fat binary is moved into the luthier_fatbin section and
+;     retained, and the FatBinaryStart / FatBinaryStop pointer slots are set to
+;     the linker's section-boundary symbols;
+;   * the host-side HIP registration machinery (__hip_module_ctor/_dtor,
+;     __hip_register_globals, and the __hipRegister*/__hipUnregisterFatBinary
+;     declarations) is deleted, and __hip_module_ctor is dropped from
+;     llvm.global_ctors (the --implicit-check-not flags on the RUN line prove
+;     none of it survives).
 
 target triple = "x86_64-unknown-linux-gnu"
 
@@ -19,18 +38,6 @@ target triple = "x86_64-unknown-linux-gnu"
 @DummyVar = dso_local global i64 0
 @DummyManagedVariable = dso_local global i64 0
 
-; --- Verify that hip functions of interest are gone ---
-; CHECK-NOT: define internal void @__hip_module_ctor
-; CHECK-NOT: define internal void @__hip_register_globals
-; CHECK-NOT: define internal void @__hip_module_dtor
-; CHECK-NOT: declare dso_local ptr @__hipRegisterFatBinary
-; CHECK-NOT: declare dso_local i32 @__hipRegisterFunction
-; CHECK-NOT: declare dso_local void @__hipRegisterTexture
-; CHECK-NOT: declare dso_local void @__hipRegisterSurface
-; CHECK-NOT: declare dso_local void @__hipRegisterVar
-; CHECK-NOT: declare dso_local void @__hipRegisterManagedVar
-; CHECK-NOT: declare dso_local void @__hipUnregisterFatBinary
-
 declare dso_local i32 @__hipRegisterFunction(ptr, ptr, ptr, ptr, i32, ptr, ptr, ptr, ptr, ptr)
 declare dso_local void @__hipRegisterVar(ptr, ptr, ptr, ptr, i32, i64, i32, i32)
 declare dso_local void @__hipRegisterManagedVar(ptr, ptr, ptr, ptr, i64, i32)
@@ -40,75 +47,18 @@ declare dso_local ptr @__hipRegisterFatBinary(ptr)
 declare dso_local void @__hipUnregisterFatBinary(ptr)
 declare dso_local i32 @atexit(ptr)
 
-; --- After the pass: element structs exist, ArrayRef slots are init'd ---
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipKernelInfo" = type { ptr, ptr }
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipManagedVarInfo" = type { ptr, ptr, ptr, i64, i32 }
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceVarInfo" = type { ptr, ptr }
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipTextureInfo" = type { ptr, ptr }
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipSurfaceInfo" = type { ptr, ptr }
-
 ;
-; The placeholders below mirror what Clang emits for the slots on
-; DeviceToolCodeFatBinaryParser<Derived>. The five `inline static
-; llvm::ArrayRef<T>` slots are each a global of two-element struct type
-; `{ ptr Data; i64 Length; }` matching ArrayRef's ABI. HipFatBinaries is the
-; exception: it is a lone `HipFatBinaryInfo` (`{ ptr Bundle; i64 Size; }`).
+; The three trait slots Clang emits for
+; luthier::ToolDeviceCodeOffloadParserTrait<Derived>: the unified HipHandles
+; slot is an llvm::ArrayRef<HipHandleInfo> = { ptr Data; i64 Length; }; the
+; FatBinaryStart / FatBinaryStop slots are plain pointers. Detected by the pass
+; via their demangled names.
 ;
 %"class.llvm::ArrayRef" = type { ptr, i64 }
-%"struct.luthier::DeviceToolCodeFatBinaryParser::HipFatBinaryInfo" = type { ptr, i64 }
+@_ZN7luthier32ToolDeviceCodeOffloadParserTraitIiE10HipHandlesE = dso_local global %"class.llvm::ArrayRef" zeroinitializer, align 8
+@_ZN7luthier32ToolDeviceCodeOffloadParserTraitIiE14FatBinaryStartE = dso_local global ptr null, align 8
+@_ZN7luthier32ToolDeviceCodeOffloadParserTraitIiE13FatBinaryStopE = dso_local global ptr null, align 8
 
-@HipFatBinaries = dso_local global %"struct.luthier::DeviceToolCodeFatBinaryParser::HipFatBinaryInfo" zeroinitializer, align 8
-@HipFunctions   = dso_local global %"class.llvm::ArrayRef" zeroinitializer, align 8
-@HipDeviceVars  = dso_local global %"class.llvm::ArrayRef" zeroinitializer, align 8
-@HipManagedVars = dso_local global %"class.llvm::ArrayRef" zeroinitializer, align 8
-@HipTextureVars = dso_local global %"class.llvm::ArrayRef" zeroinitializer, align 8
-@HipSurfaceVars = dso_local global %"class.llvm::ArrayRef" zeroinitializer, align 8
-
-@.str.fb  = private unnamed_addr constant [32 x i8] c"luthier.loader.hip_fat_binaries\00", section "llvm.metadata"
-@.str.fn  = private unnamed_addr constant [27 x i8] c"luthier.loader.hip_kernels\00", section "llvm.metadata"
-@.str.dv  = private unnamed_addr constant [31 x i8] c"luthier.loader.hip_device_vars\00", section "llvm.metadata"
-@.str.mv  = private unnamed_addr constant [32 x i8] c"luthier.loader.hip_managed_vars\00", section "llvm.metadata"
-@.str.tx  = private unnamed_addr constant [32 x i8] c"luthier.loader.hip_texture_vars\00", section "llvm.metadata"
-@.str.sf  = private unnamed_addr constant [32 x i8] c"luthier.loader.hip_surface_vars\00", section "llvm.metadata"
-@.str.src = private unnamed_addr constant [17 x i8] c"/app/example.cpp\00", section "llvm.metadata"
-
-@llvm.global.annotations = appending global [6 x { ptr, ptr, ptr, i32, ptr }] [
-  { ptr, ptr, ptr, i32, ptr } { ptr @HipFatBinaries, ptr @.str.fb, ptr @.str.src, i32 63, ptr null },
-  { ptr, ptr, ptr, i32, ptr } { ptr @HipFunctions,   ptr @.str.fn, ptr @.str.src, i32 67, ptr null },
-  { ptr, ptr, ptr, i32, ptr } { ptr @HipDeviceVars,  ptr @.str.dv, ptr @.str.src, i32 71, ptr null },
-  { ptr, ptr, ptr, i32, ptr } { ptr @HipManagedVars, ptr @.str.mv, ptr @.str.src, i32 75, ptr null },
-  { ptr, ptr, ptr, i32, ptr } { ptr @HipTextureVars, ptr @.str.tx, ptr @.str.src, i32 79, ptr null },
-  { ptr, ptr, ptr, i32, ptr } { ptr @HipSurfaceVars, ptr @.str.sf, ptr @.str.src, i32 83, ptr null }
-], section "llvm.metadata"
-
-@llvm.compiler.used = appending global [7 x ptr] [ptr @HipFunctions, ptr @HipDeviceVars, ptr @HipFatBinaries, ptr @HipManagedVars, ptr @HipSurfaceVars, ptr @HipTextureVars, ptr @__hip_cuid_60997337ce9624a2], section "llvm.metadata"
-
-; --- VERIFY PROMOTED SLOTS ---
-;
-; Each ArrayRef slot is set in-place to a `{ ptr to data, i64 N }` initializer
-; that views a private constant data array. HipFatBinaries is the exception:
-; its lone HipFatBinaryInfo slot is set directly to `{ ptr Bundle, i64 Size }`.
-;
-; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryParser::HipFatBinaryInfo" = type { ptr, i64 }
-; CHECK-DAG: @HipFatBinaries = dso_local constant %"struct.luthier::DeviceToolCodeFatBinaryParser::HipFatBinaryInfo" { ptr @__hip_fatbin, i64 32 }
-;
-; CHECK-DAG: @[[FN_DATA:[._a-zA-Z0-9]+]] = private constant [2 x %"struct.luthier::DeviceToolCodeFatBinaryParser::HipKernelInfo"]
-; CHECK-DAG: @HipFunctions = dso_local constant %"class.llvm::ArrayRef" { ptr @[[FN_DATA]], i64 2 }
-;
-; CHECK-DAG: @[[MV_DATA:[._a-zA-Z0-9]+]] = private constant [1 x %"struct.luthier::DeviceToolCodeFatBinaryParser::HipManagedVarInfo"] [%"struct.luthier::DeviceToolCodeFatBinaryParser::HipManagedVarInfo" { ptr @VarManaged, ptr @DummyManagedVariable, ptr @VarName, i64 0, i32 0 }]
-; CHECK-DAG: @HipManagedVars = dso_local constant %"class.llvm::ArrayRef" { ptr @[[MV_DATA]], i64 1 }
-;
-; CHECK-DAG: @[[DV_DATA:[._a-zA-Z0-9]+]] = private constant [1 x %"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceVarInfo"] [%"struct.luthier::DeviceToolCodeFatBinaryParser::HipDeviceVarInfo" { ptr @DummyVar, ptr @VarName }]
-; CHECK-DAG: @HipDeviceVars = dso_local constant %"class.llvm::ArrayRef" { ptr @[[DV_DATA]], i64 1 }
-;
-; CHECK-DAG: @[[TX_DATA:[._a-zA-Z0-9]+]] = private constant [2 x %"struct.luthier::DeviceToolCodeFatBinaryParser::HipTextureInfo"]
-; CHECK-DAG: @HipTextureVars = dso_local constant %"class.llvm::ArrayRef" { ptr @[[TX_DATA]], i64 2 }
-;
-; CHECK-DAG: @[[SF_DATA:[._a-zA-Z0-9]+]] = private constant [1 x %"struct.luthier::DeviceToolCodeFatBinaryParser::HipSurfaceInfo"] [%"struct.luthier::DeviceToolCodeFatBinaryParser::HipSurfaceInfo" { ptr @SurfaceAddr, ptr @SurName }]
-; CHECK-DAG: @HipSurfaceVars = dso_local constant %"class.llvm::ArrayRef" { ptr @[[SF_DATA]], i64 1 }
-
-; --- VERIFY CONSTRUCTOR MODIFICATION ---
-; CHECK: @llvm.global_ctors = appending global [1 x { i32, ptr, ptr }] [{ i32, ptr, ptr } { i32 65535, ptr @_GLOBAL__sub_I_BinomialOption.cpp, ptr null }]
 @llvm.global_ctors = appending global [2 x { i32, ptr, ptr }] [{ i32, ptr, ptr } { i32 65535, ptr @_GLOBAL__sub_I_BinomialOption.cpp, ptr null }, { i32, ptr, ptr } { i32 65535, ptr @__hip_module_ctor, ptr null }]
 
 define internal void @__hip_register_globals(ptr %0) {
@@ -180,3 +130,38 @@ entry:
   %2 = add i32 %0, %1
   ret i32 %2
 }
+
+attributes #0 = { "frame-pointer"="all" }
+
+; --- After the pass: the unified handle record struct and the harvested slots ---
+
+; CHECK-DAG: %"struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo" = type { ptr, ptr }
+
+; The HipHandles slot views a 7-element data array (2 kernels, 1 device var,
+; 2 textures, 1 surface, 1 managed var). The records are emitted in harvest
+; order, so each { HostHandle, DeviceName } pair is matched order-independently.
+; CHECK-DAG: @_ZN7luthier32ToolDeviceCodeOffloadParserTraitIiE10HipHandlesE = dso_local constant %"class.llvm::ArrayRef" { ptr @[[DATA:[._a-zA-Z0-9]+]], i64 7 }
+; CHECK-DAG: @[[DATA]] = private constant [7 x %"struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo"]
+
+; Kernels: HostHandle = arg1 (host stub ptr), DeviceName = arg3 (name string).
+; CHECK-DAG: %"struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo" { ptr @_Z16binomial_optionsiPK15HIP_vector_typeIfLj4EEPS0_, ptr @0 }
+; CHECK-DAG: %"struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo" { ptr @add_numbers_ptr, ptr @1 }
+; Device var / managed var: HostHandle = shadow ptr, DeviceName = name string.
+; CHECK-DAG: %"struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo" { ptr @DummyVar, ptr @VarName }
+; CHECK-DAG: %"struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo" { ptr @VarManaged, ptr @VarName }
+; Surface / textures: HostHandle = arg1, DeviceName = arg2.
+; CHECK-DAG: %"struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo" { ptr @SurfaceAddr, ptr @SurName }
+; CHECK-DAG: %"struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo" { ptr @TextureAddr, ptr @TexName }
+; CHECK-DAG: %"struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo" { ptr @TextureAddr2, ptr @TexName2 }
+
+; Fat binary: moved to the luthier_fatbin section, retained via llvm.used, and
+; the FatBinaryStart / FatBinaryStop slots point at the linker boundary symbols.
+; CHECK-DAG: @__hip_fatbin = internal constant [32 x i8] c"__CLANG_OFFLOAD_BUNDLE__\00\00\00\00\00\00\00\00", section "luthier_fatbin"
+; CHECK-DAG: @llvm.used = appending global [1 x ptr] [ptr @__hip_fatbin], section "llvm.metadata"
+; CHECK-DAG: @__start_luthier_fatbin = external constant i8
+; CHECK-DAG: @__stop_luthier_fatbin = external constant i8
+; CHECK-DAG: @_ZN7luthier32ToolDeviceCodeOffloadParserTraitIiE14FatBinaryStartE = dso_local global ptr @__start_luthier_fatbin
+; CHECK-DAG: @_ZN7luthier32ToolDeviceCodeOffloadParserTraitIiE13FatBinaryStopE = dso_local global ptr @__stop_luthier_fatbin
+
+; The HIP module ctor is dropped from global_ctors, leaving only the tool's.
+; CHECK-DAG: @llvm.global_ctors = appending global [1 x { i32, ptr, ptr }] [{ i32, ptr, ptr } { i32 65535, ptr @_GLOBAL__sub_I_BinomialOption.cpp, ptr null }]

@@ -2,7 +2,7 @@ add_library(LuthierToolIRCompilation OBJECT
         MarkAnnotationsPass.cpp
         FinalizeIntrinsicsPass.cpp
         SubstituteAMDGCNIntrinsicsPass.cpp
-        LoadHIPFATBinaryInfoPass.cpp
+        ToolDeviceCodeOffloadParserPass.cpp
 )
 
 target_compile_definitions(LuthierToolIRCompilation
