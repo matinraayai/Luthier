@@ -1,5 +1,5 @@
 // clang-format off
-/// RUN: %clangxx -x hip --offload-arch=gfx90a \
+/// RUN: %clangxx -x hip \
 /// RUN:   -fplugin=%luthier_tool_cxx_compilation_plugin_path \
 /// RUN:   -Xclang -add-plugin -Xclang luthier-emit-device-function-host-handle \
 /// RUN:   -I/opt/rocm/include --cuda-host-only -emit-llvm -S %s -o - 2>&1 \

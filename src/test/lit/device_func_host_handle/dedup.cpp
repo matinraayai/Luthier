@@ -1,5 +1,5 @@
 // clang-format off
-/// RUN: %clangxx -x hip --offload-arch=gfx908 \
+/// RUN: %clangxx -x hip \
 /// RUN:   -fplugin=%luthier_tool_cxx_compilation_plugin_path \
 /// RUN:   -Xclang -add-plugin -Xclang luthier-emit-device-function-host-handle \
 /// RUN:   -I/opt/rocm/include --cuda-host-only -emit-llvm -S %s -o - 2>&1 \
@@ -9,7 +9,6 @@
 /// all resolve to a single synthesized \c __host__ handle (the consumer dedups
 /// via the location-keyed Synthesized set, and overload resolution does the
 /// rest).
-
 
 #include <hip/hip_runtime.h>
 

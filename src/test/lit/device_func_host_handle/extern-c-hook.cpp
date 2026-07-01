@@ -1,22 +1,21 @@
-/// RUN: %clangxx -x hip --offload-arch=gfx908 \
+// clang-format off
+/// RUN: %clangxx -x hip \
 /// RUN:   -fplugin=%luthier_tool_cxx_compilation_plugin_path \
-/// RUN:   -I/opt/rocm/include \
-/// RUN:   --cuda-host-only -emit-llvm -S %s -o - 2>&1 | %tee_out FileCheck %s
-/// Verifies the dual-overload synthesis for a tagged device function
-/// declared inside an `extern "C"` linkage block. The sibling inherits
-/// C linkage (it's added to the same DeclContext as the original), so
-/// its IR symbol is the source identifier verbatim — no Itanium
-/// mangling. This exercises the IR-pass code path that falls back to
-/// using the AnnotatedFn's IR symbol directly when partialDemangle
-/// fails on a non-Itanium-mangled name.
+/// RUN:   -Xclang -add-plugin -Xclang luthier-emit-device-function-host-handle \
+/// RUN:   -I/opt/rocm/include --cuda-host-only -emit-llvm -S %s -o - 2>&1 \
+/// RUN:   | %tee_out FileCheck %s
+// clang-format off
+/// Verifies handle synthesis for a \c __device__ function declared inside an
+/// \c `extern "C"` block. The handle inherits C linkage (it's added to the same
+/// DeclContext as the original), so its IR symbol is the source identifier
+/// verbatim — no Itanium mangling. This exercises the IR-pass path that uses
+/// the symbol directly when demangling a non-Itanium name fails.
 
 #include <hip/hip_runtime.h>
 
 extern "C" {
 
-__attribute__((device, used))
-__attribute__((luthier_export_function_handle))
-void myCHook() {}
+__attribute__((device)) void myCHook() {}
 
 } // extern "C"
 
@@ -25,13 +24,13 @@ void hostFunction(const void **out) {
 }
 
 // clang-format off
-/// The sibling has C linkage; its host symbol is the source identifier
-/// verbatim (no _Z<len>... Itanium prefix).
+/// The handle has C linkage; its host symbol is the source identifier verbatim,
+/// and it is annotated.
 /// CHECK: @llvm.global.annotations {{.*}}@myCHook
 /// CHECK: define dso_local void @myCHook()
 /// CHECK-NEXT: entry:
 /// CHECK-NEXT: ret void
 
-/// Host code's address-take resolves to the C-linkage sibling.
+/// Host code's address-take resolves to the C-linkage handle.
 /// CHECK: store ptr @myCHook
 // clang-format on
