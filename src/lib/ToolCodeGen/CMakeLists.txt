@@ -20,7 +20,7 @@ tablegen(LuthierSIInstrSemanticsGen SIInstrSemantics.inc -gen-si-instr-semantics
 add_public_tablegen_target(LuthierSIInstrSemanticsGen)
 
 add_library(LuthierToolCodeGen OBJECT
-        DeviceToolCodeParser.cpp
+        ToolDeviceCodeParser.cpp
         PseudoOpcodeAndRegMapper.cpp
         TargetMachineInstrMDNode.cpp
         CodeDiscoveryPass.cpp

@@ -18,9 +18,9 @@
 /// the compilation pipeline.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolIRCompilation/FinalizeIntrinsicsPass.h"
-#include "luthier/ToolIRCompilation/LoadHIPFATBinaryInfoPass.h"
 #include "luthier/ToolIRCompilation/MarkAnnotationsPass.h"
 #include "luthier/ToolIRCompilation/SubstituteAMDGCNIntrinsicsPass.h"
+#include "luthier/ToolIRCompilation/ToolDeviceCodeOffloadParserPass.h"
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Plugins/PassPlugin.h>
 
@@ -46,7 +46,8 @@ void registerToolIRCompilationPasses(llvm::PassBuilder &PB) {
                tryParsePass<luthier::FinalizeIntrinsicsPass>(Name, MPM) ||
                tryParsePass<luthier::SubstituteAMDGCNIntrinsicsPass>(Name,
                                                                      MPM) ||
-               tryParsePass<luthier::LoadHIPFATBinaryInfoPass>(Name, MPM);
+               tryParsePass<luthier::ToolDeviceCodeOffloadParserPass>(Name,
+                                                                      MPM);
       });
   PB.registerOptimizerLastEPCallback([](llvm::ModulePassManager &MPM,
                                         llvm::OptimizationLevel,
@@ -58,7 +59,7 @@ void registerToolIRCompilationPasses(llvm::PassBuilder &PB) {
 
   PB.registerPipelineStartEPCallback(
       [](llvm::ModulePassManager &MPM, llvm::OptimizationLevel) {
-        MPM.addPass(luthier::LoadHIPFATBinaryInfoPass());
+        MPM.addPass(luthier::ToolDeviceCodeOffloadParserPass());
       });
 }
 
