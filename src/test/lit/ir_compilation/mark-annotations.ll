@@ -1,4 +1,4 @@
-; RUN: opt %luthier_tool_ir_compilation_plugin_path -passes=luthier-mark-annotations -S %s | %tee_out FileCheck %s
+; RUN: opt -load-pass-plugin=%luthier_tool_ir_compilation_plugin_path -passes=luthier-mark-annotations -S %s | %tee_out FileCheck %s
 ; Verifies that:
 ;   - functions annotated with luthier.intrinsic get the matching fn-attr
 ;   - llvm.global.annotations / llvm.used / llvm.compiler.used are removed

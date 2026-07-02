@@ -32,6 +32,10 @@ namespace luthier {
 llvm::PreservedAnalyses
 SubstituteAMDGCNIntrinsicsPass::run(llvm::Module &M,
                                     llvm::ModuleAnalysisManager &) {
+  llvm::Triple T(M.getTargetTriple());
+  /// Only operate on device code
+  if (T.getArch() != llvm::Triple::ArchType::amdgcn)
+    return llvm::PreservedAnalyses::all();
   llvm::LLVMContext &Ctx = M.getContext();
   llvm::Type *Int32Ty = llvm::Type::getInt32Ty(Ctx);
   llvm::PointerType *Int32PtrTy =

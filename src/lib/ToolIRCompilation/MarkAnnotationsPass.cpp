@@ -35,6 +35,10 @@ namespace luthier {
 
 llvm::PreservedAnalyses
 MarkAnnotationsPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &) {
+  llvm::Triple T(M.getTargetTriple());
+  /// Only operate on device code
+  if (T.getArch() != llvm::Triple::ArchType::amdgcn)
+    return llvm::PreservedAnalyses::all();
   // Functions whose IR-level `llvm.global.annotations` entry names them
   // as a hook (`luthier.function.hook`). At the bottom we re-add these
   // to `@llvm.compiler.used` so the downstream loader's `-O3`
@@ -69,10 +73,6 @@ MarkAnnotationsPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &) {
         F->addFnAttr(IntrinsicAttribute);
         LLVM_DEBUG(luthier::dbgs()
                    << "Marked intrinsic " << F->getName() << ".\n");
-      } else if (Content == LUTHIER_STRINGIFY(LUTHIER_HOOK_ATTRIBUTE)) {
-        F->addFnAttr(LUTHIER_STRINGIFY(LUTHIER_HOOK_ATTRIBUTE));
-        HooksToPreserve.push_back(F);
-        LLVM_DEBUG(luthier::dbgs() << "Marked hook " << F->getName() << ".\n");
       } else if (Content == InjectedPayloadAttribute) {
         F->addFnAttr(InjectedPayloadAttribute);
         LLVM_DEBUG(luthier::dbgs()
