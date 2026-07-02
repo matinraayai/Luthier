@@ -1,4 +1,4 @@
-; RUN: opt %luthier_tool_ir_compilation_plugin_path -passes=luthier-substitute-amdgcn-intrinsics -S %s | %tee_out FileCheck %s
+; RUN: opt -load-pass-plugin=%luthier_tool_ir_compilation_plugin_path -passes=luthier-substitute-amdgcn-intrinsics -S %s | %tee_out FileCheck %s
 ; Verifies that lower-hip-device-intrinsics rewrites:
 ;   - llvm.amdgcn.workgroup.id.x -> luthier::workgroupIdX.i32
 ;   - llvm.amdgcn.workgroup.id.y -> luthier::workgroupIdY.i32
