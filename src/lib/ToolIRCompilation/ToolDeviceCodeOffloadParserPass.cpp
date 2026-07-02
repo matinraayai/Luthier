@@ -260,6 +260,11 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
   /// \c -fcuda-include-gpubinary embedding case).
   if (BundleGV && !BundleGV->isDeclaration()) {
     BundleGV->setSection("luthier_fatbin");
+    /// Clang embeds the bundle as an anonymous private constant (e.g. \c @1);
+    /// \c @llvm.used members must be named, so give it a stable name before
+    /// retaining it.
+    if (!BundleGV->hasName())
+      BundleGV->setName("__luthier_fatbin");
     llvm::appendToUsed(M, {BundleGV});
   }
 

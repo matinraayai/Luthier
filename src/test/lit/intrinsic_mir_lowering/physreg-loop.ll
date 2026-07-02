@@ -17,7 +17,7 @@
 ; RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx908 -filetype=obj %intrinsic_mir_lowering_target_stub -o %t.o && \
 ; RUN: ld.lld -shared --unresolved-symbols=ignore-all -o %t %t.o && \
 ; RUN: luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx908 \
-; RUN:    %luthier_tool_code_gen_plugin \
+; RUN:    -load-pass-plugin=%luthier_tool_code_gen_plugin \
 ; RUN:    -passes=luthier-mock-load-amdgpu-code-objects,luthier-code-discovery,luthier-apply-instrumentation \
 ; RUN:    -code-object-paths=%t \
 ; RUN:    -initial-entrypoint=0:stub_kernel.kd \
