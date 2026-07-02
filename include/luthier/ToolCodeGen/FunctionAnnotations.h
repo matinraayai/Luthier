@@ -44,7 +44,7 @@ namespace luthier {
 /// All bindings to Luthier intrinsics must have this attribute. The
 /// value of this attribute must be the base name of the intrinsic e.g.
 /// \c luthier::readReg
-#define LUTHIER_INTRINSIC_ATTRIBUTE luthier.function.intrinsic
+#define LUTHIER_INTRINSIC_ATTRIBUTE luthier.intrinsic
 
 /// All injected payload functions during instrumentation (i.e. functions that
 /// their machine code will be inserted before an instrumentation point) must
