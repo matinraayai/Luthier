@@ -95,7 +95,7 @@ populatePointerSlot(llvm::ArrayRef<llvm::GlobalVariable *> Slots,
 /// \brief Remove the \c __hip_module_ctor function from the
 /// \c llvm.global_ctors array. The array is constant, so it is reconstructed
 /// exactly as it was but without \c __hip_module_ctor, so the latter can be
-/// deleted afterwards.
+/// deleted afterward.
 static llvm::Error deleteModuleCtor(llvm::Module &M) {
   llvm::GlobalVariable *OldCtors = M.getGlobalVariable("llvm.global_ctors");
   /// If there are no global constructors there is nothing we should do
@@ -166,13 +166,12 @@ static llvm::Error deleteModuleCtor(llvm::Module &M) {
   return llvm::Error::success();
 }
 /// \brief Deletes a function, this assumes there are no uses
-static llvm::Error deleteFunction(llvm::Function *Fun) {
+static void deleteFunction(llvm::Function *Fun) {
   Fun->dropAllReferences();
   Fun->eraseFromParent();
-  return llvm::Error::success();
 }
 /// \brief Deletes all uses of a function, so we can safely delete it after
-static llvm::Error deleteAllUses(llvm::Function *Fun) {
+static void deleteAllUses(llvm::Function *Fun) {
   for (auto *User : Fun->users()) {
     if (auto *Inst = llvm::dyn_cast<llvm::Instruction>(User)) {
       // If the call returns a value, we must "defuse" it first
@@ -185,7 +184,6 @@ static llvm::Error deleteAllUses(llvm::Function *Fun) {
       User->dropAllReferences();
     }
   }
-  return llvm::Error::success();
 }
 
 /// \brief This pass harvests the host-handle / device-name pairs from the
@@ -219,9 +217,9 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
   if (!RFB)
     return llvm::PreservedAnalyses::all();
 
-  llvm::StringMap<llvm::SmallVector<llvm::GlobalVariable *, 2>> Slots;
+  llvm::StringMap<llvm::SmallVector<llvm::GlobalVariable *, 2>> SectionSlotsMap;
   llvm::SmallVector<llvm::Function *, 8> ExportedDeviceFnHandles;
-  collectAnnotatedSlots(M, Slots, ExportedDeviceFnHandles);
+  collectAnnotatedSlots(M, SectionSlotsMap, ExportedDeviceFnHandles);
 
   auto getOrCreateStruct =
       [&C](llvm::StringRef Name,
@@ -282,14 +280,16 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
                                     llvm::GlobalValue::ExternalLinkage,
                                     /*Initializer=*/nullptr, Name);
   };
-  if (!Slots[OffloadSectionBeginAnnotation].empty())
-    LUTHIER_REPORT_FATAL_ON_ERROR(populatePointerSlot(
-        Slots[OffloadSectionBeginAnnotation], OffloadSectionBeginAnnotation,
-        getBoundarySymbol("__start_luthier_fatbin")));
-  if (!Slots[OffloadSectionEndAnnotation].empty())
-    LUTHIER_REPORT_FATAL_ON_ERROR(populatePointerSlot(
-        Slots[OffloadSectionEndAnnotation], OffloadSectionEndAnnotation,
-        getBoundarySymbol("__stop_luthier_fatbin")));
+  if (!SectionSlotsMap[OffloadSectionBeginAnnotation].empty())
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        populatePointerSlot(SectionSlotsMap[OffloadSectionBeginAnnotation],
+                            OffloadSectionBeginAnnotation,
+                            getBoundarySymbol("__start_luthier_fatbin")));
+  if (!SectionSlotsMap[OffloadSectionEndAnnotation].empty())
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        populatePointerSlot(SectionSlotsMap[OffloadSectionEndAnnotation],
+                            OffloadSectionEndAnnotation,
+                            getBoundarySymbol("__stop_luthier_fatbin")));
 
   //===--------------------------------------------------------------------===//
   // Handles: every __hipRegister* kind (kernels, device/managed vars, textures,
@@ -377,8 +377,8 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
   /// runtime reconstructs the \c ArrayRef<HipHandleInfo>. Only done when the
   /// trait is instantiated in this TU (its slots are present); an empty handle
   /// list still yields a valid empty (zero-length) section.
-  if (!Slots[HipHandleSectionBeginAnnotation].empty() ||
-      !Slots[HipHandleSectionEndAnnotation].empty()) {
+  if (!SectionSlotsMap[HipHandleSectionBeginAnnotation].empty() ||
+      !SectionSlotsMap[HipHandleSectionEndAnnotation].empty()) {
     llvm::ArrayType *HandlesArrTy =
         llvm::ArrayType::get(HandleInfoTy, Handles.size());
     auto *HandlesData = new llvm::GlobalVariable(
@@ -387,15 +387,16 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
         ".luthier.hip_handles");
     HandlesData->setSection("luthier_hip_handles");
     llvm::appendToUsed(M, {HandlesData});
-    if (!Slots[HipHandleSectionBeginAnnotation].empty())
+    if (!SectionSlotsMap[HipHandleSectionBeginAnnotation].empty())
       LUTHIER_REPORT_FATAL_ON_ERROR(populatePointerSlot(
-          Slots[HipHandleSectionBeginAnnotation],
+          SectionSlotsMap[HipHandleSectionBeginAnnotation],
           HipHandleSectionBeginAnnotation,
           getBoundarySymbol("__start_luthier_hip_handles")));
-    if (!Slots[HipHandleSectionEndAnnotation].empty())
-      LUTHIER_REPORT_FATAL_ON_ERROR(populatePointerSlot(
-          Slots[HipHandleSectionEndAnnotation], HipHandleSectionEndAnnotation,
-          getBoundarySymbol("__stop_luthier_hip_handles")));
+    if (!SectionSlotsMap[HipHandleSectionEndAnnotation].empty())
+      LUTHIER_REPORT_FATAL_ON_ERROR(
+          populatePointerSlot(SectionSlotsMap[HipHandleSectionEndAnnotation],
+                              HipHandleSectionEndAnnotation,
+                              getBoundarySymbol("__stop_luthier_hip_handles")));
   }
 
   //===--------------------------------------------------------------------===//
@@ -405,50 +406,48 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
   /// Make sure we remove the hip module Ctor from llvm.global_ctors, not doing
   /// so the function cannot be deleted since it still would have a use
   LUTHIER_REPORT_FATAL_ON_ERROR(deleteModuleCtor(M));
-  LUTHIER_REPORT_FATAL_ON_ERROR(
-      deleteFunction(M.getFunction("__hip_module_ctor")));
-  LUTHIER_REPORT_FATAL_ON_ERROR(
-      deleteFunction(M.getFunction("__hip_register_globals")));
-  ///  Delete all functions that call __hipRegisterFatBinary and then delete
-  /// __hipRegisterFatBinary as well, we do the same for
-  /// __hipUnregisterFatBinary as well below
+  deleteFunction(M.getFunction("__hip_module_ctor"));
+  deleteFunction(M.getFunction("__hip_register_globals"));
+  ///  Delete all functions that call \c __hipRegisterFatBinary and then delete
+  /// \c __hipRegisterFatBinary. We do the same for
+  /// \c __hipUnregisterFatBinary as well below
   for (auto *User : RFB->users()) {
     if (auto *CallInst = llvm::dyn_cast<llvm::CallInst>(User)) {
       auto *Fun = CallInst->getParent()->getParent();
-      LUTHIER_REPORT_FATAL_ON_ERROR(deleteFunction(Fun));
+      deleteFunction(Fun);
     }
   }
-  LUTHIER_REPORT_FATAL_ON_ERROR(deleteFunction(RFB));
+  deleteFunction(RFB);
   for (auto *User : RUFB->users()) {
     if (auto *CallInst = llvm::dyn_cast<llvm::CallInst>(User)) {
       auto *Fun = CallInst->getParent()->getParent();
-      LUTHIER_REPORT_FATAL_ON_ERROR(deleteFunction(Fun));
+      deleteFunction(Fun);
     }
   }
-  LUTHIER_REPORT_FATAL_ON_ERROR(deleteFunction(RUFB));
+  deleteFunction(RUFB);
   /// Delete all uses of these functions so we can safely delete them
   if (RMV)
-    LUTHIER_REPORT_FATAL_ON_ERROR(deleteAllUses(RMV));
+    deleteAllUses(RMV);
   if (RDV)
-    LUTHIER_REPORT_FATAL_ON_ERROR(deleteAllUses(RDV));
+    deleteAllUses(RDV);
   if (RTX)
-    LUTHIER_REPORT_FATAL_ON_ERROR(deleteAllUses(RTX));
+    deleteAllUses(RTX);
   if (RSF)
-    LUTHIER_REPORT_FATAL_ON_ERROR(deleteAllUses(RSF));
+    deleteAllUses(RSF);
   if (RFUN)
-    LUTHIER_REPORT_FATAL_ON_ERROR(deleteAllUses(RFUN));
+    deleteAllUses(RFUN);
 
   /// Now that they have ZERO users, safely erase them from the Module
   if (RMV)
-    LUTHIER_REPORT_FATAL_ON_ERROR(deleteFunction(RMV));
+    deleteFunction(RMV);
   if (RDV)
-    LUTHIER_REPORT_FATAL_ON_ERROR(deleteFunction(RDV));
+    deleteFunction(RDV);
   if (RTX)
-    LUTHIER_REPORT_FATAL_ON_ERROR(deleteFunction(RTX));
+    deleteFunction(RTX);
   if (RSF)
-    LUTHIER_REPORT_FATAL_ON_ERROR(deleteFunction(RSF));
+    deleteFunction(RSF);
   if (RFUN)
-    LUTHIER_REPORT_FATAL_ON_ERROR(deleteFunction(RFUN));
+    deleteFunction(RFUN);
   return llvm::PreservedAnalyses::none();
 }
 
