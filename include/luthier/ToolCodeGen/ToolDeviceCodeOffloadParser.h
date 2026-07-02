@@ -155,16 +155,16 @@ public:
 #define LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(DERIVED)                    \
   __attribute__((managed, used)) char ::luthier::                              \
       ToolDeviceCodeOffloadParserTrait<DERIVED>::DeviceCodeMarker;             \
-  __attribute__((used, LUTHIER_CLANG_OFFLOAD_SECTION_BEGIN))                   \
+  __attribute__((used, annotate(LUTHIER_CLANG_OFFLOAD_SECTION_BEGIN)))         \
   const char * ::luthier::ToolDeviceCodeOffloadParserTrait<                    \
       DERIVED>::FatBinarySectionBegin;                                         \
-  __attribute__((used, LUTHIER_CLANG_OFFLOAD_SECTION_END))                     \
+  __attribute__((used, annotate(LUTHIER_CLANG_OFFLOAD_SECTION_END)))           \
   const char * ::luthier::ToolDeviceCodeOffloadParserTrait<                    \
       DERIVED>::FatBinarySectionEnd;                                           \
-  __attribute__((used, LUTHIER_HIP_HANDLE_SECTION_BEGIN))                      \
+  __attribute__((used, annotate(LUTHIER_HIP_HANDLE_SECTION_BEGIN)))            \
   const HipHandleInfo * ::luthier::ToolDeviceCodeOffloadParserTrait<           \
       DERIVED>::HipHandleSectionBegin;                                         \
-  __attribute__((used, LUTHIER_HIP_HANDLE_SECTION_END))                        \
+  __attribute__((used, annotate(LUTHIER_HIP_HANDLE_SECTION_END)))              \
   const HipHandleInfo * ::luthier::ToolDeviceCodeOffloadParserTrait<           \
       DERIVED>::HipHandleSectionEnd;
 
