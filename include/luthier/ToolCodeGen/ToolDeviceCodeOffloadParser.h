@@ -35,20 +35,57 @@
 #include <utility>
 
 namespace luthier {
+
+//===----------------------------------------------------------------------===//
+/// Compiler annotations for the \c ToolDeviceCodeOffloadParser.
+/// Note that these attributes can be used outside
+/// \c ToolDeviceCodeOffloadParser, and the tool compiler plugin should honor
+/// them.
+//===----------------------------------------------------------------------===//
+
+/// Attribute indicating that a static global pointer must be populated with the
+/// starting address of the clang offload section (FAT binary) embedded
+/// inside the current translation unit
+#define LUTHIER_CLANG_OFFLOAD_SECTION_BEGIN luthier_clang_offload_section_begin
+
+/// Attribute Indicating a static global pointer must be populated with the
+/// ending address of the clang offload section (FAT binary) embedded inside
+/// the current translation unit
+#define LUTHIER_CLANG_OFFLOAD_SECTION_END luthier_clang_offload_section_end
+
+/// Attribute indicating that a static global pointer must be populated with
+/// the starting address of the HIP handle section (see \c HipHandleInfo)
+#define LUTHIER_HIP_HANDLE_SECTION_BEGIN luthier_hip_handle_section_begin
+
+/// Attribute indicating that a static global pointer must be populated with
+/// the ending address of the HIP handle section (see \c HipHandleInfo)
+#define LUTHIER_HIP_HANDLE_SECTION_END luthier_hip_handle_section_end
+
+static constexpr llvm::StringLiteral OffloadSectionBeginAnnotation{
+    LUTHIER_STRINGIFY(LUTHIER_CLANG_OFFLOAD_SECTION_BEGIN)};
+
+static constexpr llvm::StringLiteral OffloadSectionEndAnnotation{
+    LUTHIER_STRINGIFY(LUTHIER_CLANG_OFFLOAD_SECTION_END)};
+
+static constexpr llvm::StringLiteral HipHandleSectionBeginAnnotation{
+    LUTHIER_STRINGIFY(LUTHIER_HIP_HANDLE_SECTION_BEGIN)};
+
+static constexpr llvm::StringLiteral HipHandleSectionEndAnnotation{
+    LUTHIER_STRINGIFY(LUTHIER_HIP_HANDLE_SECTION_END)};
+
+/// A single handle info entry; Holds the \c void * HIP shadow host handle of
+/// the globals in the HIP code, plus its associated name.
+struct HipHandleInfo {
+  void *HostHandle{nullptr};
+  const char *DeviceName{nullptr};
+};
+
 /// \brief Base class for \c ToolDeviceCodeOffloadParserTrait; Contains all
 /// logic for the trait that doesn't require a \c static field
 class ToolDeviceCodeOffloadParser : public ToolDeviceCodeParser {
   /// Mapping between \b ALL <tt>void *</tt> host shadow handles from the
   /// globals in the device logic to their names.
   llvm::DenseMap<const void *, llvm::StringRef> HandleToName;
-
-public:
-  /// Struct that holds the \c void * HIP shadow host handle of the globals in
-  /// the HIP code and its associated variable name
-  struct HipHandleInfo {
-    void *HostHandle{nullptr};
-    const char *DeviceName{nullptr};
-  };
 
 protected:
   ToolDeviceCodeOffloadParser(llvm::MemoryBufferRef Bundle,
@@ -89,64 +126,47 @@ public:
 /// annotated slot (forced live by \c [[gnu::used]]).
 template <typename Derived>
 class ToolDeviceCodeOffloadParserTrait : public ToolDeviceCodeOffloadParser {
-  /// The IR pass for \c ToolDeviceCodeOffloadParser writes a \c { ptr, i64 }
-  /// struct constant into each placeholder slot, matching \c
-  /// llvm::ArrayRef<T>'s ABI. If LLVM ever rearranges \c ArrayRef's members,
-  /// these asserts trip at compile time and the pass needs to be updated in
-  /// lockstep.
-  static_assert(sizeof(llvm::ArrayRef<void *>) ==
-                    sizeof(void *) + sizeof(uint64_t),
-                "llvm::ArrayRef ABI changed: expected { ptr, i64 } layout "
-                "matching the IR pass's ConstantStruct initializer.");
-  static_assert(alignof(llvm::ArrayRef<void *>) == alignof(void *),
-                "llvm::ArrayRef alignment changed.");
-  static_assert(
-      sizeof(decltype(std::declval<llvm::ArrayRef<void *>>().size())) ==
-          sizeof(uint64_t),
-      "llvm::ArrayRef length is no longer 64-bit.");
 
   /// Sentinel \c __managed__ variable that forces Clang to emit "host-visible"
   /// device code in the derived parser's TU
-  static __attribute__((managed)) char DeviceCodeMarker;
+  static char DeviceCodeMarker;
 
-  //===--------------------------------------------------------------------===//
-  /// Slots populated by \c ToolDeviceCodeOffloadParserPass at host IR-compile
-  /// time.
-  //===--------------------------------------------------------------------===//
+  static const char *FatBinarySectionBegin;
 
-  /// Start and boundary (one-past-the-end) load addresses of the embedded tool
-  /// fat binary. The pass references the linker's \c luthier_fatbin
-  /// section-boundary symbols (\c __start_luthier_fatbin /
-  /// \c __stop_luthier_fatbin) and stores their addresses into these slots.
-  static const char *FatBinaryStart;
-  static const char *FatBinaryStop;
+  static const char *FatBinarySectionEnd;
 
-  static llvm::ArrayRef<HipHandleInfo> HipHandles;
+  static HipHandleInfo *HipHandleSectionBegin;
+
+  static HipHandleInfo *HipHandleSectionEnd;
 
 public:
   explicit ToolDeviceCodeOffloadParserTrait(llvm::Error &Err)
       : ToolDeviceCodeOffloadParser(
             llvm::MemoryBufferRef{
-                llvm::StringRef{
-                    FatBinaryStart,
-                    static_cast<uint64_t>(FatBinaryStop - FatBinaryStart)},
+                llvm::StringRef{FatBinarySectionBegin,
+                                static_cast<uint64_t>(FatBinarySectionEnd -
+                                                      FatBinarySectionBegin)},
                 ""},
-            HipHandles, Err) {
-    /// Spurious use of the \c DeviceCodeMarker to force emission of
-    /// registration functions in the host code.
-    (void)&DeviceCodeMarker;
-  }
+            llvm::ArrayRef<HipHandleInfo>{HipHandleSectionBegin,
+                                          HipHandleSectionEnd},
+            Err) {}
 };
 
 #define LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(DERIVED)                    \
   __attribute__((managed, used)) char ::luthier::                              \
       ToolDeviceCodeOffloadParserTrait<DERIVED>::DeviceCodeMarker;             \
-  __attribute__((used)) const char                                             \
-      * ::luthier::ToolDeviceCodeOffloadParserTrait<DERIVED>::FatBinaryStart;  \
-  __attribute__((used)) const char                                             \
-      * ::luthier::ToolDeviceCodeOffloadParserTrait<DERIVED>::FatBinaryStop;   \
-  __attribute__((used)) llvm::ArrayRef<HipHandleInfo>::luthier::               \
-      ToolDeviceCodeOffloadParserTrait<DERIVED>::HipHandles;
+  __attribute__((used, LUTHIER_CLANG_OFFLOAD_SECTION_BEGIN))                   \
+  const char * ::luthier::ToolDeviceCodeOffloadParserTrait<                    \
+      DERIVED>::FatBinarySectionBegin;                                         \
+  __attribute__((used, LUTHIER_CLANG_OFFLOAD_SECTION_END))                     \
+  const char * ::luthier::ToolDeviceCodeOffloadParserTrait<                    \
+      DERIVED>::FatBinarySectionEnd;                                           \
+  __attribute__((used, LUTHIER_HIP_HANDLE_SECTION_BEGIN))                      \
+  const HipHandleInfo * ::luthier::ToolDeviceCodeOffloadParserTrait<           \
+      DERIVED>::HipHandleSectionBegin;                                         \
+  __attribute__((used, LUTHIER_HIP_HANDLE_SECTION_END))                        \
+  const HipHandleInfo * ::luthier::ToolDeviceCodeOffloadParserTrait<           \
+      DERIVED>::HipHandleSectionEnd;
 
 } // namespace luthier
 
