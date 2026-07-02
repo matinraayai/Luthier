@@ -222,13 +222,6 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
   llvm::SmallVector<llvm::Function *, 8> ExportedDeviceFnHandles;
   collectAnnotatedSlots(M, SectionSlotsMap, ExportedDeviceFnHandles);
 
-  auto getOrCreateStruct =
-      [&C](llvm::StringRef Name,
-           llvm::ArrayRef<llvm::Type *> Fields) -> llvm::StructType * {
-    if (auto *Existing = llvm::StructType::getTypeByName(C, Name))
-      return Existing;
-    return llvm::StructType::create(C, Fields, Name);
-  };
   llvm::Type *PtrTy = llvm::PointerType::getUnqual(C);
 
   //===--------------------------------------------------------------------===//
@@ -306,8 +299,32 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
   // HipHandles array of { void* HostHandle, const char* DeviceName }.
   //===--------------------------------------------------------------------===//
 
+  /// Reconstruct (or reuse) the \c HipHandleInfo { void*, const char* } record
+  /// type.
   llvm::StructType *HandleInfoTy =
-      getOrCreateStruct("struct.luthier::HipHandleInfo", {PtrTy, PtrTy});
+      llvm::StructType::getTypeByName(C, "struct.luthier::HipHandleInfo");
+  if (!HandleInfoTy) {
+    HandleInfoTy = llvm::StructType::create(C, {PtrTy, PtrTy},
+                                            "struct.luthier::HipHandleInfo");
+  } else if (HandleInfoTy->isOpaque()) {
+    HandleInfoTy->setBody({PtrTy, PtrTy});
+  } else {
+    bool Matches =
+        !HandleInfoTy->isPacked() && HandleInfoTy->getNumElements() == 2;
+    if (Matches)
+      for (llvm::Type *ElemTy : HandleInfoTy->elements())
+        if (!ElemTy->isPointerTy()) {
+          Matches = false;
+          break;
+        }
+    if (!Matches) {
+      C.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
+          "existing LLVM type 'struct.luthier::HipHandleInfo' has a layout "
+          "incompatible with its C++ definition; the offload-parser pass and "
+          "the tool module are out of sync.")));
+      return llvm::PreservedAnalyses::none();
+    }
+  }
   llvm::SmallVector<llvm::Constant *, 16> Handles;
   auto addHandle = [&](llvm::Constant *HostHandle, llvm::Constant *DeviceName) {
     Handles.push_back(
