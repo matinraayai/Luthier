@@ -20,10 +20,10 @@
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
+#include "luthier/ToolCodeGen/ToolDeviceCodeOffloadParser.h"
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringMap.h>
 #include <llvm/Analysis/ValueTracking.h>
-#include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/LLVMContext.h>
@@ -37,86 +37,53 @@
 
 namespace luthier {
 
-/// Names of the \c ToolDeviceCodeOffloadParserTrait static slots the pass
-/// populates. The trait no longer annotates these members, so they are located
-/// by their (demangled) C++ name instead of via \c llvm.global.annotations.
-static constexpr llvm::StringLiteral FatBinaryStartSlot = "FatBinaryStart";
-static constexpr llvm::StringLiteral FatBinaryStopSlot = "FatBinaryStop";
-static constexpr llvm::StringLiteral HipHandlesSlot = "HipHandles";
-
-/// \brief Collect every \c ToolDeviceCodeOffloadParserTrait<Derived> static
-/// slot in \p M, keyed by the slot's member name (\c FatBinaryStart /
-/// \c FatBinaryStop / \c HipHandles).
+/// \brief Scan \c @llvm.global.annotations once, collecting both the trait's
+/// section-boundary slots and the CXX plugin's exported device functions.
 ///
-/// The slots are \c linkonce_odr template static members; one set exists per
-/// \c Derived instantiated in this TU, so each name maps to a (usually
-/// single-element) vector. They are matched by demangled name rather than an
-/// annotation, since the trait no longer tags them.
-static void collectTraitSlots(
+/// The trait tags four \c static pointer slots with the \c annotate attribute
+/// (see \c ToolDeviceCodeOffloadParser.h): the offload-section begin/end and
+/// the HIP-handle-section begin/end. \p Slots maps each of those annotation
+/// strings to the annotated global(s) — one \c linkonce_odr set per \c Derived
+/// instantiated in this TU, so usually a single element. Functions carrying the
+/// \c luthier.export_function_handle marker are appended to \p ExportHandleFns.
+static void collectAnnotatedSlots(
     llvm::Module &M,
-    llvm::StringMap<llvm::SmallVector<llvm::GlobalVariable *, 2>> &Slots) {
-  for (llvm::GlobalVariable &GV : M.globals()) {
-    if (!GV.hasName())
+    llvm::StringMap<llvm::SmallVector<llvm::GlobalVariable *, 2>> &Slots,
+    llvm::SmallVectorImpl<llvm::Function *> &ExportHandleFns) {
+  const llvm::GlobalVariable *Annots =
+      M.getGlobalVariable("llvm.global.annotations");
+  if (!Annots || !Annots->hasInitializer())
+    return;
+  const auto *CA = llvm::dyn_cast<llvm::ConstantArray>(Annots->getOperand(0));
+  if (!CA)
+    return;
+  for (const llvm::Value *Op : CA->operands()) {
+    const auto *CS = llvm::dyn_cast<llvm::ConstantStruct>(Op);
+    if (!CS || CS->getNumOperands() < 2)
       continue;
-    std::string Demangled = llvm::demangle(GV.getName());
-    llvm::StringRef D(Demangled);
-    if (!D.contains("luthier::ToolDeviceCodeOffloadParserTrait"))
+    llvm::Value *Annotatee = CS->getOperand(0)->stripPointerCasts();
+    auto *NameGV = llvm::dyn_cast<llvm::GlobalVariable>(
+        CS->getOperand(1)->stripPointerCasts());
+    if (!NameGV)
       continue;
-    if (D.ends_with("::" + FatBinaryStartSlot.str()))
-      Slots[FatBinaryStartSlot].push_back(&GV);
-    else if (D.ends_with("::" + FatBinaryStopSlot.str()))
-      Slots[FatBinaryStopSlot].push_back(&GV);
-    else if (D.ends_with("::" + HipHandlesSlot.str()))
-      Slots[HipHandlesSlot].push_back(&GV);
+    llvm::StringRef Anno;
+    if (!llvm::getConstantStringInfo(NameGV, Anno))
+      continue;
+    if (Anno == ExportFunctionHandleMarker) {
+      if (auto *Fn = llvm::dyn_cast<llvm::Function>(Annotatee))
+        ExportHandleFns.push_back(Fn);
+    } else if (Anno == OffloadSectionBeginAnnotation ||
+               Anno == OffloadSectionEndAnnotation ||
+               Anno == HipHandleSectionBeginAnnotation ||
+               Anno == HipHandleSectionEndAnnotation) {
+      if (auto *GV = llvm::dyn_cast<llvm::GlobalVariable>(Annotatee))
+        Slots[Anno].push_back(GV);
+    }
   }
 }
 
-/// \brief Set the initializer of an \c llvm::ArrayRef<T> placeholder slot to a
-/// constant view of \p TempArr.
-///
-/// The slot was emitted by Clang as a \c { ptr Data; i64 Length; } global
-/// (matching \c ArrayRef's ABI). We side-load a private constant data array and
-/// \c setInitializer the placeholder to point at it.
-static llvm::Error
-populateArrayRefSlot(llvm::ArrayRef<llvm::GlobalVariable *> Slots,
-                     llvm::StringRef SlotName, llvm::Type *ElemTy,
-                     llvm::ArrayRef<llvm::Constant *> TempArr,
-                     llvm::Module &M) {
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      !Slots.empty(), ("No slot found for " + SlotName).str()));
-  llvm::LLVMContext &C = M.getContext();
-  llvm::ArrayType *ArrayTy = llvm::ArrayType::get(ElemTy, TempArr.size());
-  llvm::Constant *DataInit = llvm::ConstantArray::get(ArrayTy, TempArr);
-
-  for (auto *OldVar : Slots) {
-    /// Sanity-check the placeholder's IR type: it must be a two-element struct
-    /// compatible with \c ArrayRef<T>::{Data, Length}.
-    auto *SlotTy = llvm::dyn_cast<llvm::StructType>(OldVar->getValueType());
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        SlotTy && SlotTy->getNumElements() == 2 &&
-            SlotTy->getElementType(0)->isPointerTy() &&
-            SlotTy->getElementType(1)->isIntegerTy(64),
-        ("ArrayRef slot '" + SlotName +
-         "' is not the expected { ptr, i64 } shape; the LLVM ABI for "
-         "llvm::ArrayRef may have changed.")
-            .str()));
-    /// Each slot gets its own private data array — they share the same payload
-    /// but one GV per slot keeps mangling simple and lets each ArrayRef view
-    /// its own storage cleanly.
-    auto *Data = new llvm::GlobalVariable(
-        M, ArrayTy, /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage,
-        DataInit, ".luthier.loader." + SlotName + ".data");
-    llvm::Constant *Init = llvm::ConstantStruct::get(
-        SlotTy, {Data, llvm::ConstantInt::get(llvm::Type::getInt64Ty(C),
-                                              TempArr.size())});
-    OldVar->setInitializer(Init);
-    OldVar->setConstant(true);
-  }
-  return llvm::Error::success();
-}
-
-/// \brief Set the initializer of a pointer slot (e.g. \c FatBinaryStart) to
-/// \p Value.
+/// \brief Set the initializer of a pointer slot (e.g. \c FatBinarySectionBegin)
+/// to \p Value.
 static llvm::Error
 populatePointerSlot(llvm::ArrayRef<llvm::GlobalVariable *> Slots,
                     llvm::StringRef SlotName, llvm::Constant *Value) {
@@ -229,12 +196,14 @@ static llvm::Error deleteAllUses(llvm::Function *Fun) {
 
 /// \brief This pass harvests the host-handle / device-name pairs from the
 /// \c __hipRegister* calls (and the CXX plugin's exported device functions)
-/// into the \c ToolDeviceCodeOffloadParserTrait's \c HipHandles slot, points
-/// the trait's \c FatBinaryStart / \c FatBinaryStop slots at the embedded
-/// bundle's
-/// \c luthier_fatbin section boundaries, then deletes the host-side HIP
-/// registration machinery so the bundle is never registered with the HIP
-/// runtime.
+/// into a \c { void*, const char* } array emitted in the
+/// \c luthier_hip_handles section, and places the embedded bundle in the
+/// \c luthier_fatbin section. It then points the trait's four annotated
+/// section-boundary pointer slots (offload-section and HIP-handle-section
+/// begin/end) at the linker's \c __start_/__stop_ symbols for those sections,
+/// and deletes the host-side HIP registration machinery so the bundle is never
+/// registered with the HIP runtime. The trait's slots are located via their
+/// \c annotate attributes in \c @llvm.global.annotations.
 llvm::PreservedAnalyses
 ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
                                      llvm::ModuleAnalysisManager &MAM) {
@@ -251,13 +220,14 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
   llvm::Function *RDV = M.getFunction("__hipRegisterVar");
   llvm::Function *RTX = M.getFunction("__hipRegisterTexture");
   llvm::Function *RSF = M.getFunction("__hipRegisterSurface");
-  /// If there is no __hipRegisterFatBinary function, there is no point looking
-  /// at the others
+  /// If there is no __hipRegisterFatBinary function, then there's no offload
+  /// binary to deal with
   if (!RFB)
     return llvm::PreservedAnalyses::all();
 
   llvm::StringMap<llvm::SmallVector<llvm::GlobalVariable *, 2>> Slots;
-  collectTraitSlots(M, Slots);
+  llvm::SmallVector<llvm::Function *, 8> ExportHandleFns;
+  collectAnnotatedSlots(M, Slots, ExportHandleFns);
 
   auto getOrCreateStruct =
       [&C](llvm::StringRef Name,
@@ -318,14 +288,14 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
                                     llvm::GlobalValue::ExternalLinkage,
                                     /*Initializer=*/nullptr, Name);
   };
-  if (!Slots[FatBinaryStartSlot].empty())
-    LUTHIER_REPORT_FATAL_ON_ERROR(
-        populatePointerSlot(Slots[FatBinaryStartSlot], FatBinaryStartSlot,
-                            getBoundarySymbol("__start_luthier_fatbin")));
-  if (!Slots[FatBinaryStopSlot].empty())
-    LUTHIER_REPORT_FATAL_ON_ERROR(
-        populatePointerSlot(Slots[FatBinaryStopSlot], FatBinaryStopSlot,
-                            getBoundarySymbol("__stop_luthier_fatbin")));
+  if (!Slots[OffloadSectionBeginAnnotation].empty())
+    LUTHIER_REPORT_FATAL_ON_ERROR(populatePointerSlot(
+        Slots[OffloadSectionBeginAnnotation], OffloadSectionBeginAnnotation,
+        getBoundarySymbol("__start_luthier_fatbin")));
+  if (!Slots[OffloadSectionEndAnnotation].empty())
+    LUTHIER_REPORT_FATAL_ON_ERROR(populatePointerSlot(
+        Slots[OffloadSectionEndAnnotation], OffloadSectionEndAnnotation,
+        getBoundarySymbol("__stop_luthier_fatbin")));
 
   //===--------------------------------------------------------------------===//
   // Handles: every __hipRegister* kind (kernels, device/managed vars, textures,
@@ -333,9 +303,8 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
   // HipHandles array of { void* HostHandle, const char* DeviceName }.
   //===--------------------------------------------------------------------===//
 
-  llvm::StructType *HandleInfoTy = getOrCreateStruct(
-      "struct.luthier::ToolDeviceCodeOffloadParser::HipHandleInfo",
-      {PtrTy, PtrTy});
+  llvm::StructType *HandleInfoTy =
+      getOrCreateStruct("struct.luthier::HipHandleInfo", {PtrTy, PtrTy});
   llvm::SmallVector<llvm::Constant *, 16> Handles;
   auto addHandle = [&](llvm::Constant *HostHandle, llvm::Constant *DeviceName) {
     Handles.push_back(
@@ -391,49 +360,49 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
           ShadowGV->setInitializer(ShadowGV);
       }
 
-  /// Exported device functions: synthesized by the CXX plugin as plain
-  /// \c __host__ functions tagged with the \c luthier.export_function_handle
-  /// AnnotateAttr (in \c @llvm.global.annotations). The host sibling shares the
+  /// Exported device functions: the CXX plugin tags plain \c __host__ functions
+  /// with the \c luthier.export_function_handle AnnotateAttr;
+  /// \c collectAnnotatedSlots gathered them above. The host sibling shares the
   /// original \c __device__ function's exact Itanium mangling, so its own IR
   /// symbol name IS the device-side name the loader looks up.
-  if (const llvm::GlobalVariable *Annots =
-          M.getGlobalVariable("llvm.global.annotations")) {
-    if (const auto *CA =
-            llvm::dyn_cast<llvm::ConstantArray>(Annots->getOperand(0))) {
-      for (llvm::Value *Op : CA->operands()) {
-        auto *CS = llvm::dyn_cast<llvm::ConstantStruct>(Op);
-        if (!CS || CS->getNumOperands() < 2)
-          continue;
-        auto *Fn = llvm::dyn_cast<llvm::Function>(
-            CS->getOperand(0)->stripPointerCasts());
-        if (!Fn)
-          continue;
-        auto *NameGV = llvm::dyn_cast<llvm::GlobalVariable>(
-            CS->getOperand(1)->stripPointerCasts());
-        if (!NameGV)
-          continue;
-        llvm::StringRef AnnoStr;
-        if (!llvm::getConstantStringInfo(NameGV, AnnoStr))
-          continue;
-        if (AnnoStr != ExportFunctionHandleMarker)
-          continue;
-        llvm::Constant *DeviceNameStr = llvm::ConstantDataArray::getString(
-            C, Fn->getName(), /*AddNull=*/true);
-        auto *DeviceNameGV = new llvm::GlobalVariable(
-            M, DeviceNameStr->getType(), /*isConstant=*/true,
-            llvm::GlobalValue::PrivateLinkage, DeviceNameStr,
-            ".luthier.device_fn_name");
-        addHandle(Fn, DeviceNameGV);
-      }
-    }
+  for (llvm::Function *Fn : ExportHandleFns) {
+    llvm::Constant *DeviceNameStr =
+        llvm::ConstantDataArray::getString(C, Fn->getName(), /*AddNull=*/true);
+    auto *DeviceNameGV = new llvm::GlobalVariable(
+        M, DeviceNameStr->getType(), /*isConstant=*/true,
+        llvm::GlobalValue::PrivateLinkage, DeviceNameStr,
+        ".luthier.device_fn_name");
+    addHandle(Fn, DeviceNameGV);
   }
 
-  /// Populate the single unified HipHandles slot (when the tool instantiated
-  /// the trait in this TU). An empty handle list still yields a valid empty
-  /// ArrayRef.
-  if (!Slots[HipHandlesSlot].empty())
-    LUTHIER_REPORT_FATAL_ON_ERROR(populateArrayRefSlot(
-        Slots[HipHandlesSlot], HipHandlesSlot, HandleInfoTy, Handles, M));
+  /// Emit the harvested handles as one \c { void*, const char* } array into the
+  /// \c luthier_hip_handles section, retained via \c llvm.used so it survives
+  /// \c --gc-sections (\c SHF_GNU_RETAIN). The trait's HipHandleSection begin /
+  /// end pointer slots are pointed at the linker's
+  /// \c __start_/__stop_luthier_hip_handles boundary symbols, from which the
+  /// runtime reconstructs the \c ArrayRef<HipHandleInfo>. Only done when the
+  /// trait is instantiated in this TU (its slots are present); an empty handle
+  /// list still yields a valid empty (zero-length) section.
+  if (!Slots[HipHandleSectionBeginAnnotation].empty() ||
+      !Slots[HipHandleSectionEndAnnotation].empty()) {
+    llvm::ArrayType *HandlesArrTy =
+        llvm::ArrayType::get(HandleInfoTy, Handles.size());
+    auto *HandlesData = new llvm::GlobalVariable(
+        M, HandlesArrTy, /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage,
+        llvm::ConstantArray::get(HandlesArrTy, Handles),
+        ".luthier.hip_handles");
+    HandlesData->setSection("luthier_hip_handles");
+    llvm::appendToUsed(M, {HandlesData});
+    if (!Slots[HipHandleSectionBeginAnnotation].empty())
+      LUTHIER_REPORT_FATAL_ON_ERROR(populatePointerSlot(
+          Slots[HipHandleSectionBeginAnnotation],
+          HipHandleSectionBeginAnnotation,
+          getBoundarySymbol("__start_luthier_hip_handles")));
+    if (!Slots[HipHandleSectionEndAnnotation].empty())
+      LUTHIER_REPORT_FATAL_ON_ERROR(populatePointerSlot(
+          Slots[HipHandleSectionEndAnnotation], HipHandleSectionEndAnnotation,
+          getBoundarySymbol("__stop_luthier_hip_handles")));
+  }
 
   //===--------------------------------------------------------------------===//
   // Tear down the host-side HIP registration machinery.
