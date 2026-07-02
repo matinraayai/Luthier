@@ -29,6 +29,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Support/Error.h>
 #include <llvm/Transforms/Utils/ModuleUtils.h>
 #include <string>
 
@@ -280,16 +281,24 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
                                     llvm::GlobalValue::ExternalLinkage,
                                     /*Initializer=*/nullptr, Name);
   };
-  if (!SectionSlotsMap[OffloadSectionBeginAnnotation].empty())
-    LUTHIER_REPORT_FATAL_ON_ERROR(
-        populatePointerSlot(SectionSlotsMap[OffloadSectionBeginAnnotation],
-                            OffloadSectionBeginAnnotation,
-                            getBoundarySymbol("__start_luthier_fatbin")));
-  if (!SectionSlotsMap[OffloadSectionEndAnnotation].empty())
-    LUTHIER_REPORT_FATAL_ON_ERROR(
-        populatePointerSlot(SectionSlotsMap[OffloadSectionEndAnnotation],
-                            OffloadSectionEndAnnotation,
-                            getBoundarySymbol("__stop_luthier_fatbin")));
+  if (!SectionSlotsMap[OffloadSectionBeginAnnotation].empty()) {
+    if (auto Err =
+            populatePointerSlot(SectionSlotsMap[OffloadSectionBeginAnnotation],
+                                OffloadSectionBeginAnnotation,
+                                getBoundarySymbol("__start_luthier_fatbin"))) {
+      C.emitError(llvm::toString(std::move(Err)));
+      return llvm::PreservedAnalyses::none();
+    }
+  }
+  if (!SectionSlotsMap[OffloadSectionEndAnnotation].empty()) {
+    if (auto Err =
+            populatePointerSlot(SectionSlotsMap[OffloadSectionEndAnnotation],
+                                OffloadSectionEndAnnotation,
+                                getBoundarySymbol("__stop_luthier_fatbin"))) {
+      C.emitError(llvm::toString(std::move(Err)));
+      return llvm::PreservedAnalyses::none();
+    }
+  }
 
   //===--------------------------------------------------------------------===//
   // Handles: every __hipRegister* kind (kernels, device/managed vars, textures,
@@ -387,16 +396,24 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
         ".luthier.hip_handles");
     HandlesData->setSection("luthier_hip_handles");
     llvm::appendToUsed(M, {HandlesData});
-    if (!SectionSlotsMap[HipHandleSectionBeginAnnotation].empty())
-      LUTHIER_REPORT_FATAL_ON_ERROR(populatePointerSlot(
-          SectionSlotsMap[HipHandleSectionBeginAnnotation],
-          HipHandleSectionBeginAnnotation,
-          getBoundarySymbol("__start_luthier_hip_handles")));
-    if (!SectionSlotsMap[HipHandleSectionEndAnnotation].empty())
-      LUTHIER_REPORT_FATAL_ON_ERROR(
-          populatePointerSlot(SectionSlotsMap[HipHandleSectionEndAnnotation],
-                              HipHandleSectionEndAnnotation,
-                              getBoundarySymbol("__stop_luthier_hip_handles")));
+    if (!SectionSlotsMap[HipHandleSectionBeginAnnotation].empty()) {
+      if (auto Err = populatePointerSlot(
+              SectionSlotsMap[HipHandleSectionBeginAnnotation],
+              HipHandleSectionBeginAnnotation,
+              getBoundarySymbol("__start_luthier_hip_handles"))) {
+        C.emitError(llvm::toString(std::move(Err)));
+        return llvm::PreservedAnalyses::none();
+      }
+    }
+    if (!SectionSlotsMap[HipHandleSectionEndAnnotation].empty()) {
+      if (auto Err = populatePointerSlot(
+              SectionSlotsMap[HipHandleSectionEndAnnotation],
+              HipHandleSectionEndAnnotation,
+              getBoundarySymbol("__stop_luthier_hip_handles"))) {
+        C.emitError(llvm::toString(std::move(Err)));
+        return llvm::PreservedAnalyses::none();
+      }
+    }
   }
 
   //===--------------------------------------------------------------------===//
@@ -405,7 +422,10 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
 
   /// Make sure we remove the hip module Ctor from llvm.global_ctors, not doing
   /// so the function cannot be deleted since it still would have a use
-  LUTHIER_REPORT_FATAL_ON_ERROR(deleteModuleCtor(M));
+  if (auto Err = deleteModuleCtor(M)) {
+    C.emitError(llvm::toString(std::move(Err)));
+    return llvm::PreservedAnalyses::none();
+  }
   deleteFunction(M.getFunction("__hip_module_ctor"));
   deleteFunction(M.getFunction("__hip_register_globals"));
   ///  Delete all functions that call \c __hipRegisterFatBinary and then delete
