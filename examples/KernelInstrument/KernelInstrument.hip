@@ -70,7 +70,7 @@ struct KernelInstrumentTool
   __attribute__((managed)) static hsa_dim3_t GroupIDs;
   __attribute__((managed)) static uint64_t PositionInGroup;
 
-  LUTHIER_HOOK_MEMBER_ATTR static void instrumentationHook(llvm::MCRegister Reg,
+  __attribute__((device, used)) static void instrumentationHook(llvm::MCRegister Reg,
                                                            uint32_t Val);
 
   struct Options {
@@ -96,7 +96,7 @@ __attribute__((managed)) uint64_t KernelInstrumentTool::WaveID = 0;
 __attribute__((managed)) hsa_dim3_t KernelInstrumentTool::GroupIDs{0, 0, 0};
 __attribute__((managed)) uint64_t KernelInstrumentTool::PositionInGroup{0};
 
-LUTHIER_HOOK_MEMBER_ATTR void
+__attribute__((device, used)) void
 KernelInstrumentTool::instrumentationHook(llvm::MCRegister Reg, uint32_t Val) {
   luthier::writeReg(Reg, Val);
 }

@@ -74,10 +74,10 @@ struct OpcodeHistogramTool
   __attribute__((device)) static uint64_t
       KernelHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];
 
-  LUTHIER_HOOK_MEMBER_ATTR static void
+  __attribute__((device, used)) static void
   countOpcodeHistogramVector(bool CountWaveFrontLevel, int OpcodeNumber);
 
-  LUTHIER_HOOK_MEMBER_ATTR static void countOpcodeHistogramScalar(int OpcodeNumber);
+  __attribute__((device, used)) static void countOpcodeHistogramScalar(int OpcodeNumber);
 
   struct Options {
     llvm::cl::OptionCategory Cat{"Opcode Histogram Tool Options"};
@@ -132,7 +132,7 @@ struct OpcodeHistogramTool
 __attribute__((device)) uint64_t
     OpcodeHistogramTool::KernelHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];
 
-LUTHIER_HOOK_MEMBER_ATTR void OpcodeHistogramTool::countOpcodeHistogramVector(
+__attribute__((device, used)) void OpcodeHistogramTool::countOpcodeHistogramVector(
     bool CountWaveFrontLevel, int OpcodeNumber) {
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   const uint32_t LaneId = __lane_id() + 1;
@@ -149,7 +149,7 @@ LUTHIER_HOOK_MEMBER_ATTR void OpcodeHistogramTool::countOpcodeHistogramVector(
   }
 }
 
-LUTHIER_HOOK_MEMBER_ATTR void
+__attribute__((device, used)) void
 OpcodeHistogramTool::countOpcodeHistogramScalar(int OpcodeNumber) {
   luthier::sAtomicAdd(&OpcodeHistogramTool::KernelHistogram[OpcodeNumber], 1UL);
 }

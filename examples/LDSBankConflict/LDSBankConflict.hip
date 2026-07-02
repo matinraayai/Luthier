@@ -74,16 +74,16 @@ struct LDSBankConflictTool
   __attribute__((device)) static uint64_t NumSingleAddressLDSInstructions;
   __attribute__((device)) static uint64_t NumDoubleAddressLDSInstructions;
 
-  LUTHIER_HOOK_MEMBER_ATTR static void countUniqueBanksPerWarpSingleAddress(
+  __attribute__((device, used)) static void countUniqueBanksPerWarpSingleAddress(
       unsigned M0, unsigned VAddr, short Offset, short CacheSizeLog2);
-  LUTHIER_HOOK_MEMBER_ATTR static void countUniqueBanksPerWarpDoubleAddress(
+  __attribute__((device, used)) static void countUniqueBanksPerWarpDoubleAddress(
       unsigned M0, unsigned VAddr, uint8_t Offset0, uint8_t Offset1,
       short CacheSizeLog2);
-  LUTHIER_HOOK_MEMBER_ATTR static void
+  __attribute__((device, used)) static void
   countUniqueBanksPerWarpDoubleAddressTwoSource32(
       unsigned M0, unsigned VAddr, uint16_t Offset0, uint16_t Offset1,
       uint16_t CacheSizeLog2);
-  LUTHIER_HOOK_MEMBER_ATTR static void
+  __attribute__((device, used)) static void
   countUniqueBanksPerWarpDoubleAddressTwoSource64(
       unsigned M0, unsigned VAddr, uint16_t Offset0, uint16_t Offset1,
       uint16_t CacheSizeLog2);
@@ -140,7 +140,7 @@ __attribute__((device)) float LDSBankConflictTool::NumBankConflicts;
 __attribute__((device)) uint64_t LDSBankConflictTool::NumSingleAddressLDSInstructions;
 __attribute__((device)) uint64_t LDSBankConflictTool::NumDoubleAddressLDSInstructions;
 
-LUTHIER_HOOK_MEMBER_ATTR void
+__attribute__((device, used)) void
 LDSBankConflictTool::countUniqueBanksPerWarpSingleAddress(unsigned M0,
                                                           unsigned VAddr,
                                                           short Offset,
@@ -158,7 +158,7 @@ LDSBankConflictTool::countUniqueBanksPerWarpSingleAddress(unsigned M0,
             1.f / NumWorkItemsWithSameBankID);
 }
 
-LUTHIER_HOOK_MEMBER_ATTR void
+__attribute__((device, used)) void
 LDSBankConflictTool::countUniqueBanksPerWarpDoubleAddress(
     unsigned M0, unsigned VAddr, uint8_t Offset0, uint8_t Offset1,
     short CacheSizeLog2) {
@@ -191,7 +191,7 @@ LDSBankConflictTool::countUniqueBanksPerWarpDoubleAddress(
             1.f / NumWorkItemsWithSameBankID1);
 }
 
-LUTHIER_HOOK_MEMBER_ATTR void
+__attribute__((device, used)) void
 LDSBankConflictTool::countUniqueBanksPerWarpDoubleAddressTwoSource32(
     unsigned M0, unsigned VAddr, uint16_t Offset0, uint16_t Offset1,
     uint16_t CacheSizeLog2) {
@@ -224,7 +224,7 @@ LDSBankConflictTool::countUniqueBanksPerWarpDoubleAddressTwoSource32(
             1.f / NumWorkItemsWithSameBankID1);
 }
 
-LUTHIER_HOOK_MEMBER_ATTR void
+__attribute__((device, used)) void
 LDSBankConflictTool::countUniqueBanksPerWarpDoubleAddressTwoSource64(
     unsigned M0, unsigned VAddr, uint16_t Offset0, uint16_t Offset1,
     uint16_t CacheSizeLog2) {
