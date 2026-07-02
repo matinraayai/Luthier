@@ -120,10 +120,6 @@ public:
 /// useful for writing instrumentation passes, allowing the \c Derived to
 /// express complex device-side logic in the same HIP source code that performs
 /// instrumentation as an LLVM pass on the host side.
-///
-/// A tool MUST be instantiated from exactly one host translation unit. Each TU
-/// that ODR-uses the class emits a \c linkonce_odr definition of every
-/// annotated slot (forced live by \c [[gnu::used]]).
 template <typename Derived>
 class ToolDeviceCodeOffloadParserTrait : public ToolDeviceCodeOffloadParser {
 
@@ -152,6 +148,9 @@ public:
             Err) {}
 };
 
+/// Defines the static fields of \c ToolDeviceCodeOffloadParserTrait's static
+/// fields in the target translation unit, which in turn should give it access
+/// to the TU's FAT binary and its host shadow handles
 #define LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(DERIVED)                    \
   __attribute__((managed, used)) char ::luthier::                              \
       ToolDeviceCodeOffloadParserTrait<DERIVED>::DeviceCodeMarker;             \
