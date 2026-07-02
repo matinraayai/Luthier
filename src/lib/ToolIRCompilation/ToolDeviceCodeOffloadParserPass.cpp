@@ -37,19 +37,12 @@
 
 namespace luthier {
 
-/// \brief Scan \c @llvm.global.annotations once, collecting both the trait's
+/// \brief Scan \c @llvm.global.annotations once, collecting annotated section
 /// section-boundary slots and the CXX plugin's exported device functions.
-///
-/// The trait tags four \c static pointer slots with the \c annotate attribute
-/// (see \c ToolDeviceCodeOffloadParser.h): the offload-section begin/end and
-/// the HIP-handle-section begin/end. \p Slots maps each of those annotation
-/// strings to the annotated global(s) — one \c linkonce_odr set per \c Derived
-/// instantiated in this TU, so usually a single element. Functions carrying the
-/// \c luthier.export_function_handle marker are appended to \p ExportHandleFns.
 static void collectAnnotatedSlots(
     llvm::Module &M,
     llvm::StringMap<llvm::SmallVector<llvm::GlobalVariable *, 2>> &Slots,
-    llvm::SmallVectorImpl<llvm::Function *> &ExportHandleFns) {
+    llvm::SmallVectorImpl<llvm::Function *> &ExportedDeviceFnHandles) {
   const llvm::GlobalVariable *Annots =
       M.getGlobalVariable("llvm.global.annotations");
   if (!Annots || !Annots->hasInitializer())
@@ -71,7 +64,7 @@ static void collectAnnotatedSlots(
       continue;
     if (Anno == ExportFunctionHandleMarker) {
       if (auto *Fn = llvm::dyn_cast<llvm::Function>(Annotatee))
-        ExportHandleFns.push_back(Fn);
+        ExportedDeviceFnHandles.push_back(Fn);
     } else if (Anno == OffloadSectionBeginAnnotation ||
                Anno == OffloadSectionEndAnnotation ||
                Anno == HipHandleSectionBeginAnnotation ||
@@ -87,12 +80,13 @@ static void collectAnnotatedSlots(
 static llvm::Error
 populatePointerSlot(llvm::ArrayRef<llvm::GlobalVariable *> Slots,
                     llvm::StringRef SlotName, llvm::Constant *Value) {
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      !Slots.empty(), ("No slot found for " + SlotName).str()));
+  if (Slots.empty())
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        llvm::formatv("No slot found for {0}", SlotName));
   for (auto *OldVar : Slots) {
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        OldVar->getValueType()->isPointerTy(),
-        ("Pointer slot '" + SlotName + "' is not pointer-typed.").str()));
+    if (!OldVar->getValueType()->isPointerTy())
+      return LUTHIER_MAKE_GENERIC_ERROR(
+          llvm::formatv("Pointer slot {0} is not pointer-typed", SlotName));
     OldVar->setInitializer(Value);
   }
   return llvm::Error::success();
@@ -221,13 +215,13 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
   llvm::Function *RTX = M.getFunction("__hipRegisterTexture");
   llvm::Function *RSF = M.getFunction("__hipRegisterSurface");
   /// If there is no __hipRegisterFatBinary function, then there's no offload
-  /// binary to deal with
+  /// binary to deal with, so return early.
   if (!RFB)
     return llvm::PreservedAnalyses::all();
 
   llvm::StringMap<llvm::SmallVector<llvm::GlobalVariable *, 2>> Slots;
-  llvm::SmallVector<llvm::Function *, 8> ExportHandleFns;
-  collectAnnotatedSlots(M, Slots, ExportHandleFns);
+  llvm::SmallVector<llvm::Function *, 8> ExportedDeviceFnHandles;
+  collectAnnotatedSlots(M, Slots, ExportedDeviceFnHandles);
 
   auto getOrCreateStruct =
       [&C](llvm::StringRef Name,
@@ -365,7 +359,7 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
   /// \c collectAnnotatedSlots gathered them above. The host sibling shares the
   /// original \c __device__ function's exact Itanium mangling, so its own IR
   /// symbol name IS the device-side name the loader looks up.
-  for (llvm::Function *Fn : ExportHandleFns) {
+  for (llvm::Function *Fn : ExportedDeviceFnHandles) {
     llvm::Constant *DeviceNameStr =
         llvm::ConstantDataArray::getString(C, Fn->getName(), /*AddNull=*/true);
     auto *DeviceNameGV = new llvm::GlobalVariable(
