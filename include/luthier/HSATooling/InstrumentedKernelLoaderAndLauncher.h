@@ -55,26 +55,7 @@ class ObjectFile;
 
 namespace luthier {
 
-/// \brief Per-tool cache of instrumented HSA kernel executables.
-///
-/// Each cached record packages, for a single
-/// <tt>(OriginalKD, Preset)</tt> tuple (where \c OriginalKD is a pointer
-/// to the kernel descriptor on the device — the same value that lives in
-/// \c hsa_kernel_dispatch_packet_t::kernel_object), the relocatable ELF
-/// bytes (owned), the HSA code-object reader created over them, the HSA
-/// executable they were loaded into, the resulting instrumented kernel
-/// symbol + descriptor address + private segment size, the harvested
-/// device-global variable symbols, and the managed-variable allocations
-/// this instrumented copy owns.
-///
-/// \c loadInstrumented is the cold-path entry point; it takes ownership
-/// of \p Relocatable so the HSA code-object reader's view into host
-/// memory stays valid for the record's lifetime. The relocatable is
-/// expected to contain exactly one kernel function and to be
-/// self-contained (its device globals are defined in its own copy — the
-/// launcher does not resolve UND globals against a global tool image).
-/// \c overrideWithInstrumented is the hot path called from a packet
-/// interceptor and is reader-locked.
+/// \brief Loader for loading and caching instrumented copies of kernels
 class InstrumentedKernelLoaderAndLauncher {
 public:
   InstrumentedKernelLoaderAndLauncher(
