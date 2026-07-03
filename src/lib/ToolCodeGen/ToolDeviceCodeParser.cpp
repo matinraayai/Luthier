@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <cstring>
 #include <llvm/ADT/STLExtras.h>
+#include <llvm/ADT/StringExtras.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/BinaryFormat/Magic.h>
 #include <llvm/Bitcode/BitcodeReader.h>
