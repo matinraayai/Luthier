@@ -23,6 +23,7 @@
 /// \c InstrumentedKernelLoaderAndLauncher, and overrides the dispatched
 /// packet to point at the instrumented variant.
 //===----------------------------------------------------------------------===//
+#undef SPIRV
 #include <SIInstrInfo.h>
 #include <chrono>
 #include <hip/hip_runtime.h>

@@ -128,9 +128,9 @@ class ToolDeviceCodeOffloadParserTrait : public ToolDeviceCodeOffloadParser {
   /// device code in the der=ived parser's TU
   static char DeviceCodeMarker;
 
-  static const char *FatBinarySectionBegin;
+  static __attribute__((used)) const char *FatBinarySectionBegin;
 
-  static const char *FatBinarySectionEnd;
+  static __attribute__((used)) const char *FatBinarySectionEnd;
 
   static const HipHandleInfo *HipHandleSectionBegin;
 

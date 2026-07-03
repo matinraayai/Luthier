@@ -19,6 +19,7 @@
 /// entry of each MachineFunction. The hook writes \c gridDim into a managed
 /// variable so host code can observe it after the kernel completes.
 //===----------------------------------------------------------------------===//
+#undef SPIRV
 #include <chrono>
 #include <hip/hip_runtime.h>
 #include <llvm/Demangle/Demangle.h>
