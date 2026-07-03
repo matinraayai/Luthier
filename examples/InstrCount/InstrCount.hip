@@ -23,6 +23,7 @@
 /// \c InstrumentedKernelLoaderAndLauncher, and overrides the dispatched
 /// packet to point at the instrumented variant.
 //===----------------------------------------------------------------------===//
+#undef SPIRV
 #include <SIInstrInfo.h>
 #include <chrono>
 #include <hip/hip_runtime.h>
@@ -235,6 +236,8 @@ __attribute__((device, used)) void InstrCountTool::countInstructionsScalar() {
 // component requests them.
 //===----------------------------------------------------------------------===//
 
+LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(InstrCountTool)
+
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
 static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>
@@ -390,7 +393,7 @@ void InstrCountTool::onPackets(
           CounterAgentInfo.type != HSA_EXT_POINTER_TYPE_UNKNOWN) {
         hsa_agent_t Agent = CounterAgentInfo.agentOwner;
         auto SymOrErr =
-            this->lookupGlobalVariable(&InstrCountTool::Counter, Agent);
+            this->lookupGlobalVariable(&InstrCountTool::Counter, KernelDesc);
         if (!SymOrErr) {
           llvm::consumeError(SymOrErr.takeError());
         } else {

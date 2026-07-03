@@ -124,16 +124,16 @@ template <typename Derived>
 class ToolDeviceCodeOffloadParserTrait : public ToolDeviceCodeOffloadParser {
 
   /// Sentinel \c __managed__ variable that forces Clang to emit "host-visible"
-  /// device code in the derived parser's TU
-  static char DeviceCodeMarker;
+  /// device code in the der=ived parser's TU
+  static __attribute__((used)) char DeviceCodeMarker;
 
-  static const char *FatBinarySectionBegin;
+  static __attribute__((used)) const char *FatBinarySectionBegin;
 
-  static const char *FatBinarySectionEnd;
+  static __attribute__((used)) const char *FatBinarySectionEnd;
 
-  static HipHandleInfo *HipHandleSectionBegin;
+  static __attribute__((used)) const HipHandleInfo *HipHandleSectionBegin;
 
-  static HipHandleInfo *HipHandleSectionEnd;
+  static __attribute__((used)) const HipHandleInfo *HipHandleSectionEnd;
 
 public:
   explicit ToolDeviceCodeOffloadParserTrait(llvm::Error &Err)
@@ -152,20 +152,30 @@ public:
 /// fields in the target translation unit, which in turn should give it access
 /// to the TU's FAT binary and its host shadow handles
 #define LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(DERIVED)                    \
+  template <>                                                                  \
   __attribute__((managed, used)) char ::luthier::                              \
-      ToolDeviceCodeOffloadParserTrait<DERIVED>::DeviceCodeMarker;             \
-  __attribute__((used, annotate(LUTHIER_CLANG_OFFLOAD_SECTION_BEGIN)))         \
+      ToolDeviceCodeOffloadParserTrait<DERIVED>::DeviceCodeMarker{};           \
+  template <>                                                                  \
+  __attribute__((                                                              \
+      used, annotate(LUTHIER_STRINGIFY(LUTHIER_CLANG_OFFLOAD_SECTION_BEGIN)))) \
   const char * ::luthier::ToolDeviceCodeOffloadParserTrait<                    \
-      DERIVED>::FatBinarySectionBegin;                                         \
-  __attribute__((used, annotate(LUTHIER_CLANG_OFFLOAD_SECTION_END)))           \
+      DERIVED>::FatBinarySectionBegin{nullptr};                                \
+  template <>                                                                  \
+  __attribute__((                                                              \
+      used, annotate(LUTHIER_STRINGIFY(LUTHIER_CLANG_OFFLOAD_SECTION_END))))   \
   const char * ::luthier::ToolDeviceCodeOffloadParserTrait<                    \
-      DERIVED>::FatBinarySectionEnd;                                           \
-  __attribute__((used, annotate(LUTHIER_HIP_HANDLE_SECTION_BEGIN)))            \
-  const HipHandleInfo * ::luthier::ToolDeviceCodeOffloadParserTrait<           \
-      DERIVED>::HipHandleSectionBegin;                                         \
-  __attribute__((used, annotate(LUTHIER_HIP_HANDLE_SECTION_END)))              \
-  const HipHandleInfo * ::luthier::ToolDeviceCodeOffloadParserTrait<           \
-      DERIVED>::HipHandleSectionEnd;
+      DERIVED>::FatBinarySectionEnd{nullptr};                                  \
+  template <>                                                                  \
+  __attribute__((                                                              \
+      used, annotate(LUTHIER_STRINGIFY(LUTHIER_HIP_HANDLE_SECTION_BEGIN))))    \
+  const ::luthier::HipHandleInfo                                               \
+      * ::luthier::ToolDeviceCodeOffloadParserTrait<                           \
+          DERIVED>::HipHandleSectionBegin{nullptr};                            \
+  template <>                                                                  \
+  __attribute__((used,                                                         \
+                 annotate(LUTHIER_STRINGIFY(LUTHIER_HIP_HANDLE_SECTION_END)))) \
+  const ::luthier::HipHandleInfo * ::luthier::                                 \
+      ToolDeviceCodeOffloadParserTrait<DERIVED>::HipHandleSectionEnd{nullptr};
 
 } // namespace luthier
 
