@@ -101,6 +101,7 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::eraseRecordLocked(
   llvm::Error E = llvm::Error::success();
   InstrumentedRecord &R = It->second;
   const auto Core = CoreApi.getTable();
+  const auto AmdExtTbl = AmdExt.getTable();
 
   // Executable first (releases its references into the reader's host
   // memory), then reader.
@@ -108,9 +109,9 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::eraseRecordLocked(
   E = llvm::joinErrors(std::move(E),
                        hsa::codeObjectReaderDestroy(R.Reader, Core));
 
-  // Managed-variable storage is shared across instrumented copies and owned at
-  // the launcher level (SharedManagedVars); it is NOT freed per record — other
-  // records may still reference it. It is reclaimed in unloadAll.
+  // This record owns its managed-variable storage; free it here.
+  for (const ManagedAlloc &Alloc : R.ManagedAllocs)
+    E = llvm::joinErrors(std::move(E), freeManagedStorage(AmdExtTbl, Alloc));
 
   ByOriginal.erase(It);
   return E;
@@ -130,14 +131,6 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::unloadAll() {
     auto Curr = It++;
     E = llvm::joinErrors(std::move(E), eraseRecordLocked(Curr));
   }
-
-  // Reclaim the shared managed-variable buffers now that no instrumented copy
-  // references them.
-  const auto AmdExtTbl = AmdExt.getTable();
-  for (auto &KV : SharedManagedVars)
-    E = llvm::joinErrors(std::move(E),
-                         freeManagedStorage(AmdExtTbl, KV.second));
-  SharedManagedVars.clear();
   return E;
 }
 
@@ -394,54 +387,46 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::loadManagedVarsForRecord(
 
   const llvm::SmallVector<hsa_agent_t, 1> Agents{Rec.Agent};
 
-  for (const auto &Sym : Obj.symbols()) {
-    auto NameOrErr = Sym.getName();
-    if (!NameOrErr) {
-      llvm::consumeError(NameOrErr.takeError());
-      continue;
-    }
-    if (!NameOrErr->ends_with(ManagedSuffix))
-      continue;
-    llvm::StringRef BaseName = NameOrErr->drop_back(ManagedSuffix.size());
+  // Allocate + publish each managed variable into this record. Wrapped in a
+  // lambda so any early error can free the allocations made so far before
+  // returning — the record is not yet cached, so nothing else will reclaim
+  // them.
+  auto LoadManagedVars = [&]() -> llvm::Error {
+    for (const auto &Sym : Obj.symbols()) {
+      auto NameOrErr = Sym.getName();
+      if (!NameOrErr) {
+        llvm::consumeError(NameOrErr.takeError());
+        continue;
+      }
+      if (!NameOrErr->ends_with(ManagedSuffix))
+        continue;
+      llvm::StringRef BaseName = NameOrErr->drop_back(ManagedSuffix.size());
 
-    auto SectionOrErr = Sym.getSection();
-    if (!SectionOrErr) {
-      llvm::consumeError(SectionOrErr.takeError());
-      continue;
-    }
-    if (*SectionOrErr == Obj.section_end())
-      continue;
-    uint64_t Size = (*SectionOrErr)->getSize();
-    auto SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
-    if (SymSize != 0)
-      Size = SymSize;
-    if (Size == 0)
-      continue;
-    const unsigned Align = (*SectionOrErr)->getAlignment().value();
+      auto SectionOrErr = Sym.getSection();
+      if (!SectionOrErr) {
+        llvm::consumeError(SectionOrErr.takeError());
+        continue;
+      }
+      if (*SectionOrErr == Obj.section_end())
+        continue;
+      uint64_t Size = (*SectionOrErr)->getSize();
+      auto SymSize = llvm::object::ELFSymbolRef(Sym).getSize();
+      if (SymSize != 0)
+        Size = SymSize;
+      if (Size == 0)
+        continue;
+      const unsigned Align = (*SectionOrErr)->getAlignment().value();
 
-    // Initial bytes live in the .managed companion's section contents.
-    auto ContentsOrErr = (*SectionOrErr)->getContents();
-    llvm::StringRef InitBytes;
-    if (ContentsOrErr)
-      InitBytes = *ContentsOrErr;
-    else
-      llvm::consumeError(ContentsOrErr.takeError());
+      // Initial bytes live in the .managed companion's section contents.
+      auto ContentsOrErr = (*SectionOrErr)->getContents();
+      llvm::StringRef InitBytes;
+      if (ContentsOrErr)
+        InitBytes = *ContentsOrErr;
+      else
+        llvm::consumeError(ContentsOrErr.takeError());
 
-    // Reuse the shared allocation if an earlier instrumented copy already
-    // created this managed variable; otherwise allocate it once for the life
-    // of the tool. Every instrumented copy of a given managed variable shares
-    // one buffer, so the single host shadow stays unambiguous. A later copy
-    // declaring a different size for the same variable is an error.
-    ManagedAlloc *Shared = nullptr;
-    auto SharedIt = SharedManagedVars.find(BaseName);
-    if (SharedIt != SharedManagedVars.end()) {
-      if (SharedIt->second.Size != Size)
-        return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-            "Managed variable '{0}' was first loaded with size {1} but a "
-            "later instrumented copy declares size {2}.",
-            BaseName, SharedIt->second.Size, Size));
-      Shared = &SharedIt->second;
-    } else {
+      // Allocate storage owned by this record, driven entirely by the
+      // relocatable's .managed companion.
       if (!HmmSupported) {
         LUTHIER_RETURN_ON_ERROR(EnsurePool());
         if (Align > Granule)
@@ -458,38 +443,42 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::loadManagedVarsForRecord(
       if (!InitBytes.empty())
         std::memcpy(Alloc.Ptr, InitBytes.data(),
                     std::min<size_t>(InitBytes.size(), Size));
-      // The single host shadow is unambiguous now that the buffer is shared
-      // across every instrumented copy of this managed variable.
-      auto ShadowIt = ManagedVarHostShadows.find(BaseName);
-      if (ShadowIt != ManagedVarHostShadows.end() &&
-          ShadowIt->second != nullptr)
-        *ShadowIt->second = Alloc.Ptr;
-      Shared = &SharedManagedVars.insert({BaseName, Alloc}).first->second;
+      const ManagedAlloc &Owned = Rec.ManagedAllocs.emplace_back(Alloc);
       LLVM_DEBUG(luthier::dbgs()
                  << "[InstrumentedKernelLoaderAndLauncher]   managed-var "
-                 << BaseName << " allocated (shared) at " << Alloc.Ptr << "\n");
-    }
+                 << BaseName << " allocated at " << Owned.Ptr << "\n");
 
-    // Publish the shared buffer into THIS executable's loaded base symbol so
-    // its device code dereferences the same storage as every other copy.
-    auto SymIt = Rec.NameToVarSymbol.find(BaseName);
-    if (SymIt != Rec.NameToVarSymbol.end()) {
-      auto AddrOrErr = hsa::executableSymbolGetAddress(Core, SymIt->second);
-      LUTHIER_RETURN_ON_ERROR(AddrOrErr.takeError());
-      LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-          Core.callFunction<hsa_memory_copy>(
-              reinterpret_cast<void *>(*AddrOrErr), &Shared->Ptr,
-              sizeof(void *)),
-          llvm::formatv("hsa_memory_copy failed publishing managed-var "
-                        "pointer for {0}",
-                        BaseName)));
-    } else {
-      LLVM_DEBUG(luthier::dbgs()
-                 << "[InstrumentedKernelLoaderAndLauncher]   base symbol "
-                 << BaseName << " not found in instrumented executable\n");
+      // Publish the buffer into THIS executable's loaded base symbol so its
+      // device code dereferences the record's own storage.
+      auto SymIt = Rec.NameToVarSymbol.find(BaseName);
+      if (SymIt != Rec.NameToVarSymbol.end()) {
+        auto AddrOrErr = hsa::executableSymbolGetAddress(Core, SymIt->second);
+        LUTHIER_RETURN_ON_ERROR(AddrOrErr.takeError());
+        LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+            Core.callFunction<hsa_memory_copy>(
+                reinterpret_cast<void *>(*AddrOrErr), &Owned.Ptr,
+                sizeof(void *)),
+            llvm::formatv("hsa_memory_copy failed publishing managed-var "
+                          "pointer for {0}",
+                          BaseName)));
+      } else {
+        LLVM_DEBUG(luthier::dbgs()
+                   << "[InstrumentedKernelLoaderAndLauncher]   base symbol "
+                   << BaseName << " not found in instrumented executable\n");
+      }
     }
+    return llvm::Error::success();
+  };
+
+  llvm::Error E = LoadManagedVars();
+  if (E) {
+    // Roll back the allocations made before the failure; the record won't be
+    // cached, so eraseRecordLocked will never see them.
+    for (const ManagedAlloc &Alloc : Rec.ManagedAllocs)
+      E = llvm::joinErrors(std::move(E), freeManagedStorage(AmdExtTbl, Alloc));
+    Rec.ManagedAllocs.clear();
   }
-  return llvm::Error::success();
+  return E;
 }
 
 //===----------------------------------------------------------------------===//
@@ -635,9 +624,10 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
           hsa::executableIterateAgentSymbols(Core, Exec, Agent, HarvestCb))
     return Fail(std::move(Err));
 
-  // Allocate (first sighting) or re-publish (subsequent) the shared managed
-  // variables this instrumented copy carries. Shared buffers persist past a
-  // failed load and are reclaimed in unloadAll.
+  // Allocate + publish the managed variables this instrumented copy carries,
+  // driven by its own relocatable. The allocations are owned by Rec and freed
+  // when the record is erased; loadManagedVarsForRecord frees them itself if it
+  // fails here (Rec is not yet cached).
   if (auto Err = loadManagedVarsForRecord(*Parsed, Rec))
     return Fail(std::move(Err));
 

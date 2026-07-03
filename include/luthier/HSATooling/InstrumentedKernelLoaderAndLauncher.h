@@ -22,7 +22,8 @@
 ///     on the device. Each cached executable is self-contained (its
 ///     device globals / managed variables are baked into its own copy),
 ///     so the launcher also owns per-record device-global symbol lookup
-///     and managed-variable allocation / host-shadow publishing.
+///     and per-record managed-variable allocation driven entirely by the
+///     record's own relocatable.
 ///   - \c InstrumentedKernelLoaderAndLauncherTrait<Derived>: header-only
 ///     CRTP trait that extends the base and installs an
 ///     \c hsa_executable_destroy interceptor driving
@@ -57,11 +58,9 @@
 #include <tuple>
 #include <utility>
 
-namespace llvm {
-namespace object {
+namespace llvm::object {
 class ObjectFile;
-} // namespace object
-} // namespace llvm
+} // namespace llvm::object
 
 namespace luthier {
 
@@ -74,8 +73,8 @@ namespace luthier {
 /// bytes (owned), the HSA code-object reader created over them, the HSA
 /// executable they were loaded into, the resulting instrumented kernel
 /// symbol + descriptor address + private segment size, the harvested
-/// device-global variable symbols, and any managed-variable allocations
-/// made for this instrumented copy.
+/// device-global variable symbols, and the managed-variable allocations
+/// this instrumented copy owns.
 ///
 /// \c loadInstrumented is the cold-path entry point; it takes ownership
 /// of \p Relocatable so the HSA code-object reader's view into host
@@ -85,8 +84,6 @@ namespace luthier {
 /// launcher does not resolve UND globals against a global tool image).
 /// \c overrideWithInstrumented is the hot path called from a packet
 /// interceptor and is reader-locked.
-/// TODO: Make passes register "handle records" so that the loader is able
-/// to accumulate and publish the handles correctly
 class InstrumentedKernelLoaderAndLauncher {
 public:
   InstrumentedKernelLoaderAndLauncher(
@@ -105,9 +102,9 @@ public:
   /// Parse \p Relocatable as an AMDGCN ELF, require it contain exactly
   /// one kernel function (any name — assumed to be the instrumented
   /// kernel), create + load + freeze a fresh HSA executable, harvest its
-  /// device-global variable symbols, allocate + publish any managed
-  /// variables it carries, and cache everything under the key
-  /// <tt>(OriginalKD, Preset)</tt>.
+  /// device-global variable symbols, allocate + publish the managed
+  /// variables it carries (each owned by this record), and cache
+  /// everything under the key <tt>(OriginalKD, Preset)</tt>.
   ///
   /// Takes ownership of \p Relocatable for the lifetime of the resulting
   /// record — the HSA code-object reader keeps a pointer into it.
@@ -157,16 +154,6 @@ public:
   /// \c hsa_executable_destroy interceptor.
   llvm::Error invalidateOriginalExec(hsa_executable_t Exec);
 
-  /// Register a tool managed-variable host shadow: the \c void** the HIP
-  /// \c __hipRegisterManagedVar emitted, keyed by the managed variable's
-  /// device base symbol \p Name. On \c loadInstrumented the launcher writes
-  /// the per-instrumented-copy device allocation pointer into the matching
-  /// shadow. Called once per managed var by \c HSATool at construction.
-  void registerManagedVarHostShadow(llvm::StringRef Name, void **Shadow) {
-    llvm::sys::ScopedWriter W(Mutex);
-    ManagedVarHostShadows[Name] = Shadow;
-  }
-
   /// Accessors for the HSA API-table snapshots. These expose the underlying,
   /// pre-interception function pointers so sibling traits (e.g. the
   /// instrumentation pipeline) can drive HSA from inside a \c withInstance()
@@ -205,8 +192,7 @@ protected:
     /// the requested size on the pool path.
     size_t AllocSize{0};
     /// The managed variable's declared size (from its \c .managed companion
-    /// symbol). Used to reject a later instrumented copy that claims a
-    /// different size for the same managed variable.
+    /// symbol).
     size_t Size{0};
     /// True iff this allocation took the SVM/HMM path.
     bool ViaSvm{false};
@@ -232,6 +218,10 @@ protected:
     /// executable (name → symbol), for host readback via
     /// \c lookupGlobalVariable.
     llvm::StringMap<hsa_executable_symbol_t> NameToVarSymbol;
+    /// Managed-variable storage this record owns — one entry per
+    /// \c <base>.managed symbol in its relocatable. Freed when the record is
+    /// erased.
+    llvm::SmallVector<ManagedAlloc, 2> ManagedAllocs;
   };
 
   /// Cache key — original KD pointer + preset.
@@ -259,41 +249,28 @@ protected:
   /// Authoritative storage of every cached record.
   llvm::DenseMap<Key, InstrumentedRecord, KeyDenseMapInfo> ByOriginal;
 
-  /// Tool managed-variable host shadows: device base symbol name → \c void**
-  /// the HIP runtime registered. Populated by
-  /// \c registerManagedVarHostShadow; consulted on \c loadInstrumented.
-  llvm::StringMap<void **> ManagedVarHostShadows;
-
-  /// One shared allocation per managed variable (keyed by device base symbol
-  /// name), allocated the first time any instrumented copy declares it and
-  /// reused — re-published into each subsequent copy's base symbol — for the
-  /// life of the tool. Every instrumented copy of a given managed variable
-  /// therefore sees the SAME storage (and the single host shadow is
-  /// unambiguous). Freed in \c unloadAll. A later copy declaring a different
-  /// size for the same variable is an error.
-  llvm::StringMap<ManagedAlloc> SharedManagedVars;
-
   /// Cached \c HSA_AMD_SYSTEM_INFO_SVM_SUPPORTED query result.
   std::optional<bool> HmmSupportedCache;
 
-  /// Destroy the HSA executable + reader pointed to by \p It, free any managed
-  /// allocations, and erase the entry from \c ByOriginal. Caller must hold the
-  /// writer lock.
+  /// Destroy the HSA executable + reader pointed to by \p It, free the record's
+  /// managed-variable allocations, and erase the entry from \c ByOriginal.
+  /// Caller must hold the writer lock.
   llvm::Error eraseRecordLocked(
       llvm::DenseMap<Key, InstrumentedRecord, KeyDenseMapInfo>::iterator It);
 
   /// Allocate + publish every managed variable carried by the instrumented
   /// executable \p Rec just loaded: for each \c <base>.managed ELF symbol,
-  /// allocate host-coherent storage, copy the init bytes in, publish the
-  /// device base symbol to point at it (via \c hsa_memory_copy), and write the
-  /// tool's host shadow (if registered). Allocations are recorded in \p Rec.
-  /// Caller must hold the writer lock.
+  /// allocate host-coherent storage, copy the init bytes in, and publish the
+  /// device base symbol to point at it (via \c hsa_memory_copy). Each
+  /// allocation is owned by \p Rec (appended to \c Rec.ManagedAllocs) and freed
+  /// when the record is erased; on failure the allocations made so far are
+  /// freed before returning. Caller must hold the writer lock.
   llvm::Error loadManagedVarsForRecord(const llvm::object::ObjectFile &Obj,
                                        InstrumentedRecord &Rec);
 
   //===-------------------------------------------------------------------===//
-  // Managed-variable storage allocation (HMM-aware), moved here from the tool
-  // code loader: each instrumented copy owns its managed-var storage.
+  // Managed-variable storage allocation (HMM-aware): each instrumented copy
+  // owns its managed-var storage.
   //===-------------------------------------------------------------------===//
 
   /// Pick a host fine-grain memory pool suitable for backing managed
@@ -365,7 +342,6 @@ public:
                              hsaExecutableDestroyWrapper));
   }
 
-  /// Wrapper intentionally not uninstalled — see class doc.
   ~InstrumentedKernelLoaderAndLauncherTrait() = default;
 
   InstrumentedKernelLoaderAndLauncherTrait(
