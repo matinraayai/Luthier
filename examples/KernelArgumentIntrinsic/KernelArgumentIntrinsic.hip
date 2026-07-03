@@ -19,6 +19,7 @@
 /// entry of each MachineFunction. The hook writes \c gridDim into a managed
 /// variable so host code can observe it after the kernel completes.
 //===----------------------------------------------------------------------===//
+#undef SPIRV
 #include <chrono>
 #include <hip/hip_runtime.h>
 #include <llvm/Demangle/Demangle.h>
@@ -126,6 +127,8 @@ __attribute__((managed)) dim3 KernelArgumentIntrinsicTool::BlockCount{0, 0, 0};
 __attribute__((device, used)) void KernelArgumentIntrinsicTool::accessKernelArg() {
   KernelArgumentIntrinsicTool::BlockCount = gridDim;
 }
+
+LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(KernelArgumentIntrinsicTool)
 
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};

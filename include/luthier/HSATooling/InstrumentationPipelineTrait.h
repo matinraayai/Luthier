@@ -40,7 +40,6 @@
 #define LUTHIER_TOOLING_INSTRUMENTATION_PIPELINE_TRAIT_H
 
 #include "luthier/Common/ErrorCheck.h"
-#include "luthier/HSATooling/DeviceToolCodeParser.h"
 #include "luthier/HSATooling/HsaMemoryAllocationAccessor.h"
 #include "luthier/HSATooling/LoadedCodeObjectCache.h"
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
@@ -56,6 +55,7 @@
 #include "luthier/ToolCodeGen/MetadataParserAnalysis.h"
 #include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
+#include "luthier/ToolCodeGen/ToolDeviceCodeParser.h"
 #include "luthier/ToolCodeGen/TraceCallGraph.h"
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachinePassManager.h>

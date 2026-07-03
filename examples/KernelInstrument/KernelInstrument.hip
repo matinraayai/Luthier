@@ -18,6 +18,7 @@
 /// Sample kernel-instrumentation tool demonstrating the \c writeReg intrinsic.
 /// Inserts an \c instrumentationHook before a fixed offset in the entry MBB.
 //===----------------------------------------------------------------------===//
+#undef SPIRV
 #include <chrono>
 #include <hip/hip_runtime.h>
 #include <llvm/CodeGen/MachineBasicBlock.h>
@@ -100,6 +101,8 @@ __attribute__((device, used)) void
 KernelInstrumentTool::instrumentationHook(llvm::MCRegister Reg, uint32_t Val) {
   luthier::writeReg(Reg, Val);
 }
+
+LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(KernelInstrumentTool)
 
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};

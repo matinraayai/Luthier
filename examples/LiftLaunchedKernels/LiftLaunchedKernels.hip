@@ -20,6 +20,7 @@
 /// The tool uses \c CodeDiscoveryPass to materialize the dispatched kernel
 /// into the target module, then dumps the module to stderr.
 //===----------------------------------------------------------------------===//
+#undef SPIRV
 #include <hip/hip_runtime.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
@@ -80,6 +81,8 @@ struct LiftLaunchedKernelsTool
     return luthier::InstrumentationPreservedAnalyses{};
   }
 };
+
+LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(LiftLaunchedKernelsTool)
 
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
