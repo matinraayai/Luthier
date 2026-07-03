@@ -30,7 +30,7 @@ namespace luthier {
 /// noinline attribute as  well as a \c LUTHIER_INTRINSIC_ATTRIBUTE attribute
 /// to be recognized by Luthier as an intrinsic
 #define LUTHIER_INTRINSIC_ANNOTATE                                             \
-  __attribute__((device, noinline,                                             \
+  __attribute__((device,                                                       \
                  annotate(LUTHIER_STRINGIFY(LUTHIER_INTRINSIC_ATTRIBUTE))))
 
 #if defined(__HIPCC__)
@@ -67,12 +67,7 @@ __attribute__((device, always_inline)) void doNotOptimize(T const &Value) {
 /// and the register must be at most 64-bit wide
 /// \returns the value of the read register
 template <typename T, typename = std::enable_if_t<std::is_integral<T>::value>>
-LUTHIER_INTRINSIC_ANNOTATE T readReg(llvm::MCRegister Reg) {
-  T Out;
-  doNotOptimize(Reg);
-  doNotOptimize(Out);
-  return Out;
-}
+LUTHIER_INTRINSIC_ANNOTATE T readReg(llvm::MCRegister Reg);
 
 /// \brief Intrinsic to write the value of a register
 /// \details The writeReg intrinsic writes \p Val into the register named \p Reg
@@ -84,49 +79,24 @@ LUTHIER_INTRINSIC_ANNOTATE T readReg(llvm::MCRegister Reg) {
 /// and the register must be at most 64-bit wide
 /// \param Val the value to write into the register
 template <typename T, typename = std::enable_if_t<std::is_integral<T>::value>>
-LUTHIER_INTRINSIC_ANNOTATE void writeReg(llvm::MCRegister Reg, T Val) {
-  doNotOptimize(Reg);
-  doNotOptimize(Val);
-}
+LUTHIER_INTRINSIC_ANNOTATE void writeReg(llvm::MCRegister Reg, T Val);
 
-LUTHIER_INTRINSIC_ANNOTATE void writeExec(uint64_t Val) { doNotOptimize(Val); }
+LUTHIER_INTRINSIC_ANNOTATE void writeExec(uint64_t Val);
 
 /// \return the address of the implicit argument segment
-LUTHIER_INTRINSIC_ANNOTATE uint32_t *implicitArgPtr() {
-  uint32_t *Out;
-  doNotOptimize(Out);
-  return Out;
-}
+LUTHIER_INTRINSIC_ANNOTATE uint32_t *implicitArgPtr();
 
-LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdX() {
-  uint32_t Out;
-  doNotOptimize(Out);
-  return Out;
-}
+LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdX();
 
-LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdY() {
-  uint32_t Out;
-  doNotOptimize(Out);
-  return Out;
-}
+LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdY();
 
-LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdZ() {
-  uint32_t Out;
-  doNotOptimize(Out);
-  return Out;
-}
+LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdZ();
 
 template <typename T,
           typename = std::enable_if_t<
               std::is_same_v<T, uint32_t> || std::is_same_v<T, uint64_t> ||
               std::is_same_v<T, int32_t> || std::is_same_v<T, int64_t>>>
-LUTHIER_INTRINSIC_ANNOTATE T sAtomicAdd(T *Address, T Value) {
-  T Out;
-  doNotOptimize(Out);
-  doNotOptimize(Address);
-  doNotOptimize(Value);
-  return Out;
-}
+LUTHIER_INTRINSIC_ANNOTATE T sAtomicAdd(T *Address, T Value);
 
 #endif
 
