@@ -19,6 +19,7 @@
 /// design. Inserts per-opcode counter increments and accumulates a global
 /// histogram across all instrumented dispatches.
 //===----------------------------------------------------------------------===//
+#undef SPIRV
 #include <SIInstrInfo.h>
 #include <chrono>
 #include <hip/hip_runtime.h>
@@ -128,6 +129,8 @@ struct OpcodeHistogramTool
                          llvm::MachineFunction &MF,
                          llvm::FunctionAnalysisManager &);
 };
+
+LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(OpcodeHistogramTool)
 
 __attribute__((device)) uint64_t
     OpcodeHistogramTool::KernelHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];

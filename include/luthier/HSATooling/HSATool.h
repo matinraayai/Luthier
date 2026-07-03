@@ -103,7 +103,7 @@ template <typename Derived, typename TargetUnitT = llvm::MachineFunction>
 class HSATool : public Singleton<Derived>,
                 public LLVMUserTrait<Derived>,
                 public LoadedCodeObjectCacheTrait<Derived>,
-                public ToolDeviceCodeOffloadParser<Derived>,
+                public ToolDeviceCodeOffloadParserTrait<Derived>,
                 public InstrumentedKernelLoaderAndLauncherTrait<Derived>,
                 public InjectedPayloadCreationPass<Derived, TargetUnitT>,
                 public IntrinsicProcessorRegistryTraitBase<Derived>,
@@ -118,20 +118,10 @@ public:
           llvm::Error &Err)
       : Singleton<Derived>(), LLVMUserTrait<Derived>(),
         LoadedCodeObjectCacheTrait<Derived>(CoreApi, VenLoader, Err),
-        ToolDeviceCodeOffloadParser<Derived>(Err),
+        ToolDeviceCodeOffloadParserTrait<Derived>(Err),
         InstrumentedKernelLoaderAndLauncherTrait<Derived>(CoreApi, AmdExt,
                                                           VenLoader, Err),
-        PacketMonitorTrait<Derived>(CoreApi, AmdExt, VenLoader, Err) {
-
-    // Hand the tool's __hipRegisterManagedVar host shadows to the launcher so
-    // it can publish each per-instrumented-kernel managed-var allocation into
-    // them when that instrumented kernel is loaded.
-    if (!Err)
-      for (const auto &MV :
-           ToolDeviceCodeOffloadParser<Derived>::HipManagedVars)
-        if (MV.Name != nullptr && MV.Pointer != nullptr)
-          this->registerManagedVarHostShadow(MV.Name, MV.Pointer);
-  }
+        PacketMonitorTrait<Derived>(CoreApi, AmdExt, VenLoader, Err) {}
 
   /// Build the instrumentation pass pipeline driver for a target application
   /// module. The returned \c InstrumentationPMDriver is a
@@ -255,7 +245,7 @@ public:
   llvm::Expected<llvm::Function *>
   resolvePayloadHandle(T *HostHandle, llvm::Module &InstrumentationModule) {
     auto &Self = static_cast<Derived &>(*this);
-    auto NameOrErr = Self.lookupNameByHandle(HostHandle);
+    auto NameOrErr = Self.lookupHandleName(HostHandle);
     LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
 
     if (llvm::Function *F = InstrumentationModule.getFunction(*NameOrErr))
@@ -306,7 +296,7 @@ public:
   llvm::Expected<hsa_executable_symbol_t>
   lookupGlobalVariable(T *Handle, const llvm::amdhsa::kernel_descriptor_t *KD,
                        uint64_t Preset = 0) {
-    auto NameOrErr = this->lookupNameByHandle(Handle);
+    auto NameOrErr = this->lookupHandleName(Handle);
     LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
     return InstrumentedKernelLoaderAndLauncher::lookupGlobalVariable(
         *NameOrErr, KD, Preset);
