@@ -125,15 +125,15 @@ class ToolDeviceCodeOffloadParserTrait : public ToolDeviceCodeOffloadParser {
 
   /// Sentinel \c __managed__ variable that forces Clang to emit "host-visible"
   /// device code in the der=ived parser's TU
-  static __attribute__((used)) char DeviceCodeMarker;
+  static char DeviceCodeMarker;
 
-  static __attribute__((used)) const char *FatBinarySectionBegin;
+  static const char *FatBinarySectionBegin;
 
-  static __attribute__((used)) const char *FatBinarySectionEnd;
+  static const char *FatBinarySectionEnd;
 
-  static __attribute__((used)) const HipHandleInfo *HipHandleSectionBegin;
+  static const HipHandleInfo *HipHandleSectionBegin;
 
-  static __attribute__((used)) const HipHandleInfo *HipHandleSectionEnd;
+  static const HipHandleInfo *HipHandleSectionEnd;
 
 public:
   explicit ToolDeviceCodeOffloadParserTrait(llvm::Error &Err)
