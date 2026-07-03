@@ -13,21 +13,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-///
-/// \file InstrumentedKernelLoaderAndLauncher.h
-/// Defines two collaborating classes:
-///   - \c InstrumentedKernelLoaderAndLauncher: non-templated base.
-///     Owns the per-tool cache of loaded instrumented-kernel HSA
-///     executables keyed by the original kernel-descriptor pointer
-///     on the device. Each cached executable is self-contained (its
-///     device globals / managed variables are baked into its own copy),
-///     so the launcher also owns per-record device-global symbol lookup
-///     and per-record managed-variable allocation driven entirely by the
-///     record's own relocatable.
-///   - \c InstrumentedKernelLoaderAndLauncherTrait<Derived>: header-only
-///     CRTP trait that extends the base and installs an
-///     \c hsa_executable_destroy interceptor driving
-///     \c invalidateOriginalExec.
+/// \file
+/// Defines the \c InstrumentedKernelLoaderAndLauncher, in charge of loading
+/// and unloading instrumented copies of kernels, and the
+/// \c InstrumentedKernelLoaderAndLauncherTrait, which provides its
+/// \c Derived with the loader functionality, as well as HSA callbacks to
+/// invalidate the instrumented kernel cache.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_TOOLING_INSTRUMENTED_KERNEL_LOADER_AND_LAUNCHER_H
 #define LUTHIER_HSA_TOOLING_INSTRUMENTED_KERNEL_LOADER_AND_LAUNCHER_H
