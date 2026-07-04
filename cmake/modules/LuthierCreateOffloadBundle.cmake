@@ -332,8 +332,9 @@ function(luthier_create_offload_bundle target source)
     set(_SPIRV_TARGET "${target}-${_SPIRV_TARGET_ISA}")
     add_library(${_SPIRV_TARGET} OBJECT ${_DEV_SOURCE})
     set_target_properties(${_SPIRV_TARGET} PROPERTIES HIP_ARCHITECTURES "amdgcnspirv")
+    # FIXME: -g0: disable debug info for now
     target_compile_options(${_SPIRV_TARGET} PRIVATE
-            --cuda-device-only --no-gpu-bundle-output -B "${_SPIRV_DIR}"
+            --cuda-device-only --no-gpu-bundle-output -g0 -B "${_SPIRV_DIR}"
             -fpass-plugin=${_LUTHIER_IR_PLUGIN})
     add_dependencies(${_SPIRV_TARGET} ${_LUTHIER_IR_PLUGIN_TARGET})
 

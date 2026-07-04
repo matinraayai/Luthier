@@ -45,12 +45,24 @@
 #include "luthier/ToolIRCompilation/MarkAnnotationsPass.h"
 #include "luthier/ToolIRCompilation/SubstituteAMDGCNIntrinsicsPass.h"
 #include <LLVMSPIRVLib/LLVMSPIRVLib.h>
+#include <llvm/ADT/SmallString.h>
+#include <llvm/ADT/StringSet.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/GlobalValue.h>
+#include <llvm/IR/Metadata.h>
+#include <llvm/IRReader/IRReader.h>
+#include <llvm/Linker/Linker.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Support/Path.h>
 #include <llvm/Support/SmallVectorMemoryBuffer.h>
+#include <llvm/Support/SourceMgr.h>
 #include <llvm/Target/TargetMachine.h>
+#include <llvm/Transforms/IPO/Internalize.h>
 #include <sstream>
+#include <string>
+#include <vector>
 #endif
 
 #define DEBUG_TYPE "luthier-device-tool-code-parser"
@@ -270,6 +282,97 @@ ToolDeviceCodeParser::ToolDeviceCodeParser(
     RetainedBuffers.push_back(std::move(Bundle));
 }
 
+#ifdef LUTHIER_HAS_SPIRV_TRANSLATOR
+/// Link the ROCm device-library bitcode needed to resolve the OpenCL builtins
+/// (\c popcount, \c atom_add, …) that the reverse SPIR-V->IR translation leaves
+/// as undefined external calls. This mirrors what a normal HIP compile does via
+/// \c -mlink-builtin-bitcode, but in-process: each \c .bc is parsed into \p M
+/// 's context and linked with \c LinkOnlyNeeded so only referenced symbols are
+/// pulled in. Must run BEFORE the optimization pipeline so the builtins inline.
+static llvm::Error linkDeviceLibs(llvm::Module &M, llvm::StringRef CPU,
+                                  const llvm::SubtargetFeatures &Features) {
+#ifndef LUTHIER_DEVICE_LIBS_DIR
+#error "SPIR-V JIT path needs the ROCm device-libs bitcode."
+#else
+  llvm::LLVMContext &Ctx = M.getContext();
+  llvm::StringRef Dir(LUTHIER_DEVICE_LIBS_DIR);
+
+  // wavefrontsize64 is on unless the target features explicitly disable it.
+  bool Wave64 = true;
+  for (const std::string &F : Features.getFeatures()) {
+    if (F == "+wavefrontsize64")
+      Wave64 = true;
+    else if (F == "-wavefrontsize64")
+      Wave64 = false;
+  }
+
+  // The ISA-version control lib is named by the bare processor
+  // (gfx942 -> 942, gfx9-4-generic -> 9-4-generic).
+  std::string IsaVer =
+      CPU.starts_with("gfx") ? CPU.drop_front(3).str() : CPU.str();
+
+  // Code-object / ABI version from the module flag clang stamps in; default to
+  // the current COV (6) when absent.
+  unsigned Cov = 600;
+  if (llvm::Metadata *MD = M.getModuleFlag("amdhsa_code_object_version"))
+    if (auto *CI = llvm::mdconst::dyn_extract<llvm::ConstantInt>(MD))
+      Cov = CI->getZExtValue();
+
+  const llvm::SmallVector<std::string, 8> Libs = {
+      "opencl.bc",
+      "ocml.bc",
+      "ockl.bc",
+      "oclc_isa_version_" + IsaVer + ".bc",
+      Wave64 ? "oclc_wavefrontsize64_on.bc" : "oclc_wavefrontsize64_off.bc",
+      "oclc_finite_only_off.bc",
+      "oclc_unsafe_math_off.bc",
+      "oclc_abi_version_" + std::to_string(Cov) + ".bc",
+  };
+
+  llvm::Linker L(M);
+  for (const std::string &Lib : Libs) {
+    llvm::SmallString<256> Path(Dir);
+    llvm::sys::path::append(Path, Lib);
+    llvm::SMDiagnostic Diag;
+    std::unique_ptr<llvm::Module> Sub = llvm::parseIRFile(Path, Diag, Ctx);
+    if (!Sub)
+      return LUTHIER_MAKE_GENERIC_ERROR(
+          llvm::formatv("Failed to load device-libs bitcode '{0}': {1}",
+                        Path.str().str(), Diag.getMessage().str()));
+    // The device libs share our AMDGCN triple/datalayout; align them explicitly
+    // to suppress spurious Linker mismatch diagnostics.
+    Sub->setTargetTriple(M.getTargetTriple());
+    Sub->setDataLayout(M.getDataLayout());
+    if (L.linkInModule(std::move(Sub), llvm::Linker::Flags::LinkOnlyNeeded))
+      return LUTHIER_MAKE_GENERIC_ERROR(
+          llvm::formatv("Failed to link device-libs bitcode '{0}'", Lib));
+  }
+
+  // FIXME: This is too conservative
+  // Internalize everything the device libs pulled in (and any dead weak helper
+  // the tool module itself carries, e.g. the HIP device-side __assert_fail)
+  // that is not part of the tool's externally-visible interface, so the
+  // optimization pipeline's globaldce drops the unused ones instead of trying
+  // to codegen them. internalizeModule preserves llvm.used members
+  // automatically; llvm.compiler.used members (notably the Counter global the
+  // host reads back by name per dispatch) are NOT, so preserve them explicitly.
+  llvm::SmallVector<llvm::GlobalValue *, 8> CompilerUsed;
+  llvm::collectUsedGlobalVariables(M, CompilerUsed, /*CompilerUsed=*/true);
+  llvm::StringSet<> Preserve;
+  for (const llvm::GlobalValue *GV : CompilerUsed)
+    Preserve.insert(GV->getName());
+  llvm::internalizeModule(M, [&Preserve](const llvm::GlobalValue &GV) {
+    return Preserve.contains(GV.getName());
+  });
+
+  LLVM_DEBUG(luthier::dbgs()
+             << "[ToolDeviceCodeParser] linked device-libs (isa=" << IsaVer
+             << " wave64=" << Wave64 << " cov=" << Cov << ")\n");
+  return llvm::Error::success();
+#endif
+}
+#endif
+
 llvm::Expected<std::unique_ptr<llvm::Module>>
 ToolDeviceCodeParser::translateSpirvFallback(
     const llvm::Triple &T, llvm::StringRef CPU,
@@ -322,6 +425,11 @@ ToolDeviceCodeParser::translateSpirvFallback(
         "createTargetMachine returned nullptr for the SPIR-V fallback.");
   M->setTargetTriple(T);
   M->setDataLayout(TM->createDataLayout());
+
+  // Link against device libs
+  if (llvm::Error E = linkDeviceLibs(*M, CPU, Features))
+    return std::move(E);
+
   const std::string FeatStr = Features.getString();
   for (llvm::Function &F : *M) {
     F.addFnAttr("target-cpu", CPU);
