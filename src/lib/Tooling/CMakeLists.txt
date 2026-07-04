@@ -34,7 +34,7 @@ target_link_libraries(LuthierTooling
         PRIVATE
         LLVMSymbolize LLVMDebugInfoDWARF LLVMCodeGenTypes LLVMMC LLVMMCA LLVMMCDisassembler LLVMObject
         LLVMSupport LLVMTarget LLVMTargetParser LLVMTransformUtils LLVMBitReader LLVMAnalysis LLVMAsmPrinter
-        LLVMCore LLVMPasses LLVMCodeGen)
+        LLVMCore LLVMPasses LLVMCodeGen LLVMLinker LLVMIRReader)
 
 if (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
     target_link_libraries(LuthierTooling PRIVATE Luthier::LLVMSPIRVTranslator)

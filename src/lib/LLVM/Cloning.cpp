@@ -99,7 +99,13 @@ static void cloneFrameInfo(
     int NewFI;
 
     assert(!SrcMFI.isFixedObjectIndex(i));
-    if (SrcMFI.isVariableSizedObjectIndex(i)) {
+    if (SrcMFI.isDeadObjectIndex(i)) {
+      // A dead object carries no valid size, offset, or properties (their
+      // accessors assert on dead indices). Recreate a placeholder purely to
+      // preserve stable frame-index numbering, then mark it dead again.
+      NewFI = DstMFI.CreateStackObject(1, llvm::Align(1), /*isSpillSlot=*/false);
+      DstMFI.RemoveStackObject(NewFI);
+    } else if (SrcMFI.isVariableSizedObjectIndex(i)) {
       NewFI = DstMFI.CreateVariableSizedObject(SrcMFI.getObjectAlign(i),
                                                SrcMFI.getObjectAllocation(i));
     } else {
@@ -110,7 +116,8 @@ static void cloneFrameInfo(
       DstMFI.setObjectOffset(NewFI, SrcMFI.getObjectOffset(i));
     }
 
-    CopyObjectProperties(DstMFI, SrcMFI, i);
+    if (!SrcMFI.isDeadObjectIndex(i))
+      CopyObjectProperties(DstMFI, SrcMFI, i);
 
     (void)NewFI;
     assert(i == NewFI && "expected to keep stable frame index numbering");
