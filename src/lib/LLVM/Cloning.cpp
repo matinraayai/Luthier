@@ -386,6 +386,16 @@ llvm::Error cloneMFInto(
               {const_cast<llvm::MachineInstr *>(&SrcMI), DstMI});
       }
 
+      // Fix tied operands
+      for (unsigned I = 0, E = SrcMI.getNumOperands(); I != E; ++I) {
+        const llvm::MachineOperand &SrcMO = SrcMI.getOperand(I);
+        if (!SrcMO.isReg() || !SrcMO.isTied() || !SrcMO.isUse())
+          continue;
+        if (DstMI->getOperand(I).isTied())
+          continue;
+        DstMI->tieOperands(SrcMI.findTiedOperandIdx(I), I);
+      }
+
       LUTHIER_RETURN_ON_ERROR(cloneMemOperands(*DstMI, SrcMI, *SrcMF, *DstMF));
     }
   }

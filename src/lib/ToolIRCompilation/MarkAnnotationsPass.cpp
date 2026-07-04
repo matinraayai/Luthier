@@ -64,6 +64,9 @@ MarkAnnotationsPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &) {
                    << "Marked injected payload " << F->getName() << ".\n");
       }
     }
+    AnnotationGV->dropAllReferences();
+    AnnotationGV->eraseFromParent();
+    return llvm::PreservedAnalyses::none();
   }
 
   return llvm::PreservedAnalyses::all();

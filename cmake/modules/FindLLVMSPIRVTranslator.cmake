@@ -26,6 +26,14 @@
 #                                  LUTHIER_LLVM_SPIRV_TRANSLATOR_INCLUDE_DIR to the include path.
 #===----------------------------------------------------------------------===#
 
+# Allow the SPIR-V path to be turned off explicitly
+if (DEFINED LUTHIER_ENABLE_SPIRV AND NOT LUTHIER_ENABLE_SPIRV)
+    set(LLVMSPIRVTranslator_FOUND FALSE)
+    set(LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND FALSE CACHE INTERNAL
+            "Whether the AMD SPIR-V translator + LLVMSPIRVLib were found")
+    return()
+endif ()
+
 # Candidate roots: user-provided prefixes first, then the LLVM install tree.
 set(_luthier_llvm_spirv_translator_roots)
 if (LUTHIER_LLVM_SPIRV_TRANSLATOR_PREFIX_PATH)
