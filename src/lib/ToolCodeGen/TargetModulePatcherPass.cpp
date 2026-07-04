@@ -56,6 +56,7 @@
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Transforms/Utils/Cloning.h>
+#include <llvm/Transforms/Utils/ValueMapper.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-target-module-patcher"
@@ -834,6 +835,16 @@ void inlineInjectedPayload(const llvm::MachineFunction &InjectedPayloadMF,
         }
         DstMI->addOperand(DstMO);
       }
+
+      /// Fix tied operands
+      for (unsigned I = 0, E = SrcMI.getNumOperands(); I != E; ++I) {
+        const llvm::MachineOperand &TiedMO = SrcMI.getOperand(I);
+        if (!TiedMO.isReg() || !TiedMO.isTied() || !TiedMO.isUse())
+          continue;
+        if (DstMI->getOperand(I).isTied())
+          continue;
+        DstMI->tieOperands(SrcMI.findTiedOperandIdx(I), I);
+      }
     }
   }
 }
@@ -903,6 +914,33 @@ llvm::Error cloneIModuleIntoTarget(llvm::Module &IModule,
         F.getAddressSpace(), F.getName(), &TargetModule);
     NewF->copyAttributesFrom(&F);
     VMap[&F] = NewF;
+  }
+
+  // Deep-clone global-variable initializers. The GV handles above are created
+  // without an initializer (declarations); copy each defined IModule global's
+  // initializer over, remapped through VMap so any references to other cloned
+  // globals/functions resolve to their target-module handles. This must run
+  // after the function-handle pass since an initializer may reference a
+  // function. Without this, tool globals such as InstrCountTool::Counter stay
+  // undefined in the target module: AMDGPU's PC-relative (R_AMDGPU_REL32)
+  // references to them then fail to link (undefined protected symbol / needs
+  // -fPIC), and the tool's per-dispatch counter read-back has no storage to
+  // resolve against. The SPIR-V path masked this because SPIR-V -> LLVM IR
+  // translation folds these definitions in differently.
+  for (auto &GV : IModule.globals()) {
+    if (!GV.hasInitializer())
+      continue;
+    // Skip the LLVM intrinsic metadata globals (`llvm.compiler.used`,
+    // `llvm.used`, `llvm.global.annotations`, ...). Their initializers list
+    // payloads/hooks that are intentionally NOT cloned into the target module
+    // (payloads are inlined per-MI; hooks never reach the target binary), so
+    // remapping them would leave dangling cross-module references into the
+    // IModule — corrupting use-lists and crashing when the IModule is torn
+    // down. They stay as bare declarations, exactly as before.
+    if (GV.getName().starts_with("llvm."))
+      continue;
+    auto *NewGV = llvm::cast<llvm::GlobalVariable>(VMap[&GV]);
+    NewGV->setInitializer(llvm::MapValue(GV.getInitializer(), VMap));
   }
 
   // Pass 2 — for each definition with a body, give the target-side

@@ -309,8 +309,9 @@ function(luthier_create_offload_bundle target source)
     set(_SLICE_TGT "${target}-${_SANITIZED_TARGET_ISA}")
     add_library(${_SLICE_TGT} OBJECT ${_DEV_SOURCE})
     set_target_properties(${_SLICE_TGT} PROPERTIES HIP_ARCHITECTURES "${_OFFLOAD}")
+    # FIXME: -g0: disable debug info for now
     target_compile_options(${_SLICE_TGT} PRIVATE
-            --cuda-device-only -emit-llvm --no-gpu-bundle-output
+            --cuda-device-only -emit-llvm --no-gpu-bundle-output -g0
             ${_MFLAGS} -fpass-plugin=${_LUTHIER_IR_PLUGIN})
     add_dependencies(${_SLICE_TGT} ${_LUTHIER_IR_PLUGIN_TARGET})
 
