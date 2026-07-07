@@ -204,6 +204,11 @@ class MIRToIRTranslator {
   void raiseMachineInstr(const llvm::MachineInstr &MI,
                          llvm::IRBuilderBase &Builder);
 
+  /// Translates all instructions of \p MBB into its BodyBB and closes the
+  /// block with a fall-through branch or \c unreachable safety net. Shared
+  /// between the initial \c translate pass and \c retranslateMBB
+  void translateMBBBody(llvm::MachineBasicBlock &MBB);
+
   llvm::MachineFunction &MF;
 
   /// IR Inline assembly instruction emitter used to emit place holder
@@ -653,6 +658,32 @@ public:
 
   /// Main function for performing the IR translation
   void translate();
+
+  /// Re-translates the body of \p MBB in place after its MIR was modified.
+  /// The MBB's BodyBB identity (and, for vector MBBs, its Check/Skip
+  /// scaffolding) is preserved; only the body instructions are regenerated.
+  /// Cross-block dataflow is repaired by re-materializing every register
+  /// value the old body exported and replacing its external uses.
+  /// \pre \p MBB has been translated (its \c getBasicBlock is non-null) and
+  /// belongs to the translated function; the MBB's CFG edges are unchanged.
+  /// Call \c runPostTranslateCleanup after the last re-translation.
+  /// \returns true if an old value escaped the block without a register-file
+  /// key, in which case in-place repair is impossible: the caller must do a
+  /// full re-translation and afterwards delete the orphaned instructions
+  /// parked in \p PendingDeadInsts
+  llvm::Expected<bool>
+  retranslateMBB(const llvm::MachineBasicBlock &MBB,
+                 llvm::SmallVectorImpl<llvm::Instruction *> &PendingDeadInsts);
+
+  /// Re-runs the post-translation cleanup (simplification and dead non-trace
+  /// instruction removal) after one or more \c retranslateMBB calls
+  void runPostTranslateCleanup() { optimizeNonTraceInsts(); }
+
+  /// \returns true if \p MBB's IR terminator targets are consistent with its
+  /// current MIR successor list (a vector successor is reached through its
+  /// CheckBB). False indicates the MIR CFG changed shape since translation,
+  /// which is beyond \c retranslateMBB's in-place repair
+  bool irSuccessorsMatchMIR(const llvm::MachineBasicBlock &MBB) const;
 };
 
 } // namespace luthier

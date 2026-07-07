@@ -13,9 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file InstrumentationPass.h
-/// Defines the \c InstrumentationPass CRTP base class for Luthier
-/// passes used in the instrumentation pass pipeline.
+/// \file
+/// Defines the \c InstrumentationPass CRTP base class for passes used in the
+/// instrumentation pipeline.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_INSTRUMENTATION_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_INSTRUMENTATION_PASS_H

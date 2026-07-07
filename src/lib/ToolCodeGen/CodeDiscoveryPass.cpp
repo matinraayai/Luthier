@@ -1750,10 +1750,12 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
 
     const llvm::TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
     for (llvm::MachineInstr *TraceTermMI : TraceTermInstructions) {
-      /// If a terminator is a call, then it is likely that the instruction
-      /// after the call is reachable. Add it to the list of unvisited entry
-      /// points if it is a trace instruction
-      if (TraceTermMI->isCall() && Opts.EagerDiscoverCallReturnEntryPoint) {
+      /// If a terminator is a call, then add the instruction after it to
+      /// the list of unvisited entry points. This is because call instructions
+      /// encode the next instruction's address into their destination register.
+      /// By adding it to the list of unvisited entry point, we should be able
+      /// to fix the return address up later to point to the discovered trace.
+      if (TraceTermMI->isCall()) {
         TargetMachineInstrMDNode *TraceTermMD =
             TargetMachineInstrMDNode::getInstrMDNodeIfExists(*TraceTermMI);
         if (!TraceTermMD)

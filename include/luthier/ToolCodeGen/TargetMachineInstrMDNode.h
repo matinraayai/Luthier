@@ -57,6 +57,14 @@ public:
 
   [[nodiscard]] bool canRelaxDirectBranch() const;
 
+  /// Marks/clears this instruction's parent MBB as needing re-translation by
+  /// the \c MIRToIRTranslationAnalysis. Persisted via PC sections so the
+  /// dirty state survives MIR/IR serialization; \c TranslationState rebuilds
+  /// its in-memory dirty set from this annotation
+  void setNeedsRetranslation(llvm::LLVMContext &Ctx, bool NeedsRetranslate);
+
+  [[nodiscard]] bool needsRetranslation() const;
+
   static bool classof(const Metadata *MD);
 };
 

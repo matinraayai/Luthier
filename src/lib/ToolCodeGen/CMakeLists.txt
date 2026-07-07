@@ -49,11 +49,14 @@ add_library(LuthierToolCodeGen OBJECT
         InjectedPayloadAndInstPointAnalysis.cpp
         InjectedPayloadAccessedRegsAnalysis.cpp
         InstrumentationPMDriver.cpp
+        TargetAndInstrumentationModule.cpp
         InitialEntryPointAnalysis.cpp
         InitialExecutionPointAnalysis.cpp
         Metadata.cpp
         MIRToIRTranslator.cpp
+        MIRToIRTranslationAnalysis.cpp
         RegValueMetadata.cpp
+        RegValueMapAnalysis.cpp
         MIInlineAsmEmitter.cpp
         NewPMAsmPrinter.cpp
         FunctionAnnotations.cpp
