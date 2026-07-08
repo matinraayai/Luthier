@@ -1,4 +1,11 @@
-# Luthier: A Dynamic Binary Instrumentation Framework Targeting AMD GPUs
+ <div style="width: 100%; overflow: auto;">
+  <div style="width: 33%; float: left;">
+    <img src="./icons/logo.png" alt="Luthier logo">
+  </div>
+  <div style="width: 66%; float: left;"> 
+    <h1>Luthier: A Dynamic Binary Instrumentation Framework Targeting AMD GPUs</h1> 
+  </div>
+</div>
 
 ## What is Luthier?
 Luthier is a dynamic binary instrumentation framework for writing tools targeting AMD GPUs.
