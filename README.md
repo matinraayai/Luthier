@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./icons/logo.png" alt="Luthier Logo" width="200">
+  <img src="./icons/logo.png" alt="Luthier Logo" width="150">
 </div>
 
 # Luthier
