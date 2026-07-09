@@ -16,8 +16,8 @@ constexpr unsigned LUTHIER_TEST_OPCODE_LIST_END = 32768;
 
 __attribute__((device)) uint64_t KernelHistogram[LUTHIER_TEST_OPCODE_LIST_END];
 
-LUTHIER_HOOK_ANNOTATE countOpcodeHistogramVector(bool CountWaveFrontLevel,
-                                                 int OpcodeNumber) {
+__attribute__((device, used)) void
+countOpcodeHistogramVector(bool CountWaveFrontLevel, int OpcodeNumber) {
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   const uint32_t LaneId = __lane_id() + 1;
   uint32_t FirstActiveThreadId = __ffsll(ExecMask);
@@ -34,8 +34,7 @@ LUTHIER_HOOK_ANNOTATE countOpcodeHistogramVector(bool CountWaveFrontLevel,
   }
 }
 
-
-LUTHIER_HOOK_ANNOTATE countOpcodeHistogramScalar(int OpcodeNumber) {
+__attribute__((device, used)) void
+countOpcodeHistogramScalar(int OpcodeNumber) {
   luthier::sAtomicAdd(&KernelHistogram[OpcodeNumber], 1UL);
 }
-

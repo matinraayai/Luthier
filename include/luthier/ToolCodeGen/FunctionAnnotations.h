@@ -72,9 +72,9 @@ static constexpr llvm::StringLiteral IntrinsicAttribute{
 static constexpr llvm::StringLiteral InjectedPayloadAttribute{
     LUTHIER_STRINGIFY(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)};
 
-#define EntryPointAddrAttr      "luthier.function.entrypoint.addr"
+#define EntryPointAddrAttr "luthier.function.entrypoint.addr"
 
-#define InitialEntryPointAttr   "luthier.function.initial_entrypoint"
+#define InitialEntryPointAttr "luthier.function.initial_entrypoint"
 
 /// Annotation strings attached to the inline-static \c llvm::ArrayRef slots
 /// on \c DeviceToolCodeFatBinaryLoader. \c LoadHIPFATBinaryInfoPass matches
@@ -85,13 +85,13 @@ static constexpr llvm::StringLiteral InjectedPayloadAttribute{
 /// \c LUTHIER_ANNOTATE_VARIABLE for the \c __attribute__((annotate(...)))
 /// site, and a \c static \c constexpr \c StringLiteral for runtime
 /// comparisons in the IR pass.
-#define LUTHIER_HIP_FAT_BINARIES_ATTR     luthier.loader.hip_fat_binaries
-#define LUTHIER_HIP_KERNELS_ATTR          luthier.loader.hip_kernels
+#define LUTHIER_HIP_FAT_BINARIES_ATTR luthier.loader.hip_fat_binaries
+#define LUTHIER_HIP_KERNELS_ATTR luthier.loader.hip_kernels
 #define LUTHIER_HIP_DEVICE_FUNCTIONS_ATTR luthier.loader.hip_device_functions
-#define LUTHIER_HIP_DEVICE_VARS_ATTR      luthier.loader.hip_device_vars
-#define LUTHIER_HIP_MANAGED_VARS_ATTR     luthier.loader.hip_managed_vars
-#define LUTHIER_HIP_TEXTURE_VARS_ATTR     luthier.loader.hip_texture_vars
-#define LUTHIER_HIP_SURFACE_VARS_ATTR     luthier.loader.hip_surface_vars
+#define LUTHIER_HIP_DEVICE_VARS_ATTR luthier.loader.hip_device_vars
+#define LUTHIER_HIP_MANAGED_VARS_ATTR luthier.loader.hip_managed_vars
+#define LUTHIER_HIP_TEXTURE_VARS_ATTR luthier.loader.hip_texture_vars
+#define LUTHIER_HIP_SURFACE_VARS_ATTR luthier.loader.hip_surface_vars
 
 static constexpr llvm::StringLiteral HipFatBinariesAttr{
     LUTHIER_STRINGIFY(LUTHIER_HIP_FAT_BINARIES_ATTR)};
@@ -114,39 +114,6 @@ static constexpr const char *InitialExecutionPointAttr =
 static constexpr const char *TargetInstrPointAttr =
     "luthier.target_instr_point";
 
-/// \brief Tags a \c __device__ function to be accessed by the tool's
-/// host code
-#define LUTHIER_EXPORT_FUNCTION_HANDLE_ATTR                                    \
-  __attribute__((luthier_export_function_handle))
-
-#define LUTHIER_HOOK_ANNOTATE                                                  \
-  __attribute__((device, used,                                                 \
-                 annotate(LUTHIER_STRINGIFY(LUTHIER_HOOK_ATTRIBUTE))))         \
-  LUTHIER_EXPORT_FUNCTION_HANDLE_ATTR extern "C" void
-
-/// Attribute pack for hooks declared as \c static members of a tool
-/// class. The base \c LUTHIER_HOOK_ANNOTATE macro embeds an
-/// \c extern \c "C" linkage specifier plus a \c void return type, which
-/// is incompatible with class-scope (the linkage spec is illegal there)
-/// and with the out-of-line definition syntax for static member
-/// functions (where \c static is not repeated). This macro expands to
-/// just the device + hook-tag + export-handle attribute block so the
-/// caller writes \c static + the return type themselves at the
-/// declaration, and writes the same attributes at the definition. The
-/// host-shadow handle for a static member hook is \c &MyTool::myHook
-/// — HIP-Clang generates an \c __hipRegisterFunction entry for it the
-/// same way it does for free \c __device__ functions.
-#define LUTHIER_HOOK_MEMBER_ATTR                                               \
-  __attribute__((device, used,                                                 \
-                 annotate(LUTHIER_STRINGIFY(LUTHIER_HOOK_ATTRIBUTE))))         \
-  LUTHIER_EXPORT_FUNCTION_HANDLE_ATTR
-
-/// Marks a non-hook \c __device__ function as host-addressable. Use this
-/// when host code needs the address of a device function that is not a
-/// Luthier hook (e.g. a helper invoked indirectly).
-#define LUTHIER_HOST_VISIBLE_DEVICE_FN                                         \
-  __attribute__((device)) LUTHIER_EXPORT_FUNCTION_HANDLE_ATTR
-
 /// Annotation string attached to every \c __host__ function serving as a
 /// handle for its \c __device__ overload inside the host code.
 inline constexpr llvm::StringLiteral ExportFunctionHandleMarker =
@@ -157,8 +124,8 @@ inline constexpr llvm::StringLiteral ExportFunctionHandleMarker =
 /// expands to a dotted symbol; the preprocessor stringifies it for the
 /// attribute.
 #if defined(__clang__)
-#define LUTHIER_ANNOTATE_VARIABLE(Sym) \
-__attribute__((annotate(LUTHIER_STRINGIFY(Sym))))
+#define LUTHIER_ANNOTATE_VARIABLE(Sym)                                         \
+  __attribute__((annotate(LUTHIER_STRINGIFY(Sym))))
 #else
 #define LUTHIER_ANNOTATE_VARIABLE(Sym)
 #endif

@@ -15,14 +15,14 @@ __attribute__((device)) uint64_t RegSum32[16];
 
 __attribute__((device)) uint64_t RegSum64[16];
 
-LUTHIER_HOOK_ANNOTATE logReg32(const llvm::MCRegister Reg, uint32_t Slot) {
+__attribute__((device, used)) void logReg32(const llvm::MCRegister Reg,
+                                            uint32_t Slot) {
   uint32_t Val = luthier::readReg<uint32_t>(Reg);
   atomicAdd(&RegSum32[Slot & 0xF], static_cast<uint64_t>(Val));
 }
 
-
-LUTHIER_HOOK_ANNOTATE logReg64(const llvm::MCRegister Reg, uint32_t Slot) {
+__attribute__((device, used)) void logReg64(const llvm::MCRegister Reg,
+                                            uint32_t Slot) {
   uint64_t Val = luthier::readReg<uint64_t>(Reg);
   atomicAdd(&RegSum64[Slot & 0xF], Val);
 }
-

@@ -9,7 +9,8 @@
 
 __attribute__((device)) uint64_t Counter;
 
-LUTHIER_HOOK_ANNOTATE countInstructionsVector(bool CountWaveFrontLevel) {
+__attribute__((device, used)) void
+countInstructionsVector(bool CountWaveFrontLevel) {
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   const uint32_t LaneId = __lane_id() + 1;
   uint32_t FirstActiveThreadId = __ffsll(ExecMask);
@@ -26,8 +27,6 @@ LUTHIER_HOOK_ANNOTATE countInstructionsVector(bool CountWaveFrontLevel) {
   }
 }
 
-
-LUTHIER_HOOK_ANNOTATE countInstructionsScalar() {
+__attribute__((device, used)) void countInstructionsScalar() {
   (void)luthier::sAtomicAdd(&Counter, 1UL);
 }
-
