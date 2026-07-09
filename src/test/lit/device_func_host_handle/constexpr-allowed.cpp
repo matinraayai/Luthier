@@ -1,56 +1,63 @@
-/// RUN: %clangxx -x hip --offload-arch=gfx908 \
+// clang-format off
+/// RUN: %clangxx -x hip \
 /// RUN:   -fplugin=%luthier_tool_cxx_compilation_plugin_path \
-/// RUN:   -I/opt/rocm/include \
-/// RUN:   --cuda-host-only -emit-llvm -S %s -o - 2>&1 | %tee_out FileCheck %s --check-prefix=HOST
-/// RUN: %clangxx -x hip --offload-arch=gfx908 \
+/// RUN:   -Xclang -add-plugin -Xclang luthier-emit-device-function-host-handle \
+/// RUN:   -I/opt/rocm/include --cuda-host-only -emit-llvm -S %s -o - 2>&1 \
+/// RUN:   | %tee_out FileCheck %s --check-prefix=HOST \
+/// RUN:     --implicit-check-not=llvm.amdgcn.
+/// RUN: %clangxx -x hip --offload-arch=gfx90a \
 /// RUN:   -fplugin=%luthier_tool_cxx_compilation_plugin_path \
+/// RUN:   -Xclang -add-plugin -Xclang luthier-emit-device-function-host-handle \
 /// RUN:   -I/opt/rocm/include --cuda-device-only -nogpulib -emit-llvm \
 /// RUN:   -S %s -o - 2>&1 | %tee_out FileCheck %s --check-prefix=DEVICE
-/// Verifies that constexpr (non-consteval) tagged device functions are
-/// accepted by the plugin and behave correctly across all axes:
-/// 1. Host-side address-take resolves to the synthesized __host__
-///    sibling (no constexpr semantics, but a usable runtime pointer).
-/// 2. Device-side call from a __global__ kernel goes to the original
-///    constexpr __device__ function — must NOT trigger the
-///    host-call-of-tagged diagnostic, because the visitor's
-///    enclosing-function check sees a Global caller, not Host.
-/// 3. The original constexpr function is emitted on device under its
-///    natural Itanium mangling for IModule extraction.
+// clang-format on
+/// Verifies correct handle creation of constexpr \c __device__ functions.
 
 #include <hip/hip_runtime.h>
 
-__attribute__((device, used))
-__attribute__((luthier_export_function_handle)) constexpr int
-myAdd(int a) {
-  return a + 1;
-}
+__attribute__((device)) constexpr int myAdd(int a) { return a + 1; }
 
-__global__ void square(int *array, int n) {
+__attribute__((device, host)) constexpr int myAdd2(int a) { return a + 2; }
+
+__attribute__((device)) constexpr int myAdd3(int a) { return a * 2; }
+
+__attribute__((host)) constexpr int myAdd3(int a) { return a + 5; }
+
+__global__ void square(int *arr, int n) {
   int tid = blockDim.x * blockIdx.x + threadIdx.x;
   if (tid < n)
-    // Device→device call; the visitor's caller-context check
-    // (SemaCUDA::IdentifyTarget on the enclosing __global__) must skip
-    // this site and not emit the host-call diagnostic.
-    array[tid] = array[tid] * array[tid] + myAdd(2);
+    arr[tid] = arr[tid] * arr[tid] + myAdd(2) + myAdd2(3) + myAdd3(4);
 }
 
 void hostFunction(const void **out) {
   out[0] = reinterpret_cast<const void *>(&myAdd);
+  out[1] = reinterpret_cast<const void *>(&myAdd2);
+  out[2] = reinterpret_cast<const void *>(&myAdd3);
 }
 
 // clang-format off
-/// Host-side sibling: same Itanium mangling as the natural device
-/// function (the dual-overload uses the original's source name).
-/// HOST: define dso_local noundef i32 @_Z5myAddi(i32 noundef %{{[A-Za-z0-9_]+}})
+/// Host: each constexpr function is exported — tagged with the export-handle
+/// marker (@.str), emitted host-side, and reached by the host address-take:
+///   - myAdd  (__device__ constexpr): CUDA treats it as __host__ __device__,
+///            so its host stub is annotated in place (no synthesized handle);
+///   - myAdd2 (explicit __host__ __device__ constexpr): annotated in place;
+///   - myAdd3 (__device__ constexpr + __host__ constexpr overload):
+///            the host overload is annotated.
+/// --implicit-check-not on the RUN line proves no AMDGCN intrinsic leaks host.
+/// HOST-DAG: @.str = {{.*}}"luthier.function.export_device_handle
+/// HOST-DAG: @_Z5myAddi, ptr @.str
+/// HOST-DAG: @_Z6myAdd2i, ptr @.str
+/// HOST-DAG: @_Z6myAdd3i, ptr @.str
+/// HOST-DAG: define {{.*}}i32 @_Z5myAddi(i32
+/// HOST-DAG: define {{.*}}i32 @_Z6myAdd2i(i32
+/// HOST-DAG: define {{.*}}i32 @_Z6myAdd3i(i32
+/// HOST-DAG: store ptr @_Z5myAddi
+/// HOST-DAG: store ptr @_Z6myAdd2i
+/// HOST-DAG: store ptr @_Z6myAdd3i
 
-/// Host-side address-take retargets at the sibling.
-/// HOST: store ptr @_Z5myAddi
-
-/// No AMDGCN intrinsic leaks to host emission.
-/// HOST-NOT: llvm.amdgcn.
-
-/// Device-side: the constexpr device function is emitted with its
-/// natural mangling; the __global__ kernel is emitted as amdgpu_kernel.
-/// DEVICE: define {{.*}}i32 @_Z5myAddi(i32 noundef %{{[A-Za-z0-9_]+}})
-/// DEVICE: define {{.*}}amdgpu_kernel void @_Z6squarePii
+/// Device: the constexpr functions handles are emitted under their mangled
+/// names.
+/// DEVICE-DAG: define {{.*}}i32 @_Z5myAddi(i32
+/// DEVICE-DAG: define {{.*}}i32 @_Z6myAdd2i(i32
+/// DEVICE-DAG: define {{.*}}i32 @_Z6myAdd3i(i32
 // clang-format on

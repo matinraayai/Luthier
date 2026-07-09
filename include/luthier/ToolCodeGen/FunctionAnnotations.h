@@ -147,12 +147,10 @@ static constexpr const char *TargetInstrPointAttr =
 #define LUTHIER_HOST_VISIBLE_DEVICE_FN                                         \
   __attribute__((device)) LUTHIER_EXPORT_FUNCTION_HANDLE_ATTR
 
-/// Annotation string the plugin attaches to every \c FunctionDecl carrying
-/// the \c [[luthier::export_function_handle]] attribute. External tools
-/// can query this via \c AnnotateAttr to decide whether a device function
-/// is host-addressable.
+/// Annotation string attached to every \c __host__ function serving as a
+/// handle for its \c __device__ overload inside the host code.
 inline constexpr llvm::StringLiteral ExportFunctionHandleMarker =
-    "luthier.export_function_handle";
+    "luthier.function.export_device_handle";
 
 /// Tag a variable declaration with a Clang \c annotate attribute. \p Sym
 /// is a bare-token macro (e.g. \c LUTHIER_HIP_FAT_BINARIES_ATTR) that

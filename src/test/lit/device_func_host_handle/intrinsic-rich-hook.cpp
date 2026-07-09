@@ -1,18 +1,19 @@
-/// RUN: %clangxx -x hip --offload-arch=gfx908 \
+// clang-format off
+/// RUN: %clangxx -x hip \
 /// RUN:   -fplugin=%luthier_tool_cxx_compilation_plugin_path \
-/// RUN:   -I/opt/rocm/include \
-/// RUN:   --cuda-host-only -emit-llvm -S %s -o - 2>&1 | %tee_out FileCheck %s
-/// Verifies that a non-templated hook whose body uses many
-/// __device__-only AMDGCN intrinsics still compiles cleanly: the
-/// original stays pure __device__ (so its body never enters host
-/// CodeGen), the synthesized __host__ sibling is the empty host-side
-/// shadow, and no AMDGCN intrinsic leaks into x86 emission.
+/// RUN:   -Xclang -add-plugin -Xclang luthier-emit-device-function-host-handle \
+/// RUN:   -I/opt/rocm/include --cuda-host-only -emit-llvm -S %s -o - 2>&1 \
+/// RUN:   | %tee_out FileCheck %s
+// clang-format on
+/// Verifies that a hook whose body uses many \c __device__-only AMDGCN
+/// intrinsics still compiles cleanly: the original stays pure \c __device__
+/// (so its body never enters host CodeGen), the synthesized \c __host__ handle
+/// is the empty host-side shadow, and no AMDGCN intrinsic leaks into host
+/// emission.
 
 #include <hip/hip_runtime.h>
 
-__attribute__((device, used))
-__attribute__((luthier_export_function_handle)) void
-intrinsicRich() {
+__attribute__((device)) void intrinsicRich() {
   unsigned long long Exec = __builtin_amdgcn_read_exec();
   unsigned TidX = __builtin_amdgcn_workitem_id_x();
   unsigned TidY = __builtin_amdgcn_workitem_id_y();
@@ -38,18 +39,18 @@ void hostFunction(const void **out) {
 }
 
 // clang-format off
-/// The sibling is emitted with an empty body and carries the
-/// export-handle annotation. The original __device__ specialization
-/// (which actually contains the intrinsics) is not host-emitted.
+/// The handle is emitted with an empty body and carries the export-handle
+/// annotation. The original __device__ function (with the intrinsics) is not
+/// host-emitted.
 /// CHECK: define dso_local void @_Z13intrinsicRichv()
 /// CHECK-NEXT: entry:
 /// CHECK-NEXT: ret void
 
-/// Host code's address-take resolves to the sibling.
+/// Host code's address-take resolves to the handle.
 /// CHECK: store ptr @_Z13intrinsicRichv
 
-/// Most importantly: none of the AMDGCN intrinsics survive into the
-/// host module.
+/// Most importantly: none of the AMDGCN intrinsics survive into the host
+/// module.
 /// CHECK-NOT: llvm.amdgcn.
 /// CHECK-NOT: __builtin_amdgcn
 // clang-format on

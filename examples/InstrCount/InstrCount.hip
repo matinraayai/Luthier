@@ -104,11 +104,11 @@ struct InstrCountTool
 
   /// Wave-fronts-as-warps counter hook. Atomically increments \c Counter
   /// by either 1 (wavefront-level) or by the active-lane count.
-  LUTHIER_HOOK_MEMBER_ATTR static void
+  __attribute__((device, used)) static void
   countInstructionsVector(bool CountWaveFrontLevel);
 
   /// Scalar counter hook. Single-lane atomic increment of \c Counter.
-  LUTHIER_HOOK_MEMBER_ATTR static void countInstructionsScalar();
+  __attribute__((device, used)) static void countInstructionsScalar();
 
   //===---------------------------------------------------------------===//
   // Host-side state. All previously file-static fields move here as
@@ -207,7 +207,7 @@ struct InstrCountTool
 
 __attribute__((device)) uint64_t InstrCountTool::Counter;
 
-LUTHIER_HOOK_MEMBER_ATTR void InstrCountTool::countInstructionsVector(
+__attribute__((device, used)) void InstrCountTool::countInstructionsVector(
     bool CountWaveFrontLevel) {
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   const uint32_t LaneId = __lane_id() + 1;
@@ -224,7 +224,7 @@ LUTHIER_HOOK_MEMBER_ATTR void InstrCountTool::countInstructionsVector(
   }
 }
 
-LUTHIER_HOOK_MEMBER_ATTR void InstrCountTool::countInstructionsScalar() {
+__attribute__((device, used)) void InstrCountTool::countInstructionsScalar() {
   (void)luthier::sAtomicAdd(&InstrCountTool::Counter, 1UL);
 }
 
