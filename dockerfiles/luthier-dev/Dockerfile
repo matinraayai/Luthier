@@ -1,6 +1,6 @@
 ARG ROCM_VERSION=7.2.4
 
-FROM rocm-$ROCM_VERSION-dev
+FROM matinraayai/rocm:$ROCM_VERSION
 
 # Environment variables and build arguments
 ARG LLVM_BUILD_TYPE=RelWithDebInfo
@@ -8,13 +8,23 @@ ARG BUILD_SHARED_LIBS=ON
 ARG LLVM_SRC_DIR=/opt/luthier/src/
 ARG LLVM_ENABLE_EXPENSIVE_CHECKS=OFF
 ARG LLVM_ENABLE_ASSERTIONS=ON
-ARG LLVM_GIT_REVISION=amd-staging
+ARG LLVM_GIT_REVISION=e8ab2aed15d22cd217e9a2c1938e7d2ec9e11893
 
-# Install neovim from AppImage
-RUN wget https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.appimage && \
-    chmod +x ./nvim-linux-x86_64.appimage && ./nvim-linux-x86_64.appimage --appimage-extract &&  \
-    rm nvim-linux-x86_64.appimage && \
-    cp -r ./squashfs-root/* / && rm -rf ./squashfs-root/
+# Install neovim from the unstable PPA
+RUN add-apt-repository ppa:neovim-ppa/unstable -y && \
+    apt-get update && apt-get install -y neovim
+
+# Install other other useful development packages
+RUN apt-get install -y npm python3.12-venv nodejs pkg-config xxd ninja-build zsh \
+    unzip ripgrep libdw-dev rpm
+
+# Install ROCm packages' debug information
+RUN apt-get install -y amd-smi-lib-dbgsym comgr-dbgsym hip-runtime-amd-dbgsym hipblas-dbgsym \
+    hipcc-dbgsym hipfft-dbgsym hiprand-dbgsym hipsolver-dbgsym hipsparse-dbgsym hsa-rocr-dbgsym \
+    rccl-dbgsym rocalution-dbgsym rocfft-dbgsym rocm-core-dbgsym rocm-dbgapi-dbgsym \
+    rocm-debug-agent-dbgsym rocm-opencl-dbgsym rocm-smi-lib-dbgsym rocminfo-dbgsym rocprofiler-dbgsym \
+    rocprofiler-plugins-dbgsym rocprofiler-sdk-dbgsym rocprofiler-sdk-rocpd-dbgsym rocprofiler-sdk-roctx-dbgsym \
+    rocrand-dbgsym rocsparse-dbgsym roctracer-dbgsym && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Clone all LLVM-based ROCm projects in the $LLVM_SRC_DIR directory
 RUN mkdir -p $LLVM_SRC_DIR && cd $LLVM_SRC_DIR && \

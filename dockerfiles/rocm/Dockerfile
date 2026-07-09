@@ -8,9 +8,8 @@ ARG AMDGPU_VERSION=31.30
 
 # Install dependencies
 RUN apt-get clean && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y wget ca-certificates curl  \
-    build-essential  software-properties-common cmake g++-12 libstdc++-12-dev rpm libelf-dev libnuma-dev sudo  \
-    libdw-dev git python3 python3-pip gnupg unzip ripgrep libelf1 file pkg-config xxd ninja-build zsh git npm  \
-    python3.12-venv nodejs kmod
+    build-essential software-properties-common cmake g++-12 libstdc++-12-dev libelf-dev libnuma-dev sudo  \
+    python3 python3-pip gnupg libelf1 file git kmod
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 20 --slave /usr/bin/g++ g++ /usr/bin/g++-12
 
 # ROCm installation
@@ -23,4 +22,5 @@ RUN curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add - \
   && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends  \
     rocm-libs  \
     rocm-dev  \
-    rocm-llvm-dev && apt-get clean && rm -rf /var/lib/apt/lists/*
+    rocm-llvm-dev && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
