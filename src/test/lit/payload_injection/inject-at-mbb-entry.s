@@ -19,12 +19,12 @@
 // RUN:    -o /dev/null && \
 // RUN: FileCheck %s < %t.imod.ll
 
-// CHECK: define internal void @bumpCounter
+// CHECK: define internal void @_Z11bumpCounterv
 // At least two distinct injected-payload functions should be created (one
 // per MBB in the target kernel).
 // CHECK-DAG: define internal void @luthier.payload.vector_add.0.0()
 // CHECK-DAG: define internal void @luthier.payload.vector_add.{{[1-9][0-9]*}}.0()
-// CHECK-DAG: call void @bumpCounter()
+// CHECK-DAG: call void @_Z11bumpCounterv()
 
 	.amdgcn_target "amdgcn-amd-amdhsa--gfx90a"
 	.amdhsa_code_object_version 6

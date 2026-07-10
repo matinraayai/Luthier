@@ -65,7 +65,7 @@ entry:
 
 @.str.fb  = private unnamed_addr constant [32 x i8] c"luthier.loader.hip_fat_binaries\00", section "llvm.metadata"
 @.str.df  = private unnamed_addr constant [36 x i8] c"luthier.loader.hip_device_functions\00", section "llvm.metadata"
-@.str.exp = private unnamed_addr constant [31 x i8] c"luthier.export_function_handle\00", section "llvm.metadata"
+@.str.exp = private unnamed_addr constant [38 x i8] c"luthier.function.export_device_handle\00", section "llvm.metadata"
 @.str.src = private unnamed_addr constant [14 x i8] c"/app/test.cpp\00", section "llvm.metadata"
 
 ;

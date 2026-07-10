@@ -22,7 +22,7 @@
 // RUN:    -o /dev/null && \
 // RUN: FileCheck %s < %t.imod.ll
 
-// CHECK: define internal void @bumpCounter
+// CHECK: define internal void @_Z11bumpCounterv
 // CHECK-COUNT-1: define internal void @luthier.payload.vector_add.
 // CHECK-NOT:    define internal void @luthier.payload.vector_add.{{.*}}
 
