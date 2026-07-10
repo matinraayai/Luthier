@@ -1,10 +1,9 @@
-<div style="text-align: center;">
+<div align="center">
   <img src="./icons/logo.png" alt="Luthier Logo" width="100">
 </div>
 
 # Luthier
 
-## What is Luthier?
 Luthier is a dynamic binary instrumentation framework for writing tools targeting AMD GPUs.
 It supports (or aims to support):
 
