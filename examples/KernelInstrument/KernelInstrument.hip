@@ -18,7 +18,6 @@
 /// Sample kernel-instrumentation tool demonstrating the \c writeReg intrinsic.
 /// Inserts an \c instrumentationHook before a fixed offset in the entry MBB.
 //===----------------------------------------------------------------------===//
-#undef SPIRV
 #include <chrono>
 #include <hip/hip_runtime.h>
 #include <llvm/CodeGen/MachineBasicBlock.h>
