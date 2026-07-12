@@ -48,23 +48,14 @@ class EmbeddedBitcodeLoaderTestTool
     : public luthier::ToolDeviceCodeOffloadParserTrait<
           EmbeddedBitcodeLoaderTestTool> {
 
-  /// A device kernel. Defined in-class: HIP-Clang only accepts a \c __global__
-  /// static member function with an in-class body (an out-of-line definition is
-  /// misparsed as a conflicting \c __host__ overload). Member bodies are parsed
-  /// in complete-class context, so referencing the members declared below is
-  /// fine.
   __global__ static void testKernel() { DeviceVar = ManagedVar; }
 
-  /// A plain \c __device__ global variable.
   __attribute__((device)) static int DeviceVar;
 
-  /// A \c __managed__ global variable.
   __managed__ static int ManagedVar;
 
-  /// A texture reference.
   static texture<float, 1, hipReadModeElementType> TexRef;
 
-  /// A surface reference.
   __attribute__((device)) static LuthierSurface<void, 2> SurfRef;
 
   __attribute__((device, used)) static void testDeviceFunc();
@@ -94,6 +85,8 @@ public:
 //===----------------------------------------------------------------------===//
 // Out-of-line device definitions of the static members.
 //===----------------------------------------------------------------------===//
+LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(EmbeddedBitcodeLoaderTestTool)
+
 __attribute__((device)) int EmbeddedBitcodeLoaderTestTool::DeviceVar = 0;
 
 __managed__ int EmbeddedBitcodeLoaderTestTool::ManagedVar = 0;
@@ -163,9 +156,6 @@ llvm::Error EmbeddedBitcodeLoaderTestTool::loadAndVerify(
                                       Failures);
   return llvm::Error::success();
 }
-
-// Give this tool access to its TU's FAT binary and host shadow handle table.
-LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(EmbeddedBitcodeLoaderTestTool)
 
 //===----------------------------------------------------------------------===//
 // Test harness. Host-only: skipped during the HIP device-compilation passes so
