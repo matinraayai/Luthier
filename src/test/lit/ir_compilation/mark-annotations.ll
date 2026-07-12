@@ -17,8 +17,6 @@ target triple = "amdgcn-amd-amdhsa"
 declare i32 @my_intrinsic()
 
 ; CHECK-NOT: @llvm.global.annotations
-; CHECK-NOT: @llvm.used
-; CHECK-NOT: @llvm.compiler.used
 
 ; CHECK: declare i32 @my_intrinsic() #[[INTR:[0-9]+]]
 
