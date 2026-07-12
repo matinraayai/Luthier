@@ -24,6 +24,7 @@
 
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
+#include <luthier/ToolCodeGen/FunctionAnnotations.h>
 #include "luthier/ToolCodeGen/ToolDeviceCodeParser.h"
 #include <cstdint>
 #include <llvm/ADT/ArrayRef.h>
