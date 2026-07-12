@@ -20,7 +20,6 @@
 /// inserts hooks that compute per-wavefront bank-conflict counts.
 //===----------------------------------------------------------------------===//
 #define HIP_ENABLE_WARP_SYNC_BUILTINS
-#undef SPIRV
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
 #include <chrono>
