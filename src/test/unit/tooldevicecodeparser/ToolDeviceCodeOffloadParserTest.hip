@@ -101,10 +101,6 @@ EmbeddedBitcodeLoaderTestTool::testDeviceFunc() {
   DeviceVar += 1;
 }
 
-//===----------------------------------------------------------------------===//
-// loadAndVerify: the method invoked by the tests. Being a member of the tool,
-// it can take the addresses of the tool's own private static device members.
-//===----------------------------------------------------------------------===//
 llvm::Error EmbeddedBitcodeLoaderTestTool::loadAndVerify(
     const llvm::Triple &T, llvm::StringRef CPU,
     const llvm::SubtargetFeatures &Features, llvm::LLVMContext &Ctx,
@@ -167,54 +163,21 @@ llvm::Error EmbeddedBitcodeLoaderTestTool::loadAndVerify(
 
 namespace {
 
-/// One requested subtarget feature: bare name plus its enabled/disabled sign.
-/// Mirrors how \c ToolDeviceCodeParser::parseSliceISA feeds
-/// \c SubtargetFeatures::AddFeature (unsigned name + \c Enable bool), so the
-/// canonical ISA key computed here matches the key the slice was filed under.
-struct RequestedFeature {
-  const char *Name;
-  bool Enable;
-};
-
-/// A requested LLVM ISA tuple. \c Triple carries the trailing dash of the empty
-/// environment component (\c "amdgcn-amd-amdhsa-"), matching the triple string
-/// \c parseSliceISA derives from the \c hipv4-... bundle entry ID.
-struct RequestedISA {
-  const char *Triple;
-  const char *CPU;
-  llvm::SmallVector<RequestedFeature, 2> Features;
-};
-
 /// The ISAs precompiled into the bundle by the CMake \c TARGET_ISAS list. Keep
 /// this in lockstep with tooldevicecodeparser/CMakeLists.txt.
-const RequestedISA PrecompiledISAs[] = {
-    // gfx9 family: xnack / sramecc toggled every which way.
-    {"amdgcn-amd-amdhsa-", "gfx900", {{"xnack", false}}},
-    {"amdgcn-amd-amdhsa-", "gfx908", {{"xnack", true}, {"sramecc", false}}},
-    {"amdgcn-amd-amdhsa-", "gfx90a", {{"xnack", false}, {"sramecc", true}}},
-    {"amdgcn-amd-amdhsa-", "gfx942", {{"xnack", true}, {"sramecc", true}}},
-    // gfx10+ family: wavefront size (wave32/wave64) and cu-mode toggled.
-    {"amdgcn-amd-amdhsa-",
-     "gfx1030",
-     {{"wavefrontsize32", true}, {"cumode", false}}},
-    {"amdgcn-amd-amdhsa-",
-     "gfx1100",
-     {{"wavefrontsize64", true}, {"cumode", true}}},
+const std::tuple<llvm::Triple, std::string, llvm::SubtargetFeatures> PrecompiledISAs[] = {
+    {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx900", llvm::SubtargetFeatures{"-xnack"}},
+    {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx908", llvm::SubtargetFeatures{"+xnack,-sramecc"}},
+    {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx90a", llvm::SubtargetFeatures{"-xnack,+sramecc"}},
+    {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx942", llvm::SubtargetFeatures{"+xnack,+sramecc"}},
+    {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx1030",
+     llvm::SubtargetFeatures{"+wavefrontsize32,-cumode"}},
+    {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx1100",
+     llvm::SubtargetFeatures{"+wavefrontsize64,+cumode"}},
 };
-
-llvm::SubtargetFeatures
-makeFeatures(llvm::ArrayRef<RequestedFeature> Requested) {
-  llvm::SubtargetFeatures F;
-  for (const RequestedFeature &R : Requested)
-    F.AddFeature(R.Name, R.Enable);
-  return F;
-}
 
 class EmbeddedBitcodeLoaderTest : public ::testing::Test {
 protected:
-  // The SPIR-V → AMDGCN JIT fallback builds a TargetMachine for the requested
-  // ISA, so the AMDGPU target must be registered. Harmless when the fallback is
-  // not exercised.
   static void SetUpTestSuite() {
     llvm::InitializeAllTargetInfos();
     llvm::InitializeAllTargets();
@@ -230,13 +193,11 @@ TEST_F(EmbeddedBitcodeLoaderTest, LoadsEveryPrecompiledISA) {
     FAIL() << "Tool construction failed: "
            << llvm::toString(std::move(CtorErr));
 
-  for (const RequestedISA &ISA : PrecompiledISAs) {
+  for (const auto &[TT, CPU, STF] : PrecompiledISAs) {
     llvm::LLVMContext Ctx;
-    llvm::Triple T{llvm::Twine(ISA.Triple)};
-    llvm::SubtargetFeatures Features = makeFeatures(ISA.Features);
-    if (llvm::Error Err = Tool.loadAndVerify(T, ISA.CPU, Features, Ctx,
+    if (llvm::Error Err = Tool.loadAndVerify(TT, CPU, STF, Ctx,
                                              /*RequireAllHandles=*/true))
-      ADD_FAILURE() << "ISA " << ISA.CPU << ": "
+      ADD_FAILURE() << "ISA " << CPU << ": "
                     << llvm::toString(std::move(Err));
   }
 }
@@ -249,11 +210,10 @@ TEST_F(EmbeddedBitcodeLoaderTest, SpirvFallbackForNonPrecompiledISA) {
     FAIL() << "Tool construction failed: "
            << llvm::toString(std::move(CtorErr));
 
-  // gfx906 is deliberately absent from the precompiled TARGET_ISAS list, so
-  // this request can only be satisfied through the embedded SPIR-V slice.
+  // Compile an ISA not present in the pre-compiled slices.
   llvm::LLVMContext Ctx;
-  llvm::Triple T{llvm::Twine("amdgcn-amd-amdhsa-")};
-  llvm::SubtargetFeatures Features;
+  llvm::Triple T{"amdgcn-amd-amdhsa-"};
+  llvm::SubtargetFeatures Features{};
   if (llvm::Error Err = Tool.loadAndVerify(T, "gfx906", Features, Ctx,
                                            /*RequireAllHandles=*/false))
     FAIL() << "SPIR-V fallback failed for gfx906: "
