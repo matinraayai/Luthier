@@ -7,6 +7,7 @@ set(LLVM_LINK_COMPONENTS
         AMDGPUUtils
         Analysis
         BinaryFormat
+        BitWriter
         AsmPrinter
         BitReader
         CodeGen
@@ -29,6 +30,7 @@ set(LLVM_LINK_COMPONENTS
         Target
         TargetParser
         TransformUtils
+        ipo
         Vectorize
 )
 

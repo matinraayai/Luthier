@@ -1,4 +1,4 @@
-; RUN: opt -load-pass-plugin=%luthier_tool_ir_compilation_plugin_path -passes="luthier-load-hip-fat-binary-info-pass" %s -S | %tee_out FileCheck %s
+; RUN: opt -load-pass-plugin=%luthier_tool_ir_compilation_plugin_path -passes="luthier-tool-device-code-offload-parser-pass" %s -S | %tee_out FileCheck %s
 
 ; CHECK: define i32 @add_numbers(i32 %0, i32 %1) {
 ; CHECK-NEXT: entry:
