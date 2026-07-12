@@ -19,7 +19,6 @@
 /// design. Inserts per-opcode counter increments and accumulates a global
 /// histogram across all instrumented dispatches.
 //===----------------------------------------------------------------------===//
-#undef SPIRV
 #include <SIInstrInfo.h>
 #include <chrono>
 #include <hip/hip_runtime.h>

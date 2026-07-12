@@ -20,8 +20,6 @@
 /// available, the test also requests ISAs not precompiled in the bundle to
 /// test the SPIR-V translation path.
 //===----------------------------------------------------------------------===//
-#undef SPIRV
-
 #include <hip/hip_runtime.h>
 
 #include <luthier/Common/GenericLuthierError.h>

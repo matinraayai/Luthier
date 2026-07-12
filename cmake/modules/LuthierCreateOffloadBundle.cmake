@@ -333,9 +333,11 @@ function(luthier_create_offload_bundle target source)
     add_library(${_SPIRV_TARGET} OBJECT ${_DEV_SOURCE})
     set_target_properties(${_SPIRV_TARGET} PROPERTIES HIP_ARCHITECTURES "amdgcnspirv")
     # FIXME: -g0: disable debug info for now
+    # -U SPIRV is added to undefine the SPIRV definition added by the SPIRV translator
+    # that clashes with LLVM's SPIRV target Triple
     target_compile_options(${_SPIRV_TARGET} PRIVATE
             --cuda-device-only --no-gpu-bundle-output -g0 -B "${_SPIRV_DIR}"
-            -fpass-plugin=${_LUTHIER_IR_PLUGIN})
+            -fpass-plugin=${_LUTHIER_IR_PLUGIN} -U SPIRV)
     add_dependencies(${_SPIRV_TARGET} ${_LUTHIER_IR_PLUGIN_TARGET})
 
     list(APPEND _DEV_TARGETS "${_SPIRV_TARGET}")
