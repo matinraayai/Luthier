@@ -83,11 +83,6 @@ protected:
                                          llvm::StringRef CPU,
                                          const llvm::SubtargetFeatures &F);
 
-  /// Determine a Clang offload bundle's total byte extent from its in-memory
-  /// header alone, handling both the uncompressed (\c __CLANG_OFFLOAD_BUNDLE__)
-  /// and compressed (\c CCOB) formats via LLVM's offload-bundle parsers
-  static llvm::Expected<uint64_t> calculateBundleSize(const void *Bundle);
-
   /// Insert a new \c Slices entry (or stash the SPIR-V slice) for one
   /// fat-binary slice, dispatching on its leading magic (LLVM bitcode or
   /// SPIR-V). \p ID is the slice's Clang offload-bundle entry ID, from which a
