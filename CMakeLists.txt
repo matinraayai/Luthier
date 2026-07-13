@@ -16,7 +16,7 @@ option(LUTHIER_BUILD_UNIT_TESTS "Builds the unit tests" OFF)
 option(LUTHIER_BUILD_EXAMPLES "Builds the example tools in the examples/ folder" ON)
 option(LUTHIER_BUILD_LATEX_DOCS "Builds Luthier documentation with Doxygen in PDF format with Latex" OFF)
 option(LUTHIER_BUILD_HTML_DOCS "Builds Luthier documentation with Doxygen in HTML format" OFF)
-option(LUTHIER_ENABLE_SPIRV "Enables the AMD SPIR-V translator" ON)
+option(LUTHIER_ENABLE_SPIRV "Enables embedding an AMD-flavored SPIRV slice inside offload bundles" ON)
 set(LUTHIER_LLVM_SRC_DIR "" CACHE STRING "Path to the source code of the ROCm LLVM project used to build Luthier")
 option(LUTHIER_GEN_INTERCEPTOR_IMPL_DURING_CONFIG "Generates the interceptor implementations
                                                    during the first cmake configuration" ON)
