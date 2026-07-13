@@ -1,3 +1,9 @@
+#===- LuthierCreateOffloadBundle.cmake ----------------------------------===#
+# Copyright @ Northeastern University Computer Architecture Lab
+#
+# Licensed under the Apache License, Version 2.0.
+#===---------------------------------------------------------------------===#
+
 include_guard(GLOBAL)
 
 #---------------------------------------------------------------------------
@@ -132,7 +138,7 @@ endfunction()
 #   * The IR/CXX compilation plugins must be visible (in-tree via Luthier's
 #     own build, or imported via `find_package(luthier ...)`).
 #   * OPTIONAL: the AMD SPIR-V translator (FindLLVMSPIRVTranslator.cmake / the
-#     LUTHIER_LLVM_SPIRV_TRANSLATOR_PREFIX_PATH cache var). When absent the
+#     LUTHIER_LLVM_SPIRV_TRANSLATOR_DIR cache var). When absent the
 #     amdgcnspirv slice is simply omitted.
 #===----------------------------------------------------------------------===#
 function(luthier_create_offload_bundle target source)
@@ -355,7 +361,7 @@ function(luthier_create_offload_bundle target source)
             "luthier_create_offload_bundle(${target}): no device slices to "
             "bundle — the resolved target list is empty and the SPIR-V slice is "
             "unavailable. Set CMAKE_HIP_ARCHITECTURES / LUTHIER_HIP_TARGETS / "
-            "TARGET_ISAS, or enable SPIR-V via LUTHIER_LLVM_SPIRV_TRANSLATOR_PREFIX_PATH.")
+            "TARGET_ISAS, or enable SPIR-V via LUTHIER_LLVM_SPIRV_TRANSLATOR_DIR.")
   endif ()
 
   # Join the list of target ISAs for the bundle target argument

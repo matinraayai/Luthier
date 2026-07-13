@@ -10,9 +10,8 @@ find_dependency(rocprofiler-sdk REQUIRED)
 # import the Luthier targets
 include("${_dir}/luthierTargets.cmake")
 
-# Locate the optional SPIR-V translator (sets LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND for the
-# offload-bundle helper). The Find module ships next to this config file.
 list(INSERT CMAKE_MODULE_PATH 0 "${_dir}")
+
 find_package(LLVMSPIRVTranslator QUIET)
 
 # Import the plugin macros
