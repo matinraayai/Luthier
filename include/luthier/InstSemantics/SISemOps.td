@@ -677,6 +677,16 @@ class GetSCCImplicit {
   dag ret = (LLVMTrunc (ImplicitUse SCC), si_llvm_i1_ty);
 }
 
+/// TODO: Replace all uses/defs for VCC with these two functions.
+class GetVCCImplicit {
+  dag ret = (LLVMTrunc (ImplicitUse VCC), (LLVMIntNTy (GetWavefrontSize)));
+}
+
+class SetVCCImplicit<dag val> {
+  dag ret = (ImplicitDef VCC, (LLVMZExtOrTrunc val, (LLVMIntNTy (GetWavefrontSize))));
+
+}
+
 /// Inverse of \c BallotWaveMask: extracts the current lane's bit from a
 /// wave-mask SGPR value (i32 on wave32, i64 on wave64) as an \c i1.
 /// Implemented as \c trunc(((mask >> laneId) & 1), i1) where the lane id
