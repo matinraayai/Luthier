@@ -807,7 +807,7 @@ def V_CNDMASK_B32_e32_sem : InstSISemantic<V_CNDMASK_B32_e32> {
     // an i1 condition, so extract the current lane's bit from the mask
     // before selecting between src0/src1.
     (SetNamedOperand $vdst,
-      (LLVMSelect LaneBitFromWaveMask<(ImplicitUse VCC)>.ret,
+      (LLVMSelect LaneBitFromWaveMask<GetVCCImplicit<>.ret>.ret,
                   (GetNamedOperand $src1), (GetNamedOperand $src0)))
   ];
 }
