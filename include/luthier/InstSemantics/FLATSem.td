@@ -19,8 +19,7 @@
 //------------------------------------------------------------------------------
 
 class CalculateFlatAddr<dag vaddr, dag offset> {
-  dag ret = (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $vaddr), flat_ptr_ty),
-                         (GetNamedOperand $offset));
+  dag ret = (LLVMPtrAdd (LLVMIntToPtr vaddr, flat_ptr_ty), offset);
 }
 
 // FLAT SADDR-mode address (gfx11+): byteAddr = saddr64 + zext_i64(voffset32) + immOffset.
@@ -34,20 +33,16 @@ class CalculateFlatSAddr<dag saddr, dag vaddr, dag offset> {
 }
 
 class CalculateGlobalAddr<dag vaddr, dag offset> {
-  dag ret = (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $vaddr), global_ptr_ty),
-                         (GetNamedOperand $offset));
+  dag ret = (LLVMPtrAdd (LLVMIntToPtr vaddr, global_ptr_ty), offset);
 }
 
 class CalculateGlobalSAddr<dag saddr, dag vaddr, dag offset> {
-  dag ret = (LLVMPtrAdd (LLVMIntToPtr (LLVMAdd (GetNamedOperand $saddr),
-                                                 (LLVMZExt (GetNamedOperand $vaddr), si_llvm_i64_ty)),
-                          global_ptr_ty),
-                         (GetNamedOperand $offset));
+  dag ret = (LLVMPtrAdd (LLVMIntToPtr (LLVMAdd saddr, (LLVMZExt vaddr, si_llvm_i64_ty)),
+                          global_ptr_ty), offset);
 }
 
 class CalculateScratchAddr<dag vaddr, dag offset> {
-  dag ret = (LLVMPtrAdd (LLVMIntToPtr (GetNamedOperand $vaddr), scratch_ptr_ty),
-                         (GetNamedOperand $offset));
+  dag ret = (LLVMPtrAdd (LLVMIntToPtr vaddr, scratch_ptr_ty), offset);
 }
 
 //==============================================================================
