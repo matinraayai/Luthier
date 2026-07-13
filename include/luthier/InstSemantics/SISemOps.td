@@ -684,7 +684,6 @@ class GetVCCImplicit {
 
 class SetVCCImplicit<dag val> {
   dag ret = (ImplicitDef VCC, (LLVMZExtOrTrunc val, (LLVMIntNTy (GetWavefrontSize))));
-
 }
 
 /// Inverse of \c BallotWaveMask: extracts the current lane's bit from a
