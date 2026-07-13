@@ -45,8 +45,8 @@ if (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
                 "Luthier SPIR-V JIT device-libs bitcode: ${LUTHIER_DEVICE_LIBS_DIR}")
     else ()
         message(FATAL_ERROR
-                "SPIR-V translator enabled but the ROCm device-libs bitcode "
-                "directory was not found (AMDDeviceLibs).")
+                "SPIR-V translator enabled but the AMD device-libs bitcode "
+                "directory was not found.")
     endif ()
 endif ()
 
