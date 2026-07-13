@@ -14,16 +14,16 @@ include_guard(GLOBAL)
 #   out_mflags   standalone clang flags: -m[no-]wavefrontsize64 / -m[no-]cumode
 #---------------------------------------------------------------------------
 function(luthier_parse_isa_string isa_string out_triple out_offload_arch out_mflags)
-  # Split triple from the target-ID at the empty-env "--".
-  string(FIND "${isa_string}" "--" _SEP)
-  if (_SEP EQUAL -1)
+  if (NOT isa_string MATCHES "^([^-]*-[^-]*-[^-]*-[^-]*)-(.*)$")
     message(FATAL_ERROR
-            "luthier_create_offload_bundle: target '${isa_string}' is missing the "
-            "'--<processor>' suffix (expected e.g. amdgcn-amd-amdhsa--gfx942).")
+            "luthier_create_offload_bundle: target '${isa_string}' malformed.")
   endif ()
-  string(SUBSTRING "${isa_string}" 0 ${_SEP} _TRIPLE)
-  math(EXPR _REST_START "${_SEP} + 2")
-  string(SUBSTRING "${isa_string}" ${_REST_START} -1 _REST)
+  # CMAKE_MATCH_1 is the triple up to the 4th '-'; CMAKE_MATCH_2 is the processor
+  # after it. Capture both before any further string(REGEX ...) call clobbers the
+  # CMAKE_MATCH_<n> variables.
+  set(_TRIPLE "${CMAKE_MATCH_1}")
+  set(_REST "${CMAKE_MATCH_2}")
+  string(REGEX REPLACE "-$" "" _TRIPLE "${_TRIPLE}")
   # Fail anything other than amdhsa for now.
   if (NOT _TRIPLE STREQUAL "amdgcn-amd-amdhsa")
     message(FATAL_ERROR
@@ -79,11 +79,10 @@ endfunction()
 # Unlike normal HIP compilation:
 # - The LLVM bitcode or SPIR-V file of the device logic is embedded in the
 #   FAT binary instead of its shared object. SPIR-V file of the device logic
-#   is only emitted if the ROCm fork of the SPIR-V LLVM translator is found
-#   or is provided to cmake.
+#   is only emitted if the ROCm fork of the SPIR-V LLVM translator is enabled.
 # - The Luthier IR compiler plugin is applied to the device code's compilation
 #   process for bundled LLVM bitcode slices but not the bundled SPIR-V files
-#   (hence the parsing logic must first apply Luthier's tool device compilation
+#   (the parsing logic must first apply Luthier's tool device compilation
 #   process itself).
 # - The host portion is compiled with the Luthier CXX and the IR compiler plugins
 #   applied.
@@ -95,9 +94,8 @@ endfunction()
 # The HIP file will have the following targets generated for it:
 #   * Device: one HIP OBJECT library per Luthier target compiles the source via
 #     CMake's native HIP language to generate the LLVM bitcode or SPIR-V file.
-#     NOTE: CMake names these objects `*.o`, but they are NOT object files —
-#     they are bitcode / SPIR-V, fed only to clang-offload-bundler (which keys on
-#     content, not extension) and never linked.
+#     NOTE: CMake adds the `.o` suffix to the outputs of the device-side
+#     compilation despite them not being object files.
 #   * Bundle: packs every bitcode or SPIR-V slice into a single `.hipfb` clang
 #     offload bundle.
 #   * Host: compiles the host side of the same sources through CMake's native
@@ -106,8 +104,6 @@ endfunction()
 # Both the device and the host targets are unlinked OBJECT libraries, and can
 # be returned to the caller for further customization of their targets e.g.
 # adding include directories and link libraries.
-#
-# Synopsis:
 #
 #   luthier_create_offload_bundle(<target> <source>
 # --- inputs:
@@ -137,9 +133,7 @@ endfunction()
 #   * `project(... LANGUAGES HIP)`
 #   * The IR/CXX compilation plugins must be visible (in-tree via Luthier's
 #     own build, or imported via `find_package(luthier ...)`).
-#   * OPTIONAL: the AMD SPIR-V translator (FindLLVMSPIRVTranslator.cmake / the
-#     LUTHIER_LLVM_SPIRV_TRANSLATOR_DIR cache var). When absent the
-#     amdgcnspirv slice is simply omitted.
+#   * OPTIONAL: the AMD SPIR-V translator must be enabled for SPIRV compilation.
 #===----------------------------------------------------------------------===#
 function(luthier_create_offload_bundle target source)
   cmake_parse_arguments(OFFLOAD_BUNDLE_ARG ""
