@@ -67,17 +67,9 @@ public:
   /// Load the embedded bitcode for the requested ISA into \p Ctx and confirm
   /// that every registered device handle resolves to a symbol present in the
   /// loaded module.
-  ///
-  /// Every handle must always \e resolve (the host handle table is populated at
-  /// compile time, independent of the requested ISA). \param RequireAllHandles
-  /// additionally requires each resolved symbol to be \e present in the loaded
-  /// module. It is \c true on the precompiled-slice path; on the SPIR-V JIT
-  /// fallback path it is \c false, since that path internalizes and optimizes
-  /// the module, so only the \c used device function is guaranteed to survive
-  /// (an unreferenced kernel / global / texture / surface may be eliminated).
   llvm::Error loadAndVerify(const llvm::Triple &T, llvm::StringRef CPU,
                             const llvm::SubtargetFeatures &Features,
-                            llvm::LLVMContext &Ctx, bool RequireAllHandles);
+                            llvm::LLVMContext &Ctx);
 };
 
 //===----------------------------------------------------------------------===//
@@ -91,8 +83,8 @@ __managed__ int EmbeddedBitcodeLoaderTestTool::ManagedVar = 0;
 
 texture<float, 1, hipReadModeElementType> EmbeddedBitcodeLoaderTestTool::TexRef;
 
-__attribute__((device))
-LuthierSurface<void, 2> EmbeddedBitcodeLoaderTestTool::SurfRef;
+__attribute__((device)) LuthierSurface<void, 2>
+    EmbeddedBitcodeLoaderTestTool::SurfRef;
 
 __attribute__((device, used)) void
 EmbeddedBitcodeLoaderTestTool::testDeviceFunc() {
@@ -101,53 +93,36 @@ EmbeddedBitcodeLoaderTestTool::testDeviceFunc() {
 
 llvm::Error EmbeddedBitcodeLoaderTestTool::loadAndVerify(
     const llvm::Triple &T, llvm::StringRef CPU,
-    const llvm::SubtargetFeatures &Features, llvm::LLVMContext &Ctx,
-    bool RequireAllHandles) {
+    const llvm::SubtargetFeatures &Features, llvm::LLVMContext &Ctx) {
   auto ModOrErr = parseModule(T, CPU, Features, Ctx);
   if (!ModOrErr)
     return ModOrErr.takeError();
   std::unique_ptr<llvm::Module> M = std::move(*ModOrErr);
 
-  std::string Failures;
-  llvm::raw_string_ostream OS(Failures);
-
-  // Resolve one host shadow handle to its device symbol name (always required)
-  // and, when \p RequirePresence is set, confirm the symbol exists in the
-  // loaded module.
-  auto checkHandle = [&](auto *Handle, llvm::StringRef Label,
-                         bool RequirePresence) {
+  /// Resolve one host shadow handle to its device symbol name, and
+  /// confirm the symbol exists in the loaded module.
+  auto checkHandle = [&](auto *Handle) -> llvm::Error {
     auto NameOrErr = this->lookupHandleName(Handle);
-    if (!NameOrErr) {
-      OS << "  - " << Label << ": no device-side handle registered ("
-         << llvm::toString(NameOrErr.takeError()) << ")\n";
-      return;
-    }
+    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
     llvm::StringRef Name = *NameOrErr;
-    if (RequirePresence && !M->getNamedValue(Name))
-      OS << "  - " << Label << ": device symbol '" << Name
-         << "' is not present in the loaded module\n";
+    if (!M->getNamedValue(Name)) {
+      return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "Device symbol {0} is not present in the module.", Name));
+    }
+    return llvm::Error::success();
   };
 
-  // The device function is marked `used`, so it survives the SPIR-V fallback's
-  // internalize + optimize pipeline: its presence is required on both paths.
-  checkHandle(&EmbeddedBitcodeLoaderTestTool::testDeviceFunc, "device function",
-              true);
-  // Kernel / globals / texture / surface: presence required only on the
-  // precompiled path (they may be eliminated on the SPIR-V fallback path).
-  checkHandle(&EmbeddedBitcodeLoaderTestTool::testKernel, "kernel",
-              RequireAllHandles);
-  checkHandle(&EmbeddedBitcodeLoaderTestTool::DeviceVar, "__device__ variable",
-              RequireAllHandles);
-  checkHandle(&EmbeddedBitcodeLoaderTestTool::ManagedVar, "__managed__ variable",
-              RequireAllHandles);
-  checkHandle(&EmbeddedBitcodeLoaderTestTool::TexRef, "texture",
-              RequireAllHandles);
-  checkHandle(&EmbeddedBitcodeLoaderTestTool::SurfRef, "surface",
-              RequireAllHandles);
+  LUTHIER_RETURN_ON_ERROR(
+      checkHandle(&EmbeddedBitcodeLoaderTestTool::testDeviceFunc));
+  LUTHIER_RETURN_ON_ERROR(
+      checkHandle(&EmbeddedBitcodeLoaderTestTool::testKernel));
+  LUTHIER_RETURN_ON_ERROR(
+      checkHandle(&EmbeddedBitcodeLoaderTestTool::DeviceVar));
+  LUTHIER_RETURN_ON_ERROR(
+      checkHandle(&EmbeddedBitcodeLoaderTestTool::ManagedVar));
+  LUTHIER_RETURN_ON_ERROR(checkHandle(&EmbeddedBitcodeLoaderTestTool::TexRef));
+  LUTHIER_RETURN_ON_ERROR(checkHandle(&EmbeddedBitcodeLoaderTestTool::SurfRef));
 
-  if (!Failures.empty())
-    return LUTHIER_MAKE_GENERIC_ERROR("Handle verification failed:\n" +
-                                      Failures);
   return llvm::Error::success();
 }
 
@@ -163,15 +138,20 @@ namespace {
 
 /// The ISAs precompiled into the bundle by the CMake \c TARGET_ISAS list. Keep
 /// this in lockstep with tooldevicecodeparser/CMakeLists.txt.
-const std::tuple<llvm::Triple, std::string, llvm::SubtargetFeatures> PrecompiledISAs[] = {
-    {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx900", llvm::SubtargetFeatures{"-xnack"}},
-    {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx908", llvm::SubtargetFeatures{"+xnack,-sramecc"}},
-    {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx90a", llvm::SubtargetFeatures{"-xnack,+sramecc"}},
-    {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx942", llvm::SubtargetFeatures{"+xnack,+sramecc"}},
-    {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx1030",
-     llvm::SubtargetFeatures{"+wavefrontsize32,-cumode"}},
-    {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx1100",
-     llvm::SubtargetFeatures{"+wavefrontsize64,+cumode"}},
+const std::tuple<llvm::Triple, std::string, llvm::SubtargetFeatures>
+    PrecompiledISAs[] = {
+        {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx900",
+         llvm::SubtargetFeatures{"-xnack"}},
+        {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx908",
+         llvm::SubtargetFeatures{"+xnack,-sramecc"}},
+        {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx90a",
+         llvm::SubtargetFeatures{"-xnack,+sramecc"}},
+        {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx942",
+         llvm::SubtargetFeatures{"+xnack,+sramecc"}},
+        {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx1030",
+         llvm::SubtargetFeatures{"+wavefrontsize32,-cumode"}},
+        {llvm::Triple{"amdgcn-amd-amdhsa-"}, "gfx1100",
+         llvm::SubtargetFeatures{"+wavefrontsize64,+cumode"}},
 };
 
 class EmbeddedBitcodeLoaderTest : public ::testing::Test {
@@ -193,10 +173,8 @@ TEST_F(EmbeddedBitcodeLoaderTest, LoadsEveryPrecompiledISA) {
 
   for (const auto &[TT, CPU, STF] : PrecompiledISAs) {
     llvm::LLVMContext Ctx;
-    if (llvm::Error Err = Tool.loadAndVerify(TT, CPU, STF, Ctx,
-                                             /*RequireAllHandles=*/true))
-      ADD_FAILURE() << "ISA " << CPU << ": "
-                    << llvm::toString(std::move(Err));
+    if (llvm::Error Err = Tool.loadAndVerify(TT, CPU, STF, Ctx))
+      ADD_FAILURE() << "ISA " << CPU << ": " << llvm::toString(std::move(Err));
   }
 }
 
@@ -212,8 +190,7 @@ TEST_F(EmbeddedBitcodeLoaderTest, SpirvFallbackForNonPrecompiledISA) {
   llvm::LLVMContext Ctx;
   llvm::Triple T{"amdgcn-amd-amdhsa-"};
   llvm::SubtargetFeatures Features{};
-  if (llvm::Error Err = Tool.loadAndVerify(T, "gfx906", Features, Ctx,
-                                           /*RequireAllHandles=*/false))
+  if (llvm::Error Err = Tool.loadAndVerify(T, "gfx906", Features, Ctx))
     FAIL() << "SPIR-V fallback failed for gfx906: "
            << llvm::toString(std::move(Err));
 }

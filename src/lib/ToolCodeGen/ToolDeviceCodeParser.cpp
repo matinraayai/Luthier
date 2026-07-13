@@ -348,23 +348,6 @@ static llvm::Error linkDeviceLibs(llvm::Module &M, llvm::StringRef CPU,
           llvm::formatv("Failed to link device-libs bitcode '{0}'", Lib));
   }
 
-  // FIXME: This is too conservative
-  // Internalize everything the device libs pulled in (and any dead weak helper
-  // the tool module itself carries, e.g. the HIP device-side __assert_fail)
-  // that is not part of the tool's externally-visible interface, so the
-  // optimization pipeline's globaldce drops the unused ones instead of trying
-  // to codegen them. internalizeModule preserves llvm.used members
-  // automatically; llvm.compiler.used members (notably the Counter global the
-  // host reads back by name per dispatch) are NOT, so preserve them explicitly.
-  llvm::SmallVector<llvm::GlobalValue *, 8> CompilerUsed;
-  llvm::collectUsedGlobalVariables(M, CompilerUsed, /*CompilerUsed=*/true);
-  llvm::StringSet<> Preserve;
-  for (const llvm::GlobalValue *GV : CompilerUsed)
-    Preserve.insert(GV->getName());
-  llvm::internalizeModule(M, [&Preserve](const llvm::GlobalValue &GV) {
-    return Preserve.contains(GV.getName());
-  });
-
   LLVM_DEBUG(luthier::dbgs()
              << "[ToolDeviceCodeParser] linked device-libs (isa=" << IsaVer
              << " wave64=" << Wave64 << " cov=" << Cov << ")\n");
