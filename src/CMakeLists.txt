@@ -13,13 +13,12 @@ find_package(LLVM REQUIRED CONFIG)
 
 find_package(Clang REQUIRED CONFIG)
 
-include(FindLLVMSPIRVTranslator)
+if (${LUTHIER_ENABLE_SPIRV})
+    include(FindLLVMSPIRVTranslator)
+    find_package(LLVMSPIRVTranslator)
 
-find_package(LLVMSPIRVTranslator QUIET)
-
-# SPIR-V JIT requires AMD device libs to be linked before IR optimization
-if (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
-    find_package(AMDDeviceLibs CONFIG)
+    # SPIR-V JIT requires AMD device libs to be linked before IR optimization
+    find_package(AMDDeviceLibs)
     if (AMD_DEVICE_LIBS_PREFIX AND
             EXISTS "${AMD_DEVICE_LIBS_PREFIX}/amdgcn/bitcode")
         set(LUTHIER_DEVICE_LIBS_DIR "${AMD_DEVICE_LIBS_PREFIX}/amdgcn/bitcode")
@@ -29,8 +28,8 @@ if (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
                 "Luthier SPIR-V JIT device-libs bitcode: ${LUTHIER_DEVICE_LIBS_DIR}")
     else ()
         message(FATAL_ERROR
-                "SPIR-V translator enabled but the ROCm device-libs bitcode "
-                "directory was not found (AMDDeviceLibs).")
+                "SPIR-V translator enabled but the AMD device-libs bitcode "
+                "directory was not found.")
     endif ()
 endif ()
 

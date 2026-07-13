@@ -28,14 +28,6 @@
 # LUTHIER_LLVM_SPIRV_TRANSLATOR_INCLUDE_DIR to the include path.
 #===----------------------------------------------------------------------===#
 
-# Allow the SPIR-V path to be turned off explicitly
-if (DEFINED LUTHIER_ENABLE_SPIRV AND NOT LUTHIER_ENABLE_SPIRV)
-    set(LLVMSPIRVTranslator_FOUND FALSE)
-    set(LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND FALSE CACHE INTERNAL
-            "Whether the AMD SPIR-V translator + LLVMSPIRVLib were found")
-    return()
-endif ()
-
 # List of Candidate roots: the user-specified dir first, then every prefix
 # listed in CMAKE_PREFIX_PATH.
 set(_luthier_llvm_spirv_translator_roots)

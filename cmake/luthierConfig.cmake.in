@@ -12,7 +12,9 @@ include("${_dir}/luthierTargets.cmake")
 
 list(INSERT CMAKE_MODULE_PATH 0 "${_dir}")
 
-find_package(LLVMSPIRVTranslator QUIET)
+if (${LUTHIER_ENABLE_SPIRV})
+  find_dependency(LLVMSPIRVTranslator QUIET)
+endif()
 
 # Import the plugin macros
 include("${_dir}/LuthierAddCompilerPlugin.cmake")
