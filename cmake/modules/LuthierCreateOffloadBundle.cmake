@@ -261,15 +261,9 @@ function(luthier_create_offload_bundle target source)
     set(_OFFLOAD_BUNDLER "${LUTHIER_CLANG_OFFLOAD_BUNDLER}")
   endif ()
 
-  # AMD SPIR-V translator (amd-llvm-spirv) — OPTIONAL. Located by
-  # FindLLVMSPIRVTranslator.cmake, which sets LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND /
-  # LUTHIER_LLVM_SPIRV_TRANSLATOR. If the project hasn't run the search yet (e.g. an
-  # installed find_package(luthier) consumer), try it now; treat absence as
-  # "skip SPIR-V".
-  if (NOT DEFINED LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
-    find_package(LLVMSPIRVTranslator QUIET)
-  endif ()
-  if (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
+  # Enable SPIR-V compilation if requested
+  if (${LUTHIER_ENABLE_SPIRV})
+    find_package(LLVMSPIRVTranslator)
     get_filename_component(_SPIRV_DIR "${LUTHIER_LLVM_SPIRV_TRANSLATOR}" DIRECTORY)
   endif ()
 
@@ -327,13 +321,8 @@ function(luthier_create_offload_bundle target source)
     list(APPEND _REBUNDLE_TARGET_ISAS "hipv4-${_TARGET_ISA}")
   endforeach ()
 
-  #---------------------------------------------------------------------------
-  # Optionally add an AMD-flavored SPIR-V slice (amdgcnspirv), regardless of the
-  # requested arch list, for the runtime SPIR-V -> AMDGCN JIT fallback. Skipped
-  # when the SPIR-V translator is not found (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND).
-  #---------------------------------------------------------------------------
-
-  if (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
+  # Add an AMD SPIR-V slice if requested
+  if (${LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND})
     set(_SPIRV_TARGET_ISA "hip-spirv64-amd-amdhsa--amdgcnspirv")
     set(_SPIRV_TARGET "${target}-${_SPIRV_TARGET_ISA}")
     add_library(${_SPIRV_TARGET} OBJECT ${_DEV_SOURCE})
