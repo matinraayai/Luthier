@@ -1,8 +1,8 @@
-#===- LuthierCreateOffloadBundle.cmake ----------------------------------===#
+#===- LuthierCreateOffloadBundle.cmake -----------------------------------------------------------------------------===#
 # Copyright @ Northeastern University Computer Architecture Lab
 #
 # Licensed under the Apache License, Version 2.0.
-#===---------------------------------------------------------------------===#
+#===----------------------------------------------------------------------------------------------------------------===#
 
 include_guard(GLOBAL)
 
