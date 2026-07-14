@@ -23,6 +23,7 @@
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
+#include <Utils/AMDGPUBaseInfo.h>
 #include <algorithm>
 #include <cstring>
 #include <llvm/ADT/STLExtras.h>
@@ -33,11 +34,14 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/MC/MCSubtargetInfo.h>
+#include <llvm/MC/TargetRegistry.h>
 #include <llvm/Object/OffloadBundle.h>
 #include <llvm/Support/CrashRecoveryContext.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/raw_ostream.h>
+#include <memory>
 #include <tuple>
 
 #ifdef LUTHIER_HAS_SPIRV_TRANSLATOR
@@ -77,60 +81,6 @@ struct BundleSlice {
   llvm::MemoryBufferRef Buf;
   std::string ID;
 };
-
-/// Derive the LLVM ISA tuple (triple, CPU, features) from a Clang offload
-/// bundle entry \p ID
-llvm::Expected<std::tuple<llvm::Triple, std::string, llvm::SubtargetFeatures>>
-parseSliceISA(llvm::StringRef ID) {
-  // <kind>-<triple>[-<target id>[:target features]]
-  // <triple> := <arch>-<vendor>-<os>-<env>
-  llvm::SmallVector<llvm::StringRef, 6> Components;
-  ID.split(Components, '-', /*MaxSplit=*/5);
-  if (Components.size() < 5) {
-    return LUTHIER_MAKE_GENERIC_ERROR(
-        llvm::formatv("Malformed target string {0}", ID));
-  }
-
-  llvm::StringRef CpuIdWithFeature =
-      Components.size() == 6 ? Components.back() : "";
-
-  auto [CpuID, FeatureString] = CpuIdWithFeature.split(':');
-
-  if (CpuID.empty()) {
-    return LUTHIER_MAKE_GENERIC_ERROR(
-        llvm::formatv("Empy CPU ID in target ID {0}", ID));
-  }
-
-  llvm::ArrayRef TripleSlice{&Components[1], /*length=*/4};
-
-  llvm::Triple TT(llvm::join(TripleSlice, "-"));
-
-  llvm::SmallVector<llvm::StringRef, 6> ParsedFeatures;
-  FeatureString.split(ParsedFeatures, ':');
-
-  llvm::SubtargetFeatures FS;
-
-  for (llvm::StringRef Feature : ParsedFeatures) {
-    if (Feature.empty())
-      continue;
-    const char Sign = Feature.back();
-    if (Sign != '+' && Sign != '-')
-      return LUTHIER_MAKE_GENERIC_ERROR("Offload bundle entry ID '" + ID.str() +
-                                        "' feature '" + Feature.str() +
-                                        "' is missing a +/- sign.");
-    const llvm::StringRef Name = Feature.drop_back();
-    const bool Enable = Sign == '+';
-    // wave32 might appear as `wavefrontsize64-` in the AMDGPU target ID;
-    // convert it to `+wavefrontsize32` to match IR's feature string
-    if (Name == "wavefrontsize64")
-      FS.AddFeature(Enable ? "wavefrontsize64" : "wavefrontsize32",
-                    /*Enable=*/true);
-    else
-      FS.AddFeature(Name, Enable);
-  }
-
-  return std::make_tuple(TT, std::string(CpuID), std::move(FS));
-}
 
 /// Parses a Clang offload \p Bundle into a list of kept device slices — raw
 /// LLVM bitcode (the Luthier offload-bundle format) or an AMD-flavored SPIR-V
@@ -193,39 +143,53 @@ parseOffloadBundle(llvm::MemoryBufferRef Bundle,
 
 } // namespace
 
-std::string
-ToolDeviceCodeParser::canonicalLLVMISAKey(const llvm::Triple &T,
-                                          llvm::StringRef CPU,
-                                          const llvm::SubtargetFeatures &F) {
-  std::vector<std::string> Sorted = F.getFeatures();
-  llvm::sort(Sorted);
-  std::string Out;
-  llvm::raw_string_ostream OS(Out);
-  OS << T.str() << "--" << CPU;
-  for (llvm::StringRef Feat : Sorted)
-    OS << ',' << Feat;
-  return OS.str();
-}
-
 llvm::Error ToolDeviceCodeParser::addSlice(llvm::MemoryBufferRef Slice,
                                            llvm::StringRef ID) {
   const llvm::file_magic Magic = llvm::identify_magic(Slice.getBuffer());
   if (Magic == llvm::file_magic::bitcode) {
-    // Derive the LLVM ISA key from the slice's offload-bundle entry ID
-    auto ISAOrErr = parseSliceISA(ID);
-    if (!ISAOrErr)
-      return ISAOrErr.takeError();
-    auto &[TT, CPU, Features] = *ISAOrErr;
+    // Read the slice's LLVM ISA straight from its bitcode rather than trusting
+    // the bundle entry ID label: the triple from the module header, and the
+    // CPU/features from the per-function target-cpu/target-features attributes
+    // clang stamps. Parse into a throwaway local context so the module's reader
+    // does not outlive this scope / alias the retained bundle buffers.
+    llvm::Expected<std::string> TripleOrErr =
+        llvm::getBitcodeTargetTriple(Slice);
+    if (!TripleOrErr)
+      return TripleOrErr.takeError();
+    llvm::Triple TT(*TripleOrErr);
 
-    std::string Key = canonicalLLVMISAKey(TT, CPU, Features);
-    LLVM_DEBUG(luthier::dbgs() << "[ToolDeviceCodeParser] addBitcodeSlice id=["
-                               << ID << "] key=[" << Key
-                               << "] bcSize=" << Slice.getBufferSize() << "\n");
-    if (Slices.contains(Key))
+    std::string CPU;
+    llvm::SubtargetFeatures Features;
+    {
+      llvm::LLVMContext ScanCtx;
+      llvm::Expected<std::unique_ptr<llvm::Module>> MOrErr =
+          llvm::parseBitcodeFile(Slice, ScanCtx);
+      if (!MOrErr)
+        return MOrErr.takeError();
+      const llvm::Module &M = **MOrErr;
+      for (const llvm::Function &F : M) {
+        if (F.hasFnAttribute("target-cpu")) {
+          CPU = F.getFnAttribute("target-cpu").getValueAsString().str();
+          if (F.hasFnAttribute("target-features"))
+            Features = llvm::SubtargetFeatures(
+                F.getFnAttribute("target-features").getValueAsString());
+          break;
+        }
+      }
+    }
+    if (CPU.empty())
       return LUTHIER_MAKE_GENERIC_ERROR(
-          "Duplicate LLVM ISA in bitcode input: " + Key);
+          "Bitcode slice '" + ID.str() +
+          "' carries no function with a target-cpu attribute; cannot determine "
+          "its ISA.");
 
-    Slices.insert({std::move(Key), Slice});
+    LLVM_DEBUG(luthier::dbgs() << "[ToolDeviceCodeParser] addBitcodeSlice id=["
+                               << ID << "] isa=[" << TT.str() << "-" << CPU
+                               << ":" << Features.getString()
+                               << "] bcSize=" << Slice.getBufferSize() << "\n");
+
+    Slices.push_back(
+        {std::move(TT), std::move(CPU), std::move(Features), Slice});
     return llvm::Error::success();
   }
   /// TODO: Support more than one SPIR-V slice
@@ -241,6 +205,76 @@ llvm::Error ToolDeviceCodeParser::addSlice(llvm::MemoryBufferRef Slice,
   }
   return LUTHIER_MAKE_GENERIC_ERROR(
       "Fat-binary slice is neither LLVM bitcode nor SPIR-V.");
+}
+
+llvm::Expected<const ToolDeviceCodeParser::SliceInfo *>
+ToolDeviceCodeParser::findCompatibleSlice(
+    const llvm::Triple &T, llvm::StringRef CPU,
+    const llvm::SubtargetFeatures &Features) {
+  std::string TgtErr;
+  const llvm::Target *TheTarget = llvm::TargetRegistry::lookupTarget(T, TgtErr);
+  if (TheTarget == nullptr)
+    return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+        "TargetRegistry::lookupTarget failed for triple {0}: {1} (is the "
+        "AMDGPU target registered?)",
+        T.str(), TgtErr));
+
+  const std::string ReqFS = Features.getString();
+  std::unique_ptr<llvm::MCSubtargetInfo> ReqSTI(
+      TheTarget->createMCSubtargetInfo(T, CPU, ReqFS));
+  if (!ReqSTI)
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        "createMCSubtargetInfo returned nullptr for the requested ISA.");
+
+  namespace IsaInfo = llvm::AMDGPU::IsaInfo;
+  IsaInfo::AMDGPUTargetID ReqID(*ReqSTI);
+  ReqID.setTargetIDFromFeaturesString(ReqFS);
+
+  /// lambda used to check for compatibility between the ISAs regarding xnack
+  /// and sramecc features
+  auto featureCompat = [](IsaInfo::TargetIDSetting Req,
+                          IsaInfo::TargetIDSetting Slice) {
+    using S = IsaInfo::TargetIDSetting;
+    if (Req == S::Unsupported || Slice == S::Unsupported || Req == S::Any ||
+        Slice == S::Any)
+      return true;
+    return Req == Slice;
+  };
+
+  /// Features that must exactly match
+  static constexpr llvm::StringLiteral BinaryFeatures[] = {
+      "+wavefrontsize64", "+cumode", "+tgsplit"};
+
+  for (const SliceInfo &S : Slices) {
+    if (S.TT != T || S.CPU != CPU)
+      continue;
+
+    const std::string SliceFS = S.Features.getString();
+    std::unique_ptr<llvm::MCSubtargetInfo> SliceSTI(
+        TheTarget->createMCSubtargetInfo(S.TT, S.CPU, SliceFS));
+    if (!SliceSTI)
+      continue;
+
+    IsaInfo::AMDGPUTargetID SliceID(*SliceSTI);
+    SliceID.setTargetIDFromFeaturesString(SliceFS);
+    if (!featureCompat(ReqID.getXnackSetting(), SliceID.getXnackSetting()))
+      continue;
+    if (!featureCompat(ReqID.getSramEccSetting(), SliceID.getSramEccSetting()))
+      continue;
+
+    bool BinaryMismatch = false;
+    for (llvm::StringRef Feat : BinaryFeatures) {
+      if (ReqSTI->checkFeatures(Feat) != SliceSTI->checkFeatures(Feat)) {
+        BinaryMismatch = true;
+        break;
+      }
+    }
+    if (BinaryMismatch)
+      continue;
+
+    return &S;
+  }
+  return nullptr;
 }
 
 ToolDeviceCodeParser::ToolDeviceCodeParser(llvm::MemoryBufferRef BundleRef,
@@ -359,8 +393,8 @@ static llvm::Error linkDeviceLibs(llvm::Module &M, llvm::StringRef CPU,
 llvm::Expected<std::unique_ptr<llvm::Module>>
 ToolDeviceCodeParser::translateSpirvFallback(
     const llvm::Triple &T, llvm::StringRef CPU,
-    const llvm::SubtargetFeatures &Features, llvm::StringRef Key,
-    llvm::LLVMContext &Ctx, llvm::OptimizationLevel OptLevel) {
+    const llvm::SubtargetFeatures &Features, llvm::LLVMContext &Ctx,
+    llvm::OptimizationLevel OptLevel) {
 #ifndef LUTHIER_HAS_SPIRV_TRANSLATOR
   (void)T;
   (void)CPU;
@@ -378,8 +412,8 @@ ToolDeviceCodeParser::translateSpirvFallback(
         "carries no SPIR-V slice for the JIT fallback.");
 
   LLVM_DEBUG(luthier::dbgs()
-             << "[ToolDeviceCodeParser] SPIR-V JIT fallback for [" << Key
-             << "]\n");
+             << "[ToolDeviceCodeParser] SPIR-V JIT fallback for [" << T.str()
+             << "-" << CPU << ":" << Features.getString() << "]\n");
 
   // 1) SPIR-V -> LLVM IR into the caller's context.
   std::string SpirvStr(SpirvSlice->getBuffer());
@@ -446,16 +480,19 @@ ToolDeviceCodeParser::translateSpirvFallback(
     llvm::WriteBitcodeToFile(*M, OS);
   }
   auto Owned = std::make_unique<llvm::SmallVectorMemoryBuffer>(
-      std::move(BcBuf), "luthier.spirv.jit." + Key.str(),
+      std::move(BcBuf), "luthier.spirv.jit",
       /*RequiresNullTerminator=*/false);
   llvm::MemoryBufferRef BcRef = Owned->getMemBufferRef();
   RetainedBuffers.push_back(std::move(Owned));
 
-  Slices.insert({Key.str(), std::move(BcRef)});
+  /// Put the JIT-compiled slice at the front since it is likely to be asked for
+  /// again
+  Slices.insert(Slices.begin(), SliceInfo{T, CPU.str(), Features, BcRef});
 
   LLVM_DEBUG(luthier::dbgs()
-             << "[ToolDeviceCodeParser] SPIR-V JIT produced + cached " << Key
-             << " (" << BcRef.getBufferSize() << " bytes)\n");
+             << "[ToolDeviceCodeParser] SPIR-V JIT produced + cached "
+             << T.str() << "-" << CPU << ":" << Features.getString() << " ("
+             << BcRef.getBufferSize() << " bytes)\n");
   return M;
 #endif
 }
@@ -466,62 +503,40 @@ ToolDeviceCodeParser::parseModule(const llvm::Triple &T, llvm::StringRef CPU,
                                   llvm::LLVMContext &Ctx,
                                   llvm::OptimizationLevel OptLevel) {
   std::lock_guard Lock(Mutex);
-  std::string Key = canonicalLLVMISAKey(T, CPU, Features);
   LLVM_DEBUG(luthier::dbgs()
-             << "[ToolDeviceCodeParser] parseModule key=[" << Key << "]\n");
-  auto It = Slices.find(Key);
-  if (It != Slices.end()) {
+             << "[ToolDeviceCodeParser] parseModule ISA=[" << T.str() << "-"
+             << CPU << ":" << Features.getString() << "]\n");
+
+  // Otherwise look for a precompiled slice whose bitcode ISA is compatible with
+  // the requested one.
+  llvm::Expected<const SliceInfo *> SliceOrErr =
+      findCompatibleSlice(T, CPU, Features);
+  if (!SliceOrErr)
+    return SliceOrErr.takeError();
+  if (const SliceInfo *S = *SliceOrErr) {
     LLVM_DEBUG(luthier::dbgs()
-               << "[ToolDeviceCodeParser]   matched slice [" << It->first()
-               << "], parsing " << It->second.getBufferSize()
+               << "[ToolDeviceCodeParser]   matched slice [" << S->TT.str()
+               << "-" << S->CPU << ":" << S->Features.getString()
+               << "], parsing " << S->Bitcode.getBufferSize()
                << " bytes of bitcode\n");
-    auto MOrErr = llvm::parseBitcodeFile(It->second, Ctx);
-#ifndef NDEBUG
-    // Debug-only: validate that the bitcode's own ISA matches the slice ID we
-    // keyed it under (the cache key is derived from the bundle entry ID, not
-    // the bitcode). Re-derive the canonical key from the parsed module the same
-    // way the request key is built and compare; warn on a mismatch.
-    if (MOrErr) {
-      const llvm::Module &M = **MOrErr;
-      llvm::StringRef BCPU, BFeat;
-      for (const llvm::Function &F : M)
-        if (F.hasFnAttribute("target-cpu")) {
-          BCPU = F.getFnAttribute("target-cpu").getValueAsString();
-          if (F.hasFnAttribute("target-features"))
-            BFeat = F.getFnAttribute("target-features").getValueAsString();
-          break;
-        }
-      if (!BCPU.empty()) {
-        llvm::SubtargetFeatures BF(BFeat);
-        std::string BKey =
-            canonicalLLVMISAKey(llvm::Triple(M.getTargetTriple()), BCPU, BF);
-        if (BKey != It->first())
-          luthier::errs()
-              << "[ToolDeviceCodeParser] WARNING: slice keyed by its bundle "
-                 "ID as ["
-              << It->first() << "] but its bitcode reports ISA [" << BKey
-              << "]\n";
-      }
-    }
-#endif
-    return MOrErr;
+    return llvm::parseBitcodeFile(S->Bitcode, Ctx);
   }
 
-  // No precompiled slice matched. Try the SPIR-V JIT fallback (errors with a
-  // helpful message when neither a SPIR-V slice nor the translator is
-  // available).
+  // No compatible slice. Try the SPIR-V JIT fallback
   if (SpirvSlice)
-    return translateSpirvFallback(T, CPU, Features, Key, Ctx, OptLevel);
+    return translateSpirvFallback(T, CPU, Features, Ctx, OptLevel);
 
   std::string AvailKeys;
   llvm::raw_string_ostream OS(AvailKeys);
-  for (const auto &KV : Slices)
-    OS << "  [" << KV.first() << "]\n";
+  for (const SliceInfo &S : Slices)
+    OS << "  [" << S.TT.str() << "-" << S.CPU << ":" << S.Features.getString()
+       << "]\n";
   return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-      "No embedded bitcode cached for the requested LLVM ISA tuple, and no "
-      "SPIR-V slice for the JIT fallback. Requested: [{0}]. Available ({1} "
-      "slices):\n{2}",
-      Key, Slices.size(), AvailKeys));
+      "No embedded bitcode compatible with the requested LLVM ISA tuple, and "
+      "no SPIR-V slice for the JIT fallback. Requested: [{0}-{1}:{2}]. "
+      "Available ({3} "
+      "slices):\n{4}",
+      T.str(), CPU, Features.getString(), Slices.size(), AvailKeys));
 }
 
 } // namespace luthier
