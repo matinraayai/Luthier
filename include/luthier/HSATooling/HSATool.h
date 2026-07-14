@@ -205,6 +205,7 @@ public:
           AMDHSA_BITS_GET(KD->compute_pgm_rsrc1,
                           llvm::amdhsa::COMPUTE_PGM_RSRC1_GFX10_PLUS_WGP_MODE);
       FeaturesOrErr->AddFeature("cumode", /*Enable=*/!IsWGPMode);
+      // TODO: add missing tgsplit feature
     }
 
     std::string ErrMsg;
