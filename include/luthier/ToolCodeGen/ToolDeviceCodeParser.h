@@ -29,10 +29,12 @@
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/MemoryBufferRef.h>
 #include <llvm/TargetParser/SubtargetFeature.h>
+#include <llvm/TargetParser/Triple.h>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace luthier {
 
@@ -41,20 +43,18 @@ namespace luthier {
 /// translation unit.
 ///
 /// \details As of right now, this class only accepts clang offload bundle files
-/// (i.e. both compressed and uncompressed FAT binaries). Each entry inside the
-/// bundle must be labeled with its associated \b complete LLVM ISA string
-/// \c <triple>-<ven>-<os>-<env>-<cpu>:<subtarget-features>. A mismatch between
-/// the ISA of the entry and its label will only be caught in the debug builds,
-/// hence it is the bundle provider's responsibility all entries are correctly
-/// labeled.
+/// (i.e. both compressed and uncompressed FAT binaries). Each bitcode entry's
+/// LLVM ISA (triple, CPU, and subtarget features) is read directly from the
+/// bitcode itself at construction.
 ///
-/// When requested, this class loads a matching entry's bitcode into an
-/// \c llvm::Module. In cases where no precompiled slice matches the requested
-/// ISA and Luthier is compiled with AMD SPIR-V translation support, presence of
-/// an AMD-flavored SPIR-V slice is queried in the bundle cache. If present,
-/// the parser will JIT-translate the SPIR-V to LLVM IR for the requested
-/// target, runs the Luthier device tool compilation passes on it, and caches
-/// the result before returning the materialized module.
+/// When requested, this class returns loads the bitcode of a slice that is
+/// compatible with the requested ISA into an \c llvm::Module. In cases
+/// where no precompiled slice is compatible and Luthier is compiled with AMD
+/// SPIR-V translation support, presence of an AMD-flavored SPIR-V slice is
+/// queried in the bundle cache. If present, the parser will JIT-translate the
+/// SPIR-V to LLVM IR for the requested target, runs the Luthier device tool
+/// compilation passes on it, and caches the result before returning the
+/// materialized module.
 ///
 /// TODO: Support managing separately provided files for tools that don't use
 /// HIP
@@ -64,31 +64,38 @@ protected:
   /// Mutex to protect internal state of slices.
   std::recursive_mutex Mutex;
 
-  /// All slices, keyed by canonical LLVM ISA string. Populated at construction;
-  /// SPIR-V JIT fallbacks insert additional entries lazily.
-  llvm::StringMap<llvm::MemoryBufferRef> Slices;
+  struct SliceInfo {
+    llvm::Triple TT;
+    std::string CPU;
+    llvm::SubtargetFeatures Features;
+    llvm::MemoryBufferRef Bitcode;
+  };
+
+  /// All precompiled bitcode slices, along with their parsed ISAs
+  llvm::SmallVector<SliceInfo, 4> Slices;
 
   /// AMD-flavored SPIR-V slice (\c hip-spirv64-amd-amdhsa--amdgcnspirv), if the
-  /// bundle carried one. Used by the SPIR-V → AMDGCN JIT fallback. A non-owning
-  /// view into \c RetainedBuffers.
+  /// bundle carried one. Used by the SPIR-V → AMDGCN JIT fallback.
   std::optional<llvm::MemoryBufferRef> SpirvSlice;
 
   /// Bundles, decompressed payloads, and JIT-produced bitcode owned for this
-  /// object's lifetime so \c Slices' / \c SpirvSlice's views stay valid.
+  /// object's lifetime
   llvm::SmallVector<std::unique_ptr<llvm::MemoryBuffer>, 2> RetainedBuffers;
 
-  /// Canonical hashable key for an LLVM ISA tuple. Deterministic: features are
-  /// sorted before stringification.
-  static std::string canonicalLLVMISAKey(const llvm::Triple &T,
-                                         llvm::StringRef CPU,
-                                         const llvm::SubtargetFeatures &F);
-
-  /// Insert a new \c Slices entry (or stash the SPIR-V slice) for one
-  /// fat-binary slice, dispatching on its leading magic (LLVM bitcode or
-  /// SPIR-V). \p ID is the slice's Clang offload-bundle entry ID, from which a
-  /// bitcode slice's LLVM ISA key is derived (the bitcode is not parsed here).
-  /// Errors on a malformed ID, duplicate ISA, or an unrecognized slice.
+  /// Register one fat-binary slice, dispatching on its leading magic. For an
+  /// LLVM bitcode slice, the triple/CPU/features are read from the bitcode
+  /// itself and a \c SliceInfo is appended to \c Slices; a SPIR-V slice is
+  /// stashed in \c SpirvSlice.
+  /// \p ID is the slice's Clang offload-bundle entry ID.
+  /// \returns \c llvm::Error when the bitcode carries no target-cpu or the
+  /// slice is neither bitcode nor SPIR-V.
   llvm::Error addSlice(llvm::MemoryBufferRef Slice, llvm::StringRef ID);
+
+  /// Find a precompiled slice whose ISA is compatible with the requested one.
+  /// Returns \c nullptr when no slice is compatible. Caller must hold \c Mutex.
+  llvm::Expected<const SliceInfo *>
+  findCompatibleSlice(const llvm::Triple &T, llvm::StringRef CPU,
+                      const llvm::SubtargetFeatures &Features);
 
   /// SPIR-V -> AMDGCN JIT fallback. Translates \c SpirvSlice to LLVM IR for the
   /// requested ISA, runs an O3 default pipeline + the Luthier device tool
@@ -97,8 +104,7 @@ protected:
   /// is present or the translator was not built into this binary.
   llvm::Expected<std::unique_ptr<llvm::Module>> translateSpirvFallback(
       const llvm::Triple &T, llvm::StringRef CPU,
-      const llvm::SubtargetFeatures &Features, llvm::StringRef Key,
-      llvm::LLVMContext &Ctx,
+      const llvm::SubtargetFeatures &Features, llvm::LLVMContext &Ctx,
       llvm::OptimizationLevel OptLevel = llvm::OptimizationLevel::O3);
 
 public:
@@ -117,10 +123,11 @@ public:
   ~ToolDeviceCodeParser() = default;
 
   /// Parse the embedded tool bitcode for the requested LLVM ISA tuple into
-  /// \p Ctx. On an exact-key miss, falls back to a SPIR-V → AMDGCN JIT
-  /// translation for the requested ISA (if a SPIR-V slice is present and the
-  /// translator is available). \p OptLevel indicates the optimization level
-  /// used to compile the SPIR-V slice
+  /// \p Ctx. Returns the bitcode of a slice compatible with the requested ISA
+  /// (see \c findCompatibleSlice). When no slice is compatible, falls back to a
+  /// SPIR-V → AMDGCN JIT translation for the requested ISA (if a SPIR-V slice
+  /// is present and the translator is available). \p OptLevel indicates the
+  /// optimization level used to compile the SPIR-V slice
   llvm::Expected<std::unique_ptr<llvm::Module>>
   parseModule(const llvm::Triple &T, llvm::StringRef CPU,
               const llvm::SubtargetFeatures &Features, llvm::LLVMContext &Ctx,
