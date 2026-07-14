@@ -28,6 +28,7 @@
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringRef.h>
+#include <llvm/IR/Function.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/Error.h>
@@ -176,6 +177,35 @@ TEST_F(EmbeddedBitcodeLoaderTest, LoadsEveryPrecompiledISA) {
     if (llvm::Error Err = Tool.loadAndVerify(TT, CPU, STF, Ctx))
       ADD_FAILURE() << "ISA " << CPU << ": " << llvm::toString(std::move(Err));
   }
+}
+
+TEST_F(EmbeddedBitcodeLoaderTest, UnspecifiedFeatureMatchesPinnedSlice) {
+  llvm::Error CtorErr = llvm::Error::success();
+  EmbeddedBitcodeLoaderTestTool Tool(CtorErr);
+  if (CtorErr)
+    FAIL() << "Tool construction failed: "
+           << llvm::toString(std::move(CtorErr));
+
+  llvm::LLVMContext Ctx;
+  llvm::Triple T{"amdgcn-amd-amdhsa-"};
+  llvm::SubtargetFeatures Features{}; // xnack/sramecc unspecified (Any)
+  auto MOrErr = Tool.parseModule(T, "gfx908", Features, Ctx);
+  if (!MOrErr)
+    FAIL() << "gfx908 (unspecified xnack) did not resolve: "
+           << llvm::toString(MOrErr.takeError());
+
+  bool SawXnackOn = false;
+  for (const llvm::Function &F : **MOrErr)
+    if (F.hasFnAttribute("target-features") &&
+        F.getFnAttribute("target-features")
+            .getValueAsString()
+            .contains("+xnack")) {
+      SawXnackOn = true;
+      break;
+    }
+  EXPECT_TRUE(SawXnackOn)
+      << "expected the xnack+ gfx908 slice to satisfy the unspecified-xnack "
+         "request, but the returned module carries no +xnack";
 }
 
 #ifdef LUTHIER_HAS_SPIRV_TRANSLATOR

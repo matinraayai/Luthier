@@ -3,12 +3,12 @@ include(LuthierCreateOffloadBundle)
 # ISAs precompiled into the bundle, toggling xnack / sramecc / wavefront-size / cu-mode.
 # Must be kept in lockstep with the PrecompiledISAs table in \c EmbeddedBitcodeLoaderTest.hip.
 set(_TEST_ISAS
-        amdgcn-amd-amdhsa--gfx900:xnack-
-        amdgcn-amd-amdhsa--gfx908:xnack+:sramecc-
-        amdgcn-amd-amdhsa--gfx90a:xnack-:sramecc+
-        amdgcn-amd-amdhsa--gfx942:xnack+:sramecc+
-        amdgcn-amd-amdhsa--gfx1030:wavefrontsize64-:cumode-
-        amdgcn-amd-amdhsa--gfx1100:wavefrontsize64+:cumode+)
+        "amdgcn-amd-amdhsa-|gfx900:xnack-"
+        "amdgcn-amd-amdhsa-|gfx908:xnack+:sramecc-"
+        "amdgcn-amd-amdhsa-|gfx90a:xnack-:sramecc+"
+        "amdgcn-amd-amdhsa-|gfx942:xnack+:sramecc+"
+        "amdgcn-amd-amdhsa-|gfx1030|-mno-wavefrontsize64 -mno-cumode"
+        "amdgcn-amd-amdhsa-|gfx1100|-mwavefrontsize64 -mcumode")
 
 luthier_create_offload_bundle(EmbeddedBitcodeLoaderTestObject
         ToolDeviceCodeOffloadParserTest.hip

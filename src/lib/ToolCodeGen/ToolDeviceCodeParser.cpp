@@ -399,7 +399,6 @@ ToolDeviceCodeParser::translateSpirvFallback(
   (void)T;
   (void)CPU;
   (void)Features;
-  (void)Key;
   (void)Ctx;
   return LUTHIER_MAKE_GENERIC_ERROR(
       "No precompiled slice matched the requested ISA and Luthier was built "
