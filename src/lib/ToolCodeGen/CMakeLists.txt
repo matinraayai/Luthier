@@ -81,7 +81,7 @@ target_include_directories(LuthierToolCodeGen
 
 target_link_libraries(LuthierToolCodeGen PRIVATE LuthierAMDGPU)
 
-if (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
+if (${LUTHIER_ENABLE_SPIRV})
     target_compile_definitions(LuthierToolCodeGen PRIVATE LUTHIER_HAS_SPIRV_TRANSLATOR)
     target_link_libraries(LuthierToolCodeGen PUBLIC Luthier::LLVMSPIRVTranslator)
     if (LUTHIER_DEVICE_LIBS_DIR)

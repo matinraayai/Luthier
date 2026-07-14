@@ -36,6 +36,6 @@ target_link_libraries(LuthierTooling
         LLVMSupport LLVMTarget LLVMTargetParser LLVMTransformUtils LLVMBitReader LLVMAnalysis LLVMAsmPrinter
         LLVMCore LLVMPasses LLVMCodeGen LLVMLinker LLVMIRReader)
 
-if (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND)
+if (${LUTHIER_ENABLE_SPIRV})
     target_link_libraries(LuthierTooling PRIVATE Luthier::LLVMSPIRVTranslator)
 endif ()
