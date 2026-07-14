@@ -195,13 +195,12 @@ function(luthier_create_offload_bundle target source)
     endif ()
     list(APPEND _SEEN_KEYS "${_BUNDLE_KEY}")
 
-    # Sanitize the bundle key into a valid CMake target-name suffix: spell the subtarget feature signs as _on/_off and
-    # turn the remaining ':' / '+' separators into '_'. The feature-anchored +/- replacements leave the triple's dashes
-    # (amdgcn-amd-amdhsa-) intact.
+    # Sanitize the bundle key into a valid CMake target-name suffix: spell each ":<feature>±" target-feature
+    # "_<feature>_on/_off".
     set(_SANITIZED "${_BUNDLE_KEY}")
-    string(REGEX REPLACE "(xnack|sramecc|wavefrontsize64|cumode)\\+" "\\1_on"
+    string(REGEX REPLACE ":([^:+-]+)\\+" "_\\1_on"
             _SANITIZED "${_SANITIZED}")
-    string(REGEX REPLACE "(xnack|sramecc|wavefrontsize64|cumode)-" "\\1_off"
+    string(REGEX REPLACE ":([^:+-]+)-" "_\\1_off"
             _SANITIZED "${_SANITIZED}")
     string(REGEX REPLACE "[:+]" "_" _SANITIZED "${_SANITIZED}")
 
