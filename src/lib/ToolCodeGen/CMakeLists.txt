@@ -59,6 +59,7 @@ add_library(LuthierToolCodeGen OBJECT
         FunctionAnnotations.cpp
         TraceCallGraph.cpp
         PredicatedMachineBasicBlock.cpp
+        TargetAndInstrumentationModule.cpp
 
 )
 
