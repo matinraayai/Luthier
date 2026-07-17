@@ -62,6 +62,7 @@ add_library(LuthierToolCodeGen OBJECT
         PredicatedMachineBasicBlock.cpp
         InstrumentPrototype.cpp
         InstrumentPrototypePassBuilder.cpp
+        ParentInstrumentPrototypeAnalysis.cpp
 )
 
 add_dependencies(LuthierToolCodeGen LuthierRealToPseudoOpcodeMap)
