@@ -21,7 +21,7 @@
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/ToolCodeGen/ForwardISAStateToCalleesPass.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
-#include "luthier/ToolCodeGen/InjectedPayloadAccessedRegsAnalysis.h"
+#include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadPreserveLiveRegsPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadPEIPass.h"
@@ -402,7 +402,7 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
       [&]() { return TargetAppModuleAndMAMAnalysis(TargetMAM, TargetAppM); });
 
   IFAM.registerPass(
-      [] { return InjectedPayloadAccessedRegsAnalysis(); });
+      [] { return InjectedPayloadSideEffectsAnalysis(); });
 
   PB.registerModuleAnalyses(IMAM);
   PB.registerCGSCCAnalyses(ICGAM);
@@ -436,11 +436,11 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
       PreIRIntrinsicLoweringCallback(IMPM);
       for (const auto &Plugin : PassPlugins)
         Plugin.invokePreLuthierIRIntrinsicLoweringPassesCallback(IMPM);
-      // Warm the cache for InjectedPayloadAccessedRegsAnalysis before
+      // Warm the cache for InjectedPayloadSideEffectsAnalysis before
       // ProcessIntrinsicsAtIRLevelPass erases the intrinsic-attributed
       // declarations and rewrites each call to an inline-asm placeholder.
       IMPM.addPass(llvm::createModuleToFunctionPassAdaptor(
-          llvm::RequireAnalysisPass<InjectedPayloadAccessedRegsAnalysis,
+          llvm::RequireAnalysisPass<InjectedPayloadSideEffectsAnalysis,
                                     llvm::Function>()));
       IMPM.addPass(ProcessIntrinsicsAtIRLevelPass(*ITM));
       PostIRIntrinsicLoweringCallback(IMPM);

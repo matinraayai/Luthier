@@ -21,7 +21,7 @@
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
-#include "luthier/ToolCodeGen/InjectedPayloadAccessedRegsAnalysis.h"
+#include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
@@ -260,15 +260,15 @@ static void stepBackward(const llvm::MachineInstr &MI,
 
 /// Apply the payload's declared effects in reverse: kill its writes from
 /// \p L, then add its reads.
-static void stepBackwardOverPayload(const InjectedPayloadAccessedRegs &Eff,
+static void stepBackwardOverPayload(const InjectedPayloadSideEffects &Eff,
                                     llvm::DenseSet<llvm::MCPhysReg> &L,
                                     const llvm::TargetRegisterInfo &TRI) {
-  for (llvm::MCRegister W : Eff.Writes) {
+  for (llvm::MCRegister W : Eff.writes()) {
     L.erase(W);
     for (llvm::MCRegAliasIterator AI(W, &TRI, false); AI.isValid(); ++AI)
       L.erase(*AI);
   }
-  for (llvm::MCRegister R : Eff.Reads) {
+  for (llvm::MCRegister R : Eff.reads()) {
     // Mirror stepBackward Pass 3: insert the read reg AND its sub-regs
     // so the leaf entries from later uses survive a payload that
     // declares a wider read.
@@ -308,7 +308,7 @@ static void walkPMBBBackward(
     llvm::DenseSet<llvm::MCPhysReg> &OutA,
     llvm::DenseSet<llvm::MCPhysReg> &OutI,
     const InjectedPayloadAndInstPoint &IPIP,
-    const InjectedPayloadAccessedRegsAnalysis::Map &AccessedRegs,
+    const InjectedPayloadSideEffectsAnalysis &AccessedRegs,
     const llvm::TargetRegisterInfo &TRI,
     IModuleIPPredicatedLivenessAnalysis::PayloadLiveSetsMap *CaptureMap) {
   const llvm::MachineBasicBlock &MBB = PMBB.getMBB();
@@ -365,7 +365,7 @@ static void walkPMBBBackward(
 void IModuleIPPredicatedLivenessAnalysis::getAnalysisUsage(
     llvm::AnalysisUsage &AU) const {
   AU.addRequired<IModuleMAMWrapperPass>();
-  AU.addRequired<InjectedPayloadAccessedRegsAnalysis>();
+  AU.addRequired<InjectedPayloadSideEffectsAnalysis>();
   AU.setPreservesAll();
   ModulePass::getAnalysisUsage(AU);
 }
@@ -394,7 +394,7 @@ bool IModuleIPPredicatedLivenessAnalysis::runOnModule(llvm::Module &IModule) {
       IMAM.getResult<InjectedPayloadAndInstPointAnalysis>(IModule);
 
   const auto &AccessedRegs =
-      getAnalysis<InjectedPayloadAccessedRegsAnalysis>().getMap();
+      getAnalysis<InjectedPayloadSideEffectsAnalysis>();
 
   // ---- Fully-discovered check (strict per user Q1) ---------------------
   bool IsFullyDiscovered = true;

@@ -87,7 +87,7 @@ LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(IModuleIPPredicatedLivenessAnalysis);
 ///   - Insertion-point AppMI → for each attached payload in reverse
 ///     execution order, snapshot the current sets (cached per-payload)
 ///     before stepping backward over the payload's declared
-///     Reads/Writes from \c InjectedPayloadAccessedRegsAnalysis.
+///     Reads/Writes from \c InjectedPayloadSideEffectsAnalysis.
 ///
 /// If any PMBB has unresolved inter-procedural edges, the analysis falls
 /// back to per-function local mode: every return-block live-out is

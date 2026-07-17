@@ -1,4 +1,4 @@
-//===-- InjectedPayloadAccessedRegsAnalysis.cpp ---------------------------===//
+//===-- InjectedPayloadSideEffectsAnalysis.cpp ---------------------------===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,9 +14,9 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements the function-level \c InjectedPayloadAccessedRegsAnalysis.
+/// Implements the function-level \c InjectedPayloadSideEffectsAnalysis.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGen/InjectedPayloadAccessedRegsAnalysis.h"
+#include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
@@ -37,12 +37,12 @@
 
 namespace luthier {
 
-llvm::AnalysisKey InjectedPayloadAccessedRegsAnalysis::Key;
+llvm::AnalysisKey InjectedPayloadSideEffectsAnalysis::Key;
 
-bool InjectedPayloadAccessedRegs::invalidate(
+bool InjectedPayloadSideEffects::invalidate(
     llvm::Function &, const llvm::PreservedAnalyses &PA,
     llvm::FunctionAnalysisManager::Invalidator &) {
-  auto PAC = PA.getChecker<InjectedPayloadAccessedRegsAnalysis>();
+  auto PAC = PA.getChecker<InjectedPayloadSideEffectsAnalysis>();
   return !PAC.preserved() &&
          !PAC.preservedSet<llvm::AllAnalysesOn<llvm::Function>>();
 }
@@ -91,8 +91,8 @@ PlaceholderEffectsMap buildPlaceholderEffectsMap(const llvm::Module &M) {
 
 } // namespace
 
-InjectedPayloadAccessedRegsAnalysis::Result
-InjectedPayloadAccessedRegsAnalysis::run(llvm::Function &F,
+InjectedPayloadSideEffectsAnalysis::Result
+InjectedPayloadSideEffectsAnalysis::run(llvm::Function &F,
                                          llvm::FunctionAnalysisManager &FAM) {
   Result Out;
   if (!F.hasFnAttribute(InjectedPayloadAttribute))
@@ -121,7 +121,7 @@ InjectedPayloadAccessedRegsAnalysis::run(llvm::Function &F,
     Processors =
         MAMProxy.getCachedResult<IntrinsicsProcessorsAnalysis>(IModule);
     if (!Processors) {
-      Ctx.emitError("InjectedPayloadAccessedRegsAnalysis: "
+      Ctx.emitError("InjectedPayloadSideEffectsAnalysis: "
                     "IntrinsicsProcessorsAnalysis was not cached in the "
                     "module analysis manager.");
       ProcessorsLookupFailed = true;
@@ -135,7 +135,7 @@ InjectedPayloadAccessedRegsAnalysis::run(llvm::Function &F,
     auto *MMA = MAMProxy.getCachedResult<llvm::MachineModuleAnalysis>(IModule);
     if (!MMA) {
       Ctx.emitError(
-          "InjectedPayloadAccessedRegsAnalysis: "
+          "InjectedPayloadSideEffectsAnalysis: "
           "MachineModuleAnalysis is required but not cached in the module "
           "analysis manager.");
       TMLookupFailed = true;
@@ -151,6 +151,8 @@ InjectedPayloadAccessedRegsAnalysis::run(llvm::Function &F,
       Out.Reads.insert(R);
     for (llvm::MCRegister R : Eff.WrittenPhysRegs)
       Out.Writes.insert(R);
+    for (ScalarValueArgument SA : Eff.ReadSVAs)
+      Out.SVAs.insert(SA);
   };
 
   for (llvm::Instruction &I : llvm::instructions(F)) {
@@ -202,10 +204,10 @@ InjectedPayloadAccessedRegsAnalysis::run(llvm::Function &F,
   return Out;
 }
 
-llvm::PreservedAnalyses InjectedPayloadAccessedRegsPrinterPass::run(
+llvm::PreservedAnalyses InjectedPayloadSideEffectsPrinterPass::run(
     llvm::Function &F, llvm::FunctionAnalysisManager &FAM) {
-  const auto &Result = FAM.getResult<InjectedPayloadAccessedRegsAnalysis>(F);
-  if (Result.reads_empty() && Result.writes_empty())
+  const auto &Result = FAM.getResult<InjectedPayloadSideEffectsAnalysis>(F);
+  if (Result.reads_empty() && Result.writes_empty() && Result.svas_empty())
     return llvm::PreservedAnalyses::all();
 
   const llvm::TargetRegisterInfo *TRI = nullptr;
@@ -219,7 +221,7 @@ llvm::PreservedAnalyses InjectedPayloadAccessedRegsPrinterPass::run(
 
   auto printRegs =
       [&](const char *Label,
-          llvm::iterator_range<InjectedPayloadAccessedRegs::iterator> Regs) {
+          llvm::iterator_range<InjectedPayloadSideEffects::iterator> Regs) {
         llvm::SmallVector<llvm::MCRegister> Sorted(Regs.begin(), Regs.end());
         llvm::sort(Sorted, [](llvm::MCRegister A, llvm::MCRegister B) {
           return A.id() < B.id();
@@ -235,9 +237,20 @@ llvm::PreservedAnalyses InjectedPayloadAccessedRegsPrinterPass::run(
         OS << "\n";
       };
 
+  auto printSVAs = [&](llvm::iterator_range<
+                       InjectedPayloadSideEffects::sva_iterator> SAs) {
+    llvm::SmallVector<ScalarValueArgument> Sorted(SAs.begin(), SAs.end());
+    llvm::sort(Sorted);
+    OS << "    SVAs:";
+    for (ScalarValueArgument SA : Sorted)
+      OS << " " << static_cast<unsigned>(SA);
+    OS << "\n";
+  };
+
   OS << "Payload " << F.getName() << ":\n";
   printRegs("Reads", Result.reads());
   printRegs("Writes", Result.writes());
+  printSVAs(Result.svas());
   return llvm::PreservedAnalyses::all();
 }
 

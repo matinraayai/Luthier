@@ -47,7 +47,7 @@ add_library(LuthierToolCodeGen OBJECT
         IntrinsicProcessorRegistry.cpp
         IntrinsicProcessorsAnalysis.cpp
         InjectedPayloadAndInstPointAnalysis.cpp
-        InjectedPayloadAccessedRegsAnalysis.cpp
+        InjectedPayloadSideEffectsAnalysis.cpp
         InstrumentationPMDriver.cpp
         InitialEntryPointAnalysis.cpp
         InitialExecutionPointAnalysis.cpp

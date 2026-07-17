@@ -20,7 +20,7 @@
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
-#include "luthier/ToolCodeGen/InjectedPayloadAccessedRegsAnalysis.h"
+#include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
@@ -341,7 +341,7 @@ llvmGetPassPluginInfo() {
     PB.registerAnalysisRegistrationCallback(
         [](llvm::FunctionAnalysisManager &FAM) {
           FAM.registerPass(
-              []() { return luthier::InjectedPayloadAccessedRegsAnalysis(); });
+              []() { return luthier::InjectedPayloadSideEffectsAnalysis(); });
         });
     /// Register Luthier machine function analysis passes
     PB.registerAnalysisRegistrationCallback(
@@ -376,9 +376,9 @@ llvmGetPassPluginInfo() {
             MPM.addPass(luthier::TraceCallGraphPrinter(llvm::outs()));
             return true;
           }
-          if (Name == "injected-payload-accessed-regs-printer") {
+          if (Name == "injected-payload-side-effects-printer") {
             MPM.addPass(llvm::createModuleToFunctionPassAdaptor(
-                luthier::InjectedPayloadAccessedRegsPrinterPass(llvm::outs())));
+                luthier::InjectedPayloadSideEffectsPrinterPass(llvm::outs())));
             return true;
           }
           // if (Name == "luthier-ip-vector-cfg-printer") {

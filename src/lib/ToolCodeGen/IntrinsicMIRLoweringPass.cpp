@@ -329,7 +329,7 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     // GetValueInMiddleOfBlock(MBB) queries on a successor MBB would
     // synthesize an IMPLICIT_DEF "undef" PHI source instead of using the
     // entry COPY, and the return-block restore would COPY the undef back —
-    // which would also make InjectedPayloadAccessedRegsAnalysis report a
+    // which would also make InjectedPayloadSideEffectsAnalysis report a
     // spurious Write on a phys-reg the payload only reads.
     It->getSecond()->AddAvailableValue(&EntryBlock, RootVirtReg);
     return {RootVirtReg, It->getSecond().get()};

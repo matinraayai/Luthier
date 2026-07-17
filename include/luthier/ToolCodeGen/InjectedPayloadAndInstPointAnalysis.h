@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file InjectedPayloadAndInstPointAnalysis.h
+/// \file
 /// This file describes the \c InjectedPayloadAndInstPointAnalysis which
 /// maps injected payload functions in the instrumentation module to their
 /// corresponding target \c MachineInstr instrumentation points.

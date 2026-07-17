@@ -44,7 +44,7 @@ LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(InjectedPayloadPreserveLiveRegsPass);
 ///       treats it as live-out.
 ///
 /// Depends on \c IModuleIPPredicatedLivenessAnalysis (for Active) and
-/// \c InjectedPayloadAccessedRegsAnalysis (for Reads/Writes).
+/// \c InjectedPayloadSideEffectsAnalysis (for Reads/Writes).
 class InjectedPayloadPreserveLiveRegsPass : public llvm::ModulePass {
 public:
   static char ID;

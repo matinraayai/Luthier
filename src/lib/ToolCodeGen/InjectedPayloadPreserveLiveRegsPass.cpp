@@ -22,7 +22,7 @@
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
-#include "luthier/ToolCodeGen/InjectedPayloadAccessedRegsAnalysis.h"
+#include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include <AMDGPU.h>
 #include <SIInstrInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
@@ -52,7 +52,7 @@ void InjectedPayloadPreserveLiveRegsPass::getAnalysisUsage(
     llvm::AnalysisUsage &AU) const {
   AU.addRequired<llvm::MachineModuleInfoWrapperPass>();
   AU.addRequired<IModuleIPPredicatedLivenessAnalysis>();
-  AU.addRequired<InjectedPayloadAccessedRegsAnalysis>();
+  AU.addRequired<InjectedPayloadSideEffectsAnalysis>();
   ModulePass::getAnalysisUsage(AU);
 }
 
@@ -64,7 +64,7 @@ bool InjectedPayloadPreserveLiveRegsPass::runOnModule(llvm::Module &IModule) {
   const auto &Liveness =
       getAnalysis<IModuleIPPredicatedLivenessAnalysis>();
   const auto &AccessedRegs =
-      getAnalysis<InjectedPayloadAccessedRegsAnalysis>().getMap();
+      getAnalysis<InjectedPayloadSideEffectsAnalysis>().getMap();
 
   bool Changed = false;
 

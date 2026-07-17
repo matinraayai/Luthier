@@ -1,4 +1,4 @@
-//===-- InjectedPayloadAccessedRegsAnalysis.h -------------------*- C++ -*-===//
+//===-- InjectedPayloadSideEffectsAnalysis.h -------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,17 +14,18 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Describes \c InjectedPayloadAccessedRegsAnalysis, a function-level analysis
+/// Describes \c InjectedPayloadSideEffectsAnalysis, a function-level analysis
 /// that, for each injected-payload \c llvm::Function in the instrumentation
 /// module, returns the set of physical registers the payload reads from and
 /// writes at their injection site in the target application.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_ACCESSED_REGS_ANALYSIS_H
-#define LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_ACCESSED_REGS_ANALYSIS_H
+#ifndef LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_SIDE_EFFECTS_ANALYSIS_H
+#define LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_SIDE_EFFECTS_ANALYSIS_H
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/iterator_range.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/MC/MCRegister.h>
+#include <luthier/Intrinsic/IntrinsicProcessor.h>
 
 namespace llvm {
 class Function;
@@ -33,19 +34,22 @@ class raw_ostream;
 
 namespace luthier {
 
-class InjectedPayloadAccessedRegsAnalysis;
+class InjectedPayloadSideEffectsAnalysis;
 
 /// \brief Per-payload phys-reg read/write sets.
-class InjectedPayloadAccessedRegs {
+class InjectedPayloadSideEffects {
 public:
   using PhysRegSetT = llvm::DenseSet<llvm::MCRegister>;
+  using SVASetT = llvm::SmallDenseSet<ScalarValueArgument, 4>;
   using iterator = PhysRegSetT::const_iterator;
+  using sva_iterator = SVASetT::const_iterator;
 
 private:
-  friend class InjectedPayloadAccessedRegsAnalysis;
+  friend class InjectedPayloadSideEffectsAnalysis;
 
   PhysRegSetT Reads;
   PhysRegSetT Writes;
+  SVASetT SVAs;
 
 public:
   /// == Reads ================================================================
@@ -68,6 +72,16 @@ public:
   bool writes_empty() const { return Writes.empty(); }
   bool writes_contains(llvm::MCRegister R) const { return Writes.contains(R); }
 
+  /// == Scalar-value arguments ===============================================
+  sva_iterator svas_begin() const { return SVAs.begin(); }
+  sva_iterator svas_end() const { return SVAs.end(); }
+  llvm::iterator_range<sva_iterator> svas() const {
+    return {svas_begin(), svas_end()};
+  }
+  size_t svas_size() const { return SVAs.size(); }
+  bool svas_empty() const { return SVAs.empty(); }
+  bool svas_contains(ScalarValueArgument SA) const { return SVAs.contains(SA); }
+
   /// Invalidated whenever the enclosing \c Function's IR changes. The
   /// result is derived by walking the function's call sites (both un-lowered
   /// Luthier-intrinsic calls and inline-asm placeholder calls emitted by
@@ -79,28 +93,28 @@ public:
 
 /// \brief Function-level analysis: per-payload accessed phys-reg sets.
 ///
-/// Returns an empty \c InjectedPayloadAccessedRegs (no reads, no writes) for
+/// Returns an empty \c InjectedPayloadSideEffects (no reads, no writes) for
 /// any function that is not marked with \c InjectedPayloadAttribute.
-class InjectedPayloadAccessedRegsAnalysis
-    : public llvm::AnalysisInfoMixin<InjectedPayloadAccessedRegsAnalysis> {
-  friend llvm::AnalysisInfoMixin<InjectedPayloadAccessedRegsAnalysis>;
+class InjectedPayloadSideEffectsAnalysis
+    : public llvm::AnalysisInfoMixin<InjectedPayloadSideEffectsAnalysis> {
+  friend llvm::AnalysisInfoMixin<InjectedPayloadSideEffectsAnalysis>;
 
   static llvm::AnalysisKey Key;
 
 public:
-  using Result = InjectedPayloadAccessedRegs;
+  using Result = InjectedPayloadSideEffects;
 
   Result run(llvm::Function &F, llvm::FunctionAnalysisManager &FAM);
 };
 
-/// \brief Printer pass for \c InjectedPayloadAccessedRegsAnalysis used for
+/// \brief Printer pass for \c InjectedPayloadSideEffectsAnalysis used for
 /// testing.
-class InjectedPayloadAccessedRegsPrinterPass
-    : public llvm::PassInfoMixin<InjectedPayloadAccessedRegsPrinterPass> {
+class InjectedPayloadSideEffectsPrinterPass
+    : public llvm::PassInfoMixin<InjectedPayloadSideEffectsPrinterPass> {
   llvm::raw_ostream &OS;
 
 public:
-  explicit InjectedPayloadAccessedRegsPrinterPass(llvm::raw_ostream &OS)
+  explicit InjectedPayloadSideEffectsPrinterPass(llvm::raw_ostream &OS)
       : OS(OS) {}
 
   llvm::PreservedAnalyses run(llvm::Function &F,
