@@ -25,9 +25,9 @@
 #ifndef LUTHIER_TOOL_CODE_GEN_PRE_POST_AMBLE_EMITTER_H
 #define LUTHIER_TOOL_CODE_GEN_PRE_POST_AMBLE_EMITTER_H
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/ToolCodeGen/InstrumentPrototype.h"
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/CodeGen/MachineFunctionPass.h>
-#include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/Support/Error.h>
 
 namespace luthier {
@@ -73,9 +73,6 @@ struct FunctionPreambleDescriptor {
     llvm::SmallDenseSet<ScalarValueArgument, 8> RequestedKernelArguments{};
   } DeviceFunctionPreambleSpecs;
 
-  FunctionPreambleDescriptor(const llvm::MachineModuleInfo &TargetMMI,
-                             const llvm::Module &TargetModule);
-
   /// preamble specs for each kernel inside the \c LR
   llvm::SmallDenseMap<const llvm::MachineFunction *, KernelPreambleSpecs, 4>
       Kernels{};
@@ -86,12 +83,22 @@ struct FunctionPreambleDescriptor {
       DeviceFunctions{};
 
   /// Never invalidate the results
-  bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
-                  llvm::ModuleAnalysisManager::Invalidator &) {
+  bool invalidate(InstrumentPrototype &, const llvm::PreservedAnalyses &,
+                  InstrumentPrototypeAnalysisManager::Invalidator &) {
     return false;
   }
 };
 
+/// \brief \c InstrumentPrototype-level analysis that computes, for each
+/// target \c MachineFunction, the preamble spec required to correctly host
+/// its injected payloads.
+///
+/// The analysis walks every target \c MachineFunction and, at each
+/// \c MachineInstr registered as an instrumentation point by
+/// \c InjectedPayloadAndInstPointAnalysis, unions the SVA scalar arguments
+/// requested by every payload attached to that MI (obtained from
+/// \c InjectedPayloadSideEffectsAnalysis on the instrumentation module) into
+/// the descriptor entry for the containing target MF.
 class FunctionPreambleDescriptorAnalysis
     : public llvm::AnalysisInfoMixin<FunctionPreambleDescriptorAnalysis> {
   friend llvm::AnalysisInfoMixin<FunctionPreambleDescriptorAnalysis>;
@@ -103,8 +110,8 @@ public:
 
   using Result = FunctionPreambleDescriptor;
 
-  Result run(llvm::Module &TargetModule,
-             llvm::ModuleAnalysisManager &TargetMAM);
+  Result run(InstrumentPrototype &IP,
+             InstrumentPrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

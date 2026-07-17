@@ -23,12 +23,17 @@
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include "luthier/LLVM/streams.h"
+#include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
+#include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
+#include "luthier/ToolCodeGen/InstrumentPrototype.h"
 #include "luthier/ToolCodeGen/SVAFrameLanes.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
 #include "luthier/ToolCodeGen/WrapperAnalysisPasses.h"
 #include <GCNSubtarget.h>
 #include <SIMachineFunctionInfo.h>
+#include <llvm/CodeGen/MachineFunctionAnalysis.h>
+#include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/CodeGen/SlotIndexes.h>
 
@@ -221,26 +226,59 @@ llvm::AnalysisKey FunctionPreambleDescriptorAnalysis::Key;
 
 FunctionPreambleDescriptorAnalysis::Result
 FunctionPreambleDescriptorAnalysis::run(
-    llvm::Module &TargetModule, llvm::ModuleAnalysisManager &TargetMAM) {
+    InstrumentPrototype &IP, InstrumentPrototypeAnalysisManager &IPAM) {
+  Result Out;
 
-  return {TargetMAM.getCachedResult<llvm::MachineModuleAnalysis>(TargetModule)
-              ->getMMI(),
-          TargetModule};
-}
+  llvm::Module &TargetModule = IP.getTargetModule();
+  llvm::Module &IModule = IP.getInstrumentationModule();
 
-FunctionPreambleDescriptor::FunctionPreambleDescriptor(
-    const llvm::MachineModuleInfo &TargetMMI,
-    const llvm::Module &TargetModule) {
-  for (const auto &F : TargetModule) {
-    auto *MF = TargetMMI.getMachineFunction(F);
-    if (!MF)
+  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
+  // MAM caches results for both modules, keyed by the module reference.
+  llvm::ModuleAnalysisManager &MAM =
+      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+          .getManager();
+
+  llvm::FunctionAnalysisManager &TargetFAM =
+      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
+          .getManager();
+  llvm::FunctionAnalysisManager &IFAM =
+      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(IModule)
+          .getManager();
+
+  const InjectedPayloadAndInstPoint &IPIP =
+      MAM.getResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+
+  for (llvm::Function &F : TargetModule) {
+    if (F.isDeclaration())
       continue;
-    if (MF->getFunction().getCallingConv() ==
-        llvm::CallingConv::AMDGPU_KERNEL) {
-      Kernels.insert({MF, {}});
-    } else {
-      DeviceFunctions.insert({MF, {}});
+
+    llvm::MachineFunction &MF =
+        TargetFAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
+
+    // KernelPreambleSpecs and DeviceFunctionPreambleSpecs each carry their own
+    // RequestedKernelArguments field; grab a reference to whichever this MF
+    // maps to so the payload walk below is oblivious to the distinction.
+    auto &RequestedKernelArguments =
+        F.getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL
+            ? Out.Kernels.insert({&MF, {}})
+                  .first->second.RequestedKernelArguments
+            : Out.DeviceFunctions.insert({&MF, {}})
+                  .first->second.RequestedKernelArguments;
+
+    for (llvm::MachineBasicBlock &MBB : MF) {
+      for (llvm::MachineInstr &MI : MBB) {
+        if (!IPIP.contains(MI))
+          continue;
+        for (llvm::Function *Payload : IPIP.at(MI)) {
+          const InjectedPayloadSideEffects &SE =
+              IFAM.getResult<InjectedPayloadSideEffectsAnalysis>(*Payload);
+          for (ScalarValueArgument SA : SE.svas())
+            RequestedKernelArguments.insert(SA);
+        }
+      }
     }
   }
+
+  return Out;
 }
 } // namespace luthier
