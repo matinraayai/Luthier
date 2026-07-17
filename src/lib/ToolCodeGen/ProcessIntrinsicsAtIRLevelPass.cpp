@@ -27,6 +27,7 @@
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/StringMap.h>
 #include <llvm/ADT/Twine.h>
+#include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Metadata.h>
@@ -138,14 +139,18 @@ void appendPlaceholderNamedMDEntry(
 
 } // namespace
 
-llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
-    llvm::Module &IModule, llvm::ModuleAnalysisManager &IMAM) {
+llvm::PreservedAnalyses
+luthier::ProcessIntrinsicsAtIRLevelPass::run(llvm::Module &IModule,
+                                             llvm::ModuleAnalysisManager &MAM) {
 
   LLVM_DEBUG(luthier::dbgs() << "=== ProcessIntrinsicsAtIRLevelPass: module '"
                              << IModule.getName() << "' ===\n");
 
   const auto &IntrinsicsProcessors =
-      IMAM.getResult<IntrinsicsProcessorsAnalysis>(IModule);
+      MAM.getResult<IntrinsicsProcessorsAnalysis>(IModule);
+
+  auto &TM = reinterpret_cast<const llvm::GCNTargetMachine &>(
+      MAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI().getTarget());
 
   // Per-run dedup map: signature -> opaque key. Two semantically identical
   // intrinsic invocations share the same key and named-MD entry.
@@ -164,8 +169,8 @@ llvm::PreservedAnalyses luthier::ProcessIntrinsicsAtIRLevelPass::run(
       std::optional<IntrinsicProcessor> Processor =
           IntrinsicsProcessors.getProcessorIfRegistered(IntrinsicName);
       if (!Processor.has_value()) {
-        IModule.getContext().emitError(llvm::toString(
-            LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+        IModule.getContext().emitError(
+            llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
                 "Intrinsic {0} is not registered", IntrinsicName))));
         return llvm::PreservedAnalyses::all();
       }
