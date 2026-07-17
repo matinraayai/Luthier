@@ -17,10 +17,22 @@
 /// Implements out-of-line definitions for \c InstrumentPrototype.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include <cassert>
 #include <llvm/IR/PassInstrumentation.h>
 #include <llvm/IR/PassManagerImpl.h>
 
 namespace luthier {
+
+InstrumentPrototype::InstrumentPrototype(
+    std::unique_ptr<llvm::Module> Target,
+    std::unique_ptr<llvm::Module> IModule)
+    : TargetModule(std::move(Target)), IModule(std::move(IModule)) {
+  assert(this->TargetModule && this->IModule &&
+         "InstrumentPrototype modules must be non-null");
+  assert(&this->TargetModule->getContext() == &this->IModule->getContext() &&
+         "InstrumentPrototype modules must share an LLVMContext");
+}
+
 
 /// Runs \p Pass over \p M, which is the module of \p IP selected by the caller.
 /// Mirrors LLVM's ModuleToFunctionPassAdaptor::run / the machinery in the other
@@ -84,34 +96,6 @@ void RunOnInstrumentationModuleAdaptor::printPipeline(
   OS << "instrumentation(";
   Pass->printPipeline(OS, MapClassName);
   OS << ")";
-}
-
-void registerInstrumentPrototypeCrossLevelProxies(
-    InstrumentPrototypeAnalysisManager &TAIMAM,
-    llvm::ModuleAnalysisManager &MAM, llvm::FunctionAnalysisManager &FAM,
-    llvm::MachineFunctionAnalysisManager &MFAM,
-    llvm::PassInstrumentationCallbacks &PIC) {
-  // The adaptors run pass instrumentation at the InstrumentPrototype level, so
-  // PassInstrumentationAnalysis must be available on its analysis manager.
-  // Register it against the same shared callbacks used by the nested
-  // Module/Function/MachineFunction managers.
-  TAIMAM.registerPass([&] { return llvm::PassInstrumentationAnalysis(&PIC); });
-
-  TAIMAM.registerPass(
-      [&] { return ModuleAnalysisManagerInstrumentPrototypeProxy(MAM); });
-  TAIMAM.registerPass(
-      [&] { return FunctionAnalysisManagerInstrumentPrototypeProxy(FAM); });
-  TAIMAM.registerPass([&] {
-    return MachineFunctionAnalysisManagerInstrumentPrototypeProxy(MFAM);
-  });
-
-  MAM.registerPass(
-      [&] { return InstrumentPrototypeAnalysisManagerModuleProxy(TAIMAM); });
-  FAM.registerPass(
-      [&] { return InstrumentPrototypeAnalysisManagerFunctionProxy(TAIMAM); });
-  MFAM.registerPass([&] {
-    return InstrumentPrototypeAnalysisManagerMachineFunctionProxy(TAIMAM);
-  });
 }
 
 } // namespace luthier

@@ -13,19 +13,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file LuthierFile.h
+/// \file
 /// Defines \c LuthierFileParser — the class responsible for deserializing
-/// \c .luthier combined module files — together with the \c writeLuthierFile
-/// helper for serialization.
+/// \c .luthier files into a \c luthier::InstrumentPrototype
+/// — together with the \c writeLuthierFile helper for serialization.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_TESTING_LUTHIER_FILE_H
 #define LUTHIER_TOOL_CODE_GEN_TESTING_LUTHIER_FILE_H
 
+#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include <functional>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/CodeGen/MIRParser/MIRParser.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/MemoryBufferRef.h>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -34,12 +35,22 @@
 namespace llvm {
 class Function;
 class LLVMContext;
-class MachineModuleInfo;
 class Module;
 class raw_ostream;
 } // namespace llvm
 
 namespace luthier {
+
+/// Result of parsing a \c .luthier file: the assembled
+/// \c InstrumentPrototype together with the \c MIRParser instances used to
+/// build each module (non-null only for modules stored in MIR form).
+/// Callers hold on to the parsers until \c MachineModuleAnalysis has been
+/// wired up so they can call \c MIRParser::parseMachineFunctions.
+struct LoadedInstrumentPrototype {
+  std::unique_ptr<InstrumentPrototype> IP;
+  std::unique_ptr<llvm::MIRParser> TargetMIRParser;
+  std::unique_ptr<llvm::MIRParser> IModuleMIRParser;
+};
 
 /// Parses a \c .luthier YAML file and provides typed access to its contents.
 class LuthierFileParser {
@@ -54,8 +65,8 @@ public:
     bool operator==(const MDSlotEntry &) const = default;
   };
 
-  /// Encoding of the \c InstrumentationModule field.
-  enum class IModuleFormat {
+  /// Encoding of a module field in a \c .luthier file.
+  enum class ModuleFormat {
     IR,      ///< LLVM IR text (.ll)
     Bitcode, ///< LLVM bitcode, base64-encoded in the YAML block scalar
     MIR,     ///< Machine IR text (.mir)
@@ -82,36 +93,49 @@ public:
   [[nodiscard]] llvm::StringRef getInstrumentationModule() const {
     return InstrumentationModuleText;
   }
-  [[nodiscard]] IModuleFormat getFormat() const { return Format; }
+  [[nodiscard]] ModuleFormat getTargetModuleFormat() const {
+    return TargetModuleFormat;
+  }
+  [[nodiscard]] ModuleFormat getInstrumentationModuleFormat() const {
+    return InstrumentationModuleFormat;
+  }
   llvm::ArrayRef<MDSlotEntry> getMDSlotMap() const { return MDSlotMap; }
 
   //===--------------------------------------------------------------------===//
-  // Module loading
+  // Prototype loading
   //===--------------------------------------------------------------------===//
 
-  /// Parses the \c TargetModule field (MIR text) into an LLVM \c Module.
-  /// Returns the module together with the \c MIRParser used.
+  /// Parse both modules of the \c .luthier file into a single
+  /// \c InstrumentPrototype.
   ///
-  /// \p SetDataLayout is forwarded to \c MIRParser::parseIRModule — use it to
-  /// override the data layout and initialize a \c TargetMachine, as \c llc
-  /// does.  \p SetMIRFunctionAttributes is forwarded to \c createMIRParser and
-  /// applied to every \c Function in the parsed module.  Both callbacks default
-  /// to no-ops if omitted.
-  llvm::Expected<std::pair<std::unique_ptr<llvm::Module>,
-                           std::unique_ptr<llvm::MIRParser>>>
-  loadTargetModule(
-      llvm::LLVMContext &Ctx,
-      std::function<std::optional<std::string>(llvm::StringRef, llvm::StringRef)>
-          SetDataLayout = nullptr,
-      std::function<void(llvm::Function &)> SetMIRFunctionAttributes =
-          nullptr) const;
+  /// \p Ctx is the \c LLVMContext both parsed modules share.  \p IPAM is
+  /// threaded through for future use (analyses that need to associate MIR
+  /// parsing state with the returned prototype); the reader itself does
+  /// not currently register anything on it.
+  ///
+  /// \p SetDataLayout is forwarded to the target module's MIR parser (used
+  /// by \c luthier-llc to override the data layout and initialize a
+  /// \c TargetMachine).  \p SetMIRFunctionAttributes is applied to every
+  /// \c Function in a module parsed from MIR.  Both callbacks default to
+  /// no-ops if omitted.
+  ///
+  /// The instrumentation module's metadata is patched so that cross-module
+  /// \c MDNode references point back into the live target module.
+  llvm::Expected<LoadedInstrumentPrototype>
+  load(llvm::LLVMContext &Ctx, InstrumentPrototypeAnalysisManager &IPAM,
+       std::function<std::optional<std::string>(llvm::StringRef,
+                                                llvm::StringRef)>
+           SetDataLayout = nullptr,
+       std::function<void(llvm::Function &)> SetMIRFunctionAttributes =
+           nullptr) const;
 
-  /// Parses the \c InstrumentationModule field according to \c Format, patches
-  /// cross-module \c MDNode references using the embedded \c MDSlotMap so that
-  /// metadata in the instrumentation module points back into the live
-  /// \p TargetModule
-  /// Returns the parsed module together with the \c MIRParser used (non-null
-  /// only when \c Format is \c MIR)
+  /// Parse only the instrumentation-module half of the \c .luthier file
+  /// against the caller's live \p TargetModule.  The embedded MDNode slot
+  /// map is applied to \p TargetModule (not to the file's serialized
+  /// target module), so \p TargetModule must have the same metadata layout
+  /// the file was written against.  Returns the parsed instrumentation
+  /// module together with its \c MIRParser (non-null iff the module was
+  /// stored in MIR form).
   llvm::Expected<std::pair<std::unique_ptr<llvm::Module>,
                            std::unique_ptr<llvm::MIRParser>>>
   loadIModule(llvm::LLVMContext &Ctx, llvm::Module &TargetModule) const;
@@ -119,7 +143,8 @@ public:
 private:
   std::string TargetModuleText;
   std::string InstrumentationModuleText;
-  IModuleFormat Format = IModuleFormat::IR;
+  ModuleFormat TargetModuleFormat = ModuleFormat::MIR;
+  ModuleFormat InstrumentationModuleFormat = ModuleFormat::IR;
   std::vector<MDSlotEntry> MDSlotMap;
 };
 
@@ -127,19 +152,26 @@ private:
 // Serialization
 //===----------------------------------------------------------------------===//
 
-/// Serializes \p TargetModule and \p IModule as a \c .luthier YAML file,
-/// writing the result to \p OS.  If \p IModuleMMI is non-null the
-/// instrumentation module is written as MIR and \c Format is set to \c MIR;
-/// otherwise it is written as LLVM IR text.
-llvm::Error writeLuthierFile(llvm::raw_ostream &OS, llvm::Module &TargetModule,
-                             llvm::Module &IModule,
-                             llvm::MachineModuleInfo *IModuleMMI = nullptr);
+/// Serializes \p IP as a \c .luthier YAML file, writing the result to \p OS.
+/// For each module, the writer picks a format automatically: if any of the
+/// module's \c Function s has a cached \c llvm::MachineFunctionAnalysis
+/// result on the \c FunctionAnalysisManager reachable from \p IPAM, the
+/// module is written as MIR; otherwise it is written as LLVM IR text.
+llvm::Error writeLuthierFile(llvm::raw_ostream &OS, InstrumentPrototype &IP,
+                             InstrumentPrototypeAnalysisManager &IPAM);
 
 /// Convenience overload that opens \p Path and delegates to the stream-based
 /// \c writeLuthierFile.
+llvm::Error writeLuthierFile(llvm::StringRef Path, InstrumentPrototype &IP,
+                             InstrumentPrototypeAnalysisManager &IPAM);
+
+/// Compatibility shim for legacy callers that hold the two modules
+/// separately and do not have an \c InstrumentPrototypeAnalysisManager.
+/// Both modules are written as IR text; the MDNode slot map is still
+/// computed against the live \p TargetModule so that reloaded imodule
+/// metadata can be rewired.
 llvm::Error writeLuthierFile(llvm::StringRef Path, llvm::Module &TargetModule,
-                             llvm::Module &IModule,
-                             llvm::MachineModuleInfo *IModuleMMI = nullptr);
+                             llvm::Module &IModule);
 
 } // namespace luthier
 

@@ -59,8 +59,8 @@ add_library(LuthierToolCodeGen OBJECT
         FunctionAnnotations.cpp
         TraceCallGraph.cpp
         PredicatedMachineBasicBlock.cpp
-        TargetAndInstrumentationModule.cpp
-
+        InstrumentPrototype.cpp
+        InstrumentPrototypePassBuilder.cpp
 )
 
 add_dependencies(LuthierToolCodeGen LuthierRealToPseudoOpcodeMap)

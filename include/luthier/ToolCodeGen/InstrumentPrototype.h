@@ -46,6 +46,13 @@ public:
       : TargetModule(std::make_unique<llvm::Module>(TargetModuleID, C)),
         IModule(std::make_unique<llvm::Module>("instrumentation_module", C)) {};
 
+  /// Adopts \p Target and \p IModule as this prototype's two modules.  Used
+  /// by the \c .luthier file reader and by \c luthier-llc when synthesising
+  /// prototypes from already-parsed content.  Both pointers must be non-null
+  /// and their contexts must match.
+  InstrumentPrototype(std::unique_ptr<llvm::Module> Target,
+                      std::unique_ptr<llvm::Module> IModule);
+
   InstrumentPrototype(const InstrumentPrototype &) = delete;
   InstrumentPrototype &operator=(const InstrumentPrototype &) = delete;
 
@@ -181,12 +188,6 @@ createRunOnInstrumentationModuleAdaptor(ModulePassT &&Pass) {
       std::unique_ptr<RunOnInstrumentationModuleAdaptor::PassConceptT>(
           new PassModelT(std::forward<ModulePassT>(Pass))));
 }
-
-void registerInstrumentPrototypeCrossLevelProxies(
-    InstrumentPrototypeAnalysisManager &IP, llvm::ModuleAnalysisManager &MAM,
-    llvm::FunctionAnalysisManager &FAM,
-    llvm::MachineFunctionAnalysisManager &MFAM,
-    llvm::PassInstrumentationCallbacks &PIC);
 
 } // namespace luthier
 

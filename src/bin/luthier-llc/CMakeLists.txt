@@ -10,9 +10,11 @@ set(LLVM_LINK_COMPONENTS
         BinaryFormat
         AsmPrinter
         BitReader
+        BitWriter
         CodeGen
         CodeGenTypes
         Core
+        Demangle
         IRPrinter
         IRReader
         Linker
@@ -37,8 +39,6 @@ set(LLVM_LINK_COMPONENTS
 
 add_llvm_tool(luthier-llc
         llc.cpp
-        NewPMDriver.cpp
-
         DEPENDS
         intrinsics_gen
         SUPPORT_PLUGINS
@@ -47,6 +47,8 @@ add_llvm_tool(luthier-llc
 target_include_directories(luthier-llc PRIVATE ${LLVM_INCLUDE_DIRS} "${CMAKE_SOURCE_DIR}/include")
 
 target_link_libraries(luthier-llc PRIVATE
+        LuthierToolCodeGen
+        LuthierToolIRCompilation
         LuthierToolCodeGenTesting
         LuthierPassPlugin
         LuthierIntrinsic
