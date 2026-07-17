@@ -13,100 +13,98 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file InjectedPayloadAccessedRegsAnalysis.h
-/// Describes \c InjectedPayloadAccessedRegsAnalysis, a module analysis on the
-/// instrumentation module that produces, for each injected-payload function,
-/// the set of physical registers the payload reads from the target
-/// application and the set of physical registers it writes back to the target
-/// application after \c IntrinsicMIRLoweringPass has run.
-///
-/// Implemented as a legacy \c ModulePass for symmetry with
-/// \c IntrinsicMIRLoweringPass and access to the legacy \c MachineModuleInfo.
-/// The result is a plain serializable map; downstream consumers in either pass
-/// manager can adopt it without changing the data shape.
+/// \file
+/// Describes \c InjectedPayloadAccessedRegsAnalysis, a function-level analysis
+/// that, for each injected-payload \c llvm::Function in the instrumentation
+/// module, returns the set of physical registers the payload reads from and
+/// writes at their injection site in the target application.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_ACCESSED_REGS_ANALYSIS_H
 #define LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_ACCESSED_REGS_ANALYSIS_H
-#include "luthier/ToolCodeGen/LegacyPassSupport.h"
-#include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseSet.h>
-#include <llvm/CodeGen/MachineFunction.h>
+#include <llvm/ADT/iterator_range.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/MC/MCRegister.h>
-#include <llvm/Pass.h>
 
 namespace llvm {
 class Function;
+class raw_ostream;
 } // namespace llvm
 
 namespace luthier {
 
-/// \brief Per-payload phys-reg read/write sets.
-///
-/// \c Reads are the target-application physical registers an injected payload
-/// consumes at its insertion point. \c Writes are the physical registers the
-/// payload writes back into the target application after running. A register
-/// that the payload only shuttles through (entry-COPY → vreg-SSA →
-/// return-COPY-back) is classified as Read-only — this preserves the user's
-/// decision when an intrinsic merely observes ISA state.
-struct InjectedPayloadAccessedRegs {
-  llvm::DenseSet<llvm::MCRegister> Reads;
-  llvm::DenseSet<llvm::MCRegister> Writes;
-};
-
 class InjectedPayloadAccessedRegsAnalysis;
 
-LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(InjectedPayloadAccessedRegsAnalysis);
-
-/// \brief Legacy module analysis pass: per-payload accessed phys-reg sets.
-class InjectedPayloadAccessedRegsAnalysis : public llvm::ModulePass {
+/// \brief Per-payload phys-reg read/write sets.
+class InjectedPayloadAccessedRegs {
 public:
-  using Map =
-      llvm::DenseMap<const llvm::Function *, InjectedPayloadAccessedRegs>;
+  using PhysRegSetT = llvm::DenseSet<llvm::MCRegister>;
+  using iterator = PhysRegSetT::const_iterator;
 
 private:
-  Map AccessedRegsByPayload;
+  friend class InjectedPayloadAccessedRegsAnalysis;
+
+  PhysRegSetT Reads;
+  PhysRegSetT Writes;
 
 public:
-  static char ID;
-
-  InjectedPayloadAccessedRegsAnalysis() : llvm::ModulePass(ID) {};
-
-  [[nodiscard]] llvm::StringRef getPassName() const override {
-    return "Luthier Injected Payload Accessed Registers Analysis";
+  /// == Reads ================================================================
+  iterator reads_begin() const { return Reads.begin(); }
+  iterator reads_end() const { return Reads.end(); }
+  llvm::iterator_range<iterator> reads() const {
+    return {reads_begin(), reads_end()};
   }
+  size_t reads_size() const { return Reads.size(); }
+  bool reads_empty() const { return Reads.empty(); }
+  bool reads_contains(llvm::MCRegister R) const { return Reads.contains(R); }
 
-  bool runOnModule(llvm::Module &IModule) override;
-
-  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
-
-  /// \returns the per-payload accessed-regs map.
-  [[nodiscard]] const Map &getMap() const { return AccessedRegsByPayload; }
-
-  /// \returns the entry for \p Payload or nullptr if the payload has no
-  /// recorded accessed-regs entry.
-  [[nodiscard]] const InjectedPayloadAccessedRegs *
-  lookup(const llvm::Function &Payload) const {
-    auto It = AccessedRegsByPayload.find(&Payload);
-    return It == AccessedRegsByPayload.end() ? nullptr : &It->second;
+  /// == Writes ===============================================================
+  iterator writes_begin() const { return Writes.begin(); }
+  iterator writes_end() const { return Writes.end(); }
+  llvm::iterator_range<iterator> writes() const {
+    return {writes_begin(), writes_end()};
   }
+  size_t writes_size() const { return Writes.size(); }
+  bool writes_empty() const { return Writes.empty(); }
+  bool writes_contains(llvm::MCRegister R) const { return Writes.contains(R); }
+
+  /// Invalidated whenever the enclosing \c Function's IR changes. The
+  /// result is derived by walking the function's call sites (both un-lowered
+  /// Luthier-intrinsic calls and inline-asm placeholder calls emitted by
+  /// \c ProcessIntrinsicsAtIRLevelPass), so any pass that fails to preserve
+  /// this analysis must invalidate the cached result.
+  bool invalidate(llvm::Function &F, const llvm::PreservedAnalyses &PA,
+                  llvm::FunctionAnalysisManager::Invalidator &Inv);
 };
 
-class InjectedPayloadAccessedRegsPrinterPass;
+/// \brief Function-level analysis: per-payload accessed phys-reg sets.
+///
+/// Returns an empty \c InjectedPayloadAccessedRegs (no reads, no writes) for
+/// any function that is not marked with \c InjectedPayloadAttribute.
+class InjectedPayloadAccessedRegsAnalysis
+    : public llvm::AnalysisInfoMixin<InjectedPayloadAccessedRegsAnalysis> {
+  friend llvm::AnalysisInfoMixin<InjectedPayloadAccessedRegsAnalysis>;
 
-LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(InjectedPayloadAccessedRegsPrinterPass);
+  static llvm::AnalysisKey Key;
 
-/// Legacy printer pass — depends on
-/// \c InjectedPayloadAccessedRegsAnalysis and dumps its per-payload
-/// Reads/Writes sets to stdout in a stable, FileCheck-friendly format.
-class InjectedPayloadAccessedRegsPrinterPass : public llvm::ModulePass {
 public:
-  static char ID;
-  InjectedPayloadAccessedRegsPrinterPass() : llvm::ModulePass(ID) {};
-  [[nodiscard]] llvm::StringRef getPassName() const override {
-    return "Luthier Injected Payload Accessed Registers Printer";
-  }
-  bool runOnModule(llvm::Module &IModule) override;
-  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
+  using Result = InjectedPayloadAccessedRegs;
+
+  Result run(llvm::Function &F, llvm::FunctionAnalysisManager &FAM);
+};
+
+/// \brief Printer pass for \c InjectedPayloadAccessedRegsAnalysis used for
+/// testing.
+class InjectedPayloadAccessedRegsPrinterPass
+    : public llvm::PassInfoMixin<InjectedPayloadAccessedRegsPrinterPass> {
+  llvm::raw_ostream &OS;
+
+public:
+  explicit InjectedPayloadAccessedRegsPrinterPass(llvm::raw_ostream &OS)
+      : OS(OS) {}
+
+  llvm::PreservedAnalyses run(llvm::Function &F,
+                              llvm::FunctionAnalysisManager &FAM);
 };
 
 } // namespace luthier

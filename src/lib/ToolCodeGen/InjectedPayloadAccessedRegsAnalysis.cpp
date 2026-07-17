@@ -13,254 +13,232 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file InjectedPayloadAccessedRegsAnalysis.cpp
-/// Implements \c InjectedPayloadAccessedRegsAnalysis.
+/// \file
+/// Implements the function-level \c InjectedPayloadAccessedRegsAnalysis.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/InjectedPayloadAccessedRegsAnalysis.h"
+#include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
-#include <llvm/CodeGen/MachineBasicBlock.h>
-#include <llvm/CodeGen/MachineFunction.h>
-#include <llvm/CodeGen/MachineInstr.h>
+#include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
+#include <AMDGPUTargetMachine.h>
+#include <llvm/ADT/DenseMap.h>
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
-#include <llvm/CodeGen/MachineRegisterInfo.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/InlineAsm.h>
+#include <llvm/IR/InstIterator.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/IR/Metadata.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/raw_ostream.h>
 
 namespace luthier {
 
-char InjectedPayloadAccessedRegsAnalysis::ID = 0;
+llvm::AnalysisKey InjectedPayloadAccessedRegsAnalysis::Key;
 
-LUTHIER_INITIALIZE_LEGACY_PASS_BODY(InjectedPayloadAccessedRegsAnalysis,
-                                    "injected-payload-accessed-regs",
-                                    "Injected Payload Accessed Regs Analysis",
-                                    true /* Only looks at CFG */,
-                                    true /* Analysis Pass */)
+bool InjectedPayloadAccessedRegs::invalidate(
+    llvm::Function &, const llvm::PreservedAnalyses &PA,
+    llvm::FunctionAnalysisManager::Invalidator &) {
+  auto PAC = PA.getChecker<InjectedPayloadAccessedRegsAnalysis>();
+  return !PAC.preserved() &&
+         !PAC.preservedSet<llvm::AllAnalysesOn<llvm::Function>>();
+}
 
 namespace {
 
-/// Returns true iff \p MI is a `COPY %vreg, $physreg` (i.e. defines a vreg
-/// from a physreg) in the function's entry block. The entry block COPYs
-/// emitted by IntrinsicMIRLoweringPass for phys-reg access have this exact
-/// shape.
-bool isEntryCopyFromPhysReg(const llvm::MachineInstr &MI,
-                            llvm::MCRegister &OutPhysReg) {
-  if (!MI.isCopy())
-    return false;
-  const llvm::MachineOperand &Dst = MI.getOperand(0);
-  const llvm::MachineOperand &Src = MI.getOperand(1);
-  if (!Dst.isReg() || !Src.isReg())
-    return false;
-  if (!Dst.getReg().isVirtual() || !Src.getReg().isPhysical())
-    return false;
-  OutPhysReg = Src.getReg().asMCReg();
-  return true;
+/// If \p CI's callee is a Luthier inline-asm placeholder (emitted by
+/// \c ProcessIntrinsicsAtIRLevelPass ), returns its opaque template-string
+/// key; otherwise returns an empty \c StringRef .
+llvm::StringRef getPlaceholderKey(const llvm::CallInst &CI) {
+  auto *IA = llvm::dyn_cast<llvm::InlineAsm>(CI.getCalledOperand());
+  if (!IA)
+    return {};
+  llvm::StringRef AsmStr = IA->getAsmString();
+  if (!AsmStr.starts_with(LuthierIntrinsicPlaceholderKeyPrefix))
+    return {};
+  return AsmStr;
 }
 
-/// Returns true iff \p MI is a `COPY $physreg, %vreg` (i.e. defines a
-/// physreg from a vreg). The return-block restore COPYs emitted by
-/// IntrinsicMIRLoweringPass have this shape.
-bool isReturnRestoreCopyToPhysReg(const llvm::MachineInstr &MI,
-                                  llvm::MCRegister &OutPhysReg,
-                                  llvm::Register &OutSrcVReg) {
-  if (!MI.isCopy())
-    return false;
-  const llvm::MachineOperand &Dst = MI.getOperand(0);
-  const llvm::MachineOperand &Src = MI.getOperand(1);
-  if (!Dst.isReg() || !Src.isReg())
-    return false;
-  if (!Dst.getReg().isPhysical() || !Src.getReg().isVirtual())
-    return false;
-  OutPhysReg = Dst.getReg().asMCReg();
-  OutSrcVReg = Src.getReg();
-  return true;
-}
+using PlaceholderEffectsMap =
+    llvm::DenseMap<llvm::StringRef, IntrinsicISAStateEffects>;
 
-/// Walk back from \p VReg through COPY chains (including REG_SEQUENCE
-/// sub-register chains via the per-sub-reg COPY pattern) to determine
-/// whether the value ultimately originates from an entry-block
-/// `%root = COPY $r` where \p r matches \p ExpectedPhysReg. Returns true
-/// if so. Bounded by a small visit count to guarantee termination on
-/// pathological IR.
-bool valueChainRootsInEntryCopyOf(const llvm::MachineRegisterInfo &MRI,
-                                  const llvm::MachineBasicBlock &EntryBlock,
-                                  llvm::Register VReg,
-                                  llvm::MCRegister ExpectedPhysReg) {
-  constexpr unsigned MaxVisits = 32;
-  llvm::SmallVector<llvm::Register, 4> Worklist;
-  llvm::DenseSet<llvm::Register> Seen;
-  Worklist.push_back(VReg);
-  unsigned Visits = 0;
-  while (!Worklist.empty()) {
-    if (++Visits > MaxVisits)
-      return false;
-    llvm::Register R = Worklist.pop_back_val();
-    if (!R.isVirtual())
-      return false;
-    if (!Seen.insert(R).second)
+/// Build a map from placeholder key to decoded
+/// \c IntrinsicISAStateEffects by scanning the module's
+/// \c !luthier.intrinsic.placeholders named metadata. Returns an empty map
+/// when the named node is absent (i.e. \c ProcessIntrinsicsAtIRLevelPass
+/// has not run yet).
+PlaceholderEffectsMap buildPlaceholderEffectsMap(const llvm::Module &M) {
+  PlaceholderEffectsMap Out;
+  const llvm::NamedMDNode *NamedMD =
+      M.getNamedMetadata(LuthierIntrinsicNamedMDName);
+  if (!NamedMD)
+    return Out;
+  for (const llvm::MDNode *Entry : NamedMD->operands()) {
+    if (!Entry || Entry->getNumOperands() < 4)
       continue;
-    llvm::MachineInstr *Def = MRI.getUniqueVRegDef(R);
-    if (!Def)
-      return false;
-    // Entry-block COPY-from-physreg: terminal node.
-    if (Def->getParent() == &EntryBlock) {
-      llvm::MCRegister PhysReg;
-      if (isEntryCopyFromPhysReg(*Def, PhysReg))
-        return PhysReg == ExpectedPhysReg;
-    }
-    // PHI: enqueue all incoming vregs.
-    if (Def->isPHI()) {
-      for (unsigned I = 1, E = Def->getNumOperands(); I < E; I += 2) {
-        const llvm::MachineOperand &MO = Def->getOperand(I);
-        if (MO.isReg() && MO.getReg().isVirtual())
-          Worklist.push_back(MO.getReg());
-      }
+    auto *KeyMD = llvm::dyn_cast<llvm::MDString>(Entry->getOperand(0));
+    if (!KeyMD)
       continue;
-    }
-    // COPY %v, %src — chase the source.
-    if (Def->isCopy()) {
-      const llvm::MachineOperand &Src = Def->getOperand(1);
-      if (Src.isReg() && Src.getReg().isVirtual()) {
-        Worklist.push_back(Src.getReg());
-        continue;
-      }
-      return false;
-    }
-    // Any other defining instruction means the value is not a pure
-    // pass-through of the entry phys-reg COPY.
-    return false;
+    const auto *EffNode = llvm::dyn_cast<llvm::MDNode>(Entry->getOperand(3));
+    Out.try_emplace(KeyMD->getString(),
+                    decodeIntrinsicISAStateEffects(EffNode));
   }
-  return false;
-}
-
-void analyzePayload(const llvm::MachineFunction &MF,
-                    InjectedPayloadAccessedRegs &Out) {
-  const llvm::MachineBasicBlock &EntryBlock = MF.front();
-  const llvm::MachineRegisterInfo &MRI = MF.getRegInfo();
-
-  // Reads: live-ins to the entry block plus phys-regs appearing as COPY
-  // sources in the entry block.
-  for (const auto &LI : EntryBlock.liveins())
-    Out.Reads.insert(LI.PhysReg);
-  for (const llvm::MachineInstr &MI : EntryBlock) {
-    llvm::MCRegister PhysReg;
-    if (isEntryCopyFromPhysReg(MI, PhysReg))
-      Out.Reads.insert(PhysReg);
-  }
-
-  // Writes: phys-regs defined by COPYs in return blocks whose source
-  // value chain does *not* root in the matching entry-block
-  // COPY-from-physreg. Anything that does root there is a pure preserve
-  // and stays out of Writes.
-  for (const llvm::MachineBasicBlock &MBB : MF) {
-    if (!MBB.isReturnBlock())
-      continue;
-    for (const llvm::MachineInstr &MI : MBB) {
-      llvm::MCRegister PhysReg;
-      llvm::Register SrcVReg;
-      if (!isReturnRestoreCopyToPhysReg(MI, PhysReg, SrcVReg))
-        continue;
-      if (!valueChainRootsInEntryCopyOf(MRI, EntryBlock, SrcVReg, PhysReg))
-        Out.Writes.insert(PhysReg);
-    }
-  }
+  return Out;
 }
 
 } // namespace
 
-bool InjectedPayloadAccessedRegsAnalysis::runOnModule(llvm::Module &IModule) {
-  AccessedRegsByPayload.clear();
+InjectedPayloadAccessedRegsAnalysis::Result
+InjectedPayloadAccessedRegsAnalysis::run(llvm::Function &F,
+                                         llvm::FunctionAnalysisManager &FAM) {
+  Result Out;
+  if (!F.hasFnAttribute(InjectedPayloadAttribute))
+    return Out;
 
-  llvm::MachineModuleInfo &MMI =
-      getAnalysis<llvm::MachineModuleInfoWrapperPass>().getMMI();
+  llvm::Module &IModule = *F.getParent();
+  llvm::LLVMContext &Ctx = F.getContext();
 
-  for (llvm::Function &F : IModule) {
-    if (!F.hasFnAttribute(InjectedPayloadAttribute))
-      continue;
-    llvm::MachineFunction *MF = MMI.getMachineFunction(F);
-    if (!MF)
-      continue;
-    InjectedPayloadAccessedRegs &Entry = AccessedRegsByPayload[&F];
-    analyzePayload(*MF, Entry);
-  }
+  auto &MAMProxy = FAM.getResult<llvm::ModuleAnalysisManagerFunctionProxy>(F);
 
-  return false;
-}
+  // Post-lowering path is driven by module-level metadata; populated lazily
+  // and left empty when the named MD is absent (pre-lowering).
+  PlaceholderEffectsMap Placeholders = buildPlaceholderEffectsMap(IModule);
 
-void InjectedPayloadAccessedRegsAnalysis::getAnalysisUsage(
-    llvm::AnalysisUsage &AU) const {
-  AU.addRequired<llvm::MachineModuleInfoWrapperPass>();
-  AU.setPreservesAll();
-  ModulePass::getAnalysisUsage(AU);
-}
+  // TM and the intrinsic-processor registry are only required for the
+  // pre-lowering path — resolve on first use so purely post-lowering runs
+  // don't fail if either happens to be uncached.
+  const llvm::GCNTargetMachine *TM = nullptr;
+  const IntrinsicsProcessorsAnalysis::Result *Processors = nullptr;
+  bool ProcessorsLookupFailed = false;
+  bool TMLookupFailed = false;
 
-char InjectedPayloadAccessedRegsPrinterPass::ID = 0;
-
-LUTHIER_INITIALIZE_LEGACY_PASS_BODY(InjectedPayloadAccessedRegsPrinterPass,
-                                    "injected-payload-accessed-regs-print",
-                                    "Injected Payload Accessed Regs Printer",
-                                    true /* Only looks at CFG */,
-                                    false /* Analysis Pass */)
-
-bool InjectedPayloadAccessedRegsPrinterPass::runOnModule(llvm::Module &IModule) {
-  const auto &Analysis =
-      getAnalysis<InjectedPayloadAccessedRegsAnalysis>();
-  llvm::MachineModuleInfo &MMI =
-      getAnalysis<llvm::MachineModuleInfoWrapperPass>().getMMI();
-
-  // Pick any payload's MF to find a TRI for pretty-printing. Falls back to
-  // raw register numbers if no MF exists yet.
-  const llvm::TargetRegisterInfo *TRI = nullptr;
-  for (const auto &[F, _] : Analysis.getMap()) {
-    if (auto *MF = MMI.getMachineFunction(*F)) {
-      TRI = MF->getSubtarget().getRegisterInfo();
-      break;
+  auto getProcessors = [&]() -> const IntrinsicsProcessorsAnalysis::Result * {
+    if (Processors || ProcessorsLookupFailed)
+      return Processors;
+    Processors =
+        MAMProxy.getCachedResult<IntrinsicsProcessorsAnalysis>(IModule);
+    if (!Processors) {
+      Ctx.emitError("InjectedPayloadAccessedRegsAnalysis: "
+                    "IntrinsicsProcessorsAnalysis was not cached in the "
+                    "module analysis manager.");
+      ProcessorsLookupFailed = true;
     }
-  }
-
-  // Sort entries by function name for stable output.
-  llvm::SmallVector<const llvm::Function *, 4> Funcs;
-  for (const auto &[F, _] : Analysis.getMap())
-    Funcs.push_back(F);
-  llvm::sort(Funcs, [](const llvm::Function *A, const llvm::Function *B) {
-    return A->getName() < B->getName();
-  });
-
-  auto printRegs = [&](const char *Label,
-                       const llvm::DenseSet<llvm::MCRegister> &Regs) {
-    llvm::SmallVector<llvm::MCRegister> Sorted(Regs.begin(), Regs.end());
-    llvm::sort(Sorted, [](llvm::MCRegister A, llvm::MCRegister B) {
-      return A.id() < B.id();
-    });
-    llvm::outs() << "    " << Label << ":";
-    for (llvm::MCRegister R : Sorted) {
-      llvm::outs() << " ";
-      if (TRI)
-        llvm::outs() << TRI->getName(R);
-      else
-        llvm::outs() << R.id();
-    }
-    llvm::outs() << "\n";
+    return Processors;
   };
 
-  for (const llvm::Function *F : Funcs) {
-    const auto *Entry = Analysis.lookup(*F);
-    if (!Entry)
+  auto getTM = [&]() -> const llvm::GCNTargetMachine * {
+    if (TM || TMLookupFailed)
+      return TM;
+    auto *MMA = MAMProxy.getCachedResult<llvm::MachineModuleAnalysis>(IModule);
+    if (!MMA) {
+      Ctx.emitError(
+          "InjectedPayloadAccessedRegsAnalysis: "
+          "MachineModuleAnalysis is required but not cached in the module "
+          "analysis manager.");
+      TMLookupFailed = true;
+      return nullptr;
+    }
+    TM =
+        &static_cast<const llvm::GCNTargetMachine &>(MMA->getMMI().getTarget());
+    return TM;
+  };
+
+  auto unionEffects = [&](const IntrinsicISAStateEffects &Eff) {
+    for (llvm::MCRegister R : Eff.ReadPhysRegs)
+      Out.Reads.insert(R);
+    for (llvm::MCRegister R : Eff.WrittenPhysRegs)
+      Out.Writes.insert(R);
+  };
+
+  for (llvm::Instruction &I : llvm::instructions(F)) {
+    auto *CI = llvm::dyn_cast<llvm::CallInst>(&I);
+    if (!CI)
       continue;
-    llvm::outs() << "Payload " << F->getName() << ":\n";
-    printRegs("Reads", Entry->Reads);
-    printRegs("Writes", Entry->Writes);
+
+    // Post-lowering path: the call is a Luthier inline-asm placeholder;
+    // read effects out of the module's placeholder named-MD side channel.
+    if (llvm::StringRef Key = getPlaceholderKey(*CI); !Key.empty()) {
+      auto It = Placeholders.find(Key);
+      if (It != Placeholders.end())
+        unionEffects(It->second);
+      continue;
+    }
+
+    // Pre-lowering path: the call targets a Function decl attributed as a
+    // Luthier intrinsic; invoke the IR processor to obtain its effects.
+    llvm::Function *Callee = CI->getCalledFunction();
+    if (!Callee || !Callee->hasFnAttribute(IntrinsicAttribute))
+      continue;
+    llvm::StringRef IntrinsicName =
+        Callee->getFnAttribute(IntrinsicAttribute).getValueAsString();
+
+    const auto *P = getProcessors();
+    if (!P)
+      continue;
+    std::optional<IntrinsicProcessor> Processor =
+        P->getProcessorIfRegistered(IntrinsicName);
+    if (!Processor.has_value()) {
+      Ctx.emitError(
+          CI, llvm::formatv("Intrinsic {0} is not registered", IntrinsicName)
+                  .str());
+      continue;
+    }
+    const llvm::GCNTargetMachine *TargetM = getTM();
+    if (!TargetM)
+      continue;
+
+    llvm::Expected<IntrinsicIRLoweringInfo> InfoOrErr =
+        Processor->IRProcessor(*Callee, *CI, *TargetM);
+    if (auto Err = InfoOrErr.takeError()) {
+      Ctx.emitError(CI, llvm::toString(std::move(Err)));
+      continue;
+    }
+    unionEffects(InfoOrErr->getEffects());
   }
-  return false;
+
+  return Out;
 }
 
-void InjectedPayloadAccessedRegsPrinterPass::getAnalysisUsage(
-    llvm::AnalysisUsage &AU) const {
-  AU.addRequired<InjectedPayloadAccessedRegsAnalysis>();
-  AU.addRequired<llvm::MachineModuleInfoWrapperPass>();
-  AU.setPreservesAll();
-  ModulePass::getAnalysisUsage(AU);
+llvm::PreservedAnalyses InjectedPayloadAccessedRegsPrinterPass::run(
+    llvm::Function &F, llvm::FunctionAnalysisManager &FAM) {
+  const auto &Result = FAM.getResult<InjectedPayloadAccessedRegsAnalysis>(F);
+  if (Result.reads_empty() && Result.writes_empty())
+    return llvm::PreservedAnalyses::all();
+
+  const llvm::TargetRegisterInfo *TRI = nullptr;
+  if (auto *MMA =
+          FAM.getResult<llvm::ModuleAnalysisManagerFunctionProxy>(F)
+              .getCachedResult<llvm::MachineModuleAnalysis>(*F.getParent())) {
+    TRI = static_cast<const llvm::GCNTargetMachine &>(MMA->getMMI().getTarget())
+              .getSubtargetImpl(F)
+              ->getRegisterInfo();
+  }
+
+  auto printRegs =
+      [&](const char *Label,
+          llvm::iterator_range<InjectedPayloadAccessedRegs::iterator> Regs) {
+        llvm::SmallVector<llvm::MCRegister> Sorted(Regs.begin(), Regs.end());
+        llvm::sort(Sorted, [](llvm::MCRegister A, llvm::MCRegister B) {
+          return A.id() < B.id();
+        });
+        OS << "    " << Label << ":";
+        for (llvm::MCRegister R : Sorted) {
+          OS << " ";
+          if (TRI)
+            OS << TRI->getName(R);
+          else
+            OS << R.id();
+        }
+        OS << "\n";
+      };
+
+  OS << "Payload " << F.getName() << ":\n";
+  printRegs("Reads", Result.reads());
+  printRegs("Writes", Result.writes());
+  return llvm::PreservedAnalyses::all();
 }
 
 } // namespace luthier

@@ -245,8 +245,6 @@ InstrumentationPMDriver::InstrumentationPMDriver(
       llvm::PassRegistry::getPassRegistry();
   initializeIModuleMAMWrapperPass(*LegacyPassRegistry);
   initializeIntrinsicMIRLoweringPass(*LegacyPassRegistry);
-  initializeInjectedPayloadAccessedRegsAnalysis(*LegacyPassRegistry);
-  initializeInjectedPayloadAccessedRegsPrinterPass(*LegacyPassRegistry);
   initializeIModuleIPPredicatedLivenessAnalysis(*LegacyPassRegistry);
   initializeInjectedPayloadPreserveLiveRegsPass(*LegacyPassRegistry);
   initializeLRStateValueStorageAndLoadLocationsAnalysis(*LegacyPassRegistry);
@@ -349,6 +347,13 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
     }
   }
 
+  /// The instrumentation-module MMI is created here (rather than at the MIR
+  /// stage) so the IR-stage new-PM pipeline can register
+  /// \c MachineModuleAnalysis against it. Ownership is later transferred to
+  /// the legacy MIR PM.
+  auto MMIWP = std::make_unique<llvm::MachineModuleInfoWrapperPass>(ITM.get());
+  llvm::MachineModuleInfo &MMI = MMIWP->getMMI();
+
   /// Analysis-manager and PassBuilder setup for the IR pipeline
   llvm::ModulePassManager IMPM;
   llvm::LoopAnalysisManager ILAM;
@@ -391,9 +396,13 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
   // TODO: re-enable when production-pipeline deps are compiled in:
   IMAM.registerPass([&]() { return InjectedPayloadAndInstPointAnalysis(); });
   IMAM.registerPass([&]() { return IntrinsicsProcessorsAnalysis(Registry); });
+  IMAM.registerPass([&]() { return llvm::MachineModuleAnalysis(MMI); });
 
   IMAM.registerPass(
       [&]() { return TargetAppModuleAndMAMAnalysis(TargetMAM, TargetAppM); });
+
+  IFAM.registerPass(
+      [] { return InjectedPayloadAccessedRegsAnalysis(); });
 
   PB.registerModuleAnalyses(IMAM);
   PB.registerCGSCCAnalyses(ICGAM);
@@ -427,6 +436,12 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
       PreIRIntrinsicLoweringCallback(IMPM);
       for (const auto &Plugin : PassPlugins)
         Plugin.invokePreLuthierIRIntrinsicLoweringPassesCallback(IMPM);
+      // Warm the cache for InjectedPayloadAccessedRegsAnalysis before
+      // ProcessIntrinsicsAtIRLevelPass erases the intrinsic-attributed
+      // declarations and rewrites each call to an inline-asm placeholder.
+      IMPM.addPass(llvm::createModuleToFunctionPassAdaptor(
+          llvm::RequireAnalysisPass<InjectedPayloadAccessedRegsAnalysis,
+                                    llvm::Function>()));
       IMPM.addPass(ProcessIntrinsicsAtIRLevelPass(*ITM));
       PostIRIntrinsicLoweringCallback(IMPM);
       for (const auto &Plugin : PassPlugins)
@@ -449,8 +464,6 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
   /// MIR / codegen pipeline
   bool MIRModified = false;
   auto MIRLegacyPM = std::make_unique<llvm::legacy::PassManager>();
-  auto *MMIWP = new llvm::MachineModuleInfoWrapperPass(ITM.get());
-  llvm::MachineModuleInfo &MMI = MMIWP->getMMI();
 
   /// Parse the MIR file in case it was specified in the opts
   if (IModuleMIRParser &&
@@ -469,7 +482,7 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
     auto *TPC = ITM->createPassConfig(*MIRLegacyPM);
     TPC->setDisableVerify(true);
     MIRLegacyPM->add(TPC);
-    MIRLegacyPM->add(MMIWP);
+    MIRLegacyPM->add(MMIWP.release());
     MIRLegacyPM->add(new IModuleMAMWrapperPass(&IMAM));
 
     bool MIRPassPipelineNotSpecified =
@@ -540,8 +553,6 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
 
       AddModulePass(new IntrinsicMIRLoweringPass(),
                     "Luthier IntrinsicMIRLowering");
-      AddModulePass(new InjectedPayloadAccessedRegsAnalysis(),
-                    "Luthier InjectedPayloadAccessedRegs");
       AddModulePass(new IModuleIPPredicatedLivenessAnalysis(),
                     "Luthier IPPredLiveness");
       AddModulePass(new InjectedPayloadPreserveLiveRegsPass(),
