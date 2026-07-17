@@ -24,13 +24,13 @@
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
+#include "luthier/ToolCodeGen/InstrumentPrototype.h"
 #include "luthier/ToolCodeGen/LuthierBranchRelaxation.h"
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/ToolCodeGen/SVAFrameLanes.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
-#include "luthier/ToolCodeGen/WrapperAnalysisPasses.h"
 #include <AMDGPU.h>
 #include <AMDGPUTargetMachine.h>
 #include <GCNSubtarget.h>
@@ -52,6 +52,7 @@
 #include <llvm/IR/GlobalIFunc.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Linker/Linker.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/FormatVariadic.h>
@@ -62,22 +63,6 @@
 #define DEBUG_TYPE "luthier-target-module-patcher"
 
 namespace luthier {
-
-char TargetModulePatcherPass::ID = 0;
-
-LUTHIER_INITIALIZE_LEGACY_PASS_BODY(TargetModulePatcherPass,
-                                    "target-module-patcher",
-                                    "Luthier Target Module Patcher Pass",
-                                    /*CFGOnly=*/false,
-                                    /*IsAnalysis=*/false)
-
-void TargetModulePatcherPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
-  AU.addRequired<IModuleMAMWrapperPass>();
-  AU.addRequired<LRStateValueStorageAndLoadLocationsAnalysis>();
-  AU.addRequired<IModuleIPPredicatedLivenessAnalysis>();
-  AU.addRequired<llvm::MachineModuleInfoWrapperPass>();
-  llvm::ModulePass::getAnalysisUsage(AU);
-}
 
 namespace {
 
@@ -1101,46 +1086,47 @@ detectOutOfRangeBranches(const llvm::MachineFunction &MF,
 // Skip patching when either attribute is absent (means the subtarget didn't
 // support kernarg-preload at lift time and re-emission won't touch the slot).
 
-bool TargetModulePatcherPass::runOnModule(llvm::Module &IModule) {
-  LLVM_DEBUG(luthier::dbgs() << "=== " << getPassName() << " ===\n");
+llvm::PreservedAnalyses
+TargetModulePatcherPass::run(InstrumentPrototype &IP,
+                             InstrumentPrototypeAnalysisManager &IPAM) {
+  LLVM_DEBUG(luthier::dbgs()
+             << "=== Luthier Target Module Patcher Pass ===\n");
+
+  llvm::Module &IModule = IP.getInstrumentationModule();
+  llvm::Module &TargetModule = IP.getTargetModule();
   LLVM_DEBUG(luthier::dbgs()
              << "[TargetModulePatcherPass] IModule='" << IModule.getName()
              << "' (" << IModule.size() << " function(s))\n");
-
-  llvm::LLVMContext &Ctx = IModule.getContext();
-  llvm::ModuleAnalysisManager &IMAM =
-      getAnalysis<IModuleMAMWrapperPass>().getMAM();
-  // The legacy MMI we get from MIRLegacyPM holds *IModule* MFs (payloads,
-  // hooks, helpers) — NOT target kernels. Target kernels live in the
-  // new-PM target FAM cache (populated by CodeDiscoveryPass via
-  // MachineFunctionAnalysis). The two MMI universes are completely
-  // disjoint, so we must source target MFs via the FAM and IModule MFs
-  // via this MMI.
-  llvm::MachineModuleInfo &IMMI =
-      getAnalysis<llvm::MachineModuleInfoWrapperPass>().getMMI();
-
-  auto &TargetModAndMAM =
-      IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule);
-  llvm::Module &TargetModule = TargetModAndMAM.getTargetAppModule();
-  llvm::ModuleAnalysisManager &TargetMAM = TargetModAndMAM.getTargetAppMAM();
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] TargetModule='"
                              << TargetModule.getName() << "' ("
                              << TargetModule.size() << " function(s))\n");
 
-  // Target-side MF access goes through the new-PM FAM. Each call to
-  // FAM.getResult<MachineFunctionAnalysis>(F) returns the MF
-  // CodeDiscoveryPass lifted (or constructs an empty one if missing,
-  // which only happens for Functions we created post-CodeDiscovery).
+  llvm::LLVMContext &Ctx = IModule.getContext();
+
+  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
+  // MAM caches results for both the instrumentation and target modules,
+  // keyed by module reference.
+  llvm::ModuleAnalysisManager &MAM =
+      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+          .getManager();
+
+  // The IModule's MMI holds payloads / hooks / helper MFs. Target kernels
+  // live in the target module's FAM cache (populated by CodeDiscoveryPass
+  // via MachineFunctionAnalysis). The two MMI universes are completely
+  // disjoint, so we must source target MFs via the FAM and IModule MFs
+  // via this MMI.
+  llvm::MachineModuleInfo &IMMI =
+      MAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI();
+
   llvm::FunctionAnalysisManager &TargetFAM =
-      TargetMAM
-          .getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
+      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
           .getManager();
   auto getTargetMF = [&](llvm::Function &F) -> llvm::MachineFunction & {
     return TargetFAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
   };
 
   const SVStorageAndLoadLocations &SVLocations =
-      getAnalysis<LRStateValueStorageAndLoadLocationsAnalysis>().getResult();
+      IPAM.getResult<SVStorageAndLoadLocationsAnalysis>(IP);
 
   const llvm::TargetMachine &TM = IMMI.getTarget();
   std::unique_ptr<StateValueArraySpecs> SVASpecs =
@@ -1150,18 +1136,17 @@ bool TargetModulePatcherPass::runOnModule(llvm::Module &IModule) {
         "TargetModulePatcherPass: StateValueArraySpecs::getSVASpecs "
         "returned null; expected the IModule to carry SVA-spec "
         "metadata by this stage")));
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
   LLVM_DEBUG(luthier::dbgs()
              << "[TargetModulePatcherPass] SVASpecs resolved\n");
 
   const FunctionPreambleDescriptor &FPD =
-      TargetMAM.getResult<FunctionPreambleDescriptorAnalysis>(TargetModule);
+      IPAM.getResult<FunctionPreambleDescriptorAnalysis>(IP);
 
   llvm::MachineFunctionAnalysisManager &TargetMFAM =
-      TargetMAM
-          .getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(
-              TargetModule)
+      MAM.getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(
+             TargetModule)
           .getManager();
 
   // ============= Phase A: SVA Setup & Storage Code Emission ===============
@@ -1175,14 +1160,12 @@ bool TargetModulePatcherPass::runOnModule(llvm::Module &IModule) {
   // the cross-MBB storage relocation logic.
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] === Phase A.1: "
                                 "emitSVSSwitchesForMF ===\n");
-  bool Changed = false;
   for (llvm::Function &F : TargetModule) {
     if (F.isDeclaration())
       continue;
     llvm::MachineFunction &MF = getTargetMF(F);
     emitSVSSwitchesForMF(MF, SVLocations,
                          TargetMFAM.getResult<llvm::SlotIndexesAnalysis>(MF));
-    Changed = true;
   }
 
   // Phase A.2: initial-entry-kernel SVA preload setup (scratch + kernarg
@@ -1197,7 +1180,7 @@ bool TargetModulePatcherPass::runOnModule(llvm::Module &IModule) {
   if (auto Err = emitInitialEntryKernelSetup(IMMI, TargetModule, FPD,
                                              SVLocations, *SVASpecs)) {
     Ctx.emitError(llvm::toString(std::move(Err)));
-    return Changed;
+    return llvm::PreservedAnalyses::none();
   }
 
   // ============= Phase B: Target Patching ===============================
@@ -1214,7 +1197,7 @@ bool TargetModulePatcherPass::runOnModule(llvm::Module &IModule) {
   if (auto Err = cloneIModuleIntoTarget(IModule, TargetModule, IMMI, TargetFAM,
                                         VMap)) {
     Ctx.emitError(llvm::toString(std::move(Err)));
-    return Changed;
+    return llvm::PreservedAnalyses::none();
   }
 
   // Step 2: Strip stale num-{vgpr,sgpr} attrs — CodeDiscoveryPass set
@@ -1234,7 +1217,7 @@ bool TargetModulePatcherPass::runOnModule(llvm::Module &IModule) {
              << "[TargetModulePatcherPass] === Phase B.3: inline "
                 "injected payloads ===\n");
   const InjectedPayloadAndInstPoint &IPIP =
-      IMAM.getResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+      MAM.getResult<InjectedPayloadAndInstPointAnalysis>(IModule);
 
   // `MachineBasicBlock::splitAt` (called by `inlineInjectedPayload` when
   // the payload entry isn't the first MI of its MBB) needs `TracksLiveness`
@@ -1270,7 +1253,7 @@ bool TargetModulePatcherPass::runOnModule(llvm::Module &IModule) {
           "TargetModulePatcherPass: payload function '{0}' has no "
           "MachineFunction in the IModule MMI",
           InjectedPayloadFunc->getName()))));
-      return Changed;
+      return llvm::PreservedAnalyses::none();
     }
     patchFrameInfo(*InjectedPayloadMF,
                    *InsertionPointMI->getParent()->getParent());
@@ -1553,12 +1536,20 @@ bool TargetModulePatcherPass::runOnModule(llvm::Module &IModule) {
       OS << " → " << R.Target->getName() << " (delta " << R.Delta << " bytes)";
     }
     Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(Detail)));
-    return Changed;
+    return llvm::PreservedAnalyses::none();
   }
   LLVM_DEBUG(luthier::dbgs()
-             << "[TargetModulePatcherPass] runOnModule complete; "
+             << "[TargetModulePatcherPass] run complete; "
                 "target module is patched and verified\n");
-  return true;
+
+  // Preserve the outer MAM proxy so the InstrumentPrototype adaptor doesn't
+  // wipe every cached module-level analysis for both modules on the way out
+  // — downstream consumers (notably the AsmPrinter driver) still need the
+  // cached MachineFunctionAnalysis results for the target module we just
+  // mutated.
+  llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
+  PA.preserve<ModuleAnalysisManagerInstrumentPrototypeProxy>();
+  return PA;
 }
 
 } // namespace luthier

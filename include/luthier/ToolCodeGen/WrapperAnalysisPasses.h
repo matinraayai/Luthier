@@ -74,26 +74,6 @@ public:
   }
 };
 
-class IModuleMAMWrapperPass;
-
-LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(IModuleMAMWrapperPass);
-
-/// \brief Provides the instrumentation module's \c llvm::ModuleAnalysisManager
-/// from the instrumentation's IR optimization pipeline to the legacy CodeGen
-/// instrumentation pipeline
-class IModuleMAMWrapperPass : public llvm::ImmutablePass {
-private:
-  llvm::ModuleAnalysisManager &IMAM;
-
-public:
-  static char ID;
-
-  explicit IModuleMAMWrapperPass(llvm::ModuleAnalysisManager *IMAM = nullptr)
-      : llvm::ImmutablePass(ID), IMAM(*IMAM) {}
-
-  [[nodiscard]] llvm::ModuleAnalysisManager &getMAM() const { return IMAM; }
-};
-
 } // namespace luthier
 
 #endif
