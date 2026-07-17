@@ -20,14 +20,13 @@
 #ifndef LUTHIER_TOOL_CODE_GEN_INTRINSIC_MIR_LOWERING_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_INTRINSIC_MIR_LOWERING_PASS_H
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/ToolCodeGen/InstrumentPrototype.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
-#include "luthier/ToolCodeGen/LegacyPassSupport.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/CodeGen/Register.h>
 #include <llvm/IR/Module.h>
-#include <llvm/Pass.h>
-#include <llvm/PassRegistry.h>
+#include <llvm/IR/PassManager.h>
 
 namespace llvm {
 class MachineFunction;
@@ -35,13 +34,10 @@ class MachineFunction;
 
 namespace luthier {
 
-class IntrinsicMIRLoweringPass;
-
 class StateValueArraySpecs;
 
-LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(IntrinsicMIRLoweringPass);
-
-class IntrinsicMIRLoweringPass : public llvm::ModulePass {
+class IntrinsicMIRLoweringPass
+    : public llvm::PassInfoMixin<IntrinsicMIRLoweringPass> {
 public:
   /// Describes one pending V_READLANE_B32 to be emitted in phase 2, replacing
   /// an IMPLICIT_DEF SGPR_32 placeholder created during intrinsic lowering.
@@ -55,7 +51,7 @@ public:
   };
 
   /// SVA placeholder state collected per MachineFunction during
-  /// \c lowerIntrinsics, consumed by phase 2 in \c runOnModule.
+  /// \c lowerIntrinsics, consumed by phase 2 in \c run.
   struct PerFunctionSVAInfo {
     /// IMPLICIT_DEF VGPR_32 marked with pcsections !"luthier.sva_vgpr_placeholder";
     /// a later pass resolves this to the actual SVA VGPR.
@@ -80,23 +76,17 @@ private:
       const StateValueArraySpecs &SVASpecs, bool &Changed);
 
   bool
-  lowerIntrinsics(llvm::Module &IModule,
+  lowerIntrinsics(InstrumentPrototype &IP,
+                  InstrumentPrototypeAnalysisManager &IPAM,
                   llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo>
                       &SVAInfoByMF,
                   std::unique_ptr<StateValueArraySpecs> &SVASpecs);
 
 public:
-  static char ID;
+  IntrinsicMIRLoweringPass() = default;
 
-  IntrinsicMIRLoweringPass() : llvm::ModulePass(ID) {};
-
-  [[nodiscard]] llvm::StringRef getPassName() const override {
-    return "Luthier Intrinsic MIR Lowering";
-  }
-
-  bool runOnModule(llvm::Module &IModule) override;
-
-  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
+  llvm::PreservedAnalyses run(InstrumentPrototype &IP,
+                              InstrumentPrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

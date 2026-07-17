@@ -27,7 +27,6 @@
 #include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/ProcessIntrinsicsAtIRLevelPass.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
-#include "luthier/ToolCodeGen/WrapperAnalysisPasses.h"
 #include <AMDGPU.h>
 #include <SIInstrInfo.h>
 #include <SIMachineFunctionInfo.h>
@@ -43,13 +42,6 @@
 #include <llvm/Support/FormatVariadic.h>
 
 namespace luthier {
-
-char IntrinsicMIRLoweringPass::ID = 0;
-
-LUTHIER_INITIALIZE_LEGACY_PASS_BODY(IntrinsicMIRLoweringPass, "mir-lowering",
-                                    "Intrinsic MIR lowering pass",
-                                    true /* Only looks at CFG */,
-                                    false /* Analysis Pass */)
 
 namespace {
 
@@ -627,26 +619,28 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
 }
 
 bool IntrinsicMIRLoweringPass::lowerIntrinsics(
-    llvm::Module &IModule,
+    InstrumentPrototype &IP, InstrumentPrototypeAnalysisManager &IPAM,
     llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> &SVAInfoByMF,
     std::unique_ptr<StateValueArraySpecs> &SVASpecs) {
   bool Changed = false;
 
-  llvm::MachineModuleInfo &MMI =
-      getAnalysis<llvm::MachineModuleInfoWrapperPass>().getMMI();
+  llvm::Module &IModule = IP.getInstrumentationModule();
+  llvm::Module &TargetModule = IP.getTargetModule();
 
-  llvm::ModuleAnalysisManager &IMAM =
-      getAnalysis<IModuleMAMWrapperPass>().getMAM();
+  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
+  // MAM caches results for both modules, keyed by the module reference.
+  llvm::ModuleAnalysisManager &MAM =
+      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+          .getManager();
+
+  llvm::MachineModuleInfo &MMI =
+      MAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI();
 
   const auto &IntrinsicsProcessors =
-      IMAM.getResult<IntrinsicsProcessorsAnalysis>(IModule);
+      MAM.getResult<IntrinsicsProcessorsAnalysis>(IModule);
 
-  auto &TargetModuleAndMAM =
-      IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule);
-  llvm::Module &TargetModule = TargetModuleAndMAM.getTargetAppModule();
-  llvm::ModuleAnalysisManager &TargetMAM = TargetModuleAndMAM.getTargetAppMAM();
   bool IsInitialEntryPointKernel =
-      TargetMAM.getResult<InitialEntryPointAnalysis>(TargetModule)
+      MAM.getResult<InitialEntryPointAnalysis>(TargetModule)
           .getInitialEntryPoint()
           .isKernel();
 
@@ -819,22 +813,27 @@ void IntrinsicMIRLoweringPass::materializeReadlanes(
   }
 }
 
-bool IntrinsicMIRLoweringPass::runOnModule(llvm::Module &IModule) {
+llvm::PreservedAnalyses
+IntrinsicMIRLoweringPass::run(InstrumentPrototype &IP,
+                              InstrumentPrototypeAnalysisManager &IPAM) {
   llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> SVAInfoByMF;
   std::unique_ptr<StateValueArraySpecs> SVASpecs{nullptr};
 
-  bool Changed = lowerIntrinsics(IModule, SVAInfoByMF, SVASpecs);
+  bool Changed = lowerIntrinsics(IP, IPAM, SVAInfoByMF, SVASpecs);
 
   if (SVASpecs)
     materializeReadlanes(SVAInfoByMF, *SVASpecs, Changed);
 
-  return Changed;
-}
+  if (!Changed)
+    return llvm::PreservedAnalyses::all();
 
-void IntrinsicMIRLoweringPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
-  AU.addRequired<IModuleMAMWrapperPass>();
-  AU.addRequired<llvm::MachineModuleInfoWrapperPass>();
-  ModulePass::getAnalysisUsage(AU);
-};
+  // Preserve the outer MAM proxy so the InstrumentPrototype adaptor doesn't
+  // wipe every cached module-level analysis for both modules on the way out —
+  // downstream passes still need the cached MachineFunctionAnalysis results
+  // for the instrumentation module we just mutated.
+  llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
+  PA.preserve<ModuleAnalysisManagerInstrumentPrototypeProxy>();
+  return PA;
+}
 
 } // namespace luthier
