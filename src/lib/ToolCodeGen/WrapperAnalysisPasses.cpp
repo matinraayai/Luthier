@@ -23,10 +23,4 @@ namespace luthier {
 
 llvm::AnalysisKey TargetAppModuleAndMAMAnalysis::Key;
 
-LUTHIER_INITIALIZE_LEGACY_PASS_BODY(IModuleMAMWrapperPass,
-                                    "Instrumentation Module MAM Wrapper Pass",
-                                    "imam-wrapper-pass", false, true);
-
-char IModuleMAMWrapperPass::ID;
-
 } // namespace luthier
