@@ -13,26 +13,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file InjectedPayloadCreationPass.h
-/// Defines the \c InjectedPayloadCreationPass CRTP base class that combines
-/// \c InstrumentationPass dispatch with helpers for constructing injected
-/// payload functions.
+/// \file
+/// Defines the \c InjectedPayloadCreationPass CRTP base class, which prvoides
+/// its derived convenience helpers for constructing injected payload functions
+/// in the prototype's instrumentation module.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_CREATION_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_CREATION_PASS_H
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Intrinsic/IntrinsicCalls.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
-#include "luthier/ToolCodeGen/InstrumentationPass.h"
+#include "luthier/ToolCodeGen/InstrumentPrototype.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
 #include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/ADT/Twine.h>
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFunction.h>
+#include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/MC/MCRegister.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Transforms/Utils/ModuleUtils.h>
@@ -40,14 +42,10 @@
 
 namespace luthier {
 
-/// \brief CRTP base class for Luthier instrumentation passes that want
-/// to construct inject payloads before target <tt>llvm::MachineInstr</tt>s.
-/// This is usually the first pass run by tools in the instrumentation process
-/// The default granularity of walking the target module is
-/// <tt>MachineFunction</tt>
-template <typename Derived, typename TargetUnitT = llvm::MachineFunction>
-class InjectedPayloadCreationPass
-    : public InstrumentationPass<Derived, llvm::Module, TargetUnitT> {
+/// \brief CRTP base for Luthier passes that construct injected payload
+/// functions before target <tt>llvm::MachineInstr</tt>s.
+template <typename Derived>
+class InjectedPayloadCreationPass : public llvm::PassInfoMixin<Derived> {
 public:
   /// Describes a register argument passed to a hook: the register to read
   /// and the LLVM type to interpret it as.
