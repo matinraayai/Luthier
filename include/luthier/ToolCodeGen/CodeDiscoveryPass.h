@@ -18,6 +18,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_CODE_DISCOVERY_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_CODE_DISCOVERY_PASS_H
+#include "luthier/ToolCodeGen/InstrumentPrototype.h"
 #include <llvm/IR/PassManager.h>
 #include <llvm/Support/CommandLine.h>
 
@@ -33,14 +34,18 @@ struct CodeDiscoveryPassOptions {
       llvm::cl::init(true)};
 };
 
-/// \brief Target module pass in charge of:
-/// - Discovering all statically reachable code and entry points from an
-/// initial entry point. The entry point can be any function
-/// (entry or non-entry)
+/// \brief InstrumentPrototype pass in charge of:
+/// - Discovering all statically reachable code and entry points in the
+///   \e target module from an initial entry point. The entry point can be
+///   any function (entry or non-entry).
 /// - Disassembling and creating equivalent machine functions for each entry
-/// point
+///   point.
 /// - Translating each recovered machine function to equivalent LLVM IR for
-/// further semantics analysis
+///   further semantics analysis.
+///
+/// The pass is expressed at the \c InstrumentPrototype level so it can drive
+/// \c TraceCallGraphAnalysis (which needs access to both modules) between
+/// lift iterations to discover further entry points.
 class CodeDiscoveryPass : public llvm::PassInfoMixin<CodeDiscoveryPass> {
   const CodeDiscoveryPassOptions &Opts;
 
@@ -48,8 +53,8 @@ public:
   explicit CodeDiscoveryPass(const CodeDiscoveryPassOptions &Opts)
       : Opts(Opts) {}
 
-  llvm::PreservedAnalyses run(llvm::Module &TargetModule,
-                              llvm::ModuleAnalysisManager &TargetMAM);
+  llvm::PreservedAnalyses run(InstrumentPrototype &IP,
+                              InstrumentPrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

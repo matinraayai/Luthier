@@ -57,10 +57,18 @@ IPPredicatedCFG::getPredMBB(const llvm::MachineInstr &MI) {
 }
 
 llvm::Expected<std::unique_ptr<IPPredicatedCFG>>
-IPPredicatedCFG::getIPPredCFG(llvm::Module &M,
-                              llvm::ModuleAnalysisManager &MAM) {
+IPPredicatedCFG::getIPPredCFG(InstrumentPrototype &IP,
+                              InstrumentPrototypeAnalysisManager &IPAM) {
+  llvm::Module &TargetModule = IP.getTargetModule();
+
+  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
+  // MAM caches results for both modules, keyed by the module reference.
+  llvm::ModuleAnalysisManager &MAM =
+      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+          .getManager();
   llvm::FunctionAnalysisManager &FAM =
-      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(M).getManager();
+      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
+          .getManager();
 
   auto Out = std::unique_ptr<IPPredicatedCFG>(new IPPredicatedCFG());
 
@@ -71,7 +79,7 @@ IPPredicatedCFG::getIPPredCFG(llvm::Module &M,
   llvm::Function *EntryFunc = nullptr;
 
   // ── Phase 1: create one PredMBBBuilder per MBB ──────────────────────────
-  for (llvm::Function &F : M) {
+  for (llvm::Function &F : TargetModule) {
     llvm::MachineFunction &MF =
         FAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
 
@@ -118,7 +126,7 @@ IPPredicatedCFG::getIPPredCFG(llvm::Module &M,
   }
 
   // ── Phase 3: inter-procedural edges from TraceCallGraph ─────────────────
-  auto &CG = MAM.getResult<TraceCallGraphAnalysis>(M);
+  auto &CG = IPAM.getResult<TraceCallGraphAnalysis>(IP);
 
   for (auto &[CI, Targets] : CG.call_targets()) {
     auto *SrcMBB = IRBBToMBB.lookup(CI->getParent());
@@ -155,20 +163,19 @@ IPPredicatedCFG::getIPPredCFG(llvm::Module &M,
 llvm::AnalysisKey IPPredCFGAnalysis::Key;
 
 bool IPPredCFGAnalysis::Result::invalidate(
-    llvm::Module &M, const llvm::PreservedAnalyses &PA,
-    llvm::ModuleAnalysisManager::Invalidator &Inv) {
+    InstrumentPrototype &, const llvm::PreservedAnalyses &PA,
+    InstrumentPrototypeAnalysisManager::Invalidator &) {
   auto PAC = PA.getChecker<IPPredCFGAnalysis>();
   return !PAC.preserved() &&
-         !PAC.preservedSet<llvm::AllAnalysesOn<llvm::MachineFunction>>() &&
-         !PAC.preservedSet<llvm::CFGAnalyses>() &&
-         !PAC.preservedSet<llvm::AllAnalysesOn<llvm::Module>>();
+         !PAC.preservedSet<llvm::AllAnalysesOn<InstrumentPrototype>>();
 }
 
 IPPredCFGAnalysis::Result
-IPPredCFGAnalysis::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
-  llvm::LLVMContext &Ctx = M.getContext();
+IPPredCFGAnalysis::run(InstrumentPrototype &IP,
+                       InstrumentPrototypeAnalysisManager &IPAM) {
+  llvm::LLVMContext &Ctx = IP.getTargetModule().getContext();
   llvm::Expected<std::unique_ptr<IPPredicatedCFG>> ResOrErr =
-      IPPredicatedCFG::getIPPredCFG(M, MAM);
+      IPPredicatedCFG::getIPPredCFG(IP, IPAM);
   if (auto Err = ResOrErr.takeError()) {
     Ctx.emitError(llvm::toString(std::move(Err)));
     return Result{nullptr};
@@ -177,8 +184,9 @@ IPPredCFGAnalysis::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
 }
 
 llvm::PreservedAnalyses
-IPPredCFGPrinter::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
-  auto &IPVecCFG = MAM.getResult<IPPredCFGAnalysis>(M).getVecCFG();
+IPPredCFGPrinter::run(InstrumentPrototype &IP,
+                      InstrumentPrototypeAnalysisManager &IPAM) {
+  auto &IPVecCFG = IPAM.getResult<IPPredCFGAnalysis>(IP).getVecCFG();
   IPVecCFG.print(OS);
   return llvm::PreservedAnalyses::all();
 }

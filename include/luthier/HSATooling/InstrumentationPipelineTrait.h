@@ -48,6 +48,8 @@
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include "luthier/ToolCodeGen/InitialExecutionPointAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
+#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/InstrumentPrototypePassBuilder.h"
 #include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
 #include "luthier/ToolCodeGen/InstrumentationPass.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
@@ -137,10 +139,12 @@ public:
               D.getLoaderTableSnapshot().getTable()));
     });
     MAM.registerPass([&] { return luthier::MetadataParserAnalysis(MDParser); });
-    MAM.registerPass([] { return luthier::TraceCallGraphAnalysis(); });
+    // TraceCallGraphAnalysis and IPPredCFGAnalysis are InstrumentPrototype
+    // analyses now; they belong on the IPAM, not the outer MAM. Tools that
+    // drive the pipeline through an InstrumentPrototypePassManager should
+    // register them there.
     MAM.registerPass(
         [] { return luthier::FunctionPreambleDescriptorAnalysis(); });
-    MAM.registerPass([] { return luthier::IPPredCFGAnalysis(); });
 
     if constexpr (requires(Derived &Tool) {
                     Tool.registerInstrumentationAnalyses(MAM, MFAM);
@@ -170,9 +174,21 @@ public:
     LUTHIER_RETURN_ON_ERROR(D.buildTargetMachineForKD(&KD).moveInto(TM));
 
     llvm::LLVMContext Ctx;
-    auto M = std::make_unique<llvm::Module>("luthier.target", Ctx);
-    M->setTargetTriple(TM->getTargetTriple());
-    M->setDataLayout(TM->createDataLayout());
+    auto TargetM = std::make_unique<llvm::Module>("luthier.target", Ctx);
+    TargetM->setTargetTriple(TM->getTargetTriple());
+    TargetM->setDataLayout(TM->createDataLayout());
+
+    // CodeDiscoveryPass is an InstrumentPrototype pass, so it needs an
+    // InstrumentPrototype instance even though no injected payloads exist
+    // yet. Create a placeholder IModule up front; the real IModule that
+    // hosts the tool's payload/hook code is materialized later by
+    // InstrumentationPMDriver.
+    auto PlaceholderIM = std::make_unique<llvm::Module>(
+        "luthier.imodule.placeholder", Ctx);
+    PlaceholderIM->setTargetTriple(TM->getTargetTriple());
+    PlaceholderIM->setDataLayout(TM->createDataLayout());
+    luthier::InstrumentPrototype IP(std::move(TargetM),
+                                    std::move(PlaceholderIM));
 
     llvm::MachineModuleInfo MMI(TM.get());
 
@@ -185,6 +201,7 @@ public:
     llvm::CGSCCAnalysisManager CGAM;
     llvm::MachineFunctionAnalysisManager MFAM;
     llvm::ModuleAnalysisManager MAM;
+    luthier::InstrumentPrototypeAnalysisManager IPAM;
 
     // PIC + SI must outlive MPM.run(). StandardInstrumentations reads
     // --print-after-all / --print-before-all / --print-changed / -time-passes
@@ -200,11 +217,22 @@ public:
     PB.registerCGSCCAnalyses(CGAM);
     PB.registerMachineFunctionAnalyses(MFAM);
     PB.crossRegisterProxies(LAM, FAM, CGAM, MAM, &MFAM);
+
+    luthier::InstrumentPrototypePassBuilder IPPB(PB);
+    IPPB.crossRegisterProxies(MAM, FAM, MFAM, IPAM);
+
     SI.registerCallbacks(PIC, &MAM);
 
     luthier::amdgpu::hsamd::MetadataParser MetadataParserInstance;
     registerInstrumentationAnalyses(KD, *TM, MMI, MetadataParserInstance, MAM,
                                     MFAM);
+
+    // Register the IP-level analyses CodeDiscoveryPass and downstream passes
+    // consume. TraceCallGraphAnalysis builds its own AppMI → payloads map
+    // inline (see TraceCallGraph.cpp), so no InjectedPayloadAndInstPointAnalysis
+    // registration is required on the outer MAM.
+    IPAM.registerPass([] { return luthier::TraceCallGraphAnalysis(); });
+    IPAM.registerPass([] { return luthier::IPPredCFGAnalysis(); });
 
     llvm::SmallVector<char, 0> ObjBuf;
     llvm::raw_svector_ostream ObjOS(ObjBuf);
@@ -213,8 +241,17 @@ public:
     std::string ToolCPU(TM->getTargetCPU());
     llvm::SubtargetFeatures ToolFeatures(TM->getTargetFeatureString());
 
+    // Phase 1: Run CodeDiscoveryPass via an InstrumentPrototypePassManager.
+    // This lifts the initial code object into the target module and
+    // populates its MachineFunctionAnalysis cache.
+    luthier::InstrumentPrototypePassManager IPPM;
+    IPPM.addPass(luthier::CodeDiscoveryPass(DiscoveryOpts));
+    IPPM.run(IP, IPAM);
+
+    // Phase 2: Hand off the (populated) target module to the rest of the
+    // pipeline. The IP is kept alive to preserve the FAM/MFAM caches under
+    // its target module reference.
     llvm::ModulePassManager MPM;
-    MPM.addPass(luthier::CodeDiscoveryPass(DiscoveryOpts));
     MPM.addPass(luthier::InstrumentationPMDriver(
         DriverOpts, D.getIntrinsicProcessorRegistry(), /*Plugins=*/{},
         // IModule creator: a tool may override via createInstrumentationModule;
@@ -276,7 +313,7 @@ public:
     MPM.addPass(
         luthier::NewPMAsmPrinter(llvm::CodeGenFileType::ObjectFile, ObjOS));
 
-    MPM.run(*M, MAM);
+    MPM.run(IP.getTargetModule(), MAM);
 
     return std::make_unique<llvm::SmallVectorMemoryBuffer>(
         std::move(ObjBuf), "luthier.instrumented",

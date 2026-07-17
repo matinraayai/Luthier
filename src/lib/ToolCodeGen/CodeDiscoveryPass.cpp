@@ -1563,12 +1563,19 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
 }
 
 llvm::PreservedAnalyses
-CodeDiscoveryPass::run(llvm::Module &TargetModule,
-                       llvm::ModuleAnalysisManager &TargetMAM) {
+CodeDiscoveryPass::run(InstrumentPrototype &IP,
+                       InstrumentPrototypeAnalysisManager &IPAM) {
+  llvm::Module &TargetModule = IP.getTargetModule();
   llvm::LLVMContext &Ctx = TargetModule.getContext();
 
   LLVM_DEBUG(luthier::dbgs()
                  << "[CodeDiscoveryPass] Running code discovery pass\n";);
+
+  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
+  // MAM caches results for both modules, keyed by the module reference.
+  llvm::ModuleAnalysisManager &TargetMAM =
+      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+          .getManager();
 
   llvm::MachineModuleInfo &TargetMMI =
       TargetMAM.getResult<llvm::MachineModuleAnalysis>(TargetModule).getMMI();
@@ -1711,11 +1718,14 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
 
     /// Invalidate all module-level analysis not related to Functions and
     /// Machine Functions proxies because we just added a new machine function
-    /// and they are now stale
+    /// and they are now stale. Also invalidate the IP-level analyses (in
+    /// particular \c TraceCallGraphAnalysis) so the next iteration's callgraph
+    /// query sees the new MF.
     llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
     PA.preserve<llvm::MachineFunctionAnalysisManagerModuleProxy>();
     PA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
     TargetMAM.invalidate(TargetModule, PA);
+    IPAM.invalidate(IP, PA);
 
     llvm::Error Err = llvm::Error::success();
 
@@ -1732,9 +1742,10 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
     Translator.translate();
 
     /// Go over all discovered call target addresses and add them to be visited
-    /// (if not visited already)
-    const TraceCallGraph &CG =
-        TargetMAM.getResult<TraceCallGraphAnalysis>(TargetModule);
+    /// (if not visited already). We ask the IP-level \c TraceCallGraphAnalysis
+    /// directly — payload-side extension is a no-op when the IModule has no
+    /// injected payloads yet (which is always the case at code-discovery time).
+    const TraceCallGraph &CG = IPAM.getResult<TraceCallGraphAnalysis>(IP);
     for (uint64_t Addr : CG.discovered_addrs()) {
       LLVM_DEBUG(luthier::dbgs()
                  << "[CodeDiscoveryPass] Callgraph discovered target 0x"
@@ -1833,10 +1844,12 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
     CallTerm->setCalledFunction(It->second);
   }
 
+  // Preserve the outer MAM proxy so the InstrumentPrototype adaptor doesn't
+  // wipe every cached module-level analysis for both modules on the way out —
+  // downstream passes (InstrumentationPMDriver, NewPMAsmPrinter) still need
+  // the target module's MachineFunctionAnalysis cache we just populated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  PA.preserve<llvm::MachineFunctionAnalysisManagerModuleProxy>();
-  PA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
-  PA.preserve<llvm::MachineFunctionAnalysis>();
+  PA.preserve<ModuleAnalysisManagerInstrumentPrototypeProxy>();
   return PA;
 }
 } // namespace luthier

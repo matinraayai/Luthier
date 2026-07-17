@@ -14,19 +14,32 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file TraceCallGraph.h
-/// Declares the \c TraceCallGraph target module analysis that recovers the
-/// call graph of a Luthier-translated target IR module.
+/// Declares the \c TraceCallGraph InstrumentPrototype analysis that recovers
+/// the call graph of a Luthier-translated target IR module, extended to
+/// follow register writes performed by injected payload functions in the
+/// instrumentation module.
 ///
 /// Unlike LLVM's LazyCallGraph, this analysis resolves indirect call targets
 /// by symbolically evaluating the callee operands, handling
 /// \c amdgcn_s_getpc intrinsic chains (whose folded value is read from the
 /// \c MD_pcsections metadata) and performing inter-procedural constant
-/// propagation through function arguments. A single call site may map to
-/// multiple target \c Function* values; call sites that cannot be fully
-/// resolved are flagged as incomplete.
+/// propagation through function arguments. When an indirect call remains
+/// unresolved after the target-only pass, the analysis inspects the
+/// injected payloads attached to the corresponding \c MachineInstr in the
+/// target module: any \c luthier::writeReg intrinsic whose destination
+/// register aliases the call's target register contributes its stored value
+/// to the resolved set.
+///
+/// A single call site may map to multiple target \c Function* values;
+/// call sites that cannot be fully resolved are flagged as incomplete.
+/// Functions in the target module are reachable both by their entry-point
+/// trace address and by their \c llvm::Function pointer handle. Resolving a
+/// call site to a function inside the instrumentation module is a hard
+/// error.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_TRACE_CALL_GRAPH_H
 #define LUTHIER_TOOL_CODE_GEN_TRACE_CALL_GRAPH_H
+#include "luthier/ToolCodeGen/InstrumentPrototype.h"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseSet.h>
@@ -52,9 +65,11 @@ public:
   using DiscoveredAddrsSetT = llvm::DenseSet<uint64_t>;
   using IncompleteCallSitesSetT = llvm::DenseSet<llvm::CallInst *>;
 
-private:
-  friend class TraceCallGraphAnalysis;
-
+public:
+  // Populated by TraceCallGraphAnalysis. Direct access is used by the
+  // analysis implementation (and the target-module-only helper for
+  // CodeDiscoveryPass); external readers should prefer the accessor methods
+  // below.
   CallTargetsMapT CallTargets;
 
   DiscoveredAddrsSetT DiscoveredCallTargetAddresses;
@@ -63,7 +78,7 @@ private:
 
   bool FullyRecovered = true;
 
-public:
+
   /// == Call targets (indirect CallInst → list of resolved Function*) =========
   /// Only indirect calls (those without a compile-time Function* callee) appear
   /// here; direct calls are already resolved by the IR.
@@ -156,14 +171,15 @@ public:
   /// Dump the call graph to \c luthier::dbgs()
   LLVM_DUMP_METHOD void dump() const;
 
-  /// The analysis is invalidated whenever the module IR is modified
-  /// (e.g. a new function is added or a CFG edge changes)
-  bool invalidate(llvm::Module &M, const llvm::PreservedAnalyses &PA,
-                  llvm::ModuleAnalysisManager::Invalidator &Inv);
+  /// The analysis is invalidated whenever either module in the prototype is
+  /// modified.
+  bool invalidate(InstrumentPrototype &IP, const llvm::PreservedAnalyses &PA,
+                  InstrumentPrototypeAnalysisManager::Invalidator &Inv);
 };
 
-/// Module analysis that recovers the IR-level call graph of a
-/// Luthier-translated module.
+/// InstrumentPrototype analysis that recovers the IR-level call graph of a
+/// Luthier-translated target module. Consults the instrumentation module for
+/// injected payload writes that override register-mediated call targets.
 class TraceCallGraphAnalysis
     : public llvm::AnalysisInfoMixin<TraceCallGraphAnalysis> {
   friend llvm::AnalysisInfoMixin<TraceCallGraphAnalysis>;
@@ -172,11 +188,11 @@ class TraceCallGraphAnalysis
 public:
   using Result = TraceCallGraph;
 
-  Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
+  Result run(InstrumentPrototype &IP,
+             InstrumentPrototypeAnalysisManager &IPAM);
 };
 
 /// Pass that prints the \c TraceCallGraph result to an output stream.
-/// Intended to be inserted after \c luthier-code-discovery in the pipeline.
 class TraceCallGraphPrinter
     : public llvm::PassInfoMixin<TraceCallGraphPrinter> {
   llvm::raw_ostream &OS;
@@ -184,8 +200,8 @@ class TraceCallGraphPrinter
 public:
   explicit TraceCallGraphPrinter(llvm::raw_ostream &OS) : OS(OS) {}
 
-  llvm::PreservedAnalyses run(llvm::Module &M,
-                              llvm::ModuleAnalysisManager &MAM);
+  llvm::PreservedAnalyses run(InstrumentPrototype &IP,
+                              InstrumentPrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

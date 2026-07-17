@@ -322,11 +322,13 @@ llvmGetPassPluginInfo() {
                 *luthier::Loader)));
       });
       MAM.registerPass([]() { return luthier::CodeObjectManagerAnalysis(); });
-      MAM.registerPass([]() { return luthier::TraceCallGraphAnalysis(); });
+      // TraceCallGraphAnalysis, IPPredCFGAnalysis, and
+      // FunctionPreambleDescriptorAnalysis are now InstrumentPrototype
+      // analyses and must be registered on the IPAM. The luthier-llc driver
+      // handles their registration via the InstrumentPrototypePassBuilder;
+      // the opt plugin no longer registers them on the outer MAM.
       // LRStateValueStorageAndLoadLocationsAnalysis is now a legacy
       // ModulePass on the IModule; the driver registers it directly.
-      MAM.registerPass(
-          []() { return luthier::FunctionPreambleDescriptorAnalysis(); });
       MAM.registerPass(
           []() { return luthier::MockAMDGPULoaderAnalysis(*luthier::Loader); });
       MAM.registerPass([&]() {
@@ -335,7 +337,6 @@ llvmGetPassPluginInfo() {
       // MAM.registerPass([]() { return luthier::IPVectorRegLivenessAnalysis();
       // }); MAM.registerPass(
       // []() { return luthier::IndirectBranchResolverAnalysis(); });
-      MAM.registerPass([]() { return luthier::IPPredCFGAnalysis(); });
     });
     /// Register Luthier function analysis passes
     PB.registerAnalysisRegistrationCallback(
@@ -367,15 +368,13 @@ llvmGetPassPluginInfo() {
             MPM.addPass(luthier::AMDGPUMockLoaderPrinter(llvm::outs()));
             return true;
           };
-          if (Name == "luthier-code-discovery") {
-            MPM.addPass(
-                luthier::CodeDiscoveryPass(luthier::CodeDiscoveryOptions));
-            return true;
-          }
-          if (Name == "trace-callgraph-printer") {
-            MPM.addPass(luthier::TraceCallGraphPrinter(llvm::outs()));
-            return true;
-          }
+          // luthier-code-discovery is now an InstrumentPrototype pass;
+          // it must be invoked from within an InstrumentPrototypePassManager
+          // (see luthier-llc / the HSA tool pipeline). Not exposed here in
+          // the flat opt pipeline.
+          // trace-callgraph-printer is now an InstrumentPrototype pass; it
+          // must be invoked from within an InstrumentPrototypePassManager
+          // (see luthier-llc). Not exposed here in the flat opt pipeline.
           if (Name == "injected-payload-side-effects-printer") {
             MPM.addPass(llvm::createModuleToFunctionPassAdaptor(
                 luthier::InjectedPayloadSideEffectsPrinterPass(llvm::outs())));
