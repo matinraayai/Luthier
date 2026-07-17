@@ -17,8 +17,6 @@
 /// Implements \c InjectedPayloadPreserveLiveRegsPass.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/InjectedPayloadPreserveLiveRegsPass.h"
-#include "luthier/Common/ErrorCheck.h"
-#include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
@@ -33,6 +31,7 @@
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Support/Debug.h>
 
 #undef DEBUG_TYPE
@@ -40,31 +39,27 @@
 
 namespace luthier {
 
-char InjectedPayloadPreserveLiveRegsPass::ID = 0;
+llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
+    InstrumentPrototype &IP, InstrumentPrototypeAnalysisManager &IPAM) {
+  LLVM_DEBUG(luthier::dbgs()
+             << "=== Luthier Injected Payload Preserve Live Regs Pass ===\n");
 
-LUTHIER_INITIALIZE_LEGACY_PASS_BODY(InjectedPayloadPreserveLiveRegsPass,
-                                    "payload-preserve-live-regs",
-                                    "Luthier Injected Payload Preserve Live Regs",
-                                    false /* Modifies CFG */,
-                                    false /* Analysis Pass */)
+  llvm::Module &IModule = IP.getInstrumentationModule();
 
-void InjectedPayloadPreserveLiveRegsPass::getAnalysisUsage(
-    llvm::AnalysisUsage &AU) const {
-  AU.addRequired<llvm::MachineModuleInfoWrapperPass>();
-  AU.addRequired<IModuleIPPredicatedLivenessAnalysis>();
-  AU.addRequired<InjectedPayloadSideEffectsAnalysis>();
-  ModulePass::getAnalysisUsage(AU);
-}
-
-bool InjectedPayloadPreserveLiveRegsPass::runOnModule(llvm::Module &IModule) {
-  LLVM_DEBUG(luthier::dbgs() << "=== " << getPassName() << " ===\n");
+  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
+  // MAM caches results for both modules, keyed by module reference.
+  llvm::ModuleAnalysisManager &MAM =
+      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+          .getManager();
 
   llvm::MachineModuleInfo &MMI =
-      getAnalysis<llvm::MachineModuleInfoWrapperPass>().getMMI();
-  const auto &Liveness =
-      getAnalysis<IModuleIPPredicatedLivenessAnalysis>();
-  const auto &AccessedRegs =
-      getAnalysis<InjectedPayloadSideEffectsAnalysis>().getMap();
+      MAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI();
+  llvm::FunctionAnalysisManager &FAM =
+      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(IModule)
+          .getManager();
+
+  const IModuleIPPredicatedLiveness &Liveness =
+      IPAM.getResult<IModuleIPPredicatedLivenessAnalysis>(IP);
 
   bool Changed = false;
 
@@ -96,15 +91,12 @@ bool InjectedPayloadPreserveLiveRegsPass::runOnModule(llvm::Module &IModule) {
     // VALU instructions only operate on active lanes. See
     // `project_sva_vgpr_wwm_preload` for the WWM-payload future where
     // inactive-lane preservation is needed.
+    const InjectedPayloadSideEffects &Acc =
+        FAM.getResult<InjectedPayloadSideEffectsAnalysis>(F);
     llvm::SmallVector<llvm::MCPhysReg, 16> Preserve;
-    auto AccIt = AccessedRegs.find(&F);
-    const auto *Acc =
-        AccIt == AccessedRegs.end() ? nullptr : &AccIt->second;
     for (llvm::MCPhysReg R : LS->Active) {
-      if (Acc) {
-        if (Acc->Reads.contains(R) || Acc->Writes.contains(R))
-          continue;
-      }
+      if (Acc.reads_contains(R) || Acc.writes_contains(R))
+        continue;
       Preserve.push_back(R);
     }
     if (Preserve.empty())
@@ -208,7 +200,16 @@ bool InjectedPayloadPreserveLiveRegsPass::runOnModule(llvm::Module &IModule) {
     EntryMBB.sortUniqueLiveIns();
   }
 
-  return Changed;
+  if (!Changed)
+    return llvm::PreservedAnalyses::all();
+
+  // Preserve the outer MAM proxy so the InstrumentPrototype adaptor doesn't
+  // wipe every cached module-level analysis for both modules on the way out —
+  // downstream passes still need the cached MachineFunctionAnalysis results
+  // for the instrumentation module we just mutated.
+  llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
+  PA.preserve<ModuleAnalysisManagerInstrumentPrototypeProxy>();
+  return PA;
 }
 
 } // namespace luthier
