@@ -25,7 +25,6 @@
 #include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
-#include "luthier/ToolCodeGen/WrapperAnalysisPasses.h"
 #include <AMDGPU.h>
 #include <GCNSubtarget.h>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
@@ -679,70 +678,50 @@ llvm::Error SVStorageAndLoadLocations::calculate(
   return llvm::Error::success();
 }
 
-char LRStateValueStorageAndLoadLocationsAnalysis::ID = 0;
+llvm::AnalysisKey SVStorageAndLoadLocationsAnalysis::Key;
 
-LUTHIER_INITIALIZE_LEGACY_PASS_BODY(
-    LRStateValueStorageAndLoadLocationsAnalysis, "lr-sv-storage-load-locs",
-    "Luthier LR State Value Array Storage and Load Locations Analysis",
-    /*CFGOnly=*/true, /*IsAnalysis=*/true)
+SVStorageAndLoadLocationsAnalysis::Result
+SVStorageAndLoadLocationsAnalysis::run(
+    InstrumentPrototype &IP, InstrumentPrototypeAnalysisManager &IPAM) {
+  Result Out;
 
-void LRStateValueStorageAndLoadLocationsAnalysis::getAnalysisUsage(
-    llvm::AnalysisUsage &AU) const {
-  AU.addRequired<IModuleMAMWrapperPass>();
-  AU.addRequired<IModuleIPPredicatedLivenessAnalysis>();
-  AU.setPreservesAll();
-  ModulePass::getAnalysisUsage(AU);
-}
+  llvm::Module &TargetModule = IP.getTargetModule();
+  llvm::Module &IModule = IP.getInstrumentationModule();
 
-bool LRStateValueStorageAndLoadLocationsAnalysis::runOnModule(
-    llvm::Module &IModule) {
-  // Wipe stale state in case the pass runs twice in a session.
-  Result = SVStorageAndLoadLocations{};
-
-  llvm::ModuleAnalysisManager &IMAM =
-      getAnalysis<IModuleMAMWrapperPass>().getMAM();
-  auto &TargetModAndMAM =
-      IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule);
-  llvm::Module &TargetModule = TargetModAndMAM.getTargetAppModule();
-  llvm::ModuleAnalysisManager &TargetMAM = TargetModAndMAM.getTargetAppMAM();
-
-  auto *MMIAnalysis =
-      TargetMAM.getCachedResult<llvm::MachineModuleAnalysis>(TargetModule);
-  if (!MMIAnalysis) {
-    IModule.getContext().emitError(
-        "LRStateValueStorageAndLoadLocationsAnalysis: target MachineModuleInfo "
-        "is not cached on the target MAM");
-    return false;
-  }
-
-  const auto *IPIP =
-      IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
-  if (!IPIP) {
-    IModule.getContext().emitError(
-        "LRStateValueStorageAndLoadLocationsAnalysis: "
-        "InjectedPayloadAndInstPointAnalysis is required but not cached");
-    return false;
-  }
-
-  const auto &IPLiveness = getAnalysis<IModuleIPPredicatedLivenessAnalysis>();
-
-  auto &FPD =
-      TargetMAM.getResult<FunctionPreambleDescriptorAnalysis>(TargetModule);
-
-  auto &TargetFAM =
-      TargetMAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
+  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
+  // MAM caches results for both modules, keyed by the module reference.
+  llvm::ModuleAnalysisManager &MAM =
+      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
           .getManager();
-  auto &TargetMFAM =
-      TargetMAM.getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(
-                  TargetModule)
-          .getManager();
-  auto Err =
-      Result.calculate(MMIAnalysis->getMMI(), TargetModule, TargetFAM,
-                       TargetMFAM, *IPIP, FPD, IPLiveness.getMap());
-  if (Err)
-    IModule.getContext().emitError(llvm::toString(std::move(Err)));
 
-  return false;
+  llvm::FunctionAnalysisManager &TargetFAM =
+      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
+          .getManager();
+  llvm::MachineFunctionAnalysisManager &TargetMFAM =
+      MAM.getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(
+                TargetModule)
+          .getManager();
+
+  const llvm::MachineModuleInfo &TargetMMI =
+      MAM.getResult<llvm::MachineModuleAnalysis>(TargetModule).getMMI();
+
+  const InjectedPayloadAndInstPoint &IPIP =
+      MAM.getResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+
+  FunctionPreambleDescriptor &FPD =
+      MAM.getResult<FunctionPreambleDescriptorAnalysis>(TargetModule);
+
+  // TODO(NPM): source PayloadLiveSetsByFn from a migrated
+  // IP-level liveness analysis. IModuleIPPredicatedLivenessAnalysis is still
+  // a legacy ModulePass and cannot be pulled through IPAM; consumers of
+  // this analysis are broken until that migration lands.
+  llvm::DenseMap<const llvm::Function *, PayloadLiveSets> PayloadLiveSetsByFn;
+
+  if (auto Err = Out.calculate(TargetMMI, TargetModule, TargetFAM, TargetMFAM,
+                               IPIP, FPD, PayloadLiveSetsByFn))
+    TargetModule.getContext().emitError(llvm::toString(std::move(Err)));
+
+  return Out;
 }
 
 } // namespace luthier

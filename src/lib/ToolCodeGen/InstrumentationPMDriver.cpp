@@ -247,7 +247,6 @@ InstrumentationPMDriver::InstrumentationPMDriver(
   initializeIntrinsicMIRLoweringPass(*LegacyPassRegistry);
   initializeIModuleIPPredicatedLivenessAnalysis(*LegacyPassRegistry);
   initializeInjectedPayloadPreserveLiveRegsPass(*LegacyPassRegistry);
-  initializeLRStateValueStorageAndLoadLocationsAnalysis(*LegacyPassRegistry);
   initializeSVAPhysVGPRPinPass(*LegacyPassRegistry);
   initializeInjectedPayloadPEIPass(*LegacyPassRegistry);
   initializeTargetModulePatcherPass(*LegacyPassRegistry);
@@ -557,8 +556,6 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
                     "Luthier IPPredLiveness");
       AddModulePass(new InjectedPayloadPreserveLiveRegsPass(),
                     "Luthier PreserveLiveRegs");
-      AddModulePass(new LRStateValueStorageAndLoadLocationsAnalysis(),
-                    "Luthier LRStateValueStorage");
 
       // Schedule SVAPhysVGPRPinPass before SIPreAllocateWWMRegs so
       // the WWM greedy regalloc honors the SVA-lane hint. Schedule

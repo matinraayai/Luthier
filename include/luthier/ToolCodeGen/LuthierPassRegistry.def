@@ -27,10 +27,6 @@
 #endif
 MODULE_ANALYSIS("luthier-amdgpu-reg-liveness", AMDGPURegLivenessAnalysis())
 MODULE_ANALYSIS("luthier-callgraph", LRCallGraphAnalysis())
-// LRStateValueStorageAndLoadLocationsAnalysis is now a legacy ModulePass on
-// the IModule's legacy codegen PM (so it can consume
-// IModuleIPPredicatedLivenessAnalysis directly). Initialize it in
-// InstrumentationPMDriver instead of registering it as a new-PM analysis.
 MODULE_ANALYSIS("luthier-function-preamble-descriptor", FunctionPreambleDescriptorAnalysis())
 MODULE_ANALYSIS("luthier-mock-amdgpu-loader",
 /// MODULE_ANALYSIS("luthier-lifted-representation-analysis", LiftedRepresentationAnalysis(LR))
