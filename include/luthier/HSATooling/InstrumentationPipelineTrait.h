@@ -51,6 +51,7 @@
 #include "luthier/ToolCodeGen/InstrumentPrototype.h"
 #include "luthier/ToolCodeGen/InstrumentPrototypePassBuilder.h"
 #include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
+#include "luthier/ToolCodeGen/MIRToIRTranslationAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPass.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 #include "luthier/ToolCodeGen/Metadata.h"
@@ -120,6 +121,7 @@ public:
 
     MAM.registerPass([&] { return llvm::MachineModuleAnalysis(MMI); });
     MFAM.registerPass([] { return luthier::InstructionTracesAnalysis(); });
+    MFAM.registerPass([] { return luthier::MIRToIRTranslationAnalysis(); });
     MAM.registerPass([&] {
       return luthier::InitialEntryPointAnalysis(
           [&](llvm::Module &, llvm::ModuleAnalysisManager &) {

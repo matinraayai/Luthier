@@ -22,6 +22,7 @@
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
+#include "luthier/ToolCodeGen/MIRToIRTranslationAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
@@ -349,6 +350,8 @@ llvmGetPassPluginInfo() {
         [](llvm::MachineFunctionAnalysisManager &MFAM) {
           MFAM.registerPass(
               []() { return luthier::InstructionTracesAnalysis(); });
+          MFAM.registerPass(
+              []() { return luthier::MIRToIRTranslationAnalysis(); });
         });
 
     PB.registerPipelineParsingCallback(

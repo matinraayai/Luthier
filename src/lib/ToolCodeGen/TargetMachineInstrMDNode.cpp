@@ -48,7 +48,8 @@ enum TargetMachineInstrAnnotation : uint8_t {
   Tag = 0,
   TraceAddr = 1,
   CanRelaxDirectBranch = 2,
-  LastMachineInstrAnnotation = CanRelaxDirectBranch
+  NeedsRetranslation = 3,
+  LastMachineInstrAnnotation = NeedsRetranslation
 };
 
 /// \brief This struct statically maps the enums in \c
@@ -68,6 +69,10 @@ template <> struct MachineInstrAnnotationInfo<TraceAddr> {
 template <> struct MachineInstrAnnotationInfo<CanRelaxDirectBranch> {
   static constexpr auto MDName =
       "luthier.machine_instr.can_relax_direct_branch";
+};
+
+template <> struct MachineInstrAnnotationInfo<NeedsRetranslation> {
+  static constexpr auto MDName = "luthier.machine_instr.needs_retranslation";
 };
 
 /// Modified version of the \c llvm::MDBuilder::createPCSections that will force
@@ -241,6 +246,35 @@ bool TargetMachineInstrMDNode::canRelaxDirectBranch() const {
     }
   }
   return true;
+}
+
+void TargetMachineInstrMDNode::setNeedsRetranslation(llvm::LLVMContext &Ctx,
+                                                     bool NeedsRetranslate) {
+  auto [StringHeader, AuxConstList] =
+      getOrCreateMDEntry<NeedsRetranslation>(Ctx, *this);
+  llvm::MDBuilder MDB{Ctx};
+  llvm::ConstantAsMetadata *NeedsRetranslateMD =
+      MDB.createConstant(llvm::ConstantInt::getBool(Ctx, NeedsRetranslate));
+  if (AuxConstList.getNumOperands() >= 1) {
+    llvm::cast<MutableMDTuple>(AuxConstList).setOperand(0, NeedsRetranslateMD);
+  } else {
+    AuxConstList.push_back(NeedsRetranslateMD);
+  }
+}
+
+bool TargetMachineInstrMDNode::needsRetranslation() const {
+  auto NeedsRetranslationHeaderAndEntry =
+      getMDEntryIfExists<NeedsRetranslation>(*this);
+  if (!NeedsRetranslationHeaderAndEntry.has_value())
+    return false;
+  if (auto &ListMD = NeedsRetranslationHeaderAndEntry->second;
+      ListMD.getNumOperands() >= 1) {
+    if (auto *NR = llvm::mdconst::extract_or_null<llvm::ConstantInt>(
+            ListMD.getOperand(0))) {
+      return NR->getZExtValue();
+    }
+  }
+  return false;
 }
 
 bool TargetMachineInstrMDNode::classof(const Metadata *MD) {
