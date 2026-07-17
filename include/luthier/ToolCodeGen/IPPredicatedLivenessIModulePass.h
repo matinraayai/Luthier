@@ -14,9 +14,9 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file IPPredicatedLivenessIModulePass.h
-/// IModule-side analysis that runs liveness analysis across the target
-/// module's inter-procedural predicated control-flow graph, tracking
-/// separate active-lane and inactive-lane live phys-reg sets at every
+/// \c InstrumentPrototype-level analysis that runs liveness analysis across
+/// the target module's inter-procedural predicated control-flow graph,
+/// tracking separate active-lane and inactive-lane live phys-reg sets at every
 /// program point of interest. Computed per-AppMI and surfaced per-injected-
 /// payload so the downstream
 /// \c InjectedPayloadPreserveLiveRegsPass can decide what physical
@@ -24,13 +24,13 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_LIVENESS_IMODULE_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_LIVENESS_IMODULE_PASS_H
-#include "luthier/ToolCodeGen/LegacyPassSupport.h"
+#include "luthier/ToolCodeGen/InstrumentPrototype.h"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/MC/MCRegister.h>
-#include <llvm/Pass.h>
 
 namespace llvm {
 class Function;
@@ -71,10 +71,7 @@ struct PMBBLiveIns {
 
 class IModuleIPPredicatedLivenessAnalysis;
 
-LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(IModuleIPPredicatedLivenessAnalysis);
-
-/// \brief Legacy module analysis pass: per-payload pre-execution live
-/// register sets.
+/// \brief Result of \c IModuleIPPredicatedLivenessAnalysis.
 ///
 /// Walks the target module's \c IPPredicatedCFG backward to fixed point,
 /// tracking active/inactive lane liveness with the following per-PMBB
@@ -94,7 +91,7 @@ LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(IModuleIPPredicatedLivenessAnalysis);
 /// initialised to the function's allocatable GPR set (per the
 /// \c amdgpu-num-{sgpr,vgpr} attributes plus reserved-but-not-read-only
 /// registers from MRI) and dataflow is intra-procedural only.
-class IModuleIPPredicatedLivenessAnalysis : public llvm::ModulePass {
+class IModuleIPPredicatedLiveness {
 public:
   using PayloadLiveSetsMap =
       llvm::DenseMap<const llvm::Function *, PayloadLiveSets>;
@@ -102,6 +99,8 @@ public:
       llvm::DenseMap<const PredicatedMachineBasicBlock *, PMBBLiveIns>;
 
 private:
+  friend class IModuleIPPredicatedLivenessAnalysis;
+
   PayloadLiveSetsMap LiveSetsByPayload;
   PMBBLiveInsMap LiveInsByPMBB;
   /// True iff the dataflow ran in fully-discovered (inter-procedural) mode.
@@ -109,17 +108,7 @@ private:
   bool ResultFullyDiscovered{false};
 
 public:
-  static char ID;
-
-  IModuleIPPredicatedLivenessAnalysis() : llvm::ModulePass(ID) {}
-
-  [[nodiscard]] llvm::StringRef getPassName() const override {
-    return "Luthier IModule IP-Predicated Liveness Analysis";
-  }
-
-  bool runOnModule(llvm::Module &IModule) override;
-
-  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
+  IModuleIPPredicatedLiveness() = default;
 
   /// \return per-payload live-set record at the program point just before
   /// \p Payload's effects apply, or \c nullptr if the payload has no
@@ -161,6 +150,27 @@ public:
   [[nodiscard]] const PMBBLiveInsMap &getPMBBLiveInsMap() const {
     return LiveInsByPMBB;
   }
+
+  bool invalidate(InstrumentPrototype &, const llvm::PreservedAnalyses &PA,
+                  InstrumentPrototypeAnalysisManager::Invalidator &);
+};
+
+/// \brief \c InstrumentPrototype-level analysis that computes, for the target
+/// module of an \c InstrumentPrototype, the per-payload and per-PMBB live
+/// physical-register sets across active and inactive lane partitions.
+class IModuleIPPredicatedLivenessAnalysis
+    : public llvm::AnalysisInfoMixin<IModuleIPPredicatedLivenessAnalysis> {
+  friend llvm::AnalysisInfoMixin<IModuleIPPredicatedLivenessAnalysis>;
+
+  static llvm::AnalysisKey Key;
+
+public:
+  IModuleIPPredicatedLivenessAnalysis() = default;
+
+  using Result = IModuleIPPredicatedLiveness;
+
+  Result run(InstrumentPrototype &IP,
+             InstrumentPrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

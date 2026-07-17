@@ -21,11 +21,10 @@
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
-#include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
+#include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
-#include "luthier/ToolCodeGen/WrapperAnalysisPasses.h"
 #include <AMDGPU.h>
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
@@ -48,14 +47,6 @@
 #define DEBUG_TYPE "luthier-imodule-ip-pred-liveness"
 
 namespace luthier {
-
-char IModuleIPPredicatedLivenessAnalysis::ID = 0;
-
-LUTHIER_INITIALIZE_LEGACY_PASS_BODY(IModuleIPPredicatedLivenessAnalysis,
-                                    "imodule-ip-pred-liveness",
-                                    "Luthier IModule IP-Predicated Liveness",
-                                    true /* Only looks at CFG */,
-                                    true /* Analysis Pass */)
 
 namespace {
 
@@ -298,6 +289,9 @@ struct PMBBLive {
   llvm::DenseSet<llvm::MCPhysReg> LiveInInactive;
 };
 
+using PayloadSideEffectsMap =
+    llvm::DenseMap<const llvm::Function *, const InjectedPayloadSideEffects *>;
+
 /// Walk \p PMBB backward from \p LiveOutA / \p LiveOutI, updating in place.
 /// If \p CaptureMap is non-null, snapshot the pre-payload live sets into it
 /// for each payload encountered (used for the post-convergence extraction
@@ -308,9 +302,9 @@ static void walkPMBBBackward(
     llvm::DenseSet<llvm::MCPhysReg> &OutA,
     llvm::DenseSet<llvm::MCPhysReg> &OutI,
     const InjectedPayloadAndInstPoint &IPIP,
-    const InjectedPayloadSideEffectsAnalysis &AccessedRegs,
+    const PayloadSideEffectsMap &SideEffectsByPayload,
     const llvm::TargetRegisterInfo &TRI,
-    IModuleIPPredicatedLivenessAnalysis::PayloadLiveSetsMap *CaptureMap) {
+    IModuleIPPredicatedLiveness::PayloadLiveSetsMap *CaptureMap) {
   const llvm::MachineBasicBlock &MBB = PMBB.getMBB();
   bool Vector = isVectorMBB(MBB);
 
@@ -349,11 +343,11 @@ static void walkPMBBBackward(
           Slot.Active = OutA;
           Slot.Inactive = OutI;
         }
-        auto EffIt = AccessedRegs.find(PayloadFn);
-        if (EffIt != AccessedRegs.end()) {
-          stepBackwardOverPayload(EffIt->second, OutA, TRI);
+        auto EffIt = SideEffectsByPayload.find(PayloadFn);
+        if (EffIt != SideEffectsByPayload.end() && EffIt->second != nullptr) {
+          stepBackwardOverPayload(*EffIt->second, OutA, TRI);
           if (!Vector)
-            stepBackwardOverPayload(EffIt->second, OutI, TRI);
+            stepBackwardOverPayload(*EffIt->second, OutI, TRI);
         }
       }
     }
@@ -362,41 +356,54 @@ static void walkPMBBBackward(
 
 } // namespace
 
-void IModuleIPPredicatedLivenessAnalysis::getAnalysisUsage(
-    llvm::AnalysisUsage &AU) const {
-  AU.addRequired<IModuleMAMWrapperPass>();
-  AU.addRequired<InjectedPayloadSideEffectsAnalysis>();
-  AU.setPreservesAll();
-  ModulePass::getAnalysisUsage(AU);
+bool IModuleIPPredicatedLiveness::invalidate(
+    InstrumentPrototype &, const llvm::PreservedAnalyses &PA,
+    InstrumentPrototypeAnalysisManager::Invalidator &) {
+  auto PAC = PA.getChecker<IModuleIPPredicatedLivenessAnalysis>();
+  return !PAC.preserved() &&
+         !PAC.preservedSet<llvm::AllAnalysesOn<InstrumentPrototype>>();
 }
 
-bool IModuleIPPredicatedLivenessAnalysis::runOnModule(llvm::Module &IModule) {
-  LLVM_DEBUG(luthier::dbgs() << "=== " << getPassName() << " ===\n");
+llvm::AnalysisKey IModuleIPPredicatedLivenessAnalysis::Key;
 
-  LiveSetsByPayload.clear();
-  LiveInsByPMBB.clear();
-  ResultFullyDiscovered = false;
+IModuleIPPredicatedLivenessAnalysis::Result
+IModuleIPPredicatedLivenessAnalysis::run(
+    InstrumentPrototype &IP, InstrumentPrototypeAnalysisManager &IPAM) {
+  LLVM_DEBUG(luthier::dbgs()
+             << "=== Luthier IModule IP-Predicated Liveness Analysis ===\n");
 
-  // ---- Plumb analyses --------------------------------------------------
-  llvm::ModuleAnalysisManager &IMAM =
-      getAnalysis<IModuleMAMWrapperPass>().getMAM();
+  Result Out;
 
-  auto &TargetModuleAndMAM =
-      IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule);
-  llvm::Module &TargetModule = TargetModuleAndMAM.getTargetAppModule();
-  llvm::ModuleAnalysisManager &TargetMAM =
-      TargetModuleAndMAM.getTargetAppMAM();
+  llvm::Module &IModule = IP.getInstrumentationModule();
+
+  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
+  // MAM caches results for both modules, keyed by the module reference.
+  llvm::ModuleAnalysisManager &MAM =
+      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+          .getManager();
 
   IPPredicatedCFG &CFG =
-      TargetMAM.getResult<IPPredCFGAnalysis>(TargetModule).getVecCFG();
+      IPAM.getResult<IPPredCFGAnalysis>(IP).getVecCFG();
 
   const InjectedPayloadAndInstPoint &IPIP =
-      IMAM.getResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+      MAM.getResult<InjectedPayloadAndInstPointAnalysis>(IModule);
 
-  const auto &AccessedRegs =
-      getAnalysis<InjectedPayloadSideEffectsAnalysis>();
+  // The IModule's payload side-effects come from a function-level analysis;
+  // pre-collect the per-payload result for every payload named in the IPIP
+  // so the backward walk can look them up by \c Function* without threading
+  // the FAM through every helper.
+  llvm::FunctionAnalysisManager &IFAM =
+      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(IModule)
+          .getManager();
+  PayloadSideEffectsMap SideEffectsByPayload;
+  for (auto It = IPIP.payload_mi_begin(), End = IPIP.payload_mi_end();
+       It != End; ++It) {
+    llvm::Function *PayloadFn = It->first;
+    SideEffectsByPayload[PayloadFn] =
+        &IFAM.getResult<InjectedPayloadSideEffectsAnalysis>(*PayloadFn);
+  }
 
-  // ---- Fully-discovered check (strict per user Q1) ---------------------
+  // ---- Fully-discovered check ------------------------------------------
   bool IsFullyDiscovered = true;
   for (const PredicatedMachineBasicBlock &PMBB : CFG) {
     if (PMBB.hasUnresolvedEdges()) {
@@ -404,12 +411,12 @@ bool IModuleIPPredicatedLivenessAnalysis::runOnModule(llvm::Module &IModule) {
       break;
     }
   }
-  ResultFullyDiscovered = IsFullyDiscovered;
+  Out.ResultFullyDiscovered = IsFullyDiscovered;
   LLVM_DEBUG(luthier::dbgs()
              << "  IsFullyDiscovered=" << IsFullyDiscovered << "\n");
 
   if (CFG.empty())
-    return false;
+    return Out;
 
   // ---- Initialize per-PMBB state --------------------------------------
   llvm::DenseMap<const PredicatedMachineBasicBlock *, PMBBLive> State;
@@ -495,7 +502,7 @@ bool IModuleIPPredicatedLivenessAnalysis::runOnModule(llvm::Module &IModule) {
       computeLiveOut(PMBB, OutA, OutI);
       const llvm::TargetRegisterInfo &TRI =
           *PMBB->getMBB().getParent()->getSubtarget().getRegisterInfo();
-      walkPMBBBackward(*PMBB, OutA, OutI, IPIP, AccessedRegs, TRI,
+      walkPMBBBackward(*PMBB, OutA, OutI, IPIP, SideEffectsByPayload, TRI,
                        /*CaptureMap=*/nullptr);
       auto &Cur = State[PMBB];
       if (Cur.LiveInActive != OutA) {
@@ -519,36 +526,36 @@ bool IModuleIPPredicatedLivenessAnalysis::runOnModule(llvm::Module &IModule) {
     computeLiveOut(PMBB, OutA, OutI);
     const llvm::TargetRegisterInfo &TRI =
         *PMBB->getMBB().getParent()->getSubtarget().getRegisterInfo();
-    walkPMBBBackward(*PMBB, OutA, OutI, IPIP, AccessedRegs, TRI,
-                     /*CaptureMap=*/&LiveSetsByPayload);
+    walkPMBBBackward(*PMBB, OutA, OutI, IPIP, SideEffectsByPayload, TRI,
+                     /*CaptureMap=*/&Out.LiveSetsByPayload);
   }
 
   // Serialize the converged per-PMBB live-in sets into LiveInsByPMBB so
   // consumers (e.g. TargetModulePatcherPass for branch-relax scavenging)
   // can ArrayRef-borrow them without copying the DenseSets we use
   // internally for fixed-point iteration.
-  LiveInsByPMBB.reserve(State.size());
+  Out.LiveInsByPMBB.reserve(State.size());
   for (const auto &[PMBB, Live] : State) {
-    PMBBLiveIns &Out = LiveInsByPMBB[PMBB];
-    Out.Active.reserve(Live.LiveInActive.size());
-    Out.Inactive.reserve(Live.LiveInInactive.size());
+    PMBBLiveIns &LiveIns = Out.LiveInsByPMBB[PMBB];
+    LiveIns.Active.reserve(Live.LiveInActive.size());
+    LiveIns.Inactive.reserve(Live.LiveInInactive.size());
     for (llvm::MCPhysReg R : Live.LiveInActive)
-      Out.Active.push_back(R);
+      LiveIns.Active.push_back(R);
     for (llvm::MCPhysReg R : Live.LiveInInactive)
-      Out.Inactive.push_back(R);
+      LiveIns.Inactive.push_back(R);
     // Deterministic order for ArrayRef consumers.
-    llvm::sort(Out.Active);
-    llvm::sort(Out.Inactive);
+    llvm::sort(LiveIns.Active);
+    llvm::sort(LiveIns.Inactive);
   }
 
   LLVM_DEBUG({
-    for (const auto &[Fn, Sets] : LiveSetsByPayload) {
+    for (const auto &[Fn, Sets] : Out.LiveSetsByPayload) {
       luthier::dbgs() << "  payload " << Fn->getName()
                       << " active=" << Sets.Active.size()
                    << " inactive=" << Sets.Inactive.size() << "\n";
     }
   });
-  return false;
+  return Out;
 }
 
 } // namespace luthier
