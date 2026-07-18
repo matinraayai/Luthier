@@ -41,7 +41,6 @@ add_library(LuthierToolCodeGen OBJECT
         ForwardISAStateToCalleesPass.cpp
         IPPredicatedLivenessIModulePass.cpp
         InjectedPayloadPreserveLiveRegsPass.cpp
-        WrapperAnalysisPasses.cpp
         MIRConvenience.cpp
         MetadataParserAnalysis.cpp
         IntrinsicProcessorRegistry.cpp

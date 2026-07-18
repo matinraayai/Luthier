@@ -397,9 +397,6 @@ InstrumentationPMDriver::run(llvm::Module &TargetAppM,
   IMAM.registerPass([&]() { return IntrinsicsProcessorsAnalysis(Registry); });
   IMAM.registerPass([&]() { return llvm::MachineModuleAnalysis(MMI); });
 
-  IMAM.registerPass(
-      [&]() { return TargetAppModuleAndMAMAnalysis(TargetMAM, TargetAppM); });
-
   IFAM.registerPass(
       [] { return InjectedPayloadSideEffectsAnalysis(); });
 
