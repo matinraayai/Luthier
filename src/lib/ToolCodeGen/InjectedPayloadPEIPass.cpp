@@ -22,8 +22,9 @@
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
-#include "luthier/ToolCodeGen/Prototype.h"
+#include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
@@ -91,9 +92,7 @@ getFrameLoadSlotsForTarget(const llvm::GCNSubtarget &ST,
 llvm::PreservedAnalyses
 InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
                             llvm::MachineFunctionAnalysisManager &MFAM) {
-  // Skip anything that isn't a Luthier injected payload. Hooks (callees
-  // of payloads) keep their normal LLVM-emitted frame and don't need
-  // custom SVA setup.
+  // Skip anything that isn't a Luthier injected payload
   llvm::Function &F = MF.getFunction();
   if (!F.hasFnAttribute(InjectedPayloadAttribute)) {
     LLVM_DEBUG(luthier::dbgs()
@@ -124,9 +123,25 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   llvm::Module &IModule = *F.getParent();
   const auto &MAMProxy =
       MFAM.getResult<llvm::ModuleAnalysisManagerMachineFunctionProxy>(MF);
+  const auto &PAMProxy =
+      MFAM.getResult<PrototypeAnalysisManagerMachineFunctionProxy>(MF);
+
+  auto P = [&]() -> Prototype * {
+    if (auto *PPA = MAMProxy.getCachedResult<ParentPrototypeAnalysis>(IModule);
+        PPA) {
+      return PPA->getPrototype();
+    }
+    return nullptr;
+  }();
+  if (!P) {
+    Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
+        llvm::formatv("IModule's Prototype was not cached with the "
+                      "ParentPrototypeAnalysis"))));
+    return llvm::PreservedAnalyses::all();
+  }
 
   const auto *IPIP =
-      MAMProxy.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+      PAMProxy.getCachedResult<InjectedPayloadAndInstPointAnalysis>(*P);
   if (!IPIP) {
     Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
         "InjectedPayloadAndInstPointAnalysis is required but not cached.")));
