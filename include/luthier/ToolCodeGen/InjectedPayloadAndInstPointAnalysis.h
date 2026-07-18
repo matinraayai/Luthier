@@ -14,12 +14,13 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// This file describes the \c InjectedPayloadAndInstPointAnalysis which
-/// maps injected payload functions in the instrumentation module to their
+/// Describes the \c InjectedPayloadAndInstPointAnalysis which maps injected
+/// payload functions in the instrumentation module to their
 /// corresponding target \c MachineInstr instrumentation points.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_AND_INST_POINT_ANALYSIS_H
 #define LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_AND_INST_POINT_ANALYSIS_H
+#include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
@@ -101,8 +102,8 @@ public:
     return llvm::make_range(payload_mi_begin(), payload_mi_end());
   }
 
-  bool invalidate(llvm::Module &IModule, const llvm::PreservedAnalyses &PA,
-                  llvm::ModuleAnalysisManager::Invalidator &PAC);
+  bool invalidate(Prototype &P, const llvm::PreservedAnalyses &PA,
+                  PrototypeAnalysisManager::Invalidator &PAC);
 };
 
 class InjectedPayloadAndInstPointAnalysis
@@ -117,7 +118,7 @@ public:
 
   InjectedPayloadAndInstPointAnalysis() = default;
 
-  Result run(llvm::Module &IModule, llvm::ModuleAnalysisManager &);
+  Result run(Prototype &P, PrototypeAnalysisManager &PAM);
 };
 
 } // namespace luthier
