@@ -155,14 +155,7 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   }
   const llvm::MachineInstr *TargetMI = IPIP->at(F);
 
-  auto *TargetMAMRes =
-      MAMProxy.getCachedResult<TargetAppModuleAndMAMAnalysis>(IModule);
-  if (!TargetMAMRes) {
-    Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
-        "TargetAppModuleAndMAMAnalysis is required but not cached.")));
-    return llvm::PreservedAnalyses::all();
-  }
-  auto &TargetModule = TargetMAMRes->getTargetAppModule();
+  auto &TargetModule = P->getTargetModule();
 
   // SVStorageAndLoadLocationsAnalysis is an Prototype-level
   // analysis, and FunctionPreambleDescriptorAnalysis is likewise IP-level.
