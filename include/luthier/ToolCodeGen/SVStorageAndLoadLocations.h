@@ -24,7 +24,7 @@
 #define LUTHIER_TOOL_CODE_GEN_SV_STORAGE_AND_LOAD_LOCATIONS_H
 #include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
 #include <llvm/CodeGen/MachineModuleInfo.h>
@@ -161,14 +161,14 @@ public:
   [[nodiscard]] const InstPointSVALoadPlan *
   getStateValueArrayLoadPlanForInstPoint(const llvm::MachineInstr &MI) const;
 
-  bool invalidate(InstrumentPrototype &, const llvm::PreservedAnalyses &,
-                  InstrumentPrototypeAnalysisManager::Invalidator &) {
+  bool invalidate(Prototype &, const llvm::PreservedAnalyses &,
+                  PrototypeAnalysisManager::Invalidator &) {
     return false;
   }
 };
 
-/// \brief \c InstrumentPrototype-level analysis that computes, for the target
-/// module of an \c InstrumentPrototype, where the state value array lives at
+/// \brief \c Prototype-level analysis that computes, for the target
+/// module of an \c Prototype, where the state value array lives at
 /// every instruction interval and where each instrumentation point loads it
 /// from into a VGPR.
 class SVStorageAndLoadLocationsAnalysis
@@ -182,8 +182,8 @@ public:
 
   using Result = SVStorageAndLoadLocations;
 
-  Result run(InstrumentPrototype &IP,
-             InstrumentPrototypeAnalysisManager &IPAM);
+  Result run(Prototype &IP,
+             PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

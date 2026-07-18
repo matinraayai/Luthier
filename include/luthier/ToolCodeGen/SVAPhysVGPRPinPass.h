@@ -14,7 +14,7 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file SVAPhysVGPRPinPass.h
-/// InstrumentPrototype-level pass that runs pre-WWM-regalloc on injected-
+/// Prototype-level pass that runs pre-WWM-regalloc on injected-
 /// payload MFs and pins the single MFInfo->SGPRSpillVGPRs[] entry (created
 /// by IntrinsicMIRLoweringPass::materializeReadlanes) to the physical VGPR
 /// that LRStateValueStorageAndLoadLocationsAnalysis selected as the SVA
@@ -24,7 +24,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_SVA_PHYS_VGPR_PIN_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_SVA_PHYS_VGPR_PIN_PASS_H
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/IR/PassManager.h>
 
 namespace luthier {
@@ -33,8 +33,8 @@ class SVAPhysVGPRPinPass : public llvm::PassInfoMixin<SVAPhysVGPRPinPass> {
 public:
   SVAPhysVGPRPinPass() = default;
 
-  llvm::PreservedAnalyses run(InstrumentPrototype &IP,
-                              InstrumentPrototypeAnalysisManager &IPAM);
+  llvm::PreservedAnalyses run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

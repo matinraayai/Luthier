@@ -1,4 +1,4 @@
-//===-- InstrumentPrototypePassBuilder.h ------------------------*- C++ -*-===//
+//===-- PrototypePassBuilder.h ------------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,16 +14,16 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Defines \c InstrumentPrototypePassBuilder, a thin wrapper around
+/// Defines \c PrototypePassBuilder, a thin wrapper around
 /// \c llvm::PassBuilder that lets callers assemble pass pipelines over the
-/// \c InstrumentPrototype IR unit.  The wrapper owns the top-level pipeline
+/// \c Prototype IR unit.  The wrapper owns the top-level pipeline
 /// grammar (\c target(...) / \c instrumentation(...)) and provides typed
 /// helpers for adding module passes to either side of the prototype.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOL_CODE_GEN_INSTRUMENT_PROTOTYPE_PASS_BUILDER_H
-#define LUTHIER_TOOL_CODE_GEN_INSTRUMENT_PROTOTYPE_PASS_BUILDER_H
+#ifndef LUTHIER_TOOL_CODE_GEN_PROTOTYPE_PASS_BUILDER_H
+#define LUTHIER_TOOL_CODE_GEN_PROTOTYPE_PASS_BUILDER_H
 
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include <functional>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Passes/PassBuilder.h>
@@ -33,11 +33,11 @@
 namespace luthier {
 
 /// Thin wrapper around \c llvm::PassBuilder that lets callers (including
-/// plugins) add passes to an \c InstrumentPrototypePassManager.  Plugins
+/// plugins) add passes to an \c PrototypePassManager.  Plugins
 /// should treat \c getPassBuilder() as the standard extension surface for
 /// analyses and named-pass registration; the wrapper-level helpers are for
-/// composing passes over the InstrumentPrototype IR unit.
-class InstrumentPrototypePassBuilder {
+/// composing passes over the Prototype IR unit.
+class PrototypePassBuilder {
 public:
   /// Callback invoked while parsing a \c target(<name>) or
   /// \c instrumentation(<name>) block.  The callback is given the inner
@@ -47,9 +47,9 @@ public:
   /// \c llvm::PassBuilder::parsePassPipeline.
   using ParseCallback = std::function<bool(
       llvm::StringRef /*InnerText*/,
-      InstrumentPrototypePassManager & /*IPPM*/, bool /*IsTarget*/)>;
+      PrototypePassManager & /*IPPM*/, bool /*IsTarget*/)>;
 
-  explicit InstrumentPrototypePassBuilder(llvm::PassBuilder &PB) : PB(PB) {}
+  explicit PrototypePassBuilder(llvm::PassBuilder &PB) : PB(PB) {}
 
   /// Returns the wrapped \c llvm::PassBuilder.  Plugins register analyses,
   /// pipeline-parsing callbacks, and any pipeline-tuning options directly
@@ -57,7 +57,7 @@ public:
   llvm::PassBuilder &getPassBuilder() { return PB; }
 
   /// Register the cross-level analysis-manager proxies that let passes
-  /// running over an \c InstrumentPrototype reach the per-module,
+  /// running over an \c Prototype reach the per-module,
   /// per-function, and per-machine-function analyses on \p MAM, \p FAM,
   /// and \p MFAM (and vice-versa).  Also registers
   /// \c PassInstrumentationAnalysis on \p IPAM using the PIC held by the
@@ -68,7 +68,7 @@ public:
   void crossRegisterProxies(llvm::ModuleAnalysisManager &MAM,
                             llvm::FunctionAnalysisManager &FAM,
                             llvm::MachineFunctionAnalysisManager &MFAM,
-                            InstrumentPrototypeAnalysisManager &IPAM);
+                            PrototypeAnalysisManager &IPAM);
 
   /// Parse a top-level pipeline string of the form
   ///   target(<inner>) [, instrumentation(<inner>) ...]
@@ -76,13 +76,13 @@ public:
   /// top level are an error.  Each inner text is parsed via
   /// \c llvm::PassBuilder::parsePassPipeline unless a registered
   /// \c ParseCallback handled it first.
-  llvm::Error parsePipeline(InstrumentPrototypePassManager &IPPM,
+  llvm::Error parsePipeline(PrototypePassManager &IPPM,
                             llvm::StringRef PipelineText);
 
   /// Wrap \p Pass so it runs over the target module of the prototype and
   /// append it to \p IPPM.
   template <typename ModulePassT>
-  void addTargetModulePass(InstrumentPrototypePassManager &IPPM,
+  void addTargetModulePass(PrototypePassManager &IPPM,
                            ModulePassT &&Pass) {
     IPPM.addPass(createRunOnTargetModuleAdaptor(
         std::forward<ModulePassT>(Pass)));
@@ -91,7 +91,7 @@ public:
   /// Wrap \p Pass so it runs over the instrumentation module of the
   /// prototype and append it to \p IPPM.
   template <typename ModulePassT>
-  void addInstrumentationModulePass(InstrumentPrototypePassManager &IPPM,
+  void addInstrumentationModulePass(PrototypePassManager &IPPM,
                                     ModulePassT &&Pass) {
     IPPM.addPass(createRunOnInstrumentationModuleAdaptor(
         std::forward<ModulePassT>(Pass)));

@@ -324,9 +324,9 @@ llvmGetPassPluginInfo() {
       });
       MAM.registerPass([]() { return luthier::CodeObjectManagerAnalysis(); });
       // TraceCallGraphAnalysis, IPPredCFGAnalysis, and
-      // FunctionPreambleDescriptorAnalysis are now InstrumentPrototype
+      // FunctionPreambleDescriptorAnalysis are now Prototype
       // analyses and must be registered on the IPAM. The luthier-llc driver
-      // handles their registration via the InstrumentPrototypePassBuilder;
+      // handles their registration via the PrototypePassBuilder;
       // the opt plugin no longer registers them on the outer MAM.
       // LRStateValueStorageAndLoadLocationsAnalysis is now a legacy
       // ModulePass on the IModule; the driver registers it directly.
@@ -371,12 +371,12 @@ llvmGetPassPluginInfo() {
             MPM.addPass(luthier::AMDGPUMockLoaderPrinter(llvm::outs()));
             return true;
           };
-          // luthier-code-discovery is now an InstrumentPrototype pass;
-          // it must be invoked from within an InstrumentPrototypePassManager
+          // luthier-code-discovery is now an Prototype pass;
+          // it must be invoked from within an PrototypePassManager
           // (see luthier-llc / the HSA tool pipeline). Not exposed here in
           // the flat opt pipeline.
-          // trace-callgraph-printer is now an InstrumentPrototype pass; it
-          // must be invoked from within an InstrumentPrototypePassManager
+          // trace-callgraph-printer is now an Prototype pass; it
+          // must be invoked from within an PrototypePassManager
           // (see luthier-llc). Not exposed here in the flat opt pipeline.
           if (Name == "injected-payload-side-effects-printer") {
             MPM.addPass(llvm::createModuleToFunctionPassAdaptor(

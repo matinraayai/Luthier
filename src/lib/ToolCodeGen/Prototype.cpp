@@ -1,4 +1,4 @@
-//===-- InstrumentPrototype.cpp -------------------------------------------===//
+//===-- Prototype.cpp -------------------------------------------===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,23 +14,23 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements out-of-line definitions for \c InstrumentPrototype.
+/// Implements out-of-line definitions for \c Prototype.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include <cassert>
 #include <llvm/IR/PassInstrumentation.h>
 #include <llvm/IR/PassManagerImpl.h>
 
 namespace luthier {
 
-InstrumentPrototype::InstrumentPrototype(
+Prototype::Prototype(
     std::unique_ptr<llvm::Module> Target,
     std::unique_ptr<llvm::Module> IModule)
     : TargetModule(std::move(Target)), IModule(std::move(IModule)) {
   assert(this->TargetModule && this->IModule &&
-         "InstrumentPrototype modules must be non-null");
+         "Prototype modules must be non-null");
   assert(&this->TargetModule->getContext() == &this->IModule->getContext() &&
-         "InstrumentPrototype modules must share an LLVMContext");
+         "Prototype modules must share an LLVMContext");
 }
 
 
@@ -39,10 +39,10 @@ InstrumentPrototype::InstrumentPrototype(
 /// LLVM Pass adaptors.
 static llvm::PreservedAnalyses
 runModulePass(RunOnTargetModuleAdaptor::PassConceptT &Pass, llvm::Module &M,
-              InstrumentPrototype &IP,
-              InstrumentPrototypeAnalysisManager &IPAM) {
+              Prototype &IP,
+              PrototypeAnalysisManager &IPAM) {
   llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   // Request PassInstrumentation from the analysis manager; it drives the
@@ -64,16 +64,16 @@ runModulePass(RunOnTargetModuleAdaptor::PassConceptT &Pass, llvm::Module &M,
   PI.runAfterPass(Pass, M, PA);
 
   // We handled invalidation of module analyses above, so from the
-  // InstrumentPrototype pass manager's point of view all module analyses are
+  // Prototype pass manager's point of view all module analyses are
   // preserved. Keep the proxy live so the inner manager is not cleared.
   PA.preserveSet<llvm::AllAnalysesOn<llvm::Module>>();
-  PA.preserve<ModuleAnalysisManagerInstrumentPrototypeProxy>();
+  PA.preserve<ModuleAnalysisManagerPrototypeProxy>();
   return PA;
 }
 
 llvm::PreservedAnalyses
-RunOnTargetModuleAdaptor::run(InstrumentPrototype &IP,
-                              InstrumentPrototypeAnalysisManager &IPAM) {
+RunOnTargetModuleAdaptor::run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM) {
   return runModulePass(*Pass, IP.getTargetModule(), IP, IPAM);
 }
 
@@ -86,7 +86,7 @@ void RunOnTargetModuleAdaptor::printPipeline(
 }
 
 llvm::PreservedAnalyses RunOnInstrumentationModuleAdaptor::run(
-    InstrumentPrototype &IP, InstrumentPrototypeAnalysisManager &IPAM) {
+    Prototype &IP, PrototypeAnalysisManager &IPAM) {
   return runModulePass(*Pass, IP.getInstrumentationModule(), IP, IPAM);
 }
 
@@ -104,17 +104,17 @@ void RunOnInstrumentationModuleAdaptor::printPipeline(
 // namespace enclosing InnerAnalysisManagerProxy)/
 namespace llvm {
 
-using luthier::FunctionAnalysisManagerInstrumentPrototypeProxy;
-using luthier::MachineFunctionAnalysisManagerInstrumentPrototypeProxy;
-using luthier::ModuleAnalysisManagerInstrumentPrototypeProxy;
+using luthier::FunctionAnalysisManagerPrototypeProxy;
+using luthier::MachineFunctionAnalysisManagerPrototypeProxy;
+using luthier::ModuleAnalysisManagerPrototypeProxy;
 
 template <>
-bool ModuleAnalysisManagerInstrumentPrototypeProxy::Result::invalidate(
-    luthier::InstrumentPrototype &IP, const llvm::PreservedAnalyses &PA,
-    luthier::InstrumentPrototypeAnalysisManager::Invalidator &Inv) {
-  auto PAC = PA.getChecker<ModuleAnalysisManagerInstrumentPrototypeProxy>();
+bool ModuleAnalysisManagerPrototypeProxy::Result::invalidate(
+    luthier::Prototype &IP, const llvm::PreservedAnalyses &PA,
+    luthier::PrototypeAnalysisManager::Invalidator &Inv) {
+  auto PAC = PA.getChecker<ModuleAnalysisManagerPrototypeProxy>();
   if (!PAC.preserved() &&
-      !PAC.preservedSet<llvm::AllAnalysesOn<luthier::InstrumentPrototype>>()) {
+      !PAC.preservedSet<llvm::AllAnalysesOn<luthier::Prototype>>()) {
     InnerAM->clear(IP.getInstrumentationModule(),
                    IP.getInstrumentationModule().getName());
     InnerAM->clear(IP.getTargetModule(), IP.getTargetModule().getName());
@@ -124,12 +124,12 @@ bool ModuleAnalysisManagerInstrumentPrototypeProxy::Result::invalidate(
 }
 
 template <>
-bool FunctionAnalysisManagerInstrumentPrototypeProxy::Result::invalidate(
-    luthier::InstrumentPrototype &IP, const llvm::PreservedAnalyses &PA,
-    luthier::InstrumentPrototypeAnalysisManager::Invalidator &Inv) {
-  auto PAC = PA.getChecker<FunctionAnalysisManagerInstrumentPrototypeProxy>();
+bool FunctionAnalysisManagerPrototypeProxy::Result::invalidate(
+    luthier::Prototype &IP, const llvm::PreservedAnalyses &PA,
+    luthier::PrototypeAnalysisManager::Invalidator &Inv) {
+  auto PAC = PA.getChecker<FunctionAnalysisManagerPrototypeProxy>();
   if (!PAC.preserved() &&
-      !PAC.preservedSet<llvm::AllAnalysesOn<luthier::InstrumentPrototype>>()) {
+      !PAC.preservedSet<llvm::AllAnalysesOn<luthier::Prototype>>()) {
     InnerAM->clear();
     return true;
   }
@@ -137,13 +137,13 @@ bool FunctionAnalysisManagerInstrumentPrototypeProxy::Result::invalidate(
 }
 
 template <>
-bool MachineFunctionAnalysisManagerInstrumentPrototypeProxy::Result::invalidate(
-    luthier::InstrumentPrototype &IP, const llvm::PreservedAnalyses &PA,
-    luthier::InstrumentPrototypeAnalysisManager::Invalidator &Inv) {
+bool MachineFunctionAnalysisManagerPrototypeProxy::Result::invalidate(
+    luthier::Prototype &IP, const llvm::PreservedAnalyses &PA,
+    luthier::PrototypeAnalysisManager::Invalidator &Inv) {
   auto PAC =
-      PA.getChecker<MachineFunctionAnalysisManagerInstrumentPrototypeProxy>();
+      PA.getChecker<MachineFunctionAnalysisManagerPrototypeProxy>();
   if (!PAC.preserved() &&
-      !PAC.preservedSet<llvm::AllAnalysesOn<luthier::InstrumentPrototype>>()) {
+      !PAC.preservedSet<llvm::AllAnalysesOn<luthier::Prototype>>()) {
     InnerAM->clear();
     return true;
   }
@@ -158,11 +158,11 @@ namespace llvm {
 // LLVM only provides specializations for its own IR units (Module, Function),
 // so IP must supply its own before the PassManager instantiation below.
 template <>
-void printIRUnitNameForStackTrace<luthier::InstrumentPrototype>(
-    raw_ostream &OS, const luthier::InstrumentPrototype &IR) {
-  OS << "instrument prototype for \"" << IR.getName() << "\"";
+void printIRUnitNameForStackTrace<luthier::Prototype>(
+    raw_ostream &OS, const luthier::Prototype &IR) {
+  OS << "prototype for \"" << IR.getName() << "\"";
 }
 
-template class PassManager<luthier::InstrumentPrototype>;
-template class AnalysisManager<luthier::InstrumentPrototype>;
+template class PassManager<luthier::Prototype>;
+template class AnalysisManager<luthier::Prototype>;
 } // namespace llvm

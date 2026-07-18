@@ -14,7 +14,7 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file IPPredicatedLivenessIModulePass.h
-/// \c InstrumentPrototype-level analysis that runs liveness analysis across
+/// \c Prototype-level analysis that runs liveness analysis across
 /// the target module's inter-procedural predicated control-flow graph,
 /// tracking separate active-lane and inactive-lane live phys-reg sets at every
 /// program point of interest. Computed per-AppMI and surfaced per-injected-
@@ -24,7 +24,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_LIVENESS_IMODULE_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_LIVENESS_IMODULE_PASS_H
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseSet.h>
@@ -151,12 +151,12 @@ public:
     return LiveInsByPMBB;
   }
 
-  bool invalidate(InstrumentPrototype &, const llvm::PreservedAnalyses &PA,
-                  InstrumentPrototypeAnalysisManager::Invalidator &);
+  bool invalidate(Prototype &, const llvm::PreservedAnalyses &PA,
+                  PrototypeAnalysisManager::Invalidator &);
 };
 
-/// \brief \c InstrumentPrototype-level analysis that computes, for the target
-/// module of an \c InstrumentPrototype, the per-payload and per-PMBB live
+/// \brief \c Prototype-level analysis that computes, for the target
+/// module of an \c Prototype, the per-payload and per-PMBB live
 /// physical-register sets across active and inactive lane partitions.
 class IModuleIPPredicatedLivenessAnalysis
     : public llvm::AnalysisInfoMixin<IModuleIPPredicatedLivenessAnalysis> {
@@ -169,8 +169,8 @@ public:
 
   using Result = IModuleIPPredicatedLiveness;
 
-  Result run(InstrumentPrototype &IP,
-             InstrumentPrototypeAnalysisManager &IPAM);
+  Result run(Prototype &IP,
+             PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

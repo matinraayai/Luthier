@@ -14,12 +14,12 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements the \c TraceCallGraphAnalysis InstrumentPrototype analysis.
+/// Implements the \c TraceCallGraphAnalysis Prototype analysis.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/TraceCallGraph.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
 #include <AMDGPU.h>
 #include <SIInstrInfo.h>
@@ -54,11 +54,11 @@
 namespace luthier {
 
 bool TraceCallGraph::invalidate(
-    InstrumentPrototype &, const llvm::PreservedAnalyses &PA,
-    InstrumentPrototypeAnalysisManager::Invalidator &) {
+    Prototype &, const llvm::PreservedAnalyses &PA,
+    PrototypeAnalysisManager::Invalidator &) {
   auto PAC = PA.getChecker<TraceCallGraphAnalysis>();
   return !PAC.preserved() &&
-         !PAC.preservedSet<llvm::AllAnalysesOn<InstrumentPrototype>>();
+         !PAC.preservedSet<llvm::AllAnalysesOn<Prototype>>();
 }
 
 llvm::AnalysisKey TraceCallGraphAnalysis::Key;
@@ -800,15 +800,15 @@ static bool resolveViaPayloads(
 // ---------------------------------------------------------------------------
 
 TraceCallGraph
-TraceCallGraphAnalysis::run(InstrumentPrototype &IP,
-                            InstrumentPrototypeAnalysisManager &IPAM) {
+TraceCallGraphAnalysis::run(Prototype &IP,
+                            PrototypeAnalysisManager &IPAM) {
   TraceCallGraph Out;
 
   llvm::Module &TargetModule = IP.getTargetModule();
   llvm::Module &IModule = IP.getInstrumentationModule();
 
   llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   llvm::FunctionAnalysisManager &TargetFAM =
@@ -886,8 +886,8 @@ void TraceCallGraph::dump() const { print(luthier::dbgs()); }
 // ---------------------------------------------------------------------------
 
 llvm::PreservedAnalyses
-TraceCallGraphPrinter::run(InstrumentPrototype &IP,
-                           InstrumentPrototypeAnalysisManager &IPAM) {
+TraceCallGraphPrinter::run(Prototype &IP,
+                           PrototypeAnalysisManager &IPAM) {
   IPAM.getResult<TraceCallGraphAnalysis>(IP).print(OS);
   return llvm::PreservedAnalyses::all();
 }

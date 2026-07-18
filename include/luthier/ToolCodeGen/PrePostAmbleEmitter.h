@@ -25,7 +25,7 @@
 #ifndef LUTHIER_TOOL_CODE_GEN_PRE_POST_AMBLE_EMITTER_H
 #define LUTHIER_TOOL_CODE_GEN_PRE_POST_AMBLE_EMITTER_H
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/CodeGen/MachineFunctionPass.h>
 #include <llvm/Support/Error.h>
@@ -83,13 +83,13 @@ struct FunctionPreambleDescriptor {
       DeviceFunctions{};
 
   /// Never invalidate the results
-  bool invalidate(InstrumentPrototype &, const llvm::PreservedAnalyses &,
-                  InstrumentPrototypeAnalysisManager::Invalidator &) {
+  bool invalidate(Prototype &, const llvm::PreservedAnalyses &,
+                  PrototypeAnalysisManager::Invalidator &) {
     return false;
   }
 };
 
-/// \brief \c InstrumentPrototype-level analysis that computes, for each
+/// \brief \c Prototype-level analysis that computes, for each
 /// target \c MachineFunction, the preamble spec required to correctly host
 /// its injected payloads.
 ///
@@ -110,8 +110,8 @@ public:
 
   using Result = FunctionPreambleDescriptor;
 
-  Result run(InstrumentPrototype &IP,
-             InstrumentPrototypeAnalysisManager &IPAM);
+  Result run(Prototype &IP,
+             PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

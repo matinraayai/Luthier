@@ -25,7 +25,7 @@
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/SVAFrameLanes.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
@@ -226,7 +226,7 @@ llvm::AnalysisKey FunctionPreambleDescriptorAnalysis::Key;
 
 FunctionPreambleDescriptorAnalysis::Result
 FunctionPreambleDescriptorAnalysis::run(
-    InstrumentPrototype &IP, InstrumentPrototypeAnalysisManager &IPAM) {
+    Prototype &IP, PrototypeAnalysisManager &IPAM) {
   Result Out;
 
   llvm::Module &TargetModule = IP.getTargetModule();
@@ -235,7 +235,7 @@ FunctionPreambleDescriptorAnalysis::run(
   // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
   // MAM caches results for both modules, keyed by the module reference.
   llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   llvm::FunctionAnalysisManager &TargetFAM =

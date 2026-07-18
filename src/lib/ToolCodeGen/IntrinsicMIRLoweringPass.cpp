@@ -619,7 +619,7 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
 }
 
 bool IntrinsicMIRLoweringPass::lowerIntrinsics(
-    InstrumentPrototype &IP, InstrumentPrototypeAnalysisManager &IPAM,
+    Prototype &IP, PrototypeAnalysisManager &IPAM,
     llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> &SVAInfoByMF,
     std::unique_ptr<StateValueArraySpecs> &SVASpecs) {
   bool Changed = false;
@@ -630,7 +630,7 @@ bool IntrinsicMIRLoweringPass::lowerIntrinsics(
   // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
   // MAM caches results for both modules, keyed by the module reference.
   llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   llvm::MachineModuleInfo &MMI =
@@ -814,8 +814,8 @@ void IntrinsicMIRLoweringPass::materializeReadlanes(
 }
 
 llvm::PreservedAnalyses
-IntrinsicMIRLoweringPass::run(InstrumentPrototype &IP,
-                              InstrumentPrototypeAnalysisManager &IPAM) {
+IntrinsicMIRLoweringPass::run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM) {
   llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> SVAInfoByMF;
   std::unique_ptr<StateValueArraySpecs> SVASpecs{nullptr};
 
@@ -827,12 +827,12 @@ IntrinsicMIRLoweringPass::run(InstrumentPrototype &IP,
   if (!Changed)
     return llvm::PreservedAnalyses::all();
 
-  // Preserve the outer MAM proxy so the InstrumentPrototype adaptor doesn't
+  // Preserve the outer MAM proxy so the Prototype adaptor doesn't
   // wipe every cached module-level analysis for both modules on the way out —
   // downstream passes still need the cached MachineFunctionAnalysis results
   // for the instrumentation module we just mutated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  PA.preserve<ModuleAnalysisManagerInstrumentPrototypeProxy>();
+  PA.preserve<ModuleAnalysisManagerPrototypeProxy>();
   return PA;
 }
 

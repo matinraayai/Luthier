@@ -357,18 +357,18 @@ static void walkPMBBBackward(
 } // namespace
 
 bool IModuleIPPredicatedLiveness::invalidate(
-    InstrumentPrototype &, const llvm::PreservedAnalyses &PA,
-    InstrumentPrototypeAnalysisManager::Invalidator &) {
+    Prototype &, const llvm::PreservedAnalyses &PA,
+    PrototypeAnalysisManager::Invalidator &) {
   auto PAC = PA.getChecker<IModuleIPPredicatedLivenessAnalysis>();
   return !PAC.preserved() &&
-         !PAC.preservedSet<llvm::AllAnalysesOn<InstrumentPrototype>>();
+         !PAC.preservedSet<llvm::AllAnalysesOn<Prototype>>();
 }
 
 llvm::AnalysisKey IModuleIPPredicatedLivenessAnalysis::Key;
 
 IModuleIPPredicatedLivenessAnalysis::Result
 IModuleIPPredicatedLivenessAnalysis::run(
-    InstrumentPrototype &IP, InstrumentPrototypeAnalysisManager &IPAM) {
+    Prototype &IP, PrototypeAnalysisManager &IPAM) {
   LLVM_DEBUG(luthier::dbgs()
              << "=== Luthier IModule IP-Predicated Liveness Analysis ===\n");
 
@@ -379,7 +379,7 @@ IModuleIPPredicatedLivenessAnalysis::run(
   // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
   // MAM caches results for both modules, keyed by the module reference.
   llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   IPPredicatedCFG &CFG =

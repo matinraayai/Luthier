@@ -20,7 +20,7 @@
 #ifndef LUTHIER_TOOL_CODE_GEN_INTRINSIC_MIR_LOWERING_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_INTRINSIC_MIR_LOWERING_PASS_H
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
@@ -76,8 +76,8 @@ private:
       const StateValueArraySpecs &SVASpecs, bool &Changed);
 
   bool
-  lowerIntrinsics(InstrumentPrototype &IP,
-                  InstrumentPrototypeAnalysisManager &IPAM,
+  lowerIntrinsics(Prototype &IP,
+                  PrototypeAnalysisManager &IPAM,
                   llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo>
                       &SVAInfoByMF,
                   std::unique_ptr<StateValueArraySpecs> &SVASpecs);
@@ -85,8 +85,8 @@ private:
 public:
   IntrinsicMIRLoweringPass() = default;
 
-  llvm::PreservedAnalyses run(InstrumentPrototype &IP,
-                              InstrumentPrototypeAnalysisManager &IPAM);
+  llvm::PreservedAnalyses run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

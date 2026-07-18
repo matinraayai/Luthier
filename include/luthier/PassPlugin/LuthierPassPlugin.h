@@ -48,7 +48,7 @@ class SubtargetFeatures;
 
 namespace luthier {
 
-class InstrumentPrototypePassBuilder;
+class PrototypePassBuilder;
 
 extern "C" {
 
@@ -111,12 +111,12 @@ struct PassPluginLibraryInfo {
                                           llvm::TargetMachine &,
                                           void *){nullptr};
 
-  /// The callback for augmenting the \c InstrumentPrototypePassBuilder used by
+  /// The callback for augmenting the \c PrototypePassBuilder used by
   /// the \c luthier-llc driver.  Plugins should use the wrapper to add passes
-  /// to either side of the \c InstrumentPrototype and to hook the
+  /// to either side of the \c Prototype and to hook the
   /// \c target(...) / \c instrumentation(...) pipeline grammar.
-  void (*RegisterInstrumentPrototypePassBuilderCallback)(
-      InstrumentPrototypePassBuilder &, void *){nullptr};
+  void (*RegisterPrototypePassBuilderCallback)(
+      PrototypePassBuilder &, void *){nullptr};
 };
 
 /// \macro LUTHIER_PASS_PLUGIN_API_VERSION
@@ -214,12 +214,12 @@ public:
       Info.AugmentTargetPassConfigCallback(PR, TPC, TM, Info.ExtraArgs);
   }
 
-  /// Invoke the callback for augmenting the \c InstrumentPrototypePassBuilder
+  /// Invoke the callback for augmenting the \c PrototypePassBuilder
   /// used by the \c luthier-llc driver.
-  void registerInstrumentPrototypePassBuilderCallback(
-      InstrumentPrototypePassBuilder &IPPB) const {
-    if (Info.RegisterInstrumentPrototypePassBuilderCallback)
-      Info.RegisterInstrumentPrototypePassBuilderCallback(IPPB, Info.ExtraArgs);
+  void registerPrototypePassBuilderCallback(
+      PrototypePassBuilder &IPPB) const {
+    if (Info.RegisterPrototypePassBuilderCallback)
+      Info.RegisterPrototypePassBuilderCallback(IPPB, Info.ExtraArgs);
   }
 
 private:

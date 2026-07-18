@@ -7,15 +7,15 @@
 //===----------------------------------------------------------------------===//
 ///
 /// A fork of LLVM's llc code generator driver modified for running Luthier's
-/// instrument prototype passes with support for plugins.
+/// prototype passes with support for plugins.
 ///
 //===----------------------------------------------------------------------===//
 
 #include "luthier/Common/Debug.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/PassPlugin/LuthierPassPlugin.h"
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
-#include "luthier/ToolCodeGen/InstrumentPrototypePassBuilder.h"
+#include "luthier/ToolCodeGen/Prototype.h"
+#include "luthier/ToolCodeGen/PrototypePassBuilder.h"
 #include "luthier/ToolCodeGenTesting/LuthierFile.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
@@ -269,7 +269,7 @@ static cl::list<std::string> PassPlugins("load-pass-plugin",
                                          cl::desc("Load plugin library"));
 
 // This flag specifies a textual description of the optimization pass pipeline
-// to run over the Instrument Prototype. It requires explicit target(...) or
+// to run over the Prototype. It requires explicit target(...) or
 // instrumentation(...) wrapping of the inner pipeline.
 static cl::opt<std::string> PassPipeline(
     "passes",
@@ -583,7 +583,7 @@ static int compileModule(char **argv,
 
   const Target *TheTarget = nullptr;
   std::unique_ptr<TargetMachine> Target;
-  std::unique_ptr<luthier::InstrumentPrototype> IP;
+  std::unique_ptr<luthier::Prototype> IP;
   std::unique_ptr<MIRParser> TargetMIRParser;
   std::unique_ptr<MIRParser> IModuleMIRParser;
 
@@ -613,7 +613,7 @@ static int compileModule(char **argv,
   };
 
   // Only two supported input shapes: an empty input (synthesize an empty
-  // InstrumentPrototype from -mtriple) or a .luthier file.
+  // Prototype from -mtriple) or a .luthier file.
   if (InputFilename.empty()) {
     if (TargetTriple.empty()) {
       WithColor::error(errs(), argv[0])
@@ -640,7 +640,7 @@ static int compileModule(char **argv,
     auto IModuleM = std::make_unique<Module>("luthier-instrumentation", Context);
     IModuleM->setTargetTriple(TheTriple);
     IModuleM->setDataLayout(Target->createDataLayout());
-    IP = std::make_unique<luthier::InstrumentPrototype>(std::move(TargetM),
+    IP = std::make_unique<luthier::Prototype>(std::move(TargetM),
                                                         std::move(IModuleM));
   } else if (SkipModule) {
     // -mcpu=help / -mattr=help: don't parse the module.
@@ -668,7 +668,7 @@ static int compileModule(char **argv,
 
     // A throw-away IPAM used only to satisfy the parser signature.  The
     // driver builds its own IPAM later and rebinds analyses to it.
-    luthier::InstrumentPrototypeAnalysisManager ParserIPAM;
+    luthier::PrototypeAnalysisManager ParserIPAM;
     auto LoadedOrErr = ParserOrErr->load(Context, ParserIPAM, SetDataLayout,
                                          setMIRFunctionAttributes);
     if (!LoadedOrErr)
@@ -694,7 +694,7 @@ static int compileModule(char **argv,
     return 1;
   }
 
-  assert(IP && "should have constructed an InstrumentPrototype above");
+  assert(IP && "should have constructed an Prototype above");
   if (codegen::getFloatABIForCalls() != FloatABI::Default)
     Target->Options.FloatABIType = codegen::getFloatABIForCalls();
 
@@ -788,14 +788,14 @@ static int compileModule(char **argv,
   FunctionAnalysisManager FAM;
   CGSCCAnalysisManager CGAM;
   ModuleAnalysisManager MAM;
-  luthier::InstrumentPrototypeAnalysisManager IPAM;
+  luthier::PrototypeAnalysisManager IPAM;
 
   PassBuilder PB(Target.get(), PipelineTuningOptions(), std::nullopt, &PIC);
 
-  luthier::InstrumentPrototypePassBuilder IPPB(PB);
+  luthier::PrototypePassBuilder IPPB(PB);
 
   for (const auto &Plugin : PluginList)
-    Plugin.registerInstrumentPrototypePassBuilderCallback(IPPB);
+    Plugin.registerPrototypePassBuilderCallback(IPPB);
 
   PB.registerModuleAnalyses(MAM);
   PB.registerCGSCCAnalyses(CGAM);
@@ -819,7 +819,7 @@ static int compileModule(char **argv,
   MAM.registerPass([&] { return LibcallLoweringModuleAnalysis(); });
   MAM.registerPass([&] { return MachineModuleAnalysis(MMI); });
 
-  luthier::InstrumentPrototypePassManager IPPM;
+  luthier::PrototypePassManager IPPM;
 
   if (!PassPipeline.empty()) {
     if (!IP->getTargetModule().empty() && !TargetMIRParser) {
@@ -860,7 +860,7 @@ static int compileModule(char **argv,
     IPPB.addTargetModulePass(IPPM, std::move(TargetMPM));
   }
   // When EmitLuthierFile is set and -passes is empty, the driver runs no
-  // default pipeline: the tool re-emits the InstrumentPrototype as-is.
+  // default pipeline: the tool re-emits the Prototype as-is.
 
   if (PrintPipelinePasses) {
     std::string PipelineStr;

@@ -1,4 +1,4 @@
-//===-- InstrumentPrototypePassBuilder.cpp -------------------------------===//
+//===-- PrototypePassBuilder.cpp -------------------------------===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,9 +14,9 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements \c InstrumentPrototypePassBuilder::parsePipeline.
+/// Implements \c PrototypePassBuilder::parsePipeline.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGen/InstrumentPrototypePassBuilder.h"
+#include "luthier/ToolCodeGen/PrototypePassBuilder.h"
 #include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/IR/PassInstrumentation.h>
 #include <llvm/IR/PassManager.h>
@@ -24,11 +24,11 @@
 
 namespace luthier {
 
-void InstrumentPrototypePassBuilder::crossRegisterProxies(
+void PrototypePassBuilder::crossRegisterProxies(
     llvm::ModuleAnalysisManager &MAM, llvm::FunctionAnalysisManager &FAM,
     llvm::MachineFunctionAnalysisManager &MFAM,
-    InstrumentPrototypeAnalysisManager &IPAM) {
-  // The adaptors run pass instrumentation at the InstrumentPrototype level, so
+    PrototypeAnalysisManager &IPAM) {
+  // The adaptors run pass instrumentation at the Prototype level, so
   // PassInstrumentationAnalysis must be available on its analysis manager.
   // Register it against the PIC held by the wrapped llvm::PassBuilder so
   // callbacks are shared with the nested Module/Function/MachineFunction
@@ -38,24 +38,24 @@ void InstrumentPrototypePassBuilder::crossRegisterProxies(
   IPAM.registerPass([PIC] { return llvm::PassInstrumentationAnalysis(PIC); });
 
   IPAM.registerPass(
-      [&] { return ModuleAnalysisManagerInstrumentPrototypeProxy(MAM); });
+      [&] { return ModuleAnalysisManagerPrototypeProxy(MAM); });
   IPAM.registerPass(
-      [&] { return FunctionAnalysisManagerInstrumentPrototypeProxy(FAM); });
+      [&] { return FunctionAnalysisManagerPrototypeProxy(FAM); });
   IPAM.registerPass([&] {
-    return MachineFunctionAnalysisManagerInstrumentPrototypeProxy(MFAM);
+    return MachineFunctionAnalysisManagerPrototypeProxy(MFAM);
   });
 
   MAM.registerPass(
-      [&] { return InstrumentPrototypeAnalysisManagerModuleProxy(IPAM); });
+      [&] { return PrototypeAnalysisManagerModuleProxy(IPAM); });
   FAM.registerPass(
-      [&] { return InstrumentPrototypeAnalysisManagerFunctionProxy(IPAM); });
+      [&] { return PrototypeAnalysisManagerFunctionProxy(IPAM); });
   MFAM.registerPass([&] {
-    return InstrumentPrototypeAnalysisManagerMachineFunctionProxy(IPAM);
+    return PrototypeAnalysisManagerMachineFunctionProxy(IPAM);
   });
 }
 
-llvm::Error InstrumentPrototypePassBuilder::parsePipeline(
-    InstrumentPrototypePassManager &IPPM, llvm::StringRef PipelineText) {
+llvm::Error PrototypePassBuilder::parsePipeline(
+    PrototypePassManager &IPPM, llvm::StringRef PipelineText) {
   llvm::StringRef Remaining = PipelineText.trim();
 
   while (!Remaining.empty()) {
@@ -83,7 +83,7 @@ llvm::Error InstrumentPrototypePassBuilder::parsePipeline(
 
     if (Depth != 0) {
       return llvm::make_error<llvm::StringError>(
-          "unmatched parentheses in InstrumentPrototype pass pipeline",
+          "unmatched parentheses in Prototype pass pipeline",
           llvm::inconvertibleErrorCode());
     }
 

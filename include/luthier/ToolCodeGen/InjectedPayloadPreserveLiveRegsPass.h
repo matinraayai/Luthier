@@ -14,7 +14,7 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file InjectedPayloadPreserveLiveRegsPass.h
-/// InstrumentPrototype-level transform: for each injected-payload function,
+/// Prototype-level transform: for each injected-payload function,
 /// snapshot the physical registers that are live at the AppMI insertion point
 /// and not already participating in the payload's declared read/write set, so
 /// the payload restores them on exit and the target application's state is
@@ -22,12 +22,12 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_PRESERVE_LIVE_REGS_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_PRESERVE_LIVE_REGS_PASS_H
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/IR/PassManager.h>
 
 namespace luthier {
 
-/// \brief InstrumentPrototype-level pass: emits preservation copies in every
+/// \brief Prototype-level pass: emits preservation copies in every
 /// injected-payload function for the physical registers that are live at the
 /// instrumentation point but neither read nor written by the payload.
 ///
@@ -46,8 +46,8 @@ class InjectedPayloadPreserveLiveRegsPass
 public:
   InjectedPayloadPreserveLiveRegsPass() = default;
 
-  llvm::PreservedAnalyses run(InstrumentPrototype &IP,
-                              InstrumentPrototypeAnalysisManager &IPAM);
+  llvm::PreservedAnalyses run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

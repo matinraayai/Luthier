@@ -48,8 +48,8 @@
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include "luthier/ToolCodeGen/InitialExecutionPointAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
-#include "luthier/ToolCodeGen/InstrumentPrototypePassBuilder.h"
+#include "luthier/ToolCodeGen/Prototype.h"
+#include "luthier/ToolCodeGen/PrototypePassBuilder.h"
 #include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
 #include "luthier/ToolCodeGen/MIRToIRTranslationAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPass.h"
@@ -141,9 +141,9 @@ public:
               D.getLoaderTableSnapshot().getTable()));
     });
     MAM.registerPass([&] { return luthier::MetadataParserAnalysis(MDParser); });
-    // TraceCallGraphAnalysis and IPPredCFGAnalysis are InstrumentPrototype
+    // TraceCallGraphAnalysis and IPPredCFGAnalysis are Prototype
     // analyses now; they belong on the IPAM, not the outer MAM. Tools that
-    // drive the pipeline through an InstrumentPrototypePassManager should
+    // drive the pipeline through an PrototypePassManager should
     // register them there.
     MAM.registerPass(
         [] { return luthier::FunctionPreambleDescriptorAnalysis(); });
@@ -180,8 +180,8 @@ public:
     TargetM->setTargetTriple(TM->getTargetTriple());
     TargetM->setDataLayout(TM->createDataLayout());
 
-    // CodeDiscoveryPass is an InstrumentPrototype pass, so it needs an
-    // InstrumentPrototype instance even though no injected payloads exist
+    // CodeDiscoveryPass is an Prototype pass, so it needs an
+    // Prototype instance even though no injected payloads exist
     // yet. Create a placeholder IModule up front; the real IModule that
     // hosts the tool's payload/hook code is materialized later by
     // InstrumentationPMDriver.
@@ -189,7 +189,7 @@ public:
         "luthier.imodule.placeholder", Ctx);
     PlaceholderIM->setTargetTriple(TM->getTargetTriple());
     PlaceholderIM->setDataLayout(TM->createDataLayout());
-    luthier::InstrumentPrototype IP(std::move(TargetM),
+    luthier::Prototype IP(std::move(TargetM),
                                     std::move(PlaceholderIM));
 
     llvm::MachineModuleInfo MMI(TM.get());
@@ -203,7 +203,7 @@ public:
     llvm::CGSCCAnalysisManager CGAM;
     llvm::MachineFunctionAnalysisManager MFAM;
     llvm::ModuleAnalysisManager MAM;
-    luthier::InstrumentPrototypeAnalysisManager IPAM;
+    luthier::PrototypeAnalysisManager IPAM;
 
     // PIC + SI must outlive MPM.run(). StandardInstrumentations reads
     // --print-after-all / --print-before-all / --print-changed / -time-passes
@@ -220,7 +220,7 @@ public:
     PB.registerMachineFunctionAnalyses(MFAM);
     PB.crossRegisterProxies(LAM, FAM, CGAM, MAM, &MFAM);
 
-    luthier::InstrumentPrototypePassBuilder IPPB(PB);
+    luthier::PrototypePassBuilder IPPB(PB);
     IPPB.crossRegisterProxies(MAM, FAM, MFAM, IPAM);
 
     SI.registerCallbacks(PIC, &MAM);
@@ -243,10 +243,10 @@ public:
     std::string ToolCPU(TM->getTargetCPU());
     llvm::SubtargetFeatures ToolFeatures(TM->getTargetFeatureString());
 
-    // Phase 1: Run CodeDiscoveryPass via an InstrumentPrototypePassManager.
+    // Phase 1: Run CodeDiscoveryPass via an PrototypePassManager.
     // This lifts the initial code object into the target module and
     // populates its MachineFunctionAnalysis cache.
-    luthier::InstrumentPrototypePassManager IPPM;
+    luthier::PrototypePassManager IPPM;
     IPPM.addPass(luthier::CodeDiscoveryPass(DiscoveryOpts));
     IPPM.run(IP, IPAM);
 

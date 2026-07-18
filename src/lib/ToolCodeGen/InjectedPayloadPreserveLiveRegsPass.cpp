@@ -40,7 +40,7 @@
 namespace luthier {
 
 llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
-    InstrumentPrototype &IP, InstrumentPrototypeAnalysisManager &IPAM) {
+    Prototype &IP, PrototypeAnalysisManager &IPAM) {
   LLVM_DEBUG(luthier::dbgs()
              << "=== Luthier Injected Payload Preserve Live Regs Pass ===\n");
 
@@ -49,7 +49,7 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
   // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
   // MAM caches results for both modules, keyed by module reference.
   llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   llvm::MachineModuleInfo &MMI =
@@ -203,12 +203,12 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
   if (!Changed)
     return llvm::PreservedAnalyses::all();
 
-  // Preserve the outer MAM proxy so the InstrumentPrototype adaptor doesn't
+  // Preserve the outer MAM proxy so the Prototype adaptor doesn't
   // wipe every cached module-level analysis for both modules on the way out —
   // downstream passes still need the cached MachineFunctionAnalysis results
   // for the instrumentation module we just mutated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  PA.preserve<ModuleAnalysisManagerInstrumentPrototypeProxy>();
+  PA.preserve<ModuleAnalysisManagerPrototypeProxy>();
   return PA;
 }
 

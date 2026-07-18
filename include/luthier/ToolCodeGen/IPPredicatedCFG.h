@@ -19,7 +19,7 @@
 #ifndef LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_CFG_H
 #define LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_CFG_H
 #include "luthier/Common/DenseMapInfo.h"
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseSet.h>
@@ -180,8 +180,8 @@ public:
   LLVM_DUMP_METHOD void dump() const;
 
   static llvm::Expected<std::unique_ptr<IPPredicatedCFG>>
-  getIPPredCFG(InstrumentPrototype &IP,
-               InstrumentPrototypeAnalysisManager &IPAM);
+  getIPPredCFG(Prototype &IP,
+               PrototypeAnalysisManager &IPAM);
 };
 
 class IPPredCFGAnalysis : public llvm::AnalysisInfoMixin<IPPredCFGAnalysis> {
@@ -200,8 +200,8 @@ public:
         : IPPredCFG(std::move(IPCFG)) {}
 
   public:
-    bool invalidate(InstrumentPrototype &IP, const llvm::PreservedAnalyses &PA,
-                    InstrumentPrototypeAnalysisManager::Invalidator &Inv);
+    bool invalidate(Prototype &IP, const llvm::PreservedAnalyses &PA,
+                    PrototypeAnalysisManager::Invalidator &Inv);
 
     [[nodiscard]] const IPPredicatedCFG &getVecCFG() const {
       return *IPPredCFG;
@@ -211,8 +211,8 @@ public:
 
   IPPredCFGAnalysis() = default;
 
-  Result run(InstrumentPrototype &IP,
-             InstrumentPrototypeAnalysisManager &IPAM);
+  Result run(Prototype &IP,
+             PrototypeAnalysisManager &IPAM);
 };
 
 class IPPredCFGPrinter : public llvm::PassInfoMixin<IPPredCFGAnalysis> {
@@ -221,8 +221,8 @@ class IPPredCFGPrinter : public llvm::PassInfoMixin<IPPredCFGAnalysis> {
 public:
   explicit IPPredCFGPrinter(llvm::raw_ostream &OS) : OS(OS) {}
 
-  llvm::PreservedAnalyses run(InstrumentPrototype &IP,
-                              InstrumentPrototypeAnalysisManager &IPAM);
+  llvm::PreservedAnalyses run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

@@ -15,13 +15,13 @@
 //===----------------------------------------------------------------------===//
 /// \file
 /// Defines \c LuthierFileParser — the class responsible for deserializing
-/// \c .luthier files into a \c luthier::InstrumentPrototype
+/// \c .luthier files into a \c luthier::Prototype
 /// — together with the \c writeLuthierFile helper for serialization.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_TESTING_LUTHIER_FILE_H
 #define LUTHIER_TOOL_CODE_GEN_TESTING_LUTHIER_FILE_H
 
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include <functional>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/CodeGen/MIRParser/MIRParser.h>
@@ -42,12 +42,12 @@ class raw_ostream;
 namespace luthier {
 
 /// Result of parsing a \c .luthier file: the assembled
-/// \c InstrumentPrototype together with the \c MIRParser instances used to
+/// \c Prototype together with the \c MIRParser instances used to
 /// build each module (non-null only for modules stored in MIR form).
 /// Callers hold on to the parsers until \c MachineModuleAnalysis has been
 /// wired up so they can call \c MIRParser::parseMachineFunctions.
-struct LoadedInstrumentPrototype {
-  std::unique_ptr<InstrumentPrototype> IP;
+struct LoadedPrototype {
+  std::unique_ptr<Prototype> IP;
   std::unique_ptr<llvm::MIRParser> TargetMIRParser;
   std::unique_ptr<llvm::MIRParser> IModuleMIRParser;
 };
@@ -106,7 +106,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Parse both modules of the \c .luthier file into a single
-  /// \c InstrumentPrototype.
+  /// \c Prototype.
   ///
   /// \p Ctx is the \c LLVMContext both parsed modules share.  \p IPAM is
   /// threaded through for future use (analyses that need to associate MIR
@@ -121,8 +121,8 @@ public:
   ///
   /// The instrumentation module's metadata is patched so that cross-module
   /// \c MDNode references point back into the live target module.
-  llvm::Expected<LoadedInstrumentPrototype>
-  load(llvm::LLVMContext &Ctx, InstrumentPrototypeAnalysisManager &IPAM,
+  llvm::Expected<LoadedPrototype>
+  load(llvm::LLVMContext &Ctx, PrototypeAnalysisManager &IPAM,
        std::function<std::optional<std::string>(llvm::StringRef,
                                                 llvm::StringRef)>
            SetDataLayout = nullptr,
@@ -157,16 +157,16 @@ private:
 /// module's \c Function s has a cached \c llvm::MachineFunctionAnalysis
 /// result on the \c FunctionAnalysisManager reachable from \p IPAM, the
 /// module is written as MIR; otherwise it is written as LLVM IR text.
-llvm::Error writeLuthierFile(llvm::raw_ostream &OS, InstrumentPrototype &IP,
-                             InstrumentPrototypeAnalysisManager &IPAM);
+llvm::Error writeLuthierFile(llvm::raw_ostream &OS, Prototype &IP,
+                             PrototypeAnalysisManager &IPAM);
 
 /// Convenience overload that opens \p Path and delegates to the stream-based
 /// \c writeLuthierFile.
-llvm::Error writeLuthierFile(llvm::StringRef Path, InstrumentPrototype &IP,
-                             InstrumentPrototypeAnalysisManager &IPAM);
+llvm::Error writeLuthierFile(llvm::StringRef Path, Prototype &IP,
+                             PrototypeAnalysisManager &IPAM);
 
 /// Compatibility shim for legacy callers that hold the two modules
-/// separately and do not have an \c InstrumentPrototypeAnalysisManager.
+/// separately and do not have an \c PrototypeAnalysisManager.
 /// Both modules are written as IR text; the MDNode slot map is still
 /// computed against the live \p TargetModule so that reloaded imodule
 /// metadata can be rewired.

@@ -1564,8 +1564,8 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
 }
 
 llvm::PreservedAnalyses
-CodeDiscoveryPass::run(InstrumentPrototype &IP,
-                       InstrumentPrototypeAnalysisManager &IPAM) {
+CodeDiscoveryPass::run(Prototype &IP,
+                       PrototypeAnalysisManager &IPAM) {
   llvm::Module &TargetModule = IP.getTargetModule();
   llvm::LLVMContext &Ctx = TargetModule.getContext();
 
@@ -1575,7 +1575,7 @@ CodeDiscoveryPass::run(InstrumentPrototype &IP,
   // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
   // MAM caches results for both modules, keyed by the module reference.
   llvm::ModuleAnalysisManager &TargetMAM =
-      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   llvm::MachineModuleInfo &TargetMMI =
@@ -1842,12 +1842,12 @@ CodeDiscoveryPass::run(InstrumentPrototype &IP,
     CallTerm->setCalledFunction(It->second);
   }
 
-  // Preserve the outer MAM proxy so the InstrumentPrototype adaptor doesn't
+  // Preserve the outer MAM proxy so the Prototype adaptor doesn't
   // wipe every cached module-level analysis for both modules on the way out —
   // downstream passes (InstrumentationPMDriver, NewPMAsmPrinter) still need
   // the target module's MachineFunctionAnalysis cache we just populated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  PA.preserve<ModuleAnalysisManagerInstrumentPrototypeProxy>();
+  PA.preserve<ModuleAnalysisManagerPrototypeProxy>();
   return PA;
 }
 } // namespace luthier

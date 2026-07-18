@@ -1,4 +1,4 @@
-//===-- ParentInstrumentPrototypeAnalysis.h ---------------------*- C++ -*-===//
+//===-- ParentPrototypeAnalysis.h ---------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,68 +14,68 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Describes \c ParentInstrumentPrototypeAnalysis, a module analysis that
+/// Describes \c ParentPrototypeAnalysis, a module analysis that
 /// resolves an \c llvm::Module — either the target module or the
-/// instrumentation module — back to the \c InstrumentPrototype that owns it.
+/// instrumentation module — back to the \c Prototype that owns it.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOL_CODE_GEN_PARENT_INSTRUMENT_PROTOTYPE_ANALYSIS_H
-#define LUTHIER_TOOL_CODE_GEN_PARENT_INSTRUMENT_PROTOTYPE_ANALYSIS_H
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#ifndef LUTHIER_TOOL_CODE_GEN_PARENT_PROTOTYPE_ANALYSIS_H
+#define LUTHIER_TOOL_CODE_GEN_PARENT_PROTOTYPE_ANALYSIS_H
+#include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/IR/PassManager.h>
 
 namespace luthier {
 
 /// \brief External registry that maps every \c llvm::Module owned by a live
-/// \c InstrumentPrototype (both its target module and its instrumentation
+/// \c Prototype (both its target module and its instrumentation
 /// module) to that prototype.
 ///
 /// The registry is owned by whoever manages the pipeline (e.g. the
 /// \c InstrumentationPMDriver) and can hold many prototypes at once. Callers
 /// must register a prototype's modules before any pipeline queries the parent
-/// via \c ParentInstrumentPrototypeAnalysis, and unregister them before the
+/// via \c ParentPrototypeAnalysis, and unregister them before the
 /// prototype (and hence its modules) are destroyed.
-class ModuleToInstrumentPrototypeMap {
-  llvm::DenseMap<const llvm::Module *, InstrumentPrototype *> ModuleToIP;
+class ModuleToPrototypeMap {
+  llvm::DenseMap<const llvm::Module *, Prototype *> ModuleToIP;
 
 public:
-  ModuleToInstrumentPrototypeMap() = default;
+  ModuleToPrototypeMap() = default;
 
-  ModuleToInstrumentPrototypeMap(const ModuleToInstrumentPrototypeMap &) =
+  ModuleToPrototypeMap(const ModuleToPrototypeMap &) =
       delete;
-  ModuleToInstrumentPrototypeMap &
-  operator=(const ModuleToInstrumentPrototypeMap &) = delete;
+  ModuleToPrototypeMap &
+  operator=(const ModuleToPrototypeMap &) = delete;
 
   /// Register both modules of \p IP as owned by \p IP.
-  void registerInstrumentPrototype(InstrumentPrototype &IP);
+  void registerPrototype(Prototype &IP);
 
   /// Remove both modules of \p IP from the registry. Safe to call on a
   /// prototype that was never registered.
-  void unregisterInstrumentPrototype(InstrumentPrototype &IP);
+  void unregisterPrototype(Prototype &IP);
 
-  /// \return the \c InstrumentPrototype that owns \p M, or \c nullptr if
+  /// \return the \c Prototype that owns \p M, or \c nullptr if
   /// \p M has not been registered with this map.
-  [[nodiscard]] InstrumentPrototype *lookup(const llvm::Module &M) const;
+  [[nodiscard]] Prototype *lookup(const llvm::Module &M) const;
 };
 
 /// \brief Module-level new-PM analysis that resolves an \c llvm::Module to its
-/// parent \c InstrumentPrototype through a shared
-/// \c ModuleToInstrumentPrototypeMap.
-class ParentInstrumentPrototypeAnalysis
-    : public llvm::AnalysisInfoMixin<ParentInstrumentPrototypeAnalysis> {
-  friend llvm::AnalysisInfoMixin<ParentInstrumentPrototypeAnalysis>;
+/// parent \c Prototype through a shared
+/// \c ModuleToPrototypeMap.
+class ParentPrototypeAnalysis
+    : public llvm::AnalysisInfoMixin<ParentPrototypeAnalysis> {
+  friend llvm::AnalysisInfoMixin<ParentPrototypeAnalysis>;
 
   static llvm::AnalysisKey Key;
 
-  const ModuleToInstrumentPrototypeMap &Map;
+  const ModuleToPrototypeMap &Map;
 
 public:
   class Result {
-    friend ParentInstrumentPrototypeAnalysis;
+    friend ParentPrototypeAnalysis;
 
-    InstrumentPrototype *IP;
+    Prototype *IP;
 
-    explicit Result(InstrumentPrototype *IP) : IP(IP) {}
+    explicit Result(Prototype *IP) : IP(IP) {}
 
   public:
     /// The parent relationship of a module is fixed for the module's
@@ -86,15 +86,15 @@ public:
       return false;
     }
 
-    /// \return the parent \c InstrumentPrototype of the queried module, or
+    /// \return the parent \c Prototype of the queried module, or
     /// \c nullptr if the module was not registered with the underlying map.
-    [[nodiscard]] InstrumentPrototype *getInstrumentPrototype() const {
+    [[nodiscard]] Prototype *getPrototype() const {
       return IP;
     }
   };
 
-  explicit ParentInstrumentPrototypeAnalysis(
-      const ModuleToInstrumentPrototypeMap &Map)
+  explicit ParentPrototypeAnalysis(
+      const ModuleToPrototypeMap &Map)
       : Map(Map) {}
 
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &) {

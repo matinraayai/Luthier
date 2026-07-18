@@ -682,7 +682,7 @@ llvm::AnalysisKey SVStorageAndLoadLocationsAnalysis::Key;
 
 SVStorageAndLoadLocationsAnalysis::Result
 SVStorageAndLoadLocationsAnalysis::run(
-    InstrumentPrototype &IP, InstrumentPrototypeAnalysisManager &IPAM) {
+    Prototype &IP, PrototypeAnalysisManager &IPAM) {
   Result Out;
 
   llvm::Module &TargetModule = IP.getTargetModule();
@@ -691,7 +691,7 @@ SVStorageAndLoadLocationsAnalysis::run(
   // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
   // MAM caches results for both modules, keyed by the module reference.
   llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   llvm::FunctionAnalysisManager &TargetFAM =

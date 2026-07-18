@@ -28,7 +28,7 @@
 ///     recorded by SVStorageAndLoadLocationsAnalysis is the source of truth
 ///     for the SVA VGPR at each instrumentation point.
 ///   - StateValueArraySpecs for the SVA layout (lanes, used SAs)
-///   - StateValueArrayStorage scheme picked by the InstrumentPrototype-level
+///   - StateValueArrayStorage scheme picked by the Prototype-level
 ///     SVStorageAndLoadLocationsAnalysis.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_PEI_PASS_H

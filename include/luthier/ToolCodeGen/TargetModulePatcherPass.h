@@ -14,9 +14,9 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file TargetModulePatcherPass.h
-/// InstrumentPrototype-level master pass that patches the IModule into the
+/// Prototype-level master pass that patches the IModule into the
 /// target module to produce a fully-instrumented target code. Runs as the
-/// final InstrumentPrototype pass. This pass consists of two stages:
+/// final Prototype pass. This pass consists of two stages:
 ///
 /// - **SVA Setup & Storage Code Emission**:
 ///   - For the initial-entry-point kernel: emit the SVA-setup sequence
@@ -44,13 +44,13 @@
 ///     as a last resort, two free SVA lanes from
 ///     `StateValueArraySpecs::findLowestFreeLanes`.
 ///
-/// Pipeline slot: very last InstrumentPrototype-level pass, after
+/// Pipeline slot: very last Prototype-level pass, after
 /// `injected-payload-pei` and `machine-passes` have finished lowering the
 /// instrumentation module's MIR.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_TARGET_MODULE_PATCHER_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_TARGET_MODULE_PATCHER_PASS_H
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/IR/PassManager.h>
 
 namespace luthier {
@@ -60,8 +60,8 @@ class TargetModulePatcherPass
 public:
   TargetModulePatcherPass() = default;
 
-  llvm::PreservedAnalyses run(InstrumentPrototype &IP,
-                              InstrumentPrototypeAnalysisManager &IPAM);
+  llvm::PreservedAnalyses run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

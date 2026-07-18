@@ -18,7 +18,7 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGenTesting/LuthierFile.h"
 #include "luthier/Common/GenericLuthierError.h"
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Bitcode/BitcodeReader.h>
@@ -282,19 +282,19 @@ void patchIModuleMDNodeReferences(
 
 /// Fetches the \c FunctionAnalysisManager reachable from \p IPAM through the
 /// cross-level proxies wired up by
-/// \c InstrumentPrototypePassBuilder::crossRegisterProxies.  Returns null if
+/// \c PrototypePassBuilder::crossRegisterProxies.  Returns null if
 /// the
 /// proxy has not been registered yet.
 llvm::FunctionAnalysisManager *
-getFAM(InstrumentPrototype &IP, InstrumentPrototypeAnalysisManager &IPAM) {
+getFAM(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   auto *Proxy =
-      IPAM.getCachedResult<FunctionAnalysisManagerInstrumentPrototypeProxy>(IP);
+      IPAM.getCachedResult<FunctionAnalysisManagerPrototypeProxy>(IP);
   if (Proxy)
     return &Proxy->getManager();
   // Force-construct the proxy result if it has been registered but not yet
   // materialized.
   return &IPAM
-              .getResult<FunctionAnalysisManagerInstrumentPrototypeProxy>(IP)
+              .getResult<FunctionAnalysisManagerPrototypeProxy>(IP)
               .getManager();
 }
 
@@ -355,8 +355,8 @@ LuthierFileParser::create(llvm::StringRef Path) {
   return create((*MBOrErr)->getMemBufferRef());
 }
 
-llvm::Expected<LoadedInstrumentPrototype> LuthierFileParser::load(
-    llvm::LLVMContext &Ctx, InstrumentPrototypeAnalysisManager & /*IPAM*/,
+llvm::Expected<LoadedPrototype> LuthierFileParser::load(
+    llvm::LLVMContext &Ctx, PrototypeAnalysisManager & /*IPAM*/,
     std::function<std::optional<std::string>(llvm::StringRef, llvm::StringRef)>
         SetDataLayout,
     std::function<void(llvm::Function &)> SetMIRFunctionAttributes) const {
@@ -380,8 +380,8 @@ llvm::Expected<LoadedInstrumentPrototype> LuthierFileParser::load(
 
   patchIModuleMDNodeReferences(*IModuleM, *TargetM, MDSlotMap);
 
-  LoadedInstrumentPrototype Out;
-  Out.IP = std::make_unique<InstrumentPrototype>(std::move(TargetM),
+  LoadedPrototype Out;
+  Out.IP = std::make_unique<Prototype>(std::move(TargetM),
                                                  std::move(IModuleM));
   Out.TargetMIRParser = std::move(TargetMIRParser);
   Out.IModuleMIRParser = std::move(IModuleMIRParser);
@@ -409,8 +409,8 @@ LuthierFileParser::loadIModule(llvm::LLVMContext &Ctx,
 // writeLuthierFile
 //===----------------------------------------------------------------------===//
 
-llvm::Error writeLuthierFile(llvm::raw_ostream &OS, InstrumentPrototype &IP,
-                             InstrumentPrototypeAnalysisManager &IPAM) {
+llvm::Error writeLuthierFile(llvm::raw_ostream &OS, Prototype &IP,
+                             PrototypeAnalysisManager &IPAM) {
   LuthierFileYaml Y;
   llvm::Module &TargetModule = IP.getTargetModule();
   llvm::Module &IModule = IP.getInstrumentationModule();
@@ -458,8 +458,8 @@ llvm::Error writeLuthierFile(llvm::raw_ostream &OS, InstrumentPrototype &IP,
   return llvm::Error::success();
 }
 
-llvm::Error writeLuthierFile(llvm::StringRef Path, InstrumentPrototype &IP,
-                             InstrumentPrototypeAnalysisManager &IPAM) {
+llvm::Error writeLuthierFile(llvm::StringRef Path, Prototype &IP,
+                             PrototypeAnalysisManager &IPAM) {
   std::error_code EC;
   llvm::ToolOutputFile OutFile(Path, EC, llvm::sys::fs::OF_Text);
   if (EC)

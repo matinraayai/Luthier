@@ -1,4 +1,4 @@
-//===-- ParentInstrumentPrototypeAnalysis.cpp -----------------------------===//
+//===-- ParentPrototypeAnalysis.cpp -----------------------------===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,29 +14,29 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements \c ParentInstrumentPrototypeAnalysis and its backing
-/// \c ModuleToInstrumentPrototypeMap.
+/// Implements \c ParentPrototypeAnalysis and its backing
+/// \c ModuleToPrototypeMap.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGen/ParentInstrumentPrototypeAnalysis.h"
+#include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
 
 namespace luthier {
 
-llvm::AnalysisKey ParentInstrumentPrototypeAnalysis::Key;
+llvm::AnalysisKey ParentPrototypeAnalysis::Key;
 
-void ModuleToInstrumentPrototypeMap::registerInstrumentPrototype(
-    InstrumentPrototype &IP) {
+void ModuleToPrototypeMap::registerPrototype(
+    Prototype &IP) {
   ModuleToIP[&IP.getTargetModule()] = &IP;
   ModuleToIP[&IP.getInstrumentationModule()] = &IP;
 }
 
-void ModuleToInstrumentPrototypeMap::unregisterInstrumentPrototype(
-    InstrumentPrototype &IP) {
+void ModuleToPrototypeMap::unregisterPrototype(
+    Prototype &IP) {
   ModuleToIP.erase(&IP.getTargetModule());
   ModuleToIP.erase(&IP.getInstrumentationModule());
 }
 
-InstrumentPrototype *
-ModuleToInstrumentPrototypeMap::lookup(const llvm::Module &M) const {
+Prototype *
+ModuleToPrototypeMap::lookup(const llvm::Module &M) const {
   auto It = ModuleToIP.find(&M);
   return It == ModuleToIP.end() ? nullptr : It->second;
 }

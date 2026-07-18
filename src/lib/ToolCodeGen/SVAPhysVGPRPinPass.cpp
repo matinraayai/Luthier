@@ -95,14 +95,14 @@ static bool pinInjectedPayloadMF(llvm::MachineFunction &MF,
 }
 
 llvm::PreservedAnalyses
-SVAPhysVGPRPinPass::run(InstrumentPrototype &IP,
-                        InstrumentPrototypeAnalysisManager &IPAM) {
+SVAPhysVGPRPinPass::run(Prototype &IP,
+                        PrototypeAnalysisManager &IPAM) {
   llvm::Module &IModule = IP.getInstrumentationModule();
 
   // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
   // MAM caches results for both modules, keyed by the module reference.
   llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   llvm::MachineModuleInfo &IMMI =

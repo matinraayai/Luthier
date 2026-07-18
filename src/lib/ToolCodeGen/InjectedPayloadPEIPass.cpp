@@ -22,7 +22,7 @@
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
@@ -149,18 +149,18 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   }
   auto &TargetModule = TargetMAMRes->getTargetAppModule();
 
-  // SVStorageAndLoadLocationsAnalysis is an InstrumentPrototype-level
+  // SVStorageAndLoadLocationsAnalysis is an Prototype-level
   // analysis, and FunctionPreambleDescriptorAnalysis is likewise IP-level.
   // The outer IPAM proxy on this MF exposes cached IPAM lookups.
   //
-  // TODO(NPM): the proxy indexes cached results by InstrumentPrototype*,
+  // TODO(NPM): the proxy indexes cached results by Prototype*,
   // but a MachineFunction pass has no natural handle to its containing IP.
   // Wiring the SVStorage/FPD lookups from an MF pass requires the driver
   // to expose the enclosing IP through a small MAM accessor (mirroring
   // TargetAppModuleAndMAMAnalysis). Until that landing, callers of this
   // pass are broken.
   const auto &IPAMProxy =
-      MFAM.getResult<InstrumentPrototypeAnalysisManagerMachineFunctionProxy>(
+      MFAM.getResult<PrototypeAnalysisManagerMachineFunctionProxy>(
           MF);
   (void)IPAMProxy;
 

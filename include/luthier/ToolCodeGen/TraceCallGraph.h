@@ -14,7 +14,7 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file TraceCallGraph.h
-/// Declares the \c TraceCallGraph InstrumentPrototype analysis that recovers
+/// Declares the \c TraceCallGraph Prototype analysis that recovers
 /// the call graph of a Luthier-translated target IR module, extended to
 /// follow register writes performed by injected payload functions in the
 /// instrumentation module.
@@ -39,7 +39,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_TRACE_CALL_GRAPH_H
 #define LUTHIER_TOOL_CODE_GEN_TRACE_CALL_GRAPH_H
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseSet.h>
@@ -173,11 +173,11 @@ public:
 
   /// The analysis is invalidated whenever either module in the prototype is
   /// modified.
-  bool invalidate(InstrumentPrototype &IP, const llvm::PreservedAnalyses &PA,
-                  InstrumentPrototypeAnalysisManager::Invalidator &Inv);
+  bool invalidate(Prototype &IP, const llvm::PreservedAnalyses &PA,
+                  PrototypeAnalysisManager::Invalidator &Inv);
 };
 
-/// InstrumentPrototype analysis that recovers the IR-level call graph of a
+/// Prototype analysis that recovers the IR-level call graph of a
 /// Luthier-translated target module. Consults the instrumentation module for
 /// injected payload writes that override register-mediated call targets.
 class TraceCallGraphAnalysis
@@ -188,8 +188,8 @@ class TraceCallGraphAnalysis
 public:
   using Result = TraceCallGraph;
 
-  Result run(InstrumentPrototype &IP,
-             InstrumentPrototypeAnalysisManager &IPAM);
+  Result run(Prototype &IP,
+             PrototypeAnalysisManager &IPAM);
 };
 
 /// Pass that prints the \c TraceCallGraph result to an output stream.
@@ -200,8 +200,8 @@ class TraceCallGraphPrinter
 public:
   explicit TraceCallGraphPrinter(llvm::raw_ostream &OS) : OS(OS) {}
 
-  llvm::PreservedAnalyses run(InstrumentPrototype &IP,
-                              InstrumentPrototypeAnalysisManager &IPAM);
+  llvm::PreservedAnalyses run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

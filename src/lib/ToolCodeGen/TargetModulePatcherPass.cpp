@@ -24,7 +24,7 @@
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
-#include "luthier/ToolCodeGen/InstrumentPrototype.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/LuthierBranchRelaxation.h"
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/ToolCodeGen/SVAFrameLanes.h"
@@ -1087,8 +1087,8 @@ detectOutOfRangeBranches(const llvm::MachineFunction &MF,
 // support kernarg-preload at lift time and re-emission won't touch the slot).
 
 llvm::PreservedAnalyses
-TargetModulePatcherPass::run(InstrumentPrototype &IP,
-                             InstrumentPrototypeAnalysisManager &IPAM) {
+TargetModulePatcherPass::run(Prototype &IP,
+                             PrototypeAnalysisManager &IPAM) {
   LLVM_DEBUG(luthier::dbgs()
              << "=== Luthier Target Module Patcher Pass ===\n");
 
@@ -1107,7 +1107,7 @@ TargetModulePatcherPass::run(InstrumentPrototype &IP,
   // MAM caches results for both the instrumentation and target modules,
   // keyed by module reference.
   llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   // The IModule's MMI holds payloads / hooks / helper MFs. Target kernels
@@ -1542,13 +1542,13 @@ TargetModulePatcherPass::run(InstrumentPrototype &IP,
              << "[TargetModulePatcherPass] run complete; "
                 "target module is patched and verified\n");
 
-  // Preserve the outer MAM proxy so the InstrumentPrototype adaptor doesn't
+  // Preserve the outer MAM proxy so the Prototype adaptor doesn't
   // wipe every cached module-level analysis for both modules on the way out
   // — downstream consumers (notably the AsmPrinter driver) still need the
   // cached MachineFunctionAnalysis results for the target module we just
   // mutated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  PA.preserve<ModuleAnalysisManagerInstrumentPrototypeProxy>();
+  PA.preserve<ModuleAnalysisManagerPrototypeProxy>();
   return PA;
 }
 

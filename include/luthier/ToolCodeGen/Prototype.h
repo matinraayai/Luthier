@@ -1,4 +1,4 @@
-//===-- InstrumentPrototype.h -----------------------------------*- C++ -*-===//
+//===-- Prototype.h -----------------------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,12 +14,12 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Defines \c InstrumentPrototype, an IR unit representing the state of an
+/// Defines \c Prototype, an IR unit representing the state of an
 /// ongoing instrumentation task, together with the pass/analysis-manager
 /// machinery needed to run passes over them under LLVM's new Pass Manager.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOL_CODE_GEN_INSTRUMENT_PROTOTYPE_H
-#define LUTHIER_TOOL_CODE_GEN_INSTRUMENT_PROTOTYPE_H
+#ifndef LUTHIER_TOOL_CODE_GEN_PROTOTYPE_H
+#define LUTHIER_TOOL_CODE_GEN_PROTOTYPE_H
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/IR/Function.h>
@@ -33,7 +33,7 @@ class PassInstrumentationCallbacks;
 
 namespace luthier {
 
-class InstrumentPrototype {
+class Prototype {
   /// Contains the code for the application being instrumented
   std::unique_ptr<llvm::Module> TargetModule{};
 
@@ -41,7 +41,7 @@ class InstrumentPrototype {
   std::unique_ptr<llvm::Module> IModule{};
 
 public:
-  explicit InstrumentPrototype(llvm::StringRef TargetModuleID,
+  explicit Prototype(llvm::StringRef TargetModuleID,
                                llvm::LLVMContext &C)
       : TargetModule(std::make_unique<llvm::Module>(TargetModuleID, C)),
         IModule(std::make_unique<llvm::Module>("instrumentation_module", C)) {};
@@ -50,11 +50,11 @@ public:
   /// by the \c .luthier file reader and by \c luthier-llc when synthesising
   /// prototypes from already-parsed content.  Both pointers must be non-null
   /// and their contexts must match.
-  InstrumentPrototype(std::unique_ptr<llvm::Module> Target,
+  Prototype(std::unique_ptr<llvm::Module> Target,
                       std::unique_ptr<llvm::Module> IModule);
 
-  InstrumentPrototype(const InstrumentPrototype &) = delete;
-  InstrumentPrototype &operator=(const InstrumentPrototype &) = delete;
+  Prototype(const Prototype &) = delete;
+  Prototype &operator=(const Prototype &) = delete;
 
   [[nodiscard]] const llvm::Module &getInstrumentationModule() const {
     return *IModule;
@@ -73,41 +73,41 @@ public:
   }
 };
 
-using InstrumentPrototypeAnalysisManager =
-    llvm::AnalysisManager<InstrumentPrototype>;
+using PrototypeAnalysisManager =
+    llvm::AnalysisManager<Prototype>;
 
-using InstrumentPrototypePassManager = llvm::PassManager<InstrumentPrototype>;
+using PrototypePassManager = llvm::PassManager<Prototype>;
 
 //===----------------------------------------------------------------------===//
 // Cross-level analysis-manager proxies
 //===----------------------------------------------------------------------===//
 
-using ModuleAnalysisManagerInstrumentPrototypeProxy =
+using ModuleAnalysisManagerPrototypeProxy =
     llvm::InnerAnalysisManagerProxy<llvm::ModuleAnalysisManager,
-                                    InstrumentPrototype>;
+                                    Prototype>;
 
-using InstrumentPrototypeAnalysisManagerModuleProxy =
-    llvm::OuterAnalysisManagerProxy<InstrumentPrototypeAnalysisManager,
+using PrototypeAnalysisManagerModuleProxy =
+    llvm::OuterAnalysisManagerProxy<PrototypeAnalysisManager,
                                     llvm::Module>;
 
-using FunctionAnalysisManagerInstrumentPrototypeProxy =
+using FunctionAnalysisManagerPrototypeProxy =
     llvm::InnerAnalysisManagerProxy<llvm::FunctionAnalysisManager,
-                                    InstrumentPrototype>;
+                                    Prototype>;
 
-using MachineFunctionAnalysisManagerInstrumentPrototypeProxy =
+using MachineFunctionAnalysisManagerPrototypeProxy =
     llvm::InnerAnalysisManagerProxy<llvm::MachineFunctionAnalysisManager,
-                                    InstrumentPrototype>;
+                                    Prototype>;
 
-using InstrumentPrototypeAnalysisManagerFunctionProxy =
-    llvm::OuterAnalysisManagerProxy<InstrumentPrototypeAnalysisManager,
+using PrototypeAnalysisManagerFunctionProxy =
+    llvm::OuterAnalysisManagerProxy<PrototypeAnalysisManager,
                                     llvm::Function>;
 
-using InstrumentPrototypeAnalysisManagerMachineFunctionProxy =
-    llvm::OuterAnalysisManagerProxy<InstrumentPrototypeAnalysisManager,
+using PrototypeAnalysisManagerMachineFunctionProxy =
+    llvm::OuterAnalysisManagerProxy<PrototypeAnalysisManager,
                                     llvm::MachineFunction>;
 
 /// \brief Adaptor that runs a single \c llvm::Module pass over the target
-/// module of an \c InstrumentPrototype.
+/// module of an \c Prototype.
 ///
 /// Modeled on LLVM's \c ModuleToFunctionPassAdaptor: instead of owning a whole
 /// pass manager, it type-erases and stores one module pass (a
@@ -124,8 +124,8 @@ public:
   explicit RunOnTargetModuleAdaptor(std::unique_ptr<PassConceptT> Pass)
       : Pass(std::move(Pass)) {}
 
-  llvm::PreservedAnalyses run(InstrumentPrototype &IP,
-                              InstrumentPrototypeAnalysisManager &IPAM);
+  llvm::PreservedAnalyses run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM);
 
   void printPipeline(
       llvm::raw_ostream &OS,
@@ -138,7 +138,7 @@ private:
 };
 
 /// \brief Adaptor that runs a single \c llvm::Module pass over the
-/// instrumentation module of an \c InstrumentPrototype.
+/// instrumentation module of an \c Prototype.
 ///
 /// See \c RunOnTargetModuleAdaptor for the design rationale.
 class RunOnInstrumentationModuleAdaptor
@@ -150,8 +150,8 @@ public:
   explicit RunOnInstrumentationModuleAdaptor(std::unique_ptr<PassConceptT> Pass)
       : Pass(std::move(Pass)) {}
 
-  llvm::PreservedAnalyses run(InstrumentPrototype &IP,
-                              InstrumentPrototypeAnalysisManager &IPAM);
+  llvm::PreservedAnalyses run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM);
 
   void printPipeline(
       llvm::raw_ostream &OS,
@@ -200,22 +200,22 @@ createRunOnInstrumentationModuleAdaptor(ModulePassT &&Pass) {
 namespace llvm {
 
 template <>
-bool luthier::ModuleAnalysisManagerInstrumentPrototypeProxy::Result::invalidate(
-    luthier::InstrumentPrototype &IP, const PreservedAnalyses &PA,
-    luthier::InstrumentPrototypeAnalysisManager::Invalidator &Inv);
+bool luthier::ModuleAnalysisManagerPrototypeProxy::Result::invalidate(
+    luthier::Prototype &IP, const PreservedAnalyses &PA,
+    luthier::PrototypeAnalysisManager::Invalidator &Inv);
 
 template <>
-bool luthier::FunctionAnalysisManagerInstrumentPrototypeProxy::Result::
-    invalidate(luthier::InstrumentPrototype &IP, const PreservedAnalyses &PA,
-               luthier::InstrumentPrototypeAnalysisManager::Invalidator &Inv);
+bool luthier::FunctionAnalysisManagerPrototypeProxy::Result::
+    invalidate(luthier::Prototype &IP, const PreservedAnalyses &PA,
+               luthier::PrototypeAnalysisManager::Invalidator &Inv);
 
 template <>
-bool luthier::MachineFunctionAnalysisManagerInstrumentPrototypeProxy::Result::
-    invalidate(luthier::InstrumentPrototype &IP, const PreservedAnalyses &PA,
-               luthier::InstrumentPrototypeAnalysisManager::Invalidator &Inv);
+bool luthier::MachineFunctionAnalysisManagerPrototypeProxy::Result::
+    invalidate(luthier::Prototype &IP, const PreservedAnalyses &PA,
+               luthier::PrototypeAnalysisManager::Invalidator &Inv);
 
-extern template class PassManager<luthier::InstrumentPrototype>;
-extern template class AnalysisManager<luthier::InstrumentPrototype>;
+extern template class PassManager<luthier::Prototype>;
+extern template class AnalysisManager<luthier::Prototype>;
 
 } // namespace llvm
 

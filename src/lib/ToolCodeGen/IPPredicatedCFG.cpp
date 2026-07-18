@@ -57,14 +57,14 @@ IPPredicatedCFG::getPredMBB(const llvm::MachineInstr &MI) {
 }
 
 llvm::Expected<std::unique_ptr<IPPredicatedCFG>>
-IPPredicatedCFG::getIPPredCFG(InstrumentPrototype &IP,
-                              InstrumentPrototypeAnalysisManager &IPAM) {
+IPPredicatedCFG::getIPPredCFG(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM) {
   llvm::Module &TargetModule = IP.getTargetModule();
 
   // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
   // MAM caches results for both modules, keyed by the module reference.
   llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerInstrumentPrototypeProxy>(IP)
+      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
   llvm::FunctionAnalysisManager &FAM =
       MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
@@ -163,16 +163,16 @@ IPPredicatedCFG::getIPPredCFG(InstrumentPrototype &IP,
 llvm::AnalysisKey IPPredCFGAnalysis::Key;
 
 bool IPPredCFGAnalysis::Result::invalidate(
-    InstrumentPrototype &, const llvm::PreservedAnalyses &PA,
-    InstrumentPrototypeAnalysisManager::Invalidator &) {
+    Prototype &, const llvm::PreservedAnalyses &PA,
+    PrototypeAnalysisManager::Invalidator &) {
   auto PAC = PA.getChecker<IPPredCFGAnalysis>();
   return !PAC.preserved() &&
-         !PAC.preservedSet<llvm::AllAnalysesOn<InstrumentPrototype>>();
+         !PAC.preservedSet<llvm::AllAnalysesOn<Prototype>>();
 }
 
 IPPredCFGAnalysis::Result
-IPPredCFGAnalysis::run(InstrumentPrototype &IP,
-                       InstrumentPrototypeAnalysisManager &IPAM) {
+IPPredCFGAnalysis::run(Prototype &IP,
+                       PrototypeAnalysisManager &IPAM) {
   llvm::LLVMContext &Ctx = IP.getTargetModule().getContext();
   llvm::Expected<std::unique_ptr<IPPredicatedCFG>> ResOrErr =
       IPPredicatedCFG::getIPPredCFG(IP, IPAM);
@@ -184,8 +184,8 @@ IPPredCFGAnalysis::run(InstrumentPrototype &IP,
 }
 
 llvm::PreservedAnalyses
-IPPredCFGPrinter::run(InstrumentPrototype &IP,
-                      InstrumentPrototypeAnalysisManager &IPAM) {
+IPPredCFGPrinter::run(Prototype &IP,
+                      PrototypeAnalysisManager &IPAM) {
   auto &IPVecCFG = IPAM.getResult<IPPredCFGAnalysis>(IP).getVecCFG();
   IPVecCFG.print(OS);
   return llvm::PreservedAnalyses::all();
