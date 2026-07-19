@@ -13,26 +13,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file CodeDiscoveryPass.h
-/// Defines the \c CodeDiscoveryPass class.
-//===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_CODE_DISCOVERY_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_CODE_DISCOVERY_PASS_H
 #include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/IR/PassManager.h>
-#include <llvm/Support/CommandLine.h>
 
 namespace luthier {
-
-/// \brief Command-line options for \c CodeDiscoveryPass.
-struct CodeDiscoveryPassOptions {
-  llvm::cl::opt<bool> EagerDiscoverCallReturnEntryPoint{
-      "eager-discover-call-ret-entry-point",
-      llvm::cl::desc(
-          "Eagerly enqueue the post-call return PC as an entry point to "
-          "be added to the set of entry points for the code discovery pass."),
-      llvm::cl::init(true)};
-};
 
 /// \brief Prototype pass in charge of:
 /// - Discovering all statically reachable code and entry points in the
@@ -47,11 +33,9 @@ struct CodeDiscoveryPassOptions {
 /// \c TraceCallGraphAnalysis (which needs access to both modules) between
 /// lift iterations to discover further entry points.
 class CodeDiscoveryPass : public llvm::PassInfoMixin<CodeDiscoveryPass> {
-  const CodeDiscoveryPassOptions &Opts;
 
 public:
-  explicit CodeDiscoveryPass(const CodeDiscoveryPassOptions &Opts)
-      : Opts(Opts) {}
+  CodeDiscoveryPass() = default;
 
   llvm::PreservedAnalyses run(Prototype &IP,
                               PrototypeAnalysisManager &IPAM);
