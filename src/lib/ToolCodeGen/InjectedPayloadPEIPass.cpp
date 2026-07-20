@@ -28,7 +28,6 @@
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
-#include "luthier/ToolCodeGen/WrapperAnalysisPasses.h"
 
 #include <AMDGPU.h>
 #include <GCNSubtarget.h>

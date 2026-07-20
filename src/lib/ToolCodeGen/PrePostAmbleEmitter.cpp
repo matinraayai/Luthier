@@ -29,7 +29,6 @@
 #include "luthier/ToolCodeGen/SVAFrameLanes.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
-#include "luthier/ToolCodeGen/WrapperAnalysisPasses.h"
 #include <GCNSubtarget.h>
 #include <SIMachineFunctionInfo.h>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>

@@ -37,7 +37,6 @@
 // #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
 // #include "luthier/ToolCodeGen/ProcessIntrinsicsAtIRLevelPass.h"
 #include "luthier/LLVM/streams.h"
-#include "luthier/ToolCodeGen/WrapperAnalysisPasses.h"
 #include "luthier/ToolCodeGenTesting/LuthierFile.h"
 #include <AMDGPU.h>
 #include <AMDGPUTargetMachine.h>
