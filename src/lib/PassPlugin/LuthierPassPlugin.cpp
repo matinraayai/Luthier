@@ -13,10 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-///
-/// \file LuthierPassPlugin.cpp
-/// Implements Luthier's legacy pass manager plugin for use with Luthier's llc
-/// fork.
+/// \file
+/// Implements Luthier's pass plugin.
 //===----------------------------------------------------------------------===//
 #include "luthier/PassPlugin/LuthierPassPlugin.h"
 #include "luthier/Common/GenericLuthierError.h"
@@ -62,12 +60,4 @@ llvm::Expected<PassPlugin> PassPlugin::Load(const std::string &Filename) {
   return P;
 }
 
-std::unique_ptr<llvm::Module> PassPlugin::instrumentationModuleCreationCallback(
-    llvm::LLVMContext &Context, const llvm::Triple &TT, llvm::StringRef CPUName,
-    llvm::StringRef FS) const {
-  if (Info.IModuleCreationCallback)
-    return Info.IModuleCreationCallback(Context, TT, CPUName, FS,
-                                        Info.ExtraArgs);
-  return nullptr;
-}
 } // namespace luthier
