@@ -61,8 +61,6 @@ static amdgpu::hsamd::MetadataParser MetadataParser;
 
 static MockAMDGPULoaderAnalysisOptions MockLoaderOptions;
 
-static CodeDiscoveryPassOptions CodeDiscoveryOptions;
-
 /// Per-process intrinsic processor registry used by the opt plugin's
 /// instrumentation driver. The plugin has no \c HSATool to own one, so it
 /// keeps a static; it is no longer a \c Singleton<> type.

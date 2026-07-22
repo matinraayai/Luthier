@@ -269,13 +269,10 @@ static cl::list<std::string> PassPlugins("load-pass-plugin",
                                          cl::desc("Load plugin library"));
 
 // This flag specifies a textual description of the optimization pass pipeline
-// to run over the Prototype. It requires explicit target(...) or
-// instrumentation(...) wrapping of the inner pipeline.
+// to run over the Prototype.
 static cl::opt<std::string> PassPipeline(
     "passes",
-    cl::desc(
-        "A textual description of the pass pipeline for TAIM. "
-        "Requires explicit 'target(...)' or 'instrumentation(...)' wrapping."));
+    cl::desc("A textual description of the pass pipeline for Prototype."));
 static cl::alias PassPipeline2("p", cl::aliasopt(PassPipeline),
                                cl::desc("Alias for -passes"));
 
@@ -306,6 +303,9 @@ static void setPGOOptions(TargetMachine &TM) {
   case NoPGO:
     PGOOpt = std::nullopt;
     break;
+  default:
+    llvm_unreachable(
+        "CL parser should prevent the switch case from reaching here");
   }
 
   if (PGOOpt)
@@ -637,11 +637,12 @@ static int compileModule(char **argv,
     auto TargetM = std::make_unique<Module>("", Context);
     TargetM->setTargetTriple(TheTriple);
     TargetM->setDataLayout(Target->createDataLayout());
-    auto IModuleM = std::make_unique<Module>("luthier-instrumentation", Context);
+    auto IModuleM =
+        std::make_unique<Module>("luthier-instrumentation", Context);
     IModuleM->setTargetTriple(TheTriple);
     IModuleM->setDataLayout(Target->createDataLayout());
     IP = std::make_unique<luthier::Prototype>(std::move(TargetM),
-                                                        std::move(IModuleM));
+                                              std::move(IModuleM));
   } else if (SkipModule) {
     // -mcpu=help / -mattr=help: don't parse the module.
     TheTriple = Triple(Triple::normalize(TargetTriple));
