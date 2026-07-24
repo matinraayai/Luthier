@@ -41,17 +41,14 @@ class Prototype {
   std::unique_ptr<llvm::Module> IModule{};
 
 public:
-  explicit Prototype(llvm::StringRef TargetModuleID,
-                               llvm::LLVMContext &C)
+  explicit Prototype(llvm::StringRef TargetModuleID, llvm::LLVMContext &C)
       : TargetModule(std::make_unique<llvm::Module>(TargetModuleID, C)),
-        IModule(std::make_unique<llvm::Module>("instrumentation_module", C)) {};
+        IModule(std::make_unique<llvm::Module>(
+            (llvm::Twine(TargetModuleID) + ".instrumentation_module").str(),
+            C)) {};
 
-  /// Adopts \p Target and \p IModule as this prototype's two modules.  Used
-  /// by the \c .luthier file reader and by \c luthier-llc when synthesising
-  /// prototypes from already-parsed content.  Both pointers must be non-null
-  /// and their contexts must match.
   Prototype(std::unique_ptr<llvm::Module> Target,
-                      std::unique_ptr<llvm::Module> IModule);
+            std::unique_ptr<llvm::Module> IModule);
 
   Prototype(const Prototype &) = delete;
   Prototype &operator=(const Prototype &) = delete;

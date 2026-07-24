@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file LuthierFile.cpp
+/// \file
 /// Implements \c LuthierFileParser and the \c writeLuthierFile helpers.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGenTesting/LuthierFile.h"
@@ -106,11 +106,8 @@ template <> struct MappingTraits<luthier::LuthierFileParser::MDSlotEntry> {
 
 template <>
 struct ScalarEnumerationTraits<luthier::LuthierFileParser::ModuleFormat> {
-  static void enumeration(IO &IO,
-                          luthier::LuthierFileParser::ModuleFormat &F) {
+  static void enumeration(IO &IO, luthier::LuthierFileParser::ModuleFormat &F) {
     IO.enumCase(F, "IR", luthier::LuthierFileParser::ModuleFormat::IR);
-    IO.enumCase(F, "Bitcode",
-                luthier::LuthierFileParser::ModuleFormat::Bitcode);
     IO.enumCase(F, "MIR", luthier::LuthierFileParser::ModuleFormat::MIR);
   }
 };
@@ -121,8 +118,7 @@ template <> struct MappingTraits<luthier::LuthierFileYaml> {
     IO.mapOptional("TargetModuleFormat", F.TargetModuleFormat,
                    luthier::LuthierFileParser::ModuleFormat::MIR);
     IO.mapRequired("InstrumentationModule", F.InstrumentationModuleText);
-    IO.mapOptional("InstrumentationModuleFormat",
-                   F.InstrumentationModuleFormat,
+    IO.mapOptional("InstrumentationModuleFormat", F.InstrumentationModuleFormat,
                    luthier::LuthierFileParser::ModuleFormat::IR);
     IO.mapOptional("MDSlotMap", F.MDSlotMap,
                    std::vector<luthier::LuthierFileParser::MDSlotEntry>{});
@@ -151,35 +147,32 @@ llvm::DenseMap<unsigned, llvm::MDNode *> buildSlotToMDNodeMap(llvm::Module &M) {
   return Out;
 }
 
-/// Parses one module out of a text blob according to its \c ModuleFormat.
-/// Populates the corresponding \c MIRParser out-parameter for MIR-form
-/// modules (left null otherwise).
-llvm::Expected<std::unique_ptr<llvm::Module>>
-parseOneModule(llvm::StringRef Text, llvm::StringRef BufID,
-               LuthierFileParser::ModuleFormat Format, llvm::LLVMContext &Ctx,
-               std::function<std::optional<std::string>(llvm::StringRef,
-                                                        llvm::StringRef)>
-                   SetDataLayout,
-               std::function<void(llvm::Function &)> SetMIRFunctionAttributes,
-               std::unique_ptr<llvm::MIRParser> &OutMIRParser) {
+/// Parses one module out of a text blob according to its \c ModuleFormat
+llvm::Expected<std::unique_ptr<llvm::Module>> parseOneModule(
+    llvm::LLVMContext &Ctx, llvm::StringRef Text, llvm::StringRef BufID,
+    LuthierFileParser::ModuleFormat Format,
+    std::function<std::optional<std::string>(llvm::StringRef, llvm::StringRef)>
+        SetDataLayout,
+    std::function<void(llvm::Function &)> SetMIRFunctionAttributes,
+    std::unique_ptr<llvm::MIRParser> &OutMIRParser) {
   llvm::ParserCallbacks IRCallbacks;
   if (SetDataLayout)
-    IRCallbacks.DataLayout = [SetDataLayout](llvm::StringRef TT,
-                                             llvm::StringRef OldDL)
-        -> std::optional<std::string> { return SetDataLayout(TT, OldDL); };
+    IRCallbacks.DataLayout =
+        [SetDataLayout](llvm::StringRef TT,
+                        llvm::StringRef OldDL) -> std::optional<std::string> {
+      return SetDataLayout(TT, OldDL);
+    };
 
-  switch (Format) {
-  case LuthierFileParser::ModuleFormat::IR: {
+  if (Format == LuthierFileParser::ModuleFormat::IR) {
     llvm::SMDiagnostic Err;
     llvm::MemoryBufferRef Buf(Text, BufID);
     auto M = llvm::parseIR(Buf, Err, Ctx, IRCallbacks);
     if (!M)
-      return LUTHIER_MAKE_GENERIC_ERROR(
-          "Failed to parse module '" + BufID.str() +
-          "' as IR: " + Err.getMessage().str());
+      return LUTHIER_MAKE_GENERIC_ERROR("Failed to parse module '" +
+                                        BufID.str() +
+                                        "' as IR: " + Err.getMessage().str());
     return M;
-  }
-  case LuthierFileParser::ModuleFormat::MIR: {
+  } else if (Format == LuthierFileParser::ModuleFormat::MIR) {
     auto Buf = llvm::MemoryBuffer::getMemBuffer(Text, BufID);
     auto FnAttrCB = [SetMIRFunctionAttributes](llvm::Function &F) {
       if (SetMIRFunctionAttributes)
@@ -203,26 +196,8 @@ parseOneModule(llvm::StringRef Text, llvm::StringRef BufID,
     OutMIRParser = std::move(Parser);
     return M;
   }
-  case LuthierFileParser::ModuleFormat::Bitcode: {
-    std::vector<char> Decoded;
-    if (auto Err = llvm::decodeBase64(Text, Decoded))
-      return LUTHIER_MAKE_GENERIC_ERROR(
-          "Failed to base64-decode module '" + BufID.str() +
-          "': " + llvm::toString(std::move(Err)));
-    auto DecodedBuf = llvm::MemoryBuffer::getMemBuffer(
-        llvm::StringRef(Decoded.data(), Decoded.size()), BufID,
-        /*RequiresNullTerminator=*/false);
-    std::unique_ptr<llvm::Module> M;
-    llvm::Error Err =
-        llvm::parseBitcodeFile(DecodedBuf->getMemBufferRef(), Ctx).moveInto(M);
-    if (Err)
-      return LUTHIER_MAKE_GENERIC_ERROR("Failed to parse module '" +
-                                        BufID.str() + "' as bitcode: " +
-                                        llvm::toString(std::move(Err)));
-    return M;
-  }
-  }
-  llvm_unreachable("unhandled ModuleFormat");
+  return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+      "Invalid module format {0}", static_cast<unsigned int>(Format)));
 }
 
 /// Patches cross-module \c MDNode references so that instrumentation-module
@@ -280,24 +255,6 @@ void patchIModuleMDNodeReferences(
         NMD.setOperand(I, NewMD);
 }
 
-/// Fetches the \c FunctionAnalysisManager reachable from \p IPAM through the
-/// cross-level proxies wired up by
-/// \c PrototypePassBuilder::crossRegisterProxies.  Returns null if
-/// the
-/// proxy has not been registered yet.
-llvm::FunctionAnalysisManager *
-getFAM(Prototype &IP, PrototypeAnalysisManager &IPAM) {
-  auto *Proxy =
-      IPAM.getCachedResult<FunctionAnalysisManagerPrototypeProxy>(IP);
-  if (Proxy)
-    return &Proxy->getManager();
-  // Force-construct the proxy result if it has been registered but not yet
-  // materialized.
-  return &IPAM
-              .getResult<FunctionAnalysisManagerPrototypeProxy>(IP)
-              .getManager();
-}
-
 /// Returns true if any \c Function in \p M has a cached
 /// \c MachineFunctionAnalysis result on \p FAM.
 bool moduleHasCachedMIR(llvm::Module &M, llvm::FunctionAnalysisManager &FAM) {
@@ -337,6 +294,7 @@ LuthierFileParser::create(llvm::MemoryBufferRef Buffer) {
         YIN.error(), "YAML parse error in .luthier file '" +
                          Buffer.getBufferIdentifier().str() + "'");
   LuthierFileParser P;
+  P.Identifier = Buffer.getBufferIdentifier();
   P.TargetModuleText = std::move(Y.TargetModuleText.S);
   P.TargetModuleFormat = Y.TargetModuleFormat;
   P.InstrumentationModuleText = std::move(Y.InstrumentationModuleText.S);
@@ -355,54 +313,53 @@ LuthierFileParser::create(llvm::StringRef Path) {
   return create((*MBOrErr)->getMemBufferRef());
 }
 
-llvm::Expected<LoadedPrototype> LuthierFileParser::load(
-    llvm::LLVMContext &Ctx, PrototypeAnalysisManager & /*IPAM*/,
-    std::function<std::optional<std::string>(llvm::StringRef, llvm::StringRef)>
-        SetDataLayout,
-    std::function<void(llvm::Function &)> SetMIRFunctionAttributes) const {
-  std::unique_ptr<llvm::MIRParser> TargetMIRParser;
-  auto TargetMOrErr = parseOneModule(
-      TargetModuleText, "<luthier target>", TargetModuleFormat, Ctx,
-      SetDataLayout, SetMIRFunctionAttributes, TargetMIRParser);
+llvm::Expected<std::unique_ptr<Prototype>> LuthierFileParser::loadPrototype(
+    llvm::LLVMContext &Ctx,
+    const std::function<std::optional<std::string>(
+        llvm::StringRef, llvm::StringRef)> &SetDataLayout,
+    const std::function<void(llvm::Function &)> &SetMIRFunctionAttributes) {
+  auto TargetMOrErr =
+      parseOneModule(Ctx, TargetModuleText, Identifier, TargetModuleFormat,
+                     SetDataLayout, SetMIRFunctionAttributes, TargetMIRParser);
   if (!TargetMOrErr)
     return TargetMOrErr.takeError();
   std::unique_ptr<llvm::Module> TargetM = std::move(*TargetMOrErr);
 
-  std::unique_ptr<llvm::MIRParser> IModuleMIRParser;
-  auto IModuleMOrErr =
-      parseOneModule(InstrumentationModuleText, "<luthier imodule>",
-                     InstrumentationModuleFormat, Ctx,
-                     /*SetDataLayout=*/nullptr, SetMIRFunctionAttributes,
-                     IModuleMIRParser);
+  auto IModuleMOrErr = parseOneModule(
+      Ctx, InstrumentationModuleText, Identifier + ".instrumentation_module",
+      InstrumentationModuleFormat, SetDataLayout, SetMIRFunctionAttributes,
+      InstrumentationMIRParser);
   if (!IModuleMOrErr)
     return IModuleMOrErr.takeError();
   std::unique_ptr<llvm::Module> IModuleM = std::move(*IModuleMOrErr);
 
   patchIModuleMDNodeReferences(*IModuleM, *TargetM, MDSlotMap);
 
-  LoadedPrototype Out;
-  Out.IP = std::make_unique<Prototype>(std::move(TargetM),
-                                                 std::move(IModuleM));
-  Out.TargetMIRParser = std::move(TargetMIRParser);
-  Out.IModuleMIRParser = std::move(IModuleMIRParser);
-  return Out;
+  return std::make_unique<Prototype>(std::move(TargetM), std::move(IModuleM));
 }
 
-llvm::Expected<std::pair<std::unique_ptr<llvm::Module>,
-                         std::unique_ptr<llvm::MIRParser>>>
-LuthierFileParser::loadIModule(llvm::LLVMContext &Ctx,
-                               llvm::Module &TargetModule) const {
-  std::unique_ptr<llvm::MIRParser> IModuleMIRParser;
-  auto MOrErr =
-      parseOneModule(InstrumentationModuleText, "<luthier imodule>",
-                     InstrumentationModuleFormat, Ctx,
-                     /*SetDataLayout=*/nullptr,
-                     /*SetMIRFunctionAttributes=*/nullptr, IModuleMIRParser);
-  if (!MOrErr)
-    return MOrErr.takeError();
-  std::unique_ptr<llvm::Module> M = std::move(*MOrErr);
-  patchIModuleMDNodeReferences(*M, TargetModule, MDSlotMap);
-  return std::make_pair(std::move(M), std::move(IModuleMIRParser));
+llvm::Error LuthierFileParser::loadMIR(Prototype &P,
+                                       PrototypeAnalysisManager &PAM) {
+  llvm::Module &TargetModule = P.getTargetModule();
+  llvm::Module &IModule = P.getInstrumentationModule();
+  if (PAM.isPassRegistered<ModuleAnalysisManagerPrototypeProxy>()) {
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        "Module analysis manager prototype proxy is not registered");
+  }
+  llvm::ModuleAnalysisManager &MAM =
+      PAM.getResult<ModuleAnalysisManagerPrototypeProxy>(P).getManager();
+
+  if (TargetMIRParser &&
+      TargetMIRParser->parseMachineFunctions(TargetModule, MAM)) {
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        "Failed to parse the target module machine functions");
+  }
+  if (InstrumentationMIRParser &&
+      InstrumentationMIRParser->parseMachineFunctions(IModule, MAM)) {
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        "Failed to parse the instrumentation module machine functions");
+  }
+  return llvm::Error::success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -415,12 +372,17 @@ llvm::Error writeLuthierFile(llvm::raw_ostream &OS, Prototype &IP,
   llvm::Module &TargetModule = IP.getTargetModule();
   llvm::Module &IModule = IP.getInstrumentationModule();
 
-  llvm::FunctionAnalysisManager *FAM = getFAM(IP, IPAM);
+  if (!IPAM.isPassRegistered<FunctionAnalysisManagerPrototypeProxy>())
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        "Function analysis manager prototype proxy is not registered");
+
+  llvm::FunctionAnalysisManager &FAM =
+      IPAM.getResult<FunctionAnalysisManagerPrototypeProxy>(IP).getManager();
 
   // Target module: MIR if any function has a cached MFA, else IR text.
-  if (FAM && moduleHasCachedMIR(TargetModule, *FAM)) {
+  if (moduleHasCachedMIR(TargetModule, FAM)) {
     Y.TargetModuleFormat = LuthierFileParser::ModuleFormat::MIR;
-    serializeModuleAsMIR(TargetModule, *FAM, Y.TargetModuleText.S);
+    serializeModuleAsMIR(TargetModule, FAM, Y.TargetModuleText.S);
   } else {
     Y.TargetModuleFormat = LuthierFileParser::ModuleFormat::IR;
     llvm::raw_string_ostream SS(Y.TargetModuleText.S);
@@ -428,9 +390,9 @@ llvm::Error writeLuthierFile(llvm::raw_ostream &OS, Prototype &IP,
   }
 
   // Instrumentation module: same test.
-  if (FAM && moduleHasCachedMIR(IModule, *FAM)) {
+  if (moduleHasCachedMIR(IModule, FAM)) {
     Y.InstrumentationModuleFormat = LuthierFileParser::ModuleFormat::MIR;
-    serializeModuleAsMIR(IModule, *FAM, Y.InstrumentationModuleText.S);
+    serializeModuleAsMIR(IModule, FAM, Y.InstrumentationModuleText.S);
   } else {
     Y.InstrumentationModuleFormat = LuthierFileParser::ModuleFormat::IR;
     llvm::raw_string_ostream SS(Y.InstrumentationModuleText.S);
@@ -467,45 +429,6 @@ llvm::Error writeLuthierFile(llvm::StringRef Path, Prototype &IP,
                                       Path.str() + "': " + EC.message());
   if (auto Err = writeLuthierFile(OutFile.os(), IP, IPAM))
     return Err;
-  OutFile.keep();
-  return llvm::Error::success();
-}
-
-llvm::Error writeLuthierFile(llvm::StringRef Path, llvm::Module &TargetModule,
-                             llvm::Module &IModule) {
-  LuthierFileYaml Y;
-  Y.TargetModuleFormat = LuthierFileParser::ModuleFormat::IR;
-  {
-    llvm::raw_string_ostream SS(Y.TargetModuleText.S);
-    TargetModule.print(SS, nullptr);
-  }
-  Y.InstrumentationModuleFormat = LuthierFileParser::ModuleFormat::IR;
-  {
-    llvm::raw_string_ostream SS(Y.InstrumentationModuleText.S);
-    IModule.print(SS, nullptr);
-  }
-
-  auto TargetSlotToMD = buildSlotToMDNodeMap(TargetModule);
-  auto IModuleSlotToMD = buildSlotToMDNodeMap(IModule);
-
-  llvm::DenseMap<const llvm::MDNode *, unsigned> TargetMDToSlot;
-  TargetMDToSlot.reserve(TargetSlotToMD.size());
-  for (auto &[Slot, MD] : TargetSlotToMD)
-    TargetMDToSlot[MD] = Slot;
-
-  for (auto &[IModSlot, MD] : IModuleSlotToMD) {
-    auto It = TargetMDToSlot.find(MD);
-    if (It != TargetMDToSlot.end())
-      Y.MDSlotMap.push_back({IModSlot, It->second});
-  }
-
-  std::error_code EC;
-  llvm::ToolOutputFile OutFile(Path, EC, llvm::sys::fs::OF_Text);
-  if (EC)
-    return LUTHIER_MAKE_GENERIC_ERROR("Failed to open .luthier output file '" +
-                                      Path.str() + "': " + EC.message());
-  llvm::yaml::Output Yout(OutFile.os());
-  Yout << Y;
   OutFile.keep();
   return llvm::Error::success();
 }

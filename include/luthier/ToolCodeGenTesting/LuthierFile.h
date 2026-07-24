@@ -41,22 +41,12 @@ class raw_ostream;
 
 namespace luthier {
 
-/// Result of parsing a \c .luthier file: the assembled
-/// \c Prototype together with the \c MIRParser instances used to
-/// build each module (non-null only for modules stored in MIR form).
-/// Callers hold on to the parsers until \c MachineModuleAnalysis has been
-/// wired up so they can call \c MIRParser::parseMachineFunctions.
-struct LoadedPrototype {
-  std::unique_ptr<Prototype> IP;
-  std::unique_ptr<llvm::MIRParser> TargetMIRParser;
-  std::unique_ptr<llvm::MIRParser> IModuleMIRParser;
-};
-
-/// Parses a \c .luthier YAML file and provides typed access to its contents.
+/// \brief Parses a \c .luthier file and provides typed access to its
+/// contents.
 class LuthierFileParser {
 public:
   /// One entry in the cross-module metadata slot map embedded in a
-  /// \c .luthier file.  Maps a metadata slot number in the instrumentation
+  /// \c .luthier file. Maps a metadata slot number in the instrumentation
   /// module to the slot number of the same \c MDNode in the target module.
   struct MDSlotEntry {
     unsigned IModuleSlot = 0;
@@ -67,17 +57,33 @@ public:
 
   /// Encoding of a module field in a \c .luthier file.
   enum class ModuleFormat {
-    IR,      ///< LLVM IR text (.ll)
-    Bitcode, ///< LLVM bitcode, base64-encoded in the YAML block scalar
-    MIR,     ///< Machine IR text (.mir)
+    IR,  ///< LLVM IR text (.ll)
+    MIR, ///< Machine IR text (.mir)
   };
 
+private:
+  std::string Identifier;
+
+  std::string TargetModuleText;
+
+  std::string InstrumentationModuleText;
+
+  ModuleFormat TargetModuleFormat = ModuleFormat::MIR;
+
+  ModuleFormat InstrumentationModuleFormat = ModuleFormat::IR;
+
+  std::vector<MDSlotEntry> MDSlotMap;
+
+  std::unique_ptr<llvm::MIRParser> TargetMIRParser{nullptr};
+
+  std::unique_ptr<llvm::MIRParser> InstrumentationMIRParser{nullptr};
+
+public:
   //===--------------------------------------------------------------------===//
   // Factory
   //===--------------------------------------------------------------------===//
 
-  /// Parses a \c .luthier file from \p Buffer.  The buffer identifier is used
-  /// in error messages.
+  /// Parses a \c .luthier file from \p Buffer.
   static llvm::Expected<LuthierFileParser> create(llvm::MemoryBufferRef Buffer);
 
   /// Parses the \c .luthier file at \p Path.
@@ -105,47 +111,19 @@ public:
   // Prototype loading
   //===--------------------------------------------------------------------===//
 
-  /// Parse both modules of the \c .luthier file into a single
-  /// \c Prototype.
-  ///
-  /// \p Ctx is the \c LLVMContext both parsed modules share.  \p IPAM is
-  /// threaded through for future use (analyses that need to associate MIR
-  /// parsing state with the returned prototype); the reader itself does
-  /// not currently register anything on it.
-  ///
-  /// \p SetDataLayout is forwarded to the target module's MIR parser (used
-  /// by \c luthier-llc to override the data layout and initialize a
-  /// \c TargetMachine).  \p SetMIRFunctionAttributes is applied to every
-  /// \c Function in a module parsed from MIR.  Both callbacks default to
-  /// no-ops if omitted.
-  ///
-  /// The instrumentation module's metadata is patched so that cross-module
-  /// \c MDNode references point back into the live target module.
-  llvm::Expected<LoadedPrototype>
-  load(llvm::LLVMContext &Ctx, PrototypeAnalysisManager &IPAM,
-       std::function<std::optional<std::string>(llvm::StringRef,
-                                                llvm::StringRef)>
-           SetDataLayout = nullptr,
-       std::function<void(llvm::Function &)> SetMIRFunctionAttributes =
-           nullptr) const;
+  /// Parse the .luthier file into a prototype backed by the \p Ctx
+  /// \p SetDataLayout and \p SetMIRFunctionAttributes are forwarded to the MIR
+  /// parser if MIR is used to encode any of the modules.
+  llvm::Expected<std::unique_ptr<Prototype>> loadPrototype(
+      llvm::LLVMContext &Ctx,
+      const std::function<std::optional<std::string>(
+          llvm::StringRef, llvm::StringRef)> &SetDataLayout = nullptr,
+      const std::function<void(llvm::Function &)> &SetMIRFunctionAttributes =
+          nullptr);
 
-  /// Parse only the instrumentation-module half of the \c .luthier file
-  /// against the caller's live \p TargetModule.  The embedded MDNode slot
-  /// map is applied to \p TargetModule (not to the file's serialized
-  /// target module), so \p TargetModule must have the same metadata layout
-  /// the file was written against.  Returns the parsed instrumentation
-  /// module together with its \c MIRParser (non-null iff the module was
-  /// stored in MIR form).
-  llvm::Expected<std::pair<std::unique_ptr<llvm::Module>,
-                           std::unique_ptr<llvm::MIRParser>>>
-  loadIModule(llvm::LLVMContext &Ctx, llvm::Module &TargetModule) const;
-
-private:
-  std::string TargetModuleText;
-  std::string InstrumentationModuleText;
-  ModuleFormat TargetModuleFormat = ModuleFormat::MIR;
-  ModuleFormat InstrumentationModuleFormat = ModuleFormat::IR;
-  std::vector<MDSlotEntry> MDSlotMap;
+  /// Loads the target and instrumentation module's MIR, if the .luthier file
+  /// indicates they are present
+  llvm::Error loadMIR(Prototype &P, PrototypeAnalysisManager &PAM);
 };
 
 //===----------------------------------------------------------------------===//
@@ -164,14 +142,6 @@ llvm::Error writeLuthierFile(llvm::raw_ostream &OS, Prototype &IP,
 /// \c writeLuthierFile.
 llvm::Error writeLuthierFile(llvm::StringRef Path, Prototype &IP,
                              PrototypeAnalysisManager &IPAM);
-
-/// Compatibility shim for legacy callers that hold the two modules
-/// separately and do not have an \c PrototypeAnalysisManager.
-/// Both modules are written as IR text; the MDNode slot map is still
-/// computed against the live \p TargetModule so that reloaded imodule
-/// metadata can be rewired.
-llvm::Error writeLuthierFile(llvm::StringRef Path, llvm::Module &TargetModule,
-                             llvm::Module &IModule);
 
 } // namespace luthier
 

@@ -12,6 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "luthier/Common/Debug.h"
+#include "luthier/Common/ErrorCheck.h"
+#include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/PassPlugin/LuthierPassPlugin.h"
 #include "luthier/ToolCodeGen/Prototype.h"
@@ -409,27 +411,6 @@ int main(int argc, char **argv) {
   InitializeAllAsmPrinters();
   InitializeAllTargetMCAs();
 
-  // Initialize codegen and IR passes used by llc so that the -print-after,
-  // -print-before, and -stop-after options work.
-  PassRegistry *Registry = PassRegistry::getPassRegistry();
-  initializeCore(*Registry);
-  initializeCodeGen(*Registry);
-  initializeLoopStrengthReducePass(*Registry);
-  initializeLowerIntrinsicsPass(*Registry);
-  initializePostInlineEntryExitInstrumenterPass(*Registry);
-  initializeUnreachableBlockElimLegacyPassPass(*Registry);
-  initializeConstantHoistingLegacyPassPass(*Registry);
-  initializeScalarOpts(*Registry);
-  initializeVectorization(*Registry);
-  initializeScalarizeMaskedMemIntrinLegacyPassPass(*Registry);
-  initializeExpandReductionsPass(*Registry);
-  initializeHardwareLoopsLegacyPass(*Registry);
-  initializeTransformUtils(*Registry);
-  initializeReplaceWithVeclibLegacyPass(*Registry);
-
-  // Initialize debugging passes.
-  initializeScavengerTestPass(*Registry);
-
   SmallVector<luthier::PassPlugin, 1> PluginList;
   PassPlugins.setCallback([&](const std::string &PluginPath) {
     auto Plugin = luthier::PassPlugin::Load(PluginPath);
@@ -448,7 +429,7 @@ int main(int argc, char **argv) {
 
   if (TimeTrace)
     timeTraceProfilerInitialize(TimeTraceGranularity, argv[0]);
-  auto TimeTraceScopeExit = make_scope_exit([]() {
+  auto TimeTraceScopeExit = llvm::scope_exit([]() {
     if (TimeTrace) {
       if (auto E = timeTraceProfilerWrite(TimeTraceFile, OutputFilename)) {
         handleAllErrors(std::move(E), [&](const StringError &SE) {
@@ -469,7 +450,7 @@ int main(int argc, char **argv) {
   Expected<LLVMRemarkFileHandle> RemarksFileOrErr =
       setupLLVMOptimizationRemarks(Context, RemarksFilename, RemarksPasses,
                                    RemarksFormat, RemarksWithHotness,
-                                   RemarksHotnessThreshold);
+                                   RemarksHotnessThreshold.value());
   if (Error E = RemarksFileOrErr.takeError())
     reportError(std::move(E), RemarksFilename);
   LLVMRemarkFileHandle RemarksFile = std::move(*RemarksFileOrErr);
@@ -584,8 +565,7 @@ static int compileModule(char **argv,
   const Target *TheTarget = nullptr;
   std::unique_ptr<TargetMachine> Target;
   std::unique_ptr<luthier::Prototype> IP;
-  std::unique_ptr<MIRParser> TargetMIRParser;
-  std::unique_ptr<MIRParser> IModuleMIRParser;
+  std::optional<luthier::LuthierFileParser> Parser;
 
   auto SetDataLayout = [&](StringRef DataLayoutTargetTriple,
                            StringRef OldDLStr) -> std::optional<std::string> {
@@ -663,27 +643,22 @@ static int compileModule(char **argv,
     setPGOOptions(*Target);
     return 0;
   } else if (StringRef(InputFilename).ends_with(".luthier")) {
-    auto ParserOrErr = luthier::LuthierFileParser::create(InputFilename);
-    if (!ParserOrErr)
-      reportError(ParserOrErr.takeError(), InputFilename);
+    if (auto Err =
+            luthier::LuthierFileParser::create(InputFilename).moveInto(Parser))
+      reportError(std::move(Err), InputFilename);
 
-    // A throw-away IPAM used only to satisfy the parser signature.  The
-    // driver builds its own IPAM later and rebinds analyses to it.
-    luthier::PrototypeAnalysisManager ParserIPAM;
-    auto LoadedOrErr = ParserOrErr->load(Context, ParserIPAM, SetDataLayout,
-                                         setMIRFunctionAttributes);
-    if (!LoadedOrErr)
-      reportError(LoadedOrErr.takeError(), InputFilename);
-
-    IP = std::move(LoadedOrErr->IP);
-    TargetMIRParser = std::move(LoadedOrErr->TargetMIRParser);
-    IModuleMIRParser = std::move(LoadedOrErr->IModuleMIRParser);
+    if (auto Err = Parser
+                       ->loadPrototype(Context, SetDataLayout,
+                                       setMIRFunctionAttributes)
+                       .moveInto(IP))
+      reportError(std::move(Err), InputFilename);
 
     if (!TargetTriple.empty())
       IP->getTargetModule().setTargetTriple(
           Triple(Triple::normalize(TargetTriple)));
 
-    std::optional<CodeModel::Model> CM_IR = IP->getTargetModule().getCodeModel();
+    std::optional<CodeModel::Model> CM_IR =
+        IP->getTargetModule().getCodeModel();
     if (!CM && CM_IR)
       Target->setCodeModel(*CM_IR);
     if (std::optional<uint64_t> LDT = codegen::getExplicitLargeDataThreshold())
@@ -784,29 +759,26 @@ static int compileModule(char **argv,
                               VK == VerifierKind::EachPass);
   registerCodeGenCallback(PIC, *Target);
 
-  MachineFunctionAnalysisManager MFAM;
-  LoopAnalysisManager LAM;
-  FunctionAnalysisManager FAM;
-  CGSCCAnalysisManager CGAM;
-  ModuleAnalysisManager MAM;
+  luthier::PrototypePassBuilder IPPB(Target.get(), PipelineTuningOptions(),
+                                     std::nullopt, &PIC);
   luthier::PrototypeAnalysisManager IPAM;
-
-  PassBuilder PB(Target.get(), PipelineTuningOptions(), std::nullopt, &PIC);
-
-  luthier::PrototypePassBuilder IPPB(PB);
+  ModuleAnalysisManager MAM;
+  CGSCCAnalysisManager CGAM;
+  FunctionAnalysisManager FAM;
+  LoopAnalysisManager LAM;
+  MachineFunctionAnalysisManager MFAM;
 
   for (const auto &Plugin : PluginList)
     Plugin.registerPrototypePassBuilderCallback(IPPB);
 
-  PB.registerModuleAnalyses(MAM);
-  PB.registerCGSCCAnalyses(CGAM);
-  PB.registerFunctionAnalyses(FAM);
-  PB.registerLoopAnalyses(LAM);
-  PB.registerMachineFunctionAnalyses(MFAM);
-  PB.crossRegisterProxies(LAM, FAM, CGAM, MAM, &MFAM);
-  SI.registerCallbacks(PIC, &MAM);
-
+  IPPB.getPassBuilder().registerModuleAnalyses(MAM);
+  IPPB.getPassBuilder().registerCGSCCAnalyses(CGAM);
+  IPPB.getPassBuilder().registerFunctionAnalyses(FAM);
+  IPPB.getPassBuilder().registerLoopAnalyses(LAM);
+  IPPB.getPassBuilder().registerMachineFunctionAnalyses(MFAM);
+  IPPB.getPassBuilder().crossRegisterProxies(LAM, FAM, CGAM, MAM, &MFAM);
   IPPB.crossRegisterProxies(MAM, FAM, MFAM, IPAM);
+  SI.registerCallbacks(PIC, &MAM);
 
   FAM.registerPass([&] { return TargetLibraryAnalysis(TLII); });
 
@@ -823,11 +795,6 @@ static int compileModule(char **argv,
   luthier::PrototypePassManager IPPM;
 
   if (!PassPipeline.empty()) {
-    if (!IP->getTargetModule().empty() && !TargetMIRParser) {
-      WithColor::error(errs(), Arg0)
-          << "-passes requires a .luthier or empty input.\n";
-      return 1;
-    }
 
     if (auto Err = IPPB.parsePipeline(IPPM, PassPipeline)) {
       logAllUnhandledErrors(std::move(Err), errs(), "error: ");
@@ -850,15 +817,7 @@ static int compileModule(char **argv,
       IPPB.addTargetModulePass(IPPM, std::move(TargetMPM));
     }
   } else if (!EmitLuthierFile) {
-    // No -passes and non-luthier output: run the full default target-side
-    // codegen pipeline that ends in AsmPrinter/ObjectFile emission.
-    ModulePassManager TargetMPM;
-    ExitOnError ExitOnErr;
-    ExitOnErr(Target->buildCodeGenPipeline(TargetMPM, MAM, *OS,
-                                           DwoOut ? &DwoOut->os() : nullptr,
-                                           FileType, Opt, MMI.getContext(),
-                                           &PIC));
-    IPPB.addTargetModulePass(IPPM, std::move(TargetMPM));
+    /// TODO: Run the complete instrumentation pipeline here
   }
   // When EmitLuthierFile is set and -passes is empty, the driver runs no
   // default pipeline: the tool re-emits the Prototype as-is.
@@ -874,15 +833,12 @@ static int compileModule(char **argv,
     return 0;
   }
 
-  if (TargetMIRParser &&
-      TargetMIRParser->parseMachineFunctions(IP->getTargetModule(), MAM))
-    return 1;
-  if (IModuleMIRParser &&
-      IModuleMIRParser->parseMachineFunctions(IP->getInstrumentationModule(),
-                                              MAM))
-    return 1;
-
   cl::PrintOptionValues();
+
+  if (Parser.has_value()) {
+    if (auto Err = Parser->loadMIR(*IP, IPAM))
+      reportError(std::move(Err), InputFilename);
+  }
 
   IPPM.run(*IP, IPAM);
 
