@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file ForwardISAStateToCalleesPass.h
+/// \file
 /// Declares the \c ForwardISAStateToCalleesPass which extends every callee of
 /// an injected payload inside an instrumentation module with extra parameters
 /// (one per SVA scalar-arg lane and per phys-reg channel it reads) and an
@@ -32,15 +32,12 @@ namespace luthier {
 
 class ForwardISAStateToCalleesPass
     : public llvm::PassInfoMixin<ForwardISAStateToCalleesPass> {
-private:
-  const llvm::GCNTargetMachine &TM;
 
 public:
-  explicit ForwardISAStateToCalleesPass(const llvm::GCNTargetMachine &TM)
-      : TM(TM) {}
+  ForwardISAStateToCalleesPass() = default;
 
   llvm::PreservedAnalyses run(llvm::Module &IModule,
-                              llvm::ModuleAnalysisManager &IMAM);
+                              llvm::ModuleAnalysisManager &MAM);
 };
 
 } // namespace luthier

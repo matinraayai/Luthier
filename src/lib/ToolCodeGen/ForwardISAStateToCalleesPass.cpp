@@ -32,6 +32,7 @@
 #include <llvm/ADT/SmallPtrSet.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringMap.h>
+#include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/AttributeMask.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/BasicBlock.h>
@@ -885,7 +886,7 @@ void rewriteCallSite(llvm::CallBase *CB, llvm::Function *OldCallee,
 
 llvm::PreservedAnalyses
 ForwardISAStateToCalleesPass::run(llvm::Module &IModule,
-                                  llvm::ModuleAnalysisManager &IMAM) {
+                                  llvm::ModuleAnalysisManager &MAM) {
   LLVM_DEBUG(luthier::dbgs() << "=== ForwardISAStateToCalleesPass: module '"
                           << IModule.getName() << "' ===\n");
 
@@ -894,6 +895,8 @@ ForwardISAStateToCalleesPass::run(llvm::Module &IModule,
     LLVM_DEBUG(luthier::dbgs() << "  No placeholders; nothing to do.\n");
     return llvm::PreservedAnalyses::all();
   }
+  const auto &TM =
+      MAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI().getTarget();
 
   const auto *Subtarget = TM.getSubtargetImpl(*IModule.functions().begin());
   // Fall back to a Function-specific subtarget if the first Function is a
