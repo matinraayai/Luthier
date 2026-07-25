@@ -1,4 +1,4 @@
-//===-- PrototypePassBuilder.h ----------------------------------*- C++ -*-===//
+//===-- InstrumentationPassBuilder.h ----------------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,19 +14,11 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Defines \c PrototypePassBuilder,  around \c llvm::PassBuilder for
-/// assembling instrumentation pipelines over the \c Prototype IR unit.
-///
-/// The builder owns its underlying \c llvm::PassBuilder and installs all
-/// Luthier passes/analyses on it via callbacks, mirroring the way
-/// \c llvm::PassBuilder registers stock LLVM passes in its own constructor.
-/// It also exposes \c buildInstrumentationPipeline, the Luthier analogue of
-/// \c PassBuilder::buildPerModuleDefaultPipeline, which produces the
-/// end-to-end IR + codegen + Prototype-level pipeline that
-/// \c InstrumentationPMDriver assembles today.
+/// Defines the \c InstrumentationPassBuilder, a class for parsing and creating
+/// instrumentation pipelines.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOL_CODE_GEN_PROTOTYPE_PASS_BUILDER_H
-#define LUTHIER_TOOL_CODE_GEN_PROTOTYPE_PASS_BUILDER_H
+#ifndef LUTHIER_TOOL_CODE_GEN_INSTRUMENTATION_PASS_BUILDER_H
+#define LUTHIER_TOOL_CODE_GEN_INSTRUMENTATION_PASS_BUILDER_H
 
 #include "luthier/ToolCodeGen/Prototype.h"
 #include <functional>
@@ -57,8 +49,8 @@ struct InstrumentationPMDriverOptions;
 /// Luthier pipeline grammar over \c Prototype.
 ///
 /// \pre Any \c llvm::PassInstrumentationCallbacks pointer passed to the
-///      constructor must outlive this \c PrototypePassBuilder.
-class PrototypePassBuilder {
+///      constructor must outlive this \c InstrumentationPassBuilder.
+class InstrumentationPassBuilder {
 public:
   /// Callback invoked while parsing a \c target(<name>) or
   /// \c instrumentation(<name>) block. Return \c true to signal the token was
@@ -92,15 +84,16 @@ public:
   /// Primary constructor. Builds and owns an internal \c llvm::PassBuilder
   /// with the supplied arguments, then installs every Luthier pass and
   /// analysis on it via callbacks.
-  PrototypePassBuilder(llvm::TargetMachine *TM,
-                       llvm::PipelineTuningOptions PTO = {},
+  InstrumentationPassBuilder(
+      llvm::TargetMachine *TM, llvm::PipelineTuningOptions PTO = {},
                        std::optional<llvm::PGOOptions> PGOOpt = std::nullopt,
                        llvm::PassInstrumentationCallbacks *PIC = nullptr);
 
-  ~PrototypePassBuilder();
+  ~InstrumentationPassBuilder();
 
-  PrototypePassBuilder(const PrototypePassBuilder &) = delete;
-  PrototypePassBuilder &operator=(const PrototypePassBuilder &) = delete;
+  InstrumentationPassBuilder(const InstrumentationPassBuilder &) = delete;
+  InstrumentationPassBuilder &
+  operator=(const InstrumentationPassBuilder &) = delete;
 
   /// Returns the wrapped \c llvm::PassBuilder. Plugins register analyses,
   /// pipeline-parsing callbacks, and any pipeline-tuning options directly on
