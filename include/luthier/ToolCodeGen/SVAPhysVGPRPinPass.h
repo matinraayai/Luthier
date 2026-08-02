@@ -14,9 +14,9 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file SVAPhysVGPRPinPass.h
-/// Prototype-level pass that runs pre-WWM-regalloc on injected-
-/// payload MFs and pins the single MFInfo->SGPRSpillVGPRs[] entry (created
-/// by IntrinsicMIRLoweringPass::materializeReadlanes) to the physical VGPR
+/// Machine-function pass that runs pre-WWM-regalloc on injected-payload MFs
+/// and pins the single MFInfo->SGPRSpillVGPRs[] entry (created by
+/// IntrinsicMIRLoweringPass::materializeReadlanes) to the physical VGPR
 /// that LRStateValueStorageAndLoadLocationsAnalysis selected as the SVA
 /// load destination. Guarantees cross-MF consistency: every payload MF
 /// and the kernel prolog use the SAME physical VGPR for the SVA without
@@ -24,7 +24,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_SVA_PHYS_VGPR_PIN_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_SVA_PHYS_VGPR_PIN_PASS_H
-#include "luthier/ToolCodeGen/Prototype.h"
+#include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/IR/PassManager.h>
 
 namespace luthier {
@@ -33,8 +33,10 @@ class SVAPhysVGPRPinPass : public llvm::PassInfoMixin<SVAPhysVGPRPinPass> {
 public:
   SVAPhysVGPRPinPass() = default;
 
-  llvm::PreservedAnalyses run(Prototype &IP,
-                              PrototypeAnalysisManager &IPAM);
+  llvm::PreservedAnalyses run(llvm::MachineFunction &MF,
+                              llvm::MachineFunctionAnalysisManager &MFAM);
+
+  static bool isRequired() { return true; }
 };
 
 } // namespace luthier
