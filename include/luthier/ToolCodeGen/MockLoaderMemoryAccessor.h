@@ -20,7 +20,7 @@
 #ifndef LUTHIER_TOOL_CODE_GEN_TESTING_COMMON_MOCK_LOADER_MEMORY_ACCESSOR_H
 #define LUTHIER_TOOL_CODE_GEN_TESTING_COMMON_MOCK_LOADER_MEMORY_ACCESSOR_H
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
-#include "luthier/ToolCodeGenTesting/MockAMDGPULoader.h"
+#include "luthier/ToolCodeGen/MockAMDGPULoader.h"
 
 namespace luthier {
 

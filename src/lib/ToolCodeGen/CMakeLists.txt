@@ -60,8 +60,14 @@ add_library(LuthierToolCodeGen OBJECT
         TraceCallGraph.cpp
         PredicatedMachineBasicBlock.cpp
         Prototype.cpp
-        PrototypePassBuilder.cpp
+        InstrumentationPassBuilder.cpp
         ParentPrototypeAnalysis.cpp
+        MockAMDGPULoader.cpp
+        MockLoadAMDGPUCodeObjects.cpp
+        AMDGPUMockLoaderPrinter.cpp
+        MockLoaderMemoryAccessor.cpp
+        CodeObjectManagerAnalysis.cpp
+        LuthierFile.cpp
 )
 
 add_dependencies(LuthierToolCodeGen LuthierRealToPseudoOpcodeMap)

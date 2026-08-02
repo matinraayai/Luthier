@@ -16,7 +16,7 @@
 /// \file MockLoaderMemoryAccessor.cpp
 /// Implements the \c MockLoaderMemoryAccessor class.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGenTesting/MockLoaderMemoryAccessor.h"
+#include "luthier/ToolCodeGen/MockLoaderMemoryAccessor.h"
 
 namespace luthier {
 

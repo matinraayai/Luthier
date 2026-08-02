@@ -20,7 +20,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_TESTING_MOCK_AMDGPU_LOADER_ANALYSIS_H
 #define LUTHIER_TOOL_CODE_GEN_TESTING_MOCK_AMDGPU_LOADER_ANALYSIS_H
-#include "luthier/ToolCodeGenTesting/MockAMDGPULoader.h"
+#include "luthier/ToolCodeGen/MockAMDGPULoader.h"
 #include <llvm/IR/PassManager.h>
 #include <llvm/Support/CommandLine.h>
 

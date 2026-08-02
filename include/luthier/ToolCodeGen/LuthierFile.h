@@ -18,8 +18,8 @@
 /// \c .luthier files into a \c luthier::Prototype
 /// — together with the \c writeLuthierFile helper for serialization.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOL_CODE_GEN_TESTING_LUTHIER_FILE_H
-#define LUTHIER_TOOL_CODE_GEN_TESTING_LUTHIER_FILE_H
+#ifndef LUTHIER_TOOL_CODE_GEN_LUTHIER_FILE_H
+#define LUTHIER_TOOL_CODE_GEN_LUTHIER_FILE_H
 
 #include "luthier/ToolCodeGen/Prototype.h"
 #include <functional>
@@ -136,11 +136,6 @@ public:
 /// result on the \c FunctionAnalysisManager reachable from \p IPAM, the
 /// module is written as MIR; otherwise it is written as LLVM IR text.
 llvm::Error writeLuthierFile(llvm::raw_ostream &OS, Prototype &IP,
-                             PrototypeAnalysisManager &IPAM);
-
-/// Convenience overload that opens \p Path and delegates to the stream-based
-/// \c writeLuthierFile.
-llvm::Error writeLuthierFile(llvm::StringRef Path, Prototype &IP,
                              PrototypeAnalysisManager &IPAM);
 
 } // namespace luthier

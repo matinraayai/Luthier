@@ -16,9 +16,9 @@
 /// \file AMDGPUMockLoaderPrinter.cpp
 /// Implements the \c AMDGPUMockLoaderPrinter class.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGenTesting/AMDGPUMockLoaderPrinter.h"
+#include "luthier/ToolCodeGen/AMDGPUMockLoaderPrinter.h"
+#include "luthier/ToolCodeGen/MockAMDGPULoader.h"
 #include "luthier/Object/ObjectFileUtils.h"
-#include "luthier/ToolCodeGenTesting/MockAMDGPULoader.h"
 #include <llvm/BinaryFormat/ELF.h>
 #include <llvm/IR/Module.h>
 #include <llvm/MC/MCAsmInfo.h>

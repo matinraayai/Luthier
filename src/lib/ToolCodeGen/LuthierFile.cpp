@@ -16,7 +16,7 @@
 /// \file
 /// Implements \c LuthierFileParser and the \c writeLuthierFile helpers.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGenTesting/LuthierFile.h"
+#include "luthier/ToolCodeGen/LuthierFile.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/ADT/DenseMap.h>
@@ -417,19 +417,6 @@ llvm::Error writeLuthierFile(llvm::raw_ostream &OS, Prototype &IP,
 
   llvm::yaml::Output Yout(OS);
   Yout << Y;
-  return llvm::Error::success();
-}
-
-llvm::Error writeLuthierFile(llvm::StringRef Path, Prototype &IP,
-                             PrototypeAnalysisManager &IPAM) {
-  std::error_code EC;
-  llvm::ToolOutputFile OutFile(Path, EC, llvm::sys::fs::OF_Text);
-  if (EC)
-    return LUTHIER_MAKE_GENERIC_ERROR("Failed to open .luthier output file '" +
-                                      Path.str() + "': " + EC.message());
-  if (auto Err = writeLuthierFile(OutFile.os(), IP, IPAM))
-    return Err;
-  OutFile.keep();
   return llvm::Error::success();
 }
 

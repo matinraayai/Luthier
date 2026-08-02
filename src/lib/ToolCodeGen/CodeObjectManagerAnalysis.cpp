@@ -16,7 +16,7 @@
 /// \file
 /// Implements the \c CodeObjectManagerAnalysis class.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGenTesting/CodeObjectManagerAnalysis.h"
+#include "luthier/ToolCodeGen/CodeObjectManagerAnalysis.h"
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Object/AMDGCNObjectFile.h"

@@ -13,11 +13,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file MockAMDGPULoader.h 
+/// \file
 /// Defines the \c MockAMDGPULoader and \c MockLoadedCodeObject classes.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOL_CODE_GEN_TESTING_MOCK_AMDGPU_LOADER_H
-#define LUTHIER_TOOL_CODE_GEN_TESTING_MOCK_AMDGPU_LOADER_H
+#ifndef LUTHIER_TOOL_CODE_GEN_MOCK_AMDGPU_LOADER_H
+#define LUTHIER_TOOL_CODE_GEN_MOCK_AMDGPU_LOADER_H
 
 #include "luthier/Object/AMDGCNObjectFile.h"
 #include <llvm/ADT/StringMap.h>

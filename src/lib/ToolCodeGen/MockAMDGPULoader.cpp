@@ -17,7 +17,7 @@
 /// Implements the \c MockAMDGPULoader and \c MockLoadedCodeObject
 /// classes.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGenTesting/MockAMDGPULoader.h"
+#include "luthier/ToolCodeGen/MockAMDGPULoader.h"
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include <hsa/amd_hsa_kernel_code.h>

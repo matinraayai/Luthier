@@ -1,7 +1,6 @@
 add_llvm_pass_plugin(LuthierToolCodeGenPlugin
         ToolCodeGenPlugin.cpp
         $<TARGET_OBJECTS:LuthierToolCodeGen>
-        $<TARGET_OBJECTS:LuthierToolCodeGenTesting>
         $<TARGET_OBJECTS:LuthierCommon>
         $<TARGET_OBJECTS:LuthierObject>
         $<TARGET_OBJECTS:LuthierLLVM>
