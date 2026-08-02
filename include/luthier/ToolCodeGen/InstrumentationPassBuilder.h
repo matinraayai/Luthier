@@ -14,16 +14,18 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Defines the \c InstrumentationPassBuilder, a class for parsing and creating
-/// instrumentation pipelines.
+/// Defines the \c InstrumentationPassBuilder, a class for parsing, creating,
+/// and augmenting the standard instrumentation pipeline.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_INSTRUMENTATION_PASS_BUILDER_H
 #define LUTHIER_TOOL_CODE_GEN_INSTRUMENTATION_PASS_BUILDER_H
 
+#include "EntryPoint.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include <functional>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringRef.h>
+#include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Passes/OptimizationLevel.h>
 #include <llvm/Passes/PassBuilder.h>
@@ -43,13 +45,7 @@ class PipelineTuningOptions;
 
 namespace luthier {
 
-struct InstrumentationPMDriverOptions;
-
-/// Facade around \c llvm::PassBuilder that owns the wrapped PB and hosts the
-/// Luthier pipeline grammar over \c Prototype.
-///
-/// \pre Any \c llvm::PassInstrumentationCallbacks pointer passed to the
-///      constructor must outlive this \c InstrumentationPassBuilder.
+/// Primary interface used to construct an instrumentation pipeline.
 class InstrumentationPassBuilder {
 public:
   /// Callback invoked while parsing a \c target(<name>) or
@@ -59,35 +55,36 @@ public:
       std::function<bool(llvm::StringRef /*InnerText*/,
                          PrototypePassManager & /*PPM*/, bool /*IsTarget*/)>;
 
-  /// Fired once, right after the wrapped \c PassBuilder is constructed and
-  /// Luthier passes are registered on it. Use it to install additional
-  /// analyses, plugin passes, or pipeline-parsing callbacks that need to see
-  /// the PB directly.
-  using PassBuilderAugmentationCallback =
-      std::function<void(llvm::PassBuilder &)>;
+  /// Callback for before any code is discovered from the initial entry point.
+  using PreCodeDiscoveryCallback =
+      std::function<void(PrototypePassManager &, llvm::OptimizationLevel)>;
 
-  /// Fired before adding any other passes to the IModule IR pipeline.
-  using PreIROptimizationCallback =
+  /// Callback for before any instrumentation passes are run on the discovered
+  /// code.
+  using PreInstrumentationCallback =
+      std::function<void(PrototypePassManager &, llvm::OptimizationLevel)>;
+
+  /// Callback for before running IR optimization passes on the instrumentation
+  /// module.
+  using PreInstrumentationOptimizationCallback =
+      std::function<void(PrototypePassManager &, llvm::OptimizationLevel)>;
+
+  /// Callback for before ISEL is performed on the instrumentation module.
+  using PreInstrumentationISelCallback =
+      std::function<void(PrototypePassManager &, llvm::OptimizationLevel)>;
+
+  /// Callback for before codegen passes are applied on the instrumentation
+  /// module.
+  using PreInstrumentationCodeGenPassesCallback =
       std::function<void(llvm::ModulePassManager &, llvm::OptimizationLevel)>;
-
-  /// Fired before / after adding the Luthier IR intrinsic lowering pass to
-  /// the IModule IR pipeline.
-  using IntrinsicLoweringCallback =
-      std::function<void(llvm::ModulePassManager &)>;
-
-  /// Opaque handle for augmenting the codegen pipeline. The concrete
-  /// implementation is \c .cpp-private.
-  class CodeGenAugmenter;
-  using AugmentCodeGenCallback =
-      std::function<void(CodeGenAugmenter &, llvm::TargetMachine &)>;
 
   /// Primary constructor. Builds and owns an internal \c llvm::PassBuilder
   /// with the supplied arguments, then installs every Luthier pass and
   /// analysis on it via callbacks.
   InstrumentationPassBuilder(
-      llvm::TargetMachine *TM, llvm::PipelineTuningOptions PTO = {},
-                       std::optional<llvm::PGOOptions> PGOOpt = std::nullopt,
-                       llvm::PassInstrumentationCallbacks *PIC = nullptr);
+      llvm::TargetMachine &TM, llvm::PipelineTuningOptions PTO = {},
+      std::optional<llvm::PGOOptions> PGOOpt = std::nullopt,
+      llvm::PassInstrumentationCallbacks *PIC = nullptr);
 
   ~InstrumentationPassBuilder();
 
@@ -95,15 +92,8 @@ public:
   InstrumentationPassBuilder &
   operator=(const InstrumentationPassBuilder &) = delete;
 
-  /// Returns the wrapped \c llvm::PassBuilder. Plugins register analyses,
-  /// pipeline-parsing callbacks, and any pipeline-tuning options directly on
-  /// it — but should prefer the extension-point registration helpers below
-  /// when they exist.
-  llvm::PassBuilder &getPassBuilder();
-
-  /// Returns the target machine this builder was constructed with (may be
-  /// null).
-  llvm::TargetMachine *getTargetMachine() const { return TM; }
+  /// Returns the target machine this builder was constructed with
+  llvm::TargetMachine &getTargetMachine() const { return TM; }
 
   /// Returns the \c PassInstrumentationCallbacks pointer this builder was
   /// constructed with (may be null).
@@ -119,18 +109,25 @@ public:
   ///
   /// Modeled on \c llvm::PassBuilder::crossRegisterProxies; call this once
   /// after \c PB.crossRegisterProxies has wired up the inner levels.
-  void crossRegisterProxies(llvm::ModuleAnalysisManager &MAM,
+  void crossRegisterProxies(PrototypeAnalysisManager &PAM,
+                            llvm::ModuleAnalysisManager &MAM,
+                            llvm::CGSCCAnalysisManager &CGAM,
                             llvm::FunctionAnalysisManager &FAM,
-                            llvm::MachineFunctionAnalysisManager &MFAM,
-                            PrototypeAnalysisManager &IPAM);
+                            llvm::LoopAnalysisManager &LAM,
+                            llvm::MachineFunctionAnalysisManager &MFAM);
 
-  /// Pre-register every zero-arg Luthier analysis on the appropriate manager,
-  /// expanding \c LuthierPassRegistry.def. Passes/analyses that require
-  /// constructor arguments must be registered by the caller.
-  void registerAllAnalyses(llvm::ModuleAnalysisManager &MAM,
-                           llvm::FunctionAnalysisManager &FAM,
-                           llvm::MachineFunctionAnalysisManager &MFAM,
-                           PrototypeAnalysisManager &IPAM);
+  void registerPrototypeAnalyses(PrototypeAnalysisManager &PAM);
+
+  void registerModuleAnalyses(llvm::ModuleAnalysisManager &MAM);
+
+  void registerCGSCCAnalyses(llvm::CGSCCAnalysisManager &CGAM);
+
+  void registerFunctionAnalyses(llvm::FunctionAnalysisManager &FAM);
+
+  void registerLoopAnalyses(llvm::LoopAnalysisManager &LAM);
+
+  void
+  registerMachineFunctionAnalyses(llvm::MachineFunctionAnalysisManager &MFAM);
 
   /// Parse a top-level pipeline string of the form
   ///   target(<inner>) [, instrumentation(<inner>) ...]
@@ -168,10 +165,11 @@ public:
   /// \c NewPMAsmPrinter afterwards (or use \p Out for AsmPrinter output
   /// depending on \p FileType).
   llvm::Error buildInstrumentationPipeline(
-      PrototypePassManager &PPM, const InstrumentationPMDriverOptions &Opts,
-      llvm::OptimizationLevel Level, llvm::ModuleAnalysisManager &MAM,
+      PrototypePassManager &PPM, llvm::OptimizationLevel Level,
       llvm::raw_pwrite_stream &Out, llvm::raw_pwrite_stream *DwoOut,
-      llvm::CodeGenFileType FileType, llvm::MCContext &Ctx);
+      llvm::CodeGenFileType FileType, llvm::MCContext &Ctx,
+      const llvm::amdhsa::kernel_descriptor_t &InitialExecutionPoint,
+      EntryPoint InitialEntryPoint);
 
   /// Wrap \p Pass so it runs over the target module of the prototype and
   /// append it to \p PPM.
@@ -190,87 +188,62 @@ public:
         std::forward<ModulePassT>(Pass)));
   }
 
-  /// Register a hook fired for every \c target(<inner>) /
-  /// \c instrumentation(<inner>) block. Callbacks are tried in order; the
-  /// first to return \c true owns the block.
   void registerParseCallback(ParseCallback Cb) {
     ParseCallbacks.push_back(std::move(Cb));
   }
 
-  /// Register a callback fired once from the constructor, right after the
-  /// wrapped PB is built and Luthier passes are installed on it.
-  ///
-  /// Note: because these fire in the constructor, callbacks registered
-  /// *after* the constructor completes never run. This mirrors the
-  /// equivalent slot in \c InstrumentationPMDriver, which took its
-  /// augmentation callback as a constructor argument.
+  void registerPreCodeDiscoveryCallback(PreCodeDiscoveryCallback CB) {
+    PreCodeDiscoveryCallBacks.push_back(CB);
+  }
+
+  void registerPreInstrumentationCallback(PreInstrumentationCallback CB) {
+    PreInstrumentationCallbacks.push_back(CB);
+  }
+
+  void registerPreInstrumentationOptimizationCallback(
+      PreInstrumentationOptimizationCallback CB) {
+    PreInstrumentationOptimizationCallbacks.push_back(CB);
+  }
+
   void
-  registerPassBuilderAugmentationCallback(PassBuilderAugmentationCallback Cb) {
-    PassBuilderAugmentationCallbacks.push_back(std::move(Cb));
+  registerPreInstrumentationISelCallback(PreInstrumentationISelCallback CB) {
+    PreInstrumentationISelCallbacks.push_back(CB);
   }
 
-  /// Register a callback fired at the very start of the IModule IR pipeline.
-  void registerPreIROptimizationCallback(PreIROptimizationCallback Cb) {
-    PreIROptimizationCallbacks.push_back(std::move(Cb));
-  }
-
-  /// Register a callback fired right before Luthier IR intrinsic lowering
-  /// runs on the IModule.
-  void registerPreIRIntrinsicLoweringCallback(IntrinsicLoweringCallback Cb) {
-    PreIRIntrinsicLoweringCallbacks.push_back(std::move(Cb));
-  }
-
-  /// Register a callback fired right after Luthier IR intrinsic lowering
-  /// runs on the IModule.
-  void registerPostIRIntrinsicLoweringCallback(IntrinsicLoweringCallback Cb) {
-    PostIRIntrinsicLoweringCallbacks.push_back(std::move(Cb));
-  }
-
-  /// Register a callback fired while the codegen pipeline is being assembled,
-  /// after the internal AMDGPU codegen builder is constructed. Analogous to
-  /// (and fixes the never-called) \c AugmentTargetPassConfigCallback slot in
-  /// \c InstrumentationPMDriver.
-  void registerAugmentCodeGenCallback(AugmentCodeGenCallback Cb) {
-    AugmentCodeGenCallbacks.push_back(std::move(Cb));
+  void registerPreInstrumentationCodeGenPassesCallback(
+      PreInstrumentationCodeGenPassesCallback CB) {
+    PreInstrumentationCodeGenPassesCallbacks.push_back(CB);
   }
 
 private:
-  /// Install every Luthier pass and analysis on the wrapped PB via
-  /// \c PassBuilder::registerPipelineParsingCallback and friends. Expands
-  /// \c LuthierPassRegistry.def. Called once at construction.
-  void registerLuthierPasses();
-
   /// Build the IModule IR pipeline (per-module default + intrinsic lowering).
-  llvm::Error
-  buildIROptimizationPipeline(llvm::ModulePassManager &IMPM,
-                              const InstrumentationPMDriverOptions &Opts,
-                              llvm::OptimizationLevel Level);
+  llvm::Error buildIROptimizationPipeline(llvm::ModulePassManager &IMPM,
+                                          llvm::OptimizationLevel Level);
 
   /// Build the IModule codegen pipeline (ISel + machine passes with
   /// \c InjectedPayloadPEIPass splice). Delegates to
   /// \c GCNTargetMachine::buildCodeGenPipeline and then walks the resulting
   /// pass manager tree to insert Luthier's PEI pass after LLVM's stock one.
   llvm::Error buildCodeGenPipeline(llvm::ModulePassManager &IMPM,
-                                   const InstrumentationPMDriverOptions &Opts,
                                    llvm::ModuleAnalysisManager &MAM,
                                    llvm::raw_pwrite_stream &Out,
                                    llvm::raw_pwrite_stream *DwoOut,
                                    llvm::CodeGenFileType FileType,
                                    llvm::MCContext &Ctx);
 
-  llvm::TargetMachine *TM;
+  llvm::TargetMachine &TM;
   llvm::PassInstrumentationCallbacks *PIC;
   std::unique_ptr<llvm::PassBuilder> PB;
 
   llvm::SmallVector<ParseCallback, 2> ParseCallbacks;
-  llvm::SmallVector<PassBuilderAugmentationCallback, 2>
-      PassBuilderAugmentationCallbacks;
-  llvm::SmallVector<PreIROptimizationCallback, 2> PreIROptimizationCallbacks;
-  llvm::SmallVector<IntrinsicLoweringCallback, 2>
-      PreIRIntrinsicLoweringCallbacks;
-  llvm::SmallVector<IntrinsicLoweringCallback, 2>
-      PostIRIntrinsicLoweringCallbacks;
-  llvm::SmallVector<AugmentCodeGenCallback, 2> AugmentCodeGenCallbacks;
+  llvm::SmallVector<PreCodeDiscoveryCallback, 2> PreCodeDiscoveryCallBacks;
+  llvm::SmallVector<PreInstrumentationCallback, 2> PreInstrumentationCallbacks;
+  llvm::SmallVector<PreInstrumentationOptimizationCallback, 2>
+      PreInstrumentationOptimizationCallbacks;
+  llvm::SmallVector<PreInstrumentationISelCallback, 2>
+      PreInstrumentationISelCallbacks;
+  llvm::SmallVector<PreInstrumentationCodeGenPassesCallback, 2>
+      PreInstrumentationCodeGenPassesCallbacks;
 };
 
 } // namespace luthier

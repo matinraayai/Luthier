@@ -1,4 +1,4 @@
-//===-- PrototypePassBuilder.cpp -------------------------------===//
+//===-- InstrumentationPassBuilder.cpp -------------------------------===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,13 +14,13 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements \c luthier::PrototypePassBuilder, including
+/// Implements \c luthier::InstrumentationPassBuilder, including
 /// \c buildInstrumentationPipeline and the Luthier-owned AMDGPU codegen
 /// pass builder used to splice \c InjectedPayloadPEIPass into the machine
 /// pipeline.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGen/PrototypePassBuilder.h"
-
+#include "luthier/ToolCodeGen/InstrumentationPassBuilder.h"
+#include "luthier/Common/GenericLuthierError.h"
 #include "luthier/ToolCodeGen/ForwardISAStateToCalleesPass.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
@@ -40,14 +40,18 @@
 #include "luthier/ToolCodeGen/TargetModulePatcherPass.h"
 #include "luthier/ToolCodeGen/TraceCallGraph.h"
 
+#include <AMDGPU.h>
 #include <AMDGPUTargetMachine.h>
+#include <SIMachineFunctionInfo.h>
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/CodeGen/PEI.h>
+#include <llvm/CodeGen/RegAllocRegistry.h>
 #include <llvm/IR/PassInstrumentation.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/PassManagerInternal.h>
+#include <llvm/Passes/CodeGenPassBuilder.h>
 #include <llvm/Passes/OptimizationLevel.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/raw_ostream.h>
@@ -61,23 +65,6 @@ using llvm::PassInstrumentationCallbacks;
 using llvm::StringRef;
 
 namespace luthier {
-
-//===----------------------------------------------------------------------===//
-// CodeGenAugmenter — opaque handle for AugmentCodeGenCallback.
-//===----------------------------------------------------------------------===//
-
-/// Opaque view into the codegen pass builder handed to
-/// \c AugmentCodeGenCallback consumers. Kept minimal so consumers only touch
-/// what they need. Extend as new augmentation surfaces are required.
-class PrototypePassBuilder::CodeGenAugmenter {
-public:
-  CodeGenAugmenter() = default;
-
-  /// Set to \c true by a callback that wants to skip Luthier's
-  /// \c InjectedPayloadPEIPass on this run. Independent of the CL-level
-  /// \c --disable-injected-payload-pei — either can force it off.
-  bool SuppressInjectedPayloadPEI = false;
-};
 
 //===----------------------------------------------------------------------===//
 // Post-hoc splice: locate LLVM's stock PrologEpilogInserterPass in the codegen
@@ -129,9 +116,10 @@ using FunctionPassConceptT =
 using MachineFunctionPassConceptT =
     llvm::detail::PassConcept<llvm::MachineFunction,
                               llvm::MachineFunctionAnalysisManager>;
-using CGSCCPassConceptT = llvm::detail::PassConcept<
-    llvm::LazyCallGraph::SCC, llvm::CGSCCAnalysisManager,
-    llvm::LazyCallGraph &, llvm::CGSCCUpdateResult &>;
+using CGSCCPassConceptT =
+    llvm::detail::PassConcept<llvm::LazyCallGraph::SCC,
+                              llvm::CGSCCAnalysisManager, llvm::LazyCallGraph &,
+                              llvm::CGSCCUpdateResult &>;
 
 //=== Tags naming each member we want to reach. ============================//
 
@@ -148,22 +136,22 @@ struct MFPMPassesTag {
       llvm::MachineFunctionPassManager::*;
 };
 struct CGSCCPMPassesTag {
-  using type = std::vector<std::unique_ptr<CGSCCPassConceptT>>
-      llvm::CGSCCPassManager::*;
+  using type =
+      std::vector<std::unique_ptr<CGSCCPassConceptT>> llvm::CGSCCPassManager::*;
 };
 struct M2FAdaptorPassTag {
   using type = std::unique_ptr<llvm::ModuleToFunctionPassAdaptor::PassConceptT>
       llvm::ModuleToFunctionPassAdaptor::*;
 };
 struct F2MFAdaptorPassTag {
-  using type = std::unique_ptr<
-      llvm::FunctionToMachineFunctionPassAdaptor::PassConceptT>
-      llvm::FunctionToMachineFunctionPassAdaptor::*;
+  using type =
+      std::unique_ptr<llvm::FunctionToMachineFunctionPassAdaptor::PassConceptT>
+          llvm::FunctionToMachineFunctionPassAdaptor::*;
 };
 struct M2CGSCCAdaptorPassTag {
-  using type = std::unique_ptr<
-      llvm::ModuleToPostOrderCGSCCPassAdaptor::PassConceptT>
-      llvm::ModuleToPostOrderCGSCCPassAdaptor::*;
+  using type =
+      std::unique_ptr<llvm::ModuleToPostOrderCGSCCPassAdaptor::PassConceptT>
+          llvm::ModuleToPostOrderCGSCCPassAdaptor::*;
 };
 struct CGSCC2FAdaptorPassTag {
   using type = std::unique_ptr<llvm::CGSCCToFunctionPassAdaptor::PassConceptT>
@@ -214,9 +202,9 @@ bool spliceInMFPM(llvm::MachineFunctionPassManager &MFPM,
   for (auto It = MFPasses.begin(); It != MFPasses.end(); ++It) {
     if ((*It)->name() != llvm::PrologEpilogInserterPass::name())
       continue;
-    using NewPassModelT = llvm::detail::PassModel<
-        llvm::MachineFunction, InjectedPayloadPEIPass,
-        llvm::MachineFunctionAnalysisManager>;
+    using NewPassModelT =
+        llvm::detail::PassModel<llvm::MachineFunction, InjectedPayloadPEIPass,
+                                llvm::MachineFunctionAnalysisManager>;
     auto NewSlot = std::unique_ptr<MachineFunctionPassConceptT>(
         new NewPassModelT(std::move(NewPass)));
     MFPasses.insert(std::next(It), std::move(NewSlot));
@@ -231,8 +219,7 @@ bool spliceInFPM(llvm::FunctionPassManager &FPM,
   auto &FPasses = FPM.*Rob<FPMPassesTag>::Ptr;
   for (auto &Slot : FPasses) {
     if (auto *Adaptor =
-            asAdaptor<llvm::FunctionToMachineFunctionPassAdaptor>(
-                Slot.get())) {
+            asAdaptor<llvm::FunctionToMachineFunctionPassAdaptor>(Slot.get())) {
       // Adaptor holds a unique_ptr<PassConcept<MachineFunction>>. The
       // concrete concept is a PassModel<MachineFunctionPassManager> when
       // an MFPM was wholesale added; unwrap it to reach the MFPM.
@@ -240,11 +227,11 @@ bool spliceInFPM(llvm::FunctionPassManager &FPM,
       (void)InnerSlot;
       // The MFPM was added to the adaptor via a raw PassConcept — retrieve
       // it via the PassModel wrapper.
-      using MFPMModelT = llvm::detail::PassModel<
-          llvm::MachineFunction, llvm::MachineFunctionPassManager,
-          llvm::MachineFunctionAnalysisManager>;
-      auto *InnerConcept =
-          (Adaptor->*Rob<F2MFAdaptorPassTag>::Ptr).get();
+      using MFPMModelT =
+          llvm::detail::PassModel<llvm::MachineFunction,
+                                  llvm::MachineFunctionPassManager,
+                                  llvm::MachineFunctionAnalysisManager>;
+      auto *InnerConcept = (Adaptor->*Rob<F2MFAdaptorPassTag>::Ptr).get();
       if (!InnerConcept)
         continue;
       auto *InnerModel = static_cast<MFPMModelT *>(InnerConcept);
@@ -265,8 +252,7 @@ bool spliceInCGSCCPM(llvm::CGSCCPassManager &CGPM,
       using FPMModelT =
           llvm::detail::PassModel<llvm::Function, llvm::FunctionPassManager,
                                   llvm::FunctionAnalysisManager>;
-      auto *InnerConcept =
-          (Adaptor->*Rob<CGSCC2FAdaptorPassTag>::Ptr).get();
+      auto *InnerConcept = (Adaptor->*Rob<CGSCC2FAdaptorPassTag>::Ptr).get();
       if (!InnerConcept)
         continue;
       auto *InnerModel = static_cast<FPMModelT *>(InnerConcept);
@@ -288,8 +274,7 @@ bool spliceInjectedPayloadPEIAfterStockPEI(llvm::ModulePassManager &MPM) {
       using FPMModelT =
           llvm::detail::PassModel<llvm::Function, llvm::FunctionPassManager,
                                   llvm::FunctionAnalysisManager>;
-      auto *InnerConcept =
-          (Adaptor->*Rob<M2FAdaptorPassTag>::Ptr).get();
+      auto *InnerConcept = (Adaptor->*Rob<M2FAdaptorPassTag>::Ptr).get();
       if (InnerConcept) {
         auto *InnerModel = static_cast<FPMModelT *>(InnerConcept);
         if (spliceInFPM(InnerModel->Pass, InjectedPayloadPEIPass()))
@@ -297,14 +282,13 @@ bool spliceInjectedPayloadPEIAfterStockPEI(llvm::ModulePassManager &MPM) {
       }
     }
     // Module → CGSCC → Function adaptor path (RequiresCodeGenSCCOrder).
-    if (auto *Adaptor = asAdaptor<llvm::ModuleToPostOrderCGSCCPassAdaptor>(
-            Slot.get())) {
+    if (auto *Adaptor =
+            asAdaptor<llvm::ModuleToPostOrderCGSCCPassAdaptor>(Slot.get())) {
       using CGPMModelT = llvm::detail::PassModel<
           llvm::LazyCallGraph::SCC, llvm::CGSCCPassManager,
           llvm::CGSCCAnalysisManager, llvm::LazyCallGraph &,
           llvm::CGSCCUpdateResult &>;
-      auto *InnerConcept =
-          (Adaptor->*Rob<M2CGSCCAdaptorPassTag>::Ptr).get();
+      auto *InnerConcept = (Adaptor->*Rob<M2CGSCCAdaptorPassTag>::Ptr).get();
       if (InnerConcept) {
         auto *InnerModel = static_cast<CGPMModelT *>(InnerConcept);
         if (spliceInCGSCCPM(InnerModel->Pass, InjectedPayloadPEIPass()))
@@ -318,29 +302,14 @@ bool spliceInjectedPayloadPEIAfterStockPEI(llvm::ModulePassManager &MPM) {
 } // namespace
 
 //===----------------------------------------------------------------------===//
-// PrototypePassBuilder — construction / destruction.
+// InstrumentationPassBuilder — construction / destruction.
 //===----------------------------------------------------------------------===//
 
-PrototypePassBuilder::PrototypePassBuilder(
-    llvm::TargetMachine *TM, llvm::PipelineTuningOptions PTO,
-    std::optional<llvm::PGOOptions> PGOOpt,
-    PassInstrumentationCallbacks *PIC)
+InstrumentationPassBuilder::InstrumentationPassBuilder(
+    llvm::TargetMachine &TM, llvm::PipelineTuningOptions PTO,
+    std::optional<llvm::PGOOptions> PGOOpt, PassInstrumentationCallbacks *PIC)
     : TM(TM), PIC(PIC),
-      PB(std::make_unique<PassBuilder>(TM, PTO, PGOOpt, PIC)) {
-  registerLuthierPasses();
-  for (auto &Cb : PassBuilderAugmentationCallbacks)
-    Cb(*PB);
-}
-
-PrototypePassBuilder::~PrototypePassBuilder() = default;
-
-PassBuilder &PrototypePassBuilder::getPassBuilder() { return *PB; }
-
-//===----------------------------------------------------------------------===//
-// Luthier pass / analysis registration on the wrapped PassBuilder.
-//===----------------------------------------------------------------------===//
-
-void PrototypePassBuilder::registerLuthierPasses() {
+      PB(std::make_unique<PassBuilder>(&TM, PTO, PGOOpt, PIC)) {
   // Module passes — parsed via -passes=<...>.
   PB->registerPipelineParsingCallback(
       [](StringRef Name, ModulePassManager &MPM,
@@ -366,80 +335,87 @@ void PrototypePassBuilder::registerLuthierPasses() {
 #include "luthier/ToolCodeGen/LuthierPassRegistry.def"
         return false;
       });
-
-  // TargetMachine-dependent passes cannot be registered through the plain
-  // \c .def macro. Do them by hand here so they still show up in
-  // -passes=<...> parsing.
-  auto *ThisTM = TM;
-  PB->registerPipelineParsingCallback(
-      [ThisTM](StringRef Name, ModulePassManager &MPM,
-               llvm::ArrayRef<PassBuilder::PipelineElement>) {
-        if (Name == "luthier-forward-isa-state-to-callees" && ThisTM) {
-          // Caller is expected to have constructed with a GCNTargetMachine.
-          auto *GCNTM = static_cast<llvm::GCNTargetMachine *>(ThisTM);
-          MPM.addPass(ForwardISAStateToCalleesPass(*GCNTM));
-          return true;
-        }
-        return false;
-      });
 }
 
-void PrototypePassBuilder::registerAllAnalyses(
-    llvm::ModuleAnalysisManager &MAM, llvm::FunctionAnalysisManager &FAM,
-    llvm::MachineFunctionAnalysisManager &MFAM,
-    PrototypeAnalysisManager &IPAM) {
-#define FUNCTION_ANALYSIS(NAME, CREATE_PASS)                                   \
-  FAM.registerPass([&] { return CREATE_PASS; });
-#include "luthier/ToolCodeGen/LuthierPassRegistry.def"
-
-#define MACHINE_FUNCTION_ANALYSIS(NAME, CREATE_PASS)                           \
-  MFAM.registerPass([&] { return CREATE_PASS; });
-#include "luthier/ToolCodeGen/LuthierPassRegistry.def"
-
-#define PROTOTYPE_ANALYSIS(NAME, CREATE_PASS)                                  \
-  IPAM.registerPass([&] { return CREATE_PASS; });
-#include "luthier/ToolCodeGen/LuthierPassRegistry.def"
-
-  (void)MAM;
-}
+InstrumentationPassBuilder::~InstrumentationPassBuilder() = default;
 
 //===----------------------------------------------------------------------===//
 // Cross-level proxy registration.
 //===----------------------------------------------------------------------===//
 
-void PrototypePassBuilder::crossRegisterProxies(
-    llvm::ModuleAnalysisManager &MAM, llvm::FunctionAnalysisManager &FAM,
-    llvm::MachineFunctionAnalysisManager &MFAM,
-    PrototypeAnalysisManager &IPAM) {
+void InstrumentationPassBuilder::crossRegisterProxies(
+    PrototypeAnalysisManager &PAM, llvm::ModuleAnalysisManager &MAM,
+    llvm::CGSCCAnalysisManager &CGAM, llvm::FunctionAnalysisManager &FAM,
+    llvm::LoopAnalysisManager &LAM,
+    llvm::MachineFunctionAnalysisManager &MFAM) {
   // The adaptors run pass instrumentation at the Prototype level, so
   // PassInstrumentationAnalysis must be available on its analysis manager.
   // Register it against the PIC held by the wrapped llvm::PassBuilder so
   // callbacks are shared with the nested Module/Function/MachineFunction
   // managers.
   PassInstrumentationCallbacks *ThePIC = PB->getPassInstrumentationCallbacks();
-  IPAM.registerPass(
+  PAM.registerPass(
       [ThePIC] { return llvm::PassInstrumentationAnalysis(ThePIC); });
 
-  IPAM.registerPass(
-      [&] { return ModuleAnalysisManagerPrototypeProxy(MAM); });
-  IPAM.registerPass(
-      [&] { return FunctionAnalysisManagerPrototypeProxy(FAM); });
-  IPAM.registerPass(
+  PAM.registerPass([&] { return ModuleAnalysisManagerPrototypeProxy(MAM); });
+  PAM.registerPass([&] { return FunctionAnalysisManagerPrototypeProxy(FAM); });
+  PAM.registerPass(
       [&] { return MachineFunctionAnalysisManagerPrototypeProxy(MFAM); });
 
-  MAM.registerPass([&] { return PrototypeAnalysisManagerModuleProxy(IPAM); });
-  FAM.registerPass(
-      [&] { return PrototypeAnalysisManagerFunctionProxy(IPAM); });
+  MAM.registerPass([&] { return PrototypeAnalysisManagerModuleProxy(PAM); });
+  FAM.registerPass([&] { return PrototypeAnalysisManagerFunctionProxy(PAM); });
   MFAM.registerPass(
-      [&] { return PrototypeAnalysisManagerMachineFunctionProxy(IPAM); });
+      [&] { return PrototypeAnalysisManagerMachineFunctionProxy(PAM); });
+
+  PB->crossRegisterProxies(LAM, FAM, CGAM, MAM, &MFAM);
+}
+
+void InstrumentationPassBuilder::registerPrototypeAnalyses(
+    PrototypeAnalysisManager &PAM) {
+#define PROTOTYPE_ANALYSIS(NAME, CREATE_PASS)                                  \
+  PAM.registerPass([&] { return CREATE_PASS; });
+#include "luthier/ToolCodeGen/LuthierPassRegistry.def"
+}
+
+void InstrumentationPassBuilder::registerModuleAnalyses(
+    llvm::ModuleAnalysisManager &MAM) {
+#define MODULE_PASS(NAME, CREATE_PASS)                                         \
+  MAM.registerPass([&] { return CREATE_PASS; });
+#include "luthier/ToolCodeGen/LuthierPassRegistry.def"
+
+  PB->registerModuleAnalyses(MAM);
+}
+
+void InstrumentationPassBuilder::registerCGSCCAnalyses(
+    llvm::CGSCCAnalysisManager &CGAM) {
+  PB->registerCGSCCAnalyses(CGAM);
+}
+
+void InstrumentationPassBuilder::registerFunctionAnalyses(
+    llvm::FunctionAnalysisManager &FAM) {
+#define FUNCTION_ANALYSIS(NAME, CREATE_PASS)                                   \
+  FAM.registerPass([&] { return CREATE_PASS; });
+#include "luthier/ToolCodeGen/LuthierPassRegistry.def"
+}
+
+void InstrumentationPassBuilder::registerLoopAnalyses(
+    llvm::LoopAnalysisManager &LAM) {
+  PB->registerLoopAnalyses(LAM);
+}
+
+void InstrumentationPassBuilder::registerMachineFunctionAnalyses(
+    llvm::MachineFunctionAnalysisManager &MFAM) {
+#define MACHINE_FUNCTION_ANALYSIS(NAME, CREATE_PASS)                           \
+  MFAM.registerPass([&] { return CREATE_PASS; });
+#include "luthier/ToolCodeGen/LuthierPassRegistry.def"
 }
 
 //===----------------------------------------------------------------------===//
 // parsePipeline — target(...) / instrumentation(...) grammar.
 //===----------------------------------------------------------------------===//
 
-Error PrototypePassBuilder::parsePipeline(PrototypePassManager &PPM,
-                                          StringRef PipelineText) {
+Error InstrumentationPassBuilder::parsePipeline(PrototypePassManager &PPM,
+                                                StringRef PipelineText) {
   StringRef Remaining = PipelineText.trim();
 
   while (!Remaining.empty()) {
@@ -448,10 +424,9 @@ Error PrototypePassBuilder::parsePipeline(PrototypePassManager &PPM,
         !IsTarget && Remaining.consume_front("instrumentation(");
 
     if (!IsTarget && !IsInstrumentation) {
-      return llvm::make_error<llvm::StringError>(
+      return LUTHIER_MAKE_GENERIC_ERROR(
           "expected 'target(...)' or 'instrumentation(...)' at top level of "
-          "-passes (bare pass names are not allowed)",
-          llvm::inconvertibleErrorCode());
+          "-passes (bare pass names are not allowed)");
     }
 
     size_t Depth = 1;
@@ -466,9 +441,8 @@ Error PrototypePassBuilder::parsePipeline(PrototypePassManager &PPM,
     }
 
     if (Depth != 0) {
-      return llvm::make_error<llvm::StringError>(
-          "unmatched parentheses in Prototype pass pipeline",
-          llvm::inconvertibleErrorCode());
+      return LUTHIER_MAKE_GENERIC_ERROR(
+          "unmatched parentheses in Prototype pass pipeline");
     }
 
     StringRef InnerText = Remaining.substr(0, Pos);
@@ -493,8 +467,7 @@ Error PrototypePassBuilder::parsePipeline(PrototypePassManager &PPM,
     if (IsTarget)
       PPM.addPass(createRunOnTargetModuleAdaptor(std::move(InnerMPM)));
     else
-      PPM.addPass(
-          createRunOnInstrumentationModuleAdaptor(std::move(InnerMPM)));
+      PPM.addPass(createRunOnInstrumentationModuleAdaptor(std::move(InnerMPM)));
   }
 
   return Error::success();
@@ -504,15 +477,8 @@ Error PrototypePassBuilder::parsePipeline(PrototypePassManager &PPM,
 // IR pipeline (IModule).
 //===----------------------------------------------------------------------===//
 
-Error PrototypePassBuilder::buildIROptimizationPipeline(
-    ModulePassManager &IMPM, const InstrumentationPMDriverOptions &Opts,
-    llvm::OptimizationLevel Level) {
-  // User-supplied IR pipeline override — take it as-is and skip the default.
-  if (Opts.IModuleIRPasses.getNumOccurrences() > 0) {
-    if (Opts.IModuleIRPasses.empty())
-      return Error::success();
-    return PB->parsePassPipeline(IMPM, Opts.IModuleIRPasses);
-  }
+Error InstrumentationPassBuilder::buildIROptimizationPipeline(
+    ModulePassManager &IMPM, llvm::OptimizationLevel Level) {
 
   for (auto &Cb : PreIROptimizationCallbacks)
     Cb(IMPM, Level);
@@ -541,43 +507,28 @@ Error PrototypePassBuilder::buildIROptimizationPipeline(
 // Codegen pipeline (IModule).
 //===----------------------------------------------------------------------===//
 
-Error PrototypePassBuilder::buildCodeGenPipeline(
+Error InstrumentationPassBuilder::buildCodeGenPipeline(
     ModulePassManager &IMPM, const InstrumentationPMDriverOptions &Opts,
     llvm::ModuleAnalysisManager &MAM, llvm::raw_pwrite_stream &Out,
     llvm::raw_pwrite_stream *DwoOut, llvm::CodeGenFileType FileType,
     llvm::MCContext &Ctx) {
-  // GCNTargetMachine has no classof; the caller is expected to have
-  // constructed this builder with a GCNTargetMachine.
-  if (!TM)
-    return llvm::make_error<llvm::StringError>(
-        "PrototypePassBuilder: codegen pipeline requires a target machine",
-        llvm::inconvertibleErrorCode());
-  auto *GCNTM = static_cast<llvm::GCNTargetMachine *>(TM);
-
-  CodeGenAugmenter Augmenter;
-  for (auto &Cb : AugmentCodeGenCallbacks)
-    Cb(Augmenter, *TM);
-
-  const bool DisablePEI =
-      Opts.DisableInjectedPayloadPEI || Augmenter.SuppressInjectedPayloadPEI;
 
   // Let AMDGPU own the codegen pipeline build (its
   // AMDGPUCodeGenPassBuilder subclass is anon-namespace and unreachable to
   // us). Populate a scratch MPM, then splice InjectedPayloadPEIPass in by
   // walking the resulting pass manager tree.
   ModulePassManager Scratch;
-  if (auto Err = GCNTM->buildCodeGenPipeline(
-          Scratch, MAM, Out, DwoOut, FileType,
-          llvm::getCGPassBuilderOption(), Ctx, PIC))
+  if (auto Err =
+          TM.buildCodeGenPipeline(Scratch, MAM, Out, DwoOut, FileType,
+                                  llvm::getCGPassBuilderOption(), Ctx, PIC))
     return Err;
 
-  if (!DisablePEI) {
-    if (!spliceInjectedPayloadPEIAfterStockPEI(Scratch))
-      return llvm::make_error<llvm::StringError>(
-          "PrototypePassBuilder: could not locate PrologEpilogInserterPass "
-          "in AMDGPU codegen pipeline; InjectedPayloadPEIPass not inserted",
-          llvm::inconvertibleErrorCode());
-  }
+  if (!spliceInjectedPayloadPEIAfterStockPEI(Scratch))
+    return llvm::make_error<llvm::StringError>(
+        "InstrumentationPassBuilder: could not locate "
+        "PrologEpilogInserterPass "
+        "in AMDGPU codegen pipeline; InjectedPayloadPEIPass not inserted",
+        llvm::inconvertibleErrorCode());
 
   IMPM.addPass(std::move(Scratch));
   return Error::success();
@@ -587,29 +538,26 @@ Error PrototypePassBuilder::buildCodeGenPipeline(
 // Top-level pipeline builder.
 //===----------------------------------------------------------------------===//
 
-Error PrototypePassBuilder::buildInstrumentationPipeline(
-    PrototypePassManager &PPM, const InstrumentationPMDriverOptions &Opts,
-    llvm::OptimizationLevel Level, llvm::ModuleAnalysisManager &MAM,
+Error InstrumentationPassBuilder::buildInstrumentationPipeline(
+    PrototypePassManager &PPM, llvm::OptimizationLevel Level,
     llvm::raw_pwrite_stream &Out, llvm::raw_pwrite_stream *DwoOut,
-    llvm::CodeGenFileType FileType, llvm::MCContext &Ctx) {
+    llvm::CodeGenFileType FileType, llvm::MCContext &Ctx,
+    const amdhsa::kernel_descriptor_t &InitialExecutionPoint,
+    const EntryPoint InitialEntryPoint) {
+
+
   // Assemble the IModule pipeline (IR + codegen).
   ModulePassManager IMPM;
 
-  if (auto Err = buildIROptimizationPipeline(IMPM, Opts, Level))
+  if (auto Err = buildIROptimizationPipeline(IMPM, Level))
     return Err;
 
-  if (auto Err = buildCodeGenPipeline(IMPM, Opts, MAM, Out, DwoOut, FileType,
-                                       Ctx))
+  if (auto Err =
+          buildCodeGenPipeline(IMPM, Opts, MAM, Out, DwoOut, FileType, Ctx))
     return Err;
 
   PPM.addPass(createRunOnInstrumentationModuleAdaptor(std::move(IMPM)));
 
-  // Prototype-level passes. Legacy driver ordering placed
-  // IntrinsicMIRLoweringPass / IModuleIPPredicatedLivenessAnalysis /
-  // InjectedPayloadPreserveLiveRegsPass between ISel and MachinePasses, and
-  // SVAPhysVGPRPinPass deep inside register allocation. Their new-PM
-  // reincarnations are all Prototype-level per their headers, so they now
-  // run against the fully-codegen'd Prototype.
   PPM.addPass(IntrinsicMIRLoweringPass());
   PPM.addPass(llvm::RequireAnalysisPass<IModuleIPPredicatedLivenessAnalysis,
                                         Prototype, PrototypeAnalysisManager>());
