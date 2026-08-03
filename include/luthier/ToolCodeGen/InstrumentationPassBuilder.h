@@ -35,6 +35,8 @@
 #include <optional>
 
 namespace llvm {
+class GCNTargetMachine;
+struct CGPassBuilderOption;
 class TargetMachine;
 class PassInstrumentationCallbacks;
 class MCContext;
@@ -76,7 +78,7 @@ public:
   /// Callback for before codegen passes are applied on the instrumentation
   /// module.
   using PreInstrumentationCodeGenPassesCallback =
-      std::function<void(llvm::ModulePassManager &, llvm::OptimizationLevel)>;
+      std::function<void(PrototypePassManager &, llvm::OptimizationLevel)>;
 
   /// Primary constructor. Builds and owns an internal \c llvm::PassBuilder
   /// with the supplied arguments, then installs every Luthier pass and
@@ -165,11 +167,10 @@ public:
   /// \c NewPMAsmPrinter afterwards (or use \p Out for AsmPrinter output
   /// depending on \p FileType).
   llvm::Error buildInstrumentationPipeline(
-      PrototypePassManager &PPM, llvm::OptimizationLevel Level,
-      llvm::raw_pwrite_stream &Out, llvm::raw_pwrite_stream *DwoOut,
-      llvm::CodeGenFileType FileType, llvm::MCContext &Ctx,
-      const llvm::amdhsa::kernel_descriptor_t &InitialExecutionPoint,
-      EntryPoint InitialEntryPoint);
+      PrototypePassManager &PPM, PreInstrumentationCallback InstCallback,
+      llvm::OptimizationLevel Level, llvm::CodeGenFileType FileType,
+      llvm::GCNTargetMachine &TM, llvm::CGPassBuilderOption &CGPBO,
+      llvm::raw_pwrite_stream *Out, llvm::PassInstrumentationCallbacks *PIC);
 
   /// Wrap \p Pass so it runs over the target module of the prototype and
   /// append it to \p PPM.
