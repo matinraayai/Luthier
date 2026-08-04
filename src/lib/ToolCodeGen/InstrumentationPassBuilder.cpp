@@ -30,7 +30,6 @@
 #include "luthier/ToolCodeGen/InjectedPayloadPreserveLiveRegsPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
-#include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
 #include "luthier/ToolCodeGen/IntrinsicMIRLoweringPass.h"
 #include "luthier/ToolCodeGen/MIRToIRTranslationAnalysis.h"
 #include "luthier/ToolCodeGen/NewPMAsmPrinter.h"

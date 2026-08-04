@@ -19,4 +19,4 @@ add_custom_target(luthier-lit-tests COMMAND "${LIT_BASE_DIR}/${LIT_FILE_NAME}"
 
 add_dependencies(luthier-lit-tests luthier-llc luthier-link
         LuthierToolCodeGen LuthierToolCXXCompilationPlugin LuthierToolIRCompilationPlugin
-        LuthierToolCodeGenPlugin LuthierMockInjectionPlugin luthier-test-imodules)
+        LuthierMockInjectionPlugin luthier-test-imodules)

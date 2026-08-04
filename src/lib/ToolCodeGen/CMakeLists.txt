@@ -47,7 +47,6 @@ add_library(LuthierToolCodeGen OBJECT
         IntrinsicProcessorsAnalysis.cpp
         InjectedPayloadAndInstPointAnalysis.cpp
         InjectedPayloadSideEffectsAnalysis.cpp
-        InstrumentationPMDriver.cpp
         InitialEntryPointAnalysis.cpp
         InitialExecutionPointAnalysis.cpp
         Metadata.cpp
@@ -64,7 +63,6 @@ add_library(LuthierToolCodeGen OBJECT
         ParentPrototypeAnalysis.cpp
         MockAMDGPULoader.cpp
         MockLoadAMDGPUCodeObjects.cpp
-        AMDGPUMockLoaderPrinter.cpp
         MockLoaderMemoryAccessor.cpp
         CodeObjectManagerAnalysis.cpp
         LuthierFile.cpp

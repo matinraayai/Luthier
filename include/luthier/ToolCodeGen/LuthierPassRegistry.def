@@ -33,6 +33,7 @@
 #ifndef MODULE_PASS
 #define MODULE_PASS(NAME, CREATE_PASS)
 #endif
+MODULE_PASS("luthier-forward-isa-state-to-callees", ForwardISAStateToCalleesPass())
 MODULE_PASS("luthier-process-intrinsics-at-ir-level",
             ProcessIntrinsicsAtIRLevelPass())
 #undef MODULE_PASS

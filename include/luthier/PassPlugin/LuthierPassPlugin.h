@@ -47,7 +47,7 @@ class SubtargetFeatures;
 
 namespace luthier {
 
-class PrototypePassBuilder;
+class InstrumentationPassBuilder;
 
 extern "C" {
 
@@ -69,8 +69,8 @@ struct PassPluginLibraryInfo {
   const char *PluginVersion{};
   /// Extra arguments passed to all callbacks set by the plugin
   void *ExtraArgs{nullptr};
-  /// The callback for augmenting the \c PrototypePassBuilder.
-  void (*RegisterPrototypePassBuilderCallback)(PrototypePassBuilder &,
+  /// The callback for augmenting the \c InstrumentationPassBuilder.
+  void (*RegisterPrototypePassBuilderCallback)(InstrumentationPassBuilder &,
                                                void *){nullptr};
 };
 
@@ -113,9 +113,10 @@ public:
   /// Get the plugin API version
   [[nodiscard]] uint32_t getAPIVersion() const { return Info.APIVersion; }
 
-  /// Invoke the callback for augmenting the \c PrototypePassBuilder
+  /// Invoke the callback for augmenting the \c InstrumentationPassBuilder
   /// used by the \c luthier-llc driver.
-  void registerPrototypePassBuilderCallback(PrototypePassBuilder &PPB) const {
+  void
+  registerPrototypePassBuilderCallback(InstrumentationPassBuilder &PPB) const {
     if (Info.RegisterPrototypePassBuilderCallback)
       Info.RegisterPrototypePassBuilderCallback(PPB, Info.ExtraArgs);
   }

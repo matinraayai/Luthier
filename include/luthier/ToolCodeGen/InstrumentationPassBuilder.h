@@ -140,32 +140,6 @@ public:
   llvm::Error parsePipeline(PrototypePassManager &PPM,
                             llvm::StringRef PipelineText);
 
-  /// Construct the full Luthier end-to-end instrumentation pipeline on \p PPM,
-  /// mirroring the behavior of \c InstrumentationPMDriver::run:
-  ///
-  ///   1. IModule IR pipeline
-  ///        - Pre-IR-optimization callbacks
-  ///        - buildPerModuleDefaultPipeline(Level)
-  ///        - Pre-intrinsic-lowering callbacks
-  ///        - RequireAnalysis<InjectedPayloadSideEffectsAnalysis>
-  ///        - ProcessIntrinsicsAtIRLevelPass
-  ///        - Post-intrinsic-lowering callbacks
-  ///   2. IModule codegen pipeline built by
-  ///        \c GCNTargetMachine::buildCodeGenPipeline with
-  ///        \c InjectedPayloadPEIPass spliced immediately after LLVM's
-  ///        \c PrologEpilogInserterPass, unless
-  ///        \c Opts.DisableInjectedPayloadPEI is set.
-  ///   3. Prototype-level passes:
-  ///        \c IntrinsicMIRLoweringPass,
-  ///        \c IModuleIPPredicatedLivenessAnalysis (require),
-  ///        \c InjectedPayloadPreserveLiveRegsPass,
-  ///        \c SVAPhysVGPRPinPass.
-  ///   4. \c TargetModulePatcherPass.
-  ///
-  /// \p MAM, \p Out, \p DwoOut, \p FileType, and \p Ctx are forwarded to
-  /// \c GCNTargetMachine::buildCodeGenPipeline. Callers append their own
-  /// \c NewPMAsmPrinter afterwards (or use \p Out for AsmPrinter output
-  /// depending on \p FileType).
   llvm::Error buildInstrumentationPipeline(
       PrototypePassManager &PPM, PreInstrumentationCallback InstCallback,
       llvm::OptimizationLevel Level, llvm::CodeGenFileType FileType,
@@ -189,8 +163,43 @@ public:
         std::forward<ModulePassT>(Pass)));
   }
 
-  void registerParseCallback(ParseCallback Cb) {
+  void registerPipelineParsingCallback(ParseCallback Cb) {
     ParseCallbacks.push_back(std::move(Cb));
+  }
+
+  void registerPipelineParsingCallback(
+      const std::function<
+          bool(llvm::StringRef Name, llvm::CGSCCPassManager &,
+               llvm::ArrayRef<llvm::PassBuilder::PipelineElement>)> &C) {
+    PB->registerPipelineParsingCallback(C);
+  }
+
+  void registerPipelineParsingCallback(
+      const std::function<
+          bool(llvm::StringRef Name, llvm::FunctionPassManager &,
+               llvm::ArrayRef<llvm::PassBuilder::PipelineElement>)> &C) {
+    PB->registerPipelineParsingCallback(C);
+  }
+
+  void registerPipelineParsingCallback(
+      const std::function<
+          bool(llvm::StringRef Name, llvm::LoopPassManager &,
+               llvm::ArrayRef<llvm::PassBuilder::PipelineElement>)> &C) {
+    PB->registerPipelineParsingCallback(C);
+  }
+
+  void registerPipelineParsingCallback(
+      const std::function<
+          bool(llvm::StringRef Name, llvm::ModulePassManager &,
+               llvm::ArrayRef<llvm::PassBuilder::PipelineElement>)> &C) {
+    PB->registerPipelineParsingCallback(C);
+  }
+
+  void registerPipelineParsingCallback(
+      const std::function<
+          bool(llvm::StringRef Name, llvm::MachineFunctionPassManager &,
+               llvm::ArrayRef<llvm::PassBuilder::PipelineElement>)> &C) {
+    PB->registerPipelineParsingCallback(C);
   }
 
   void registerPreCodeDiscoveryCallback(PreCodeDiscoveryCallback CB) {
@@ -217,20 +226,6 @@ public:
   }
 
 private:
-  /// Build the IModule IR pipeline (per-module default + intrinsic lowering).
-  llvm::Error buildIROptimizationPipeline(llvm::ModulePassManager &IMPM,
-                                          llvm::OptimizationLevel Level);
-
-  /// Build the IModule codegen pipeline (ISel + machine passes with
-  /// \c InjectedPayloadPEIPass splice). Delegates to
-  /// \c GCNTargetMachine::buildCodeGenPipeline and then walks the resulting
-  /// pass manager tree to insert Luthier's PEI pass after LLVM's stock one.
-  llvm::Error buildCodeGenPipeline(llvm::ModulePassManager &IMPM,
-                                   llvm::ModuleAnalysisManager &MAM,
-                                   llvm::raw_pwrite_stream &Out,
-                                   llvm::raw_pwrite_stream *DwoOut,
-                                   llvm::CodeGenFileType FileType,
-                                   llvm::MCContext &Ctx);
 
   llvm::TargetMachine &TM;
   llvm::PassInstrumentationCallbacks *PIC;
