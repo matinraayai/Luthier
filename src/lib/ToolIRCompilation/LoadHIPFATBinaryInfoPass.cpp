@@ -385,8 +385,14 @@ LoadHIPFATBinaryInfoPass::run(llvm::Module &M,
           llvm::StringRef AnnoStr;
           if (!llvm::getConstantStringInfo(NameGV, AnnoStr))
             continue;
-          if (AnnoStr != ExportFunctionHandleMarker)
+          if (AnnoStr != ExportFunctionHandleMarker &&
+              AnnoStr != SynthesizedExportFunctionHandleMarker)
             continue;
+          /// Make auto-synthesized handles private to avoid linker issues
+          if (AnnoStr == SynthesizedExportFunctionHandleMarker) {
+            AnnotatedFn->setLinkage(llvm::GlobalValue::InternalLinkage);
+            AnnotatedFn->setComdat(nullptr);
+          }
           /// Compute the device-side name corresponding to this host
           /// sibling. The CXX plugin uses two different synthesis paths
           /// that we have to decode uniformly:

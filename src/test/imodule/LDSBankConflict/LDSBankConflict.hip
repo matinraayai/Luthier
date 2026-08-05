@@ -14,7 +14,7 @@ __attribute__((device)) uint64_t NumSingleAddressLDSInstructions;
 
 __attribute__((device)) uint64_t NumDoubleAddressLDSInstructions;
 
-LUTHIER_HOOK_ANNOTATE
+__attribute__((device, used)) void
 countUniqueBanksPerWarpSingleAddress(unsigned int M0, unsigned int VAddr,
                                      short Offset, short CacheSizeLog2) {
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
@@ -31,8 +31,7 @@ countUniqueBanksPerWarpSingleAddress(unsigned int M0, unsigned int VAddr,
   atomicAdd(&NumBankConflicts, 1.f / NumWorkItemsWithSameBankID);
 }
 
-
-LUTHIER_HOOK_ANNOTATE
+__attribute__((device, used)) void
 countUniqueBanksPerWarpDoubleAddress(unsigned int M0, unsigned int VAddr,
                                      uint8_t Offset0, uint8_t Offset1,
                                      short CacheSizeLog2) {
@@ -66,10 +65,12 @@ countUniqueBanksPerWarpDoubleAddress(unsigned int M0, unsigned int VAddr,
   atomicAdd(&NumBankConflicts, 1.f / NumWorkItemsWithSameBankID1);
 }
 
-
-LUTHIER_HOOK_ANNOTATE countUniqueBanksPerWarpDoubleAddressTwoSource32(
-    unsigned int M0, unsigned int VAddr, uint16_t Offset0, uint16_t Offset1,
-    uint8_t CacheSizeLog2) {
+__attribute__((device, used)) void
+countUniqueBanksPerWarpDoubleAddressTwoSource32(unsigned int M0,
+                                                unsigned int VAddr,
+                                                uint16_t Offset0,
+                                                uint16_t Offset1,
+                                                uint8_t CacheSizeLog2) {
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   const uint32_t LaneId = __lane_id() + 1;
   unsigned int FirstActiveThreadId = __ffsll(ExecMask);
@@ -100,10 +101,12 @@ LUTHIER_HOOK_ANNOTATE countUniqueBanksPerWarpDoubleAddressTwoSource32(
   atomicAdd(&NumBankConflicts, 1.f / NumWorkItemsWithSameBankID1);
 }
 
-
-LUTHIER_HOOK_ANNOTATE countUniqueBanksPerWarpDoubleAddressTwoSource64(
-    unsigned int M0, unsigned int VAddr, uint16_t Offset0, uint16_t Offset1,
-    uint8_t CacheSizeLog2) {
+__attribute__((device, used)) void
+countUniqueBanksPerWarpDoubleAddressTwoSource64(unsigned int M0,
+                                                unsigned int VAddr,
+                                                uint16_t Offset0,
+                                                uint16_t Offset1,
+                                                uint8_t CacheSizeLog2) {
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   const uint32_t LaneId = __lane_id() + 1;
   unsigned int FirstActiveThreadId = __ffsll(ExecMask);
@@ -133,4 +136,3 @@ LUTHIER_HOOK_ANNOTATE countUniqueBanksPerWarpDoubleAddressTwoSource64(
   atomicAdd(&NumBankConflicts, 1.f / NumWorkItemsWithSameBankID0);
   atomicAdd(&NumBankConflicts, 1.f / NumWorkItemsWithSameBankID1);
 }
-

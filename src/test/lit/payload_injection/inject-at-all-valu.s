@@ -19,7 +19,7 @@
 // RUN:    -o /dev/null && \
 // RUN: FileCheck %s < %t.imod.ll
 
-// CHECK: define internal void @bumpCounter
+// CHECK: define internal void @_Z11bumpCounterv
 // Multiple injected payloads expected — VectorAdd has many VALU
 // instructions on this arch.
 // CHECK-COUNT-3: define internal void @luthier.payload.vector_add.

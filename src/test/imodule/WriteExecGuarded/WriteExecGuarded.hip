@@ -9,13 +9,11 @@
 #include <luthier/Intrinsic/Intrinsics.h>
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
 
-
 __attribute__((device)) uint64_t SerializedBumps;
 
-LUTHIER_HOOK_ANNOTATE serializedBump() {
+__attribute__((device, used)) void serializedBump() {
   unsigned long long int Saved = __builtin_amdgcn_read_exec();
   luthier::writeExec(1ULL);
   atomicAdd(&SerializedBumps, 1UL);
   luthier::writeExec(Saved);
 }
-

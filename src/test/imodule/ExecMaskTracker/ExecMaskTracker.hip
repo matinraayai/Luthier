@@ -8,12 +8,11 @@
 //===----------------------------------------------------------------------===//
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
 
-
 __attribute__((device)) uint64_t FullWaves;
 
 __attribute__((device)) uint64_t PartialWaves;
 
-LUTHIER_HOOK_ANNOTATE classifyWave() {
+__attribute__((device, used)) void classifyWave() {
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   const uint32_t LaneId = __lane_id() + 1;
   uint32_t FirstActiveThreadId = __ffsll(ExecMask);
@@ -24,4 +23,3 @@ LUTHIER_HOOK_ANNOTATE classifyWave() {
       atomicAdd(&PartialWaves, 1UL);
   }
 }
-

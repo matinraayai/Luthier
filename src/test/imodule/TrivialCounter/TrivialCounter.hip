@@ -8,8 +8,8 @@
 //===----------------------------------------------------------------------===//
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
 
-
 __attribute__((device)) uint64_t TrivialCounter;
 
-LUTHIER_HOOK_ANNOTATE bumpCounter() { atomicAdd(&TrivialCounter, 1UL); }
-
+__attribute__((device, used)) void bumpCounter() {
+  atomicAdd(&TrivialCounter, 1UL);
+}

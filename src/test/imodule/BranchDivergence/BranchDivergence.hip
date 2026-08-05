@@ -7,12 +7,11 @@
 //===----------------------------------------------------------------------===//
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
 
-
 __attribute__((device)) uint64_t ConvergedBranches;
 
 __attribute__((device)) uint64_t DivergedBranches;
 
-LUTHIER_HOOK_ANNOTATE recordBranchDivergence() {
+__attribute__((device, used)) void recordBranchDivergence() {
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   const uint32_t LaneId = __lane_id() + 1;
   uint32_t FirstActiveThreadId = __ffsll(ExecMask);
@@ -24,4 +23,3 @@ LUTHIER_HOOK_ANNOTATE recordBranchDivergence() {
       atomicAdd(&DivergedBranches, 1UL);
   }
 }
-

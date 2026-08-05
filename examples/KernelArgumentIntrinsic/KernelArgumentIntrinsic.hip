@@ -68,7 +68,7 @@ struct KernelArgumentIntrinsicTool
   __attribute__((managed)) static dim3 BlockCount;
 
   /// Hook reads HIP's \c gridDim builtin and writes it into \c BlockCount.
-  LUTHIER_HOOK_MEMBER_ATTR static void accessKernelArg();
+  __attribute__((device, used)) static void accessKernelArg();
 
   struct Options {
     llvm::cl::OptionCategory Cat{"Kernel Argument Intrinsic Tool Options"};
@@ -123,7 +123,7 @@ struct KernelArgumentIntrinsicTool
 
 __attribute__((managed)) dim3 KernelArgumentIntrinsicTool::BlockCount{0, 0, 0};
 
-LUTHIER_HOOK_MEMBER_ATTR void KernelArgumentIntrinsicTool::accessKernelArg() {
+__attribute__((device, used)) void KernelArgumentIntrinsicTool::accessKernelArg() {
   KernelArgumentIntrinsicTool::BlockCount = gridDim;
 }
 

@@ -37,9 +37,9 @@ namespace {
 llvm::cl::OptionCategory MockOpts("Luthier Mock Injection Pass Options");
 
 llvm::cl::opt<std::string> MockHookName{
-    "luthier-mock-hook-name", llvm::cl::init("bumpCounter"),
-    llvm::cl::desc("Name (luthier.function.hook attribute value) of the hook "
-                   "to call from each injected payload."),
+    "luthier-mock-hook-name", llvm::cl::init("_Z11bumpCounterv"),
+    llvm::cl::desc("Mangled symbol name of the hook function to call from each "
+                   "injected payload."),
     llvm::cl::cat(MockOpts)};
 
 llvm::cl::opt<std::string> MockOpcodeMnemonic{
@@ -158,8 +158,7 @@ MockInjectAtAllScalarPass::runInstrumentationPass(
   return {llvm::PreservedAnalyses::none(), llvm::PreservedAnalyses::none()};
 }
 
-InstrumentationPreservedAnalyses
-MockInjectAtOpcodePass::runInstrumentationPass(
+InstrumentationPreservedAnalyses MockInjectAtOpcodePass::runInstrumentationPass(
     llvm::Module &IModule, llvm::ModuleAnalysisManager &,
     llvm::MachineFunction &TargetMF, llvm::FunctionAnalysisManager &) {
   llvm::Function *Hook = IModule.getFunction(MockHookName);

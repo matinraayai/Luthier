@@ -13,8 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file Attributes.h
-/// Defines attributes infos used in Luthier's CXX tool compilation.
+/// \file
+/// Defines attribute parsers used in Luthier's CXX tool compilation process.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CXX_COMPILATION_ATTRIBUTES_H
 #define LUTHIER_TOOL_CXX_COMPILATION_ATTRIBUTES_H
@@ -22,28 +22,7 @@
 
 namespace luthier {
 
-/// \brief Handles the \c [[luthier::export_function_handle]] ParsedAttrInfo
-///
-/// For non-templated tagged device functions, synthesizes a sibling
-/// \c __host__ overload at the same scope with the same name and
-/// signature but an empty body. Standard CUDA overload resolution then
-/// routes \c &deviceFn from host context to the empty sibling, while
-/// device code keeps seeing the original \c __device__ implementation.
-///
-/// For templated tagged device functions, the per-specialization sibling
-/// is synthesized in \c ExportDevFuncHostHandleConsumer at the point of use (the
-/// dual-overload trick is ambiguous for explicit-template-id address
-/// takes, so we use a distinctly named per-specialization handle there).
-struct LuthierExportFunctionHandleAttrInfo : public clang::ParsedAttrInfo {
-  LuthierExportFunctionHandleAttrInfo();
-
-  bool diagAppertainsToDecl(clang::Sema &S, const clang::ParsedAttr &Attr,
-                            const clang::Decl *D) const override;
-
-  AttrHandling
-  handleDeclAttribute(clang::Sema &S, clang::Decl *D,
-                      const clang::ParsedAttr &Attr) const override;
-};
+/// TODO: Define an attribute that will add an LLVM inreg annotation
 
 } // namespace luthier
 

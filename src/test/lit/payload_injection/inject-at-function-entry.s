@@ -20,11 +20,11 @@
 // RUN: FileCheck %s < %t.imod.ll
 
 // The hook function from the IModule survives the pass.
-// CHECK: define internal void @bumpCounter
+// CHECK: define internal void @_Z11bumpCounterv
 // Exactly one injected-payload function is created, named for the kernel and
 // the (MBB, instr) it was attached to.
 // CHECK: define internal void @luthier.payload.vector_add.{{[0-9]+}}.{{[0-9]+}}() #{{[0-9]+}} !luthier.target_instr_point {{![0-9]+}} {
-// CHECK-NEXT: call void @bumpCounter()
+// CHECK-NEXT: call void @_Z11bumpCounterv()
 // CHECK-NEXT: ret void
 // The payload function carries the injected_payload marker attribute.
 // CHECK: "luthier.function.injected_payload"

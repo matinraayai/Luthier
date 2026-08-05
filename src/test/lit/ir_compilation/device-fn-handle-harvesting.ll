@@ -2,7 +2,10 @@
 
 ; Verifies that LoadHIPFATBinaryInfoPass's device-function-handle
 ; harvester correctly populates the HipDeviceFunctions slot for the
-; three sibling-symbol shapes the CXX plugin can produce:
+; three sibling-symbol shapes the CXX plugin can produce, and that
+; handles tagged with the synthesized-handle marker have their linkage
+; flipped to internal (so per-TU auto-generated handles don't clash at
+; static link time).
 ;
 ;   * Non-templated C++ sibling (dual-overload): symbol is the
 ;     Itanium mangling of the original device function's source name;
@@ -17,6 +20,12 @@
 ;     consumer): symbol is the Itanium mangling of
 ;     <DevFuncHandlePrefix><orig-mangling>; DeviceName recovered by
 ;     demangling and stripping the prefix.
+;
+;   * In-place annotated \c __host__ overloads (marker
+;     \c luthier.function.export_device_handle) keep their original
+;     linkage; auto-generated handles (marker
+;     \c luthier.function.synthesized_export_device_handle) are
+;     flipped to \c internal by the pass.
 
 target triple = "x86_64-unknown-linux-gnu"
 
@@ -65,7 +74,8 @@ entry:
 
 @.str.fb  = private unnamed_addr constant [32 x i8] c"luthier.loader.hip_fat_binaries\00", section "llvm.metadata"
 @.str.df  = private unnamed_addr constant [36 x i8] c"luthier.loader.hip_device_functions\00", section "llvm.metadata"
-@.str.exp = private unnamed_addr constant [31 x i8] c"luthier.export_function_handle\00", section "llvm.metadata"
+@.str.exp = private unnamed_addr constant [38 x i8] c"luthier.function.export_device_handle\00", section "llvm.metadata"
+@.str.syn = private unnamed_addr constant [50 x i8] c"luthier.function.synthesized_export_device_handle\00", section "llvm.metadata"
 @.str.src = private unnamed_addr constant [14 x i8] c"/app/test.cpp\00", section "llvm.metadata"
 
 ;
@@ -96,17 +106,30 @@ entry:
   ret void
 }
 
+; (4) Auto-generated non-templated handle: same shape as (1), but
+; carries the synthesized-handle marker (there is no user-provided
+; __host__ overload for this device function). The pass should flip
+; this handle's linkage from dso_local to internal so per-TU copies
+; of the auto-generated handle don't collide at static link time.
+define dso_local void @_Z9autoHookAv() #0 {
+entry:
+  ret void
+}
+
 attributes #0 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" }
 
 ;
-; The export-handle annotations: one entry per host sibling.
+; The export-handle annotations: one entry per host sibling. Shape (4)
+; uses the synthesized-handle marker; the other three use the plain
+; export marker (they simulate the in-place annotated path).
 ;
-@llvm.global.annotations = appending global [5 x { ptr, ptr, ptr, i32, ptr }] [
+@llvm.global.annotations = appending global [6 x { ptr, ptr, ptr, i32, ptr }] [
   { ptr, ptr, ptr, i32, ptr } { ptr @HipFatBinaries,     ptr @.str.fb,  ptr @.str.src, i32 1, ptr null },
   { ptr, ptr, ptr, i32, ptr } { ptr @HipDeviceFunctions, ptr @.str.df,  ptr @.str.src, i32 1, ptr null },
   { ptr, ptr, ptr, i32, ptr } { ptr @_Z6myHookv, ptr @.str.exp, ptr @.str.src, i32 2, ptr null },
   { ptr, ptr, ptr, i32, ptr } { ptr @myCHook, ptr @.str.exp, ptr @.str.src, i32 3, ptr null },
-  { ptr, ptr, ptr, i32, ptr } { ptr @_Z49__luthier_builtin_dev_func_handle__Z6mySpecIiEvT_i, ptr @.str.exp, ptr @.str.src, i32 4, ptr null }
+  { ptr, ptr, ptr, i32, ptr } { ptr @_Z49__luthier_builtin_dev_func_handle__Z6mySpecIiEvT_i, ptr @.str.exp, ptr @.str.src, i32 4, ptr null },
+  { ptr, ptr, ptr, i32, ptr } { ptr @_Z9autoHookAv, ptr @.str.syn, ptr @.str.src, i32 5, ptr null }
 ], section "llvm.metadata"
 
 ; Reannotate the device-functions slot too — it's the receiver.
@@ -118,7 +141,7 @@ attributes #0 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protect
 
 ; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceFunctionInfo" = type { ptr, ptr }
 
-; CHECK-DAG: @[[DEVFN_DATA:[._a-zA-Z0-9]+]] = private constant [3 x %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceFunctionInfo"]
+; CHECK-DAG: @[[DEVFN_DATA:[._a-zA-Z0-9]+]] = private constant [4 x %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceFunctionInfo"]
 
 ; For shape (1) — non-templated C++ sibling: DeviceName is the IR
 ; symbol verbatim.
@@ -135,3 +158,15 @@ attributes #0 = { "frame-pointer"="all" "no-trapping-math"="true" "stack-protect
 ; the prefix, strip to recover the original specialization's mangling.
 ; CHECK-DAG: @[[DEV_SPEC:[._a-zA-Z0-9]+]] = private constant [16 x i8] c"_Z6mySpecIiEvT_\00"
 ; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceFunctionInfo" { ptr @_Z49__luthier_builtin_dev_func_handle__Z6mySpecIiEvT_i, ptr @[[DEV_SPEC]] }
+
+; For shape (4) — auto-generated non-templated handle: symbol is the
+; verbatim mangling of the original __device__ function, DeviceName
+; recovered as the symbol verbatim, AND the pass flipped its linkage
+; from dso_local to internal.
+; CHECK-DAG: @[[DEV_AUTO:[._a-zA-Z0-9]+]] = private constant [14 x i8] c"_Z9autoHookAv\00"
+; CHECK-DAG: %"struct.luthier::DeviceToolCodeFatBinaryLoader::HipDeviceFunctionInfo" { ptr @_Z9autoHookAv, ptr @[[DEV_AUTO]] }
+; CHECK-DAG: define internal void @_Z9autoHookAv()
+
+; The in-place annotated shapes keep their original linkage.
+; CHECK-DAG: define dso_local void @_Z6myHookv()
+; CHECK-DAG: define dso_local void @myCHook()

@@ -263,10 +263,13 @@ function(luthier_add_tool target)
           COMPILE_OPTIONS "--cuda-host-only;-fno-gpu-rdc;-fuse-cuid=none"
           OBJECT_DEPENDS "${_fatbin}")
 
-  # `SHELL:` is mandatory or CMake collapses adjacent `-Xclang` tokens
-  # and the cc1 wrapper for `-fcuda-include-gpubinary` falls apart.
+  # Each `-Xclang`-paired cc1 flag must live in its own quoted `SHELL:`
+  # entry, otherwise CMake de-duplicates the repeated `-Xclang` tokens.
   target_compile_options(${target} PRIVATE
-          $<$<COMPILE_LANGUAGE:HIP>:-fpass-plugin=${_ir_plugin};-fplugin=${_cxx_plugin};SHELL:-Xclang -fcuda-include-gpubinary -Xclang ${_fatbin}>)
+          -fpass-plugin=${_ir_plugin}
+          -fplugin=${_cxx_plugin}
+          "SHELL:-Xclang -add-plugin -Xclang luthier-emit-device-function-host-handle"
+          "SHELL:-Xclang -fcuda-include-gpubinary -Xclang ${_fatbin}")
 
   target_link_libraries(${target} PRIVATE
           hip::host ${_tooling_target} ${LAT_LIBRARIES})
