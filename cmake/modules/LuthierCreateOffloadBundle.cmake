@@ -43,7 +43,7 @@ endfunction()
 # Builds an offload bundle object from a single hip source.
 # Unlike normal HIP compilation:
 # - The LLVM bitcode or SPIR-V file of the device logic is embedded in the FAT binary instead of its shared object.
-#   SPIR-V file of the device logic if SPIR-V LLVM translator is enabled.
+#   SPIR-V file of the device logic is included if SPIR-V LLVM translator is enabled.
 # - The Luthier IR compiler plugin is applied to the device code's compilation process for bundled LLVM bitcode slices
 #   (SPIR-V files will have to apply them at runtime when JIT-ing for their concrete target).
 # - The host portion is compiled with the Luthier CXX and the IR compiler plugins.
@@ -118,7 +118,7 @@ function(luthier_create_offload_bundle target source)
   # The device-slice OBJECT libraries compile a COPY of the source, kept apart from the original the host compiles. The
   # host source carries an OBJECT_DEPENDS on the fat binary (so it recompiles when the bundle changes); source-file
   # properties are directory-scoped, so if the device slices shared that source they would inherit the OBJECT_DEPENDS
-  # and form a build cycle. Compiling a copy breaks the share.
+  # and form a build cycle. Compiling a copy breaks the cycle.
   get_filename_component(_SOURCE_NAME ${_ABS_SOURCE} NAME)
   set(_DEV_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/${target}.dev_tu/${_SOURCE_NAME}")
   configure_file(${_ABS_SOURCE} ${_DEV_SOURCE} COPYONLY)
