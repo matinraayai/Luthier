@@ -55,7 +55,11 @@ class ObjectFile;
 
 namespace luthier {
 
-/// \brief Loader for loading and caching instrumented copies of kernels
+/// \brief In charge of:
+///   - Loading and caching code objects containing the instrumented version of
+///   target application kernels
+///   - JIT Dynamic loading and patching of already running instrumented code
+///   - Setting up and tearing down instrumentation kernel arguments
 class InstrumentedKernelLoaderAndLauncher {
 public:
   InstrumentedKernelLoaderAndLauncher(
