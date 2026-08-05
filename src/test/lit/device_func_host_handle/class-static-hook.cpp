@@ -49,7 +49,7 @@ void hostFunction(const void **out) {
 /// referencing function, so the stores precede the definitions. Each handle is
 /// emitted with an empty body — the original intrinsic-bearing __device__ body
 /// is not in the host module (enforced by --implicit-check-not above).
-/// CHECK: @.str = {{.*}}"luthier.function.export_device_handle
+/// CHECK: @.str = {{.*}}"luthier.function.{{.*}}export_device_handle
 /// CHECK: @llvm.global.annotations
 /// CHECK-SAME: @_ZN12_GLOBAL__N_14Tool4hookEv
 /// CHECK-SAME: @_ZN12_GLOBAL__N_14Tool5hook2Ev

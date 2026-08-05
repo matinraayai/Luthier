@@ -44,7 +44,7 @@ void hostFunction(const void **out) {
 ///   - myAdd3 (__device__ constexpr + __host__ constexpr overload):
 ///            the host overload is annotated.
 /// --implicit-check-not on the RUN line proves no AMDGCN intrinsic leaks host.
-/// HOST-DAG: @.str = {{.*}}"luthier.function.export_device_handle
+/// HOST-DAG: @.str = {{.*}}"luthier.function.{{.*}}export_device_handle
 /// HOST-DAG: @_Z5myAddi, ptr @.str
 /// HOST-DAG: @_Z6myAdd2i, ptr @.str
 /// HOST-DAG: @_Z6myAdd3i, ptr @.str

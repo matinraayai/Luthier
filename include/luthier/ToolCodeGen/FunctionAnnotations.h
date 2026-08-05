@@ -119,6 +119,12 @@ static constexpr const char *TargetInstrPointAttr =
 inline constexpr llvm::StringLiteral ExportFunctionHandleMarker =
     "luthier.function.export_device_handle";
 
+/// Annotation string attached only to \c __host__ handles that were
+/// \e synthesized automatically (as opposed to pre-existing
+/// \c __host__ overloads that get annotated in place).
+inline constexpr llvm::StringLiteral SynthesizedExportFunctionHandleMarker =
+    "luthier.function.synthesized_export_device_handle";
+
 /// Tag a variable declaration with a Clang \c annotate attribute. \p Sym
 /// is a bare-token macro (e.g. \c LUTHIER_HIP_FAT_BINARIES_ATTR) that
 /// expands to a dotted symbol; the preprocessor stringifies it for the

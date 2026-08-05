@@ -37,7 +37,7 @@ void hostFunction(const void **out) {
 /// PRIVATE: error: 'hook' is a private member of 'Tool'
 /// PRIVATE: note: declared private here
 
-/// PUBLIC: @.str = {{.*}}"luthier.function.export_device_handle
+/// PUBLIC: @.str = {{.*}}"luthier.function.synthesized_export_device_handle
 /// PUBLIC: @llvm.global.annotations {{.*}}@_ZN4Tool4hookEv
 /// PUBLIC: define {{.*}}void @_ZN4Tool4hookEv()
 /// PUBLIC-NEXT: entry:

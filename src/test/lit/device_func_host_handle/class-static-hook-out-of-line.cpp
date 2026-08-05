@@ -56,7 +56,7 @@ void hostFunction(const void **out) {
 // clang-format off
 /// Exactly three annotation entries — one per hook, proving no duplicate
 /// export from the separate declaration/definition decl groups.
-/// CHECK: @.str = {{.*}}"luthier.function.export_device_handle
+/// CHECK: @.str = {{.*}}"luthier.function.{{.*}}export_device_handle
 /// CHECK: @llvm.global.annotations = {{.*}}[3 x
 /// CHECK-SAME: @_ZN12_GLOBAL__N_14Tool4hookEv
 /// CHECK-SAME: @_ZN12_GLOBAL__N_14Tool5hook2Ev

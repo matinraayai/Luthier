@@ -19,7 +19,10 @@ void hostFunction(const void **out) {
 }
 
 // clang-format off
-/// The handle is registered in @llvm.global.annotations.
+/// The handle is registered in @llvm.global.annotations under the
+/// synthesized-handle marker (the downstream LoadHIPFATBinaryInfoPass reads
+/// that marker to flip the handle's linkage to internal — Clang alone emits
+/// it as dso_local external).
 /// CHECK: @llvm.global.annotations {{.*}}@_Z6myHookv
 
 /// It is emitted host-side with an empty body, under the device mangling.

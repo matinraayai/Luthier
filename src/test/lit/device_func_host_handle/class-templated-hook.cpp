@@ -56,7 +56,7 @@ void hostFunction(const void **out) {
 
 // clang-format off
 /// Each addressed instantiation is exported (annotated for harvesting).
-/// CHECK: @.str = {{.*}}"luthier.function.export_device_handle
+/// CHECK: @.str = {{.*}}"luthier.function.{{.*}}export_device_handle
 /// CHECK: @llvm.global.annotations = {{.*}}[4 x
 /// CHECK-DAG: @_ZN12_GLOBAL__N_14Tool4hookIiEEvT_
 /// CHECK-DAG: @_ZN12_GLOBAL__N_14Tool4hookIfEEvT_

@@ -38,7 +38,7 @@ void hostFunction(const void **out) {
 /// Host side: the \c __host__ specialization is exported; its body is `x + 4.0`,
 /// and the host use-site resolves to it. Only the host specialization exists in
 /// the host module (the \c __device__ one never enters host emission).
-/// HOST: @.str = {{.*}}"luthier.function.export_device_handle
+/// HOST: @.str = {{.*}}"luthier.function.{{.*}}export_device_handle
 /// HOST: @llvm.global.annotations = {{.*}}[1 x
 /// HOST-SAME: @_Z8tmplHookIdET_S0_
 /// HOST: define {{.*}}double @_Z8tmplHookIdET_S0_(double
