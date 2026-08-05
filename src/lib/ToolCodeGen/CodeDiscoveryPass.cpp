@@ -1643,6 +1643,12 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
 
     /// Set the function's entry point as an attribute
     setFunctionEntryPoint(MF.getFunction(), CurrentEntryPoint);
+
+    // assign elfsymbol attribute to machine function
+    if (FuncSymRef.has_value()) {
+      MF.getFunction().addFnAttr(ElfSymbolAttr);
+    }
+
     if (CurrentEntryPoint == InitialEntryPoint) {
       MF.getFunction().addFnAttr(InitialEntryPointAttr);
     }

@@ -18,6 +18,7 @@
 /// passes and their names with the new pass manager's pass builder when loaded.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
+#include "luthier/ToolCodeGen/DebugInfoPass.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
@@ -363,6 +364,14 @@ llvmGetPassPluginInfo() {
           if (Name == "luthier-code-discovery") {
             MPM.addPass(
                 luthier::CodeDiscoveryPass(luthier::CodeDiscoveryOptions));
+            return true;
+          }
+          if (Name == "luthier-debug-info") {
+            MPM.addPass(luthier::DebugInfoPass());
+            return true;
+          }
+          if (Name == "luthier-debug-info-printer") {
+            MPM.addPass(luthier::DebugInfoPrinterPass(llvm::outs()));
             return true;
           }
           if (Name == "trace-callgraph-printer") {

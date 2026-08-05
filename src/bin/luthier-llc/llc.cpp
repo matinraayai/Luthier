@@ -85,6 +85,12 @@ static cl::list<std::string>
 static cl::opt<std::string>
     InputLanguage("x", cl::desc("Input language ('ir' or 'mir')"));
 
+static cl::opt<bool> EmptyInput(
+    "empty-input",
+    cl::desc("Start from an empty module synthesized from -mtriple instead of "
+             "reading an input file (e.g. for tests that begin at code "
+             "discovery)"));
+
 static cl::opt<std::string> OutputFilename("o", cl::desc("Output filename"),
                                            cl::value_desc("filename"));
 
@@ -608,7 +614,7 @@ static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &PluginList,
 
   // No input file: synthesize an empty module from -mtriple so that we
   // can start from an empty module for tests that start from code discovery
-  if (InputFilename.empty()) {
+  if (EmptyInput || InputFilename.empty()) {
     if (TargetTriple.empty()) {
       WithColor::error(errs(), argv[0])
           << "no input file: -mtriple is required\n";

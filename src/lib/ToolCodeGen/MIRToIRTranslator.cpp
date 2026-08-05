@@ -1970,7 +1970,9 @@ void MIRToIRTranslator::translate() {
                     if (MI.getPCSections())
                       I->setMetadata(llvm::LLVMContext::MD_pcsections,
                                      MI.getPCSections());
-                    LLVM_DEBUG(luthier::dbgs()
+                    if (MI.getDebugLoc())
+                      I->setDebugLoc(MI.getDebugLoc());
+                    LLVM_DEBUG(llvm::dbgs()
                                << "[MIRToIRTranslator] Inserting translated "
                                   "instruction "
                                << *I << "\n");
