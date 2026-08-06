@@ -81,6 +81,8 @@ struct LiftLaunchedKernelsTool
   }
 };
 
+LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(LiftLaunchedKernelsTool)
+
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
 static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable> *AmdExtSnapshot{

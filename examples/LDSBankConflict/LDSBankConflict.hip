@@ -257,6 +257,8 @@ LDSBankConflictTool::countUniqueBanksPerWarpDoubleAddressTwoSource64(
             1.f / NumWorkItemsWithSameBankID1);
 }
 
+LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(LDSBankConflictTool)
+
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
 static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>
@@ -447,7 +449,7 @@ void LDSBankConflictTool::onPackets(
         // Read a device global into Acc (matched type), then zero it on device.
         auto readAndZero = [&](auto *Sym, auto &Acc) {
           using T = std::remove_reference_t<decltype(Acc)>;
-          auto SymOrErr = this->lookupGlobalVariable(Sym, Agent);
+          auto SymOrErr = this->lookupGlobalVariable(Sym, KernelDesc);
           if (!SymOrErr) {
             llvm::consumeError(SymOrErr.takeError());
             return;

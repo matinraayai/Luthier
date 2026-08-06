@@ -99,7 +99,13 @@ static void cloneFrameInfo(
     int NewFI;
 
     assert(!SrcMFI.isFixedObjectIndex(i));
-    if (SrcMFI.isVariableSizedObjectIndex(i)) {
+    if (SrcMFI.isDeadObjectIndex(i)) {
+      // A dead object carries no valid size, offset, or properties (their
+      // accessors assert on dead indices). Recreate a placeholder purely to
+      // preserve stable frame-index numbering, then mark it dead again.
+      NewFI = DstMFI.CreateStackObject(1, llvm::Align(1), /*isSpillSlot=*/false);
+      DstMFI.RemoveStackObject(NewFI);
+    } else if (SrcMFI.isVariableSizedObjectIndex(i)) {
       NewFI = DstMFI.CreateVariableSizedObject(SrcMFI.getObjectAlign(i),
                                                SrcMFI.getObjectAllocation(i));
     } else {
@@ -110,7 +116,8 @@ static void cloneFrameInfo(
       DstMFI.setObjectOffset(NewFI, SrcMFI.getObjectOffset(i));
     }
 
-    CopyObjectProperties(DstMFI, SrcMFI, i);
+    if (!SrcMFI.isDeadObjectIndex(i))
+      CopyObjectProperties(DstMFI, SrcMFI, i);
 
     (void)NewFI;
     assert(i == NewFI && "expected to keep stable frame index numbering");
@@ -386,6 +393,16 @@ llvm::Error cloneMFInto(
               {const_cast<llvm::MachineInstr *>(&SrcMI), DstMI});
       }
 
+      // Fix tied operands
+      for (unsigned I = 0, E = SrcMI.getNumOperands(); I != E; ++I) {
+        const llvm::MachineOperand &SrcMO = SrcMI.getOperand(I);
+        if (!SrcMO.isReg() || !SrcMO.isTied() || !SrcMO.isUse())
+          continue;
+        if (DstMI->getOperand(I).isTied())
+          continue;
+        DstMI->tieOperands(SrcMI.findTiedOperandIdx(I), I);
+      }
+
       LUTHIER_RETURN_ON_ERROR(cloneMemOperands(*DstMI, SrcMI, *SrcMF, *DstMF));
     }
   }
@@ -404,8 +421,7 @@ llvm::Error cloneMFInto(
   for (const llvm::MCCFIInstruction &CFI : SrcMF->getFrameInstructions())
     (void)DstMF->addFrameInst(CFI);
 
-  if (!SrcMF->getLongjmpTargets().empty() ||
-      !SrcMF->getEHContTargets().empty())
+  if (!SrcMF->getLongjmpTargets().empty() || !SrcMF->getEHContTargets().empty())
     return llvm::make_error<luthier::LLVMError>(
         "cloning not implemented for machine function property");
 
@@ -436,7 +452,7 @@ llvm::Error cloneMFInto(
   // a body) into a target-side MF allocated through TargetFAM. Lit
   // fixtures don't exercise this path because their IModules only
   // contain payloads + hooks; runtime IModules from
-  // `getEmbeddedModule` carry many helpers.
+  // `parseModule` carry many helpers.
   //
   // We can't reach `MachineFunction::MFInfo` from outside (private,
   // no setter, write-once via `getInfo<>` or `cloneInfo<>`). Detect

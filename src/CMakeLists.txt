@@ -13,6 +13,26 @@ find_package(LLVM REQUIRED CONFIG)
 
 find_package(Clang REQUIRED CONFIG)
 
+if (${LUTHIER_ENABLE_SPIRV})
+    include(FindLLVMSPIRVTranslator)
+    find_package(LLVMSPIRVTranslator)
+
+    # SPIR-V JIT requires AMD device libs to be linked before IR optimization
+    find_package(AMDDeviceLibs)
+    if (AMD_DEVICE_LIBS_PREFIX AND
+            EXISTS "${AMD_DEVICE_LIBS_PREFIX}/amdgcn/bitcode")
+        set(LUTHIER_DEVICE_LIBS_DIR "${AMD_DEVICE_LIBS_PREFIX}/amdgcn/bitcode")
+    endif ()
+    if (LUTHIER_DEVICE_LIBS_DIR)
+        message(STATUS
+                "Luthier SPIR-V JIT device-libs bitcode: ${LUTHIER_DEVICE_LIBS_DIR}")
+    else ()
+        message(FATAL_ERROR
+                "SPIR-V translator enabled but the AMD device-libs bitcode "
+                "directory was not found.")
+    endif ()
+endif ()
+
 include(LuthierFetchLLVMSrc)
 
 if (NOT IS_DIRECTORY ${LUTHIER_LLVM_SRC_DIR})

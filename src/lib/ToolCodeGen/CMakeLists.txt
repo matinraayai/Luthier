@@ -20,6 +20,7 @@ tablegen(LuthierSIInstrSemanticsGen SIInstrSemantics.inc -gen-si-instr-semantics
 add_public_tablegen_target(LuthierSIInstrSemanticsGen)
 
 add_library(LuthierToolCodeGen OBJECT
+        ToolDeviceCodeParser.cpp
         PseudoOpcodeAndRegMapper.cpp
         TargetMachineInstrMDNode.cpp
         CodeDiscoveryPass.cpp
@@ -79,3 +80,12 @@ target_include_directories(LuthierToolCodeGen
 )
 
 target_link_libraries(LuthierToolCodeGen PRIVATE LuthierAMDGPU)
+
+if (${LUTHIER_ENABLE_SPIRV})
+    target_compile_definitions(LuthierToolCodeGen PRIVATE LUTHIER_HAS_SPIRV_TRANSLATOR)
+    target_link_libraries(LuthierToolCodeGen PUBLIC Luthier::LLVMSPIRVTranslator)
+    if (LUTHIER_DEVICE_LIBS_DIR)
+        target_compile_definitions(LuthierToolCodeGen PRIVATE
+                LUTHIER_DEVICE_LIBS_DIR="${LUTHIER_DEVICE_LIBS_DIR}")
+    endif ()
+endif ()

@@ -127,6 +127,8 @@ __attribute__((device, used)) void KernelArgumentIntrinsicTool::accessKernelArg(
   KernelArgumentIntrinsicTool::BlockCount = gridDim;
 }
 
+LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(KernelArgumentIntrinsicTool)
+
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
 static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>

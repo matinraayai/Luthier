@@ -7,6 +7,8 @@ add_library(LuthierTooling SHARED
         $<TARGET_OBJECTS:LuthierIntrinsic>
         $<TARGET_OBJECTS:LuthierCommon>
         $<TARGET_OBJECTS:LuthierToolCodeGen>
+        $<TARGET_OBJECTS:LuthierToolCodeGenTesting>
+        $<TARGET_OBJECTS:LuthierToolIRCompilation>
         $<TARGET_OBJECTS:LuthierPassPlugin>
         $<TARGET_OBJECTS:LuthierHSATooling>
         $<TARGET_OBJECTS:LuthierLinker>
@@ -27,8 +29,13 @@ target_include_directories(LuthierTooling
 
 target_link_libraries(LuthierTooling
         PUBLIC hip::host rocprofiler-sdk::rocprofiler-sdk hsa-runtime64::hsa-runtime64 LuthierAMDGPU
+        LLVMAMDGPUAsmParser LLVMAMDGPUDesc LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA
+        LLVMAMDGPUUtils LLVMAMDGPUCodeGen
         PRIVATE
         LLVMSymbolize LLVMDebugInfoDWARF LLVMCodeGenTypes LLVMMC LLVMMCA LLVMMCDisassembler LLVMObject
         LLVMSupport LLVMTarget LLVMTargetParser LLVMTransformUtils LLVMBitReader LLVMAnalysis LLVMAsmPrinter
-        LLVMAMDGPUAsmParser LLVMAMDGPUDesc LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA
-        LLVMAMDGPUUtils LLVMCore LLVMPasses LLVMCodeGen LLVMAMDGPUCodeGen)
+        LLVMCore LLVMPasses LLVMCodeGen LLVMLinker LLVMIRReader)
+
+if (${LUTHIER_ENABLE_SPIRV})
+    target_link_libraries(LuthierTooling PRIVATE Luthier::LLVMSPIRVTranslator)
+endif ()

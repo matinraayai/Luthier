@@ -62,6 +62,10 @@ std::string demangleWithNamespace(llvm::StringRef MangledFuncName) {
 
 llvm::PreservedAnalyses
 FinalizeIntrinsicsPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &) {
+  llvm::Triple T(M.getTargetTriple());
+  /// Only operate on device code
+  if (T.getArch() != llvm::Triple::ArchType::amdgcn)
+    return llvm::PreservedAnalyses::all();
   llvm::SmallVector<llvm::Function *, 8> Intrinsics;
   for (llvm::Function &F : M) {
     if (F.hasFnAttribute(IntrinsicAttribute))
@@ -72,6 +76,7 @@ FinalizeIntrinsicsPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &) {
     Intrinsic->deleteBody();
     Intrinsic->setComdat(nullptr);
     Intrinsic->setLinkage(llvm::GlobalValue::ExternalLinkage);
+    Intrinsic->setVisibility(llvm::GlobalValue::DefaultVisibility);
     Intrinsic->setDSOLocal(false);
 
     llvm::StringRef MangledIntrinsicName = Intrinsic->getName();

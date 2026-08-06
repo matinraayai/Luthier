@@ -1,7 +1,7 @@
 // RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx1100 -filetype=obj %s -o %t.o && \
 // RUN: ld.lld -shared --unresolved-symbols=ignore-all -o %t %t.o && \
 // RUN: luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1100 \
-// RUN:   %luthier_tool_code_gen_plugin \
+// RUN:   -load-pass-plugin=%luthier_tool_code_gen_plugin \
 // RUN:   -passes=luthier-mock-load-amdgpu-code-objects,luthier-code-discovery,trace-callgraph-printer \
 // RUN:   -code-object-paths=%t \
 // RUN:   -initial-entrypoint=0:_Z6kernelv.kd \

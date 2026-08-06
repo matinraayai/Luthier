@@ -101,6 +101,8 @@ KernelInstrumentTool::instrumentationHook(llvm::MCRegister Reg, uint32_t Val) {
   luthier::writeReg(Reg, Val);
 }
 
+LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(KernelInstrumentTool)
+
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
 static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>

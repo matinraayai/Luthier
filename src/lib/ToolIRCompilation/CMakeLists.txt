@@ -1,14 +1,9 @@
 add_library(LuthierToolIRCompilation OBJECT
-        CreateAndEmbedIModulePass.cpp
         MarkAnnotationsPass.cpp
         FinalizeIntrinsicsPass.cpp
-        StripKernelsPass.cpp
-        ExternalizeGlobalsPass.cpp
         SubstituteAMDGCNIntrinsicsPass.cpp
-        LoadHIPFATBinaryInfoPass.cpp
-        LuthierFunctionIndirectionPass.cpp
-        StripDeviceFunctionBodiesPass.cpp
-        SubtargetMarkerPass.cpp)
+        ToolDeviceCodeOffloadParserPass.cpp
+)
 
 target_compile_definitions(LuthierToolIRCompilation
         PRIVATE ${LLVM_DEFINITIONS})

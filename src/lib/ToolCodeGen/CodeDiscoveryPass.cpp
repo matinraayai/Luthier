@@ -1243,6 +1243,47 @@ convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
     }
   }
 
+  /// FIXME: Test to see if this is necessary and not covered already by
+  /// tied operand logic above.
+  /// SDWA instructions with dst_unused:UNUSED_PRESERVE partially write their
+  /// destination (only the selected byte/word lane), so the untouched lanes
+  /// must be preserved from the destination register's prior value. Real
+  /// hardware has no separate encoding bits for this "vdst_in" source: it
+  /// simply reads back the same physical register named by $vdst before
+  /// overwriting it, so the SDWA pseudo's MCID has no explicit operand slot
+  /// for it at all (unlike the VOP3/FLAT/etc. `$vdst_in` ties handled by the
+  /// missing-explicit-operand loop above, which *are* real operand slots).
+  /// The MachineVerifier nonetheless requires this to be modeled as an
+  /// implicit use of $vdst that is tied to the def, or it flags the
+  /// instruction as illegal (SIInstrInfo::verifyInstruction). Synthesize
+  /// that implicit tied use here, mirroring what SIPeepholeSDWA does when it
+  /// forms this same kind of SDWA instruction from IR-level codegen.
+  if (llvm::SIInstrInfo::isSDWA(*MIBuilder)) {
+    int DstUnusedIdx =
+        llvm::AMDGPU::getNamedOperandIdx(Opcode, llvm::AMDGPU::OpName::dst_unused);
+    int VDstIdx =
+        llvm::AMDGPU::getNamedOperandIdx(Opcode, llvm::AMDGPU::OpName::vdst);
+    if (DstUnusedIdx != -1 && VDstIdx != -1) {
+      const llvm::MachineOperand &DstUnused =
+          MIBuilder->getOperand(DstUnusedIdx);
+      if (DstUnused.isImm() && DstUnused.getImm() ==
+                                    llvm::AMDGPU::SDWA::DstUnused::UNUSED_PRESERVE) {
+        const llvm::MachineOperand &Dst = MIBuilder->getOperand(VDstIdx);
+        LLVM_DEBUG(luthier::dbgs() << llvm::formatv(
+                       "[CodeDiscoveryPass] SDWA instruction has "
+                       "dst_unused:UNUSED_PRESERVE; synthesizing an implicit "
+                       "use of {0} tied to $vdst\n",
+                       llvm::printReg(Dst.getReg(),
+                                      MF->getSubtarget().getRegisterInfo())));
+        unsigned ImplicitUseIdx = MIBuilder->getNumOperands();
+        MIBuilder->addOperand(
+            llvm::MachineOperand::CreateReg(Dst.getReg(), /*isDef=*/false,
+                                             /*isImp=*/true));
+        MIBuilder->tieOperands(VDstIdx, ImplicitUseIdx);
+      }
+    }
+  }
+
   /// Add implicit use of the execute mask if it's not already reflected in
   /// the machine instruction
   if (MCID.hasImplicitUseOfPhysReg(llvm::AMDGPU::EXEC) &&

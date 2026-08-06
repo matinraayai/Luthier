@@ -4,13 +4,22 @@ get_filename_component(_dir "${CMAKE_CURRENT_LIST_FILE}" PATH)
 # Find hip
 find_dependency(hip REQUIRED)
 
-# Find rocprofiler-sdk 
+# Find rocprofiler-sdk
 find_dependency(rocprofiler-sdk REQUIRED)
 
 # import the Luthier targets
 include("${_dir}/luthierTargets.cmake")
 
+list(INSERT CMAKE_MODULE_PATH 0 "${_dir}")
+
+set(LUTHIER_COMPILED_WITH_SPIRV_SUPPORT @LUTHIER_ENABLE_SPIRV@)
+
+if (LUTHIER_COMPILED_WITH_SPIRV_SUPPORT)
+  find_dependency(LLVMSPIRVTranslator REQUIRED)
+  find_dependency(AMDDeviceLibs REQUIRED)
+endif()
+
 # Import the plugin macros
 include("${_dir}/LuthierAddCompilerPlugin.cmake")
 include("${_dir}/LuthierAddClangPlugin.cmake")
-include("${_dir}/LuthierAddTool.cmake")
+include("${_dir}/LuthierCreateOffloadBundle.cmake")

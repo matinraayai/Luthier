@@ -25,7 +25,6 @@
 #include "luthier/HSA/Agent.h"
 #include "luthier/HSA/HsaError.h"
 #include "luthier/HSA/ISA.h"
-#include "luthier/HSATooling/DeviceToolCodeFatBinaryLoader.h"
 #include "luthier/HSATooling/InstrumentationPipelineTrait.h"
 #include "luthier/HSATooling/InstrumentedKernelLoaderAndLauncher.h"
 #include "luthier/HSATooling/LLVMUserTrait.h"
@@ -36,6 +35,7 @@
 #include "luthier/ToolCodeGen/InjectedPayloadCreationPass.h"
 #include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
+#include "luthier/ToolCodeGen/ToolDeviceCodeOffloadParser.h"
 #include <hsa/hsa_ext_amd.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/Demangle/Demangle.h>
@@ -69,7 +69,7 @@ public:
 
 /// \brief CRTP base for static HSA tools. Inherits the HIP fat-binary
 /// registration slots and per-agent HSA executable state from
-/// \c DeviceToolCodeFatBinaryLoader, and the per-process singleton identity
+/// \c ToolDeviceCodeOffloadParser, and the per-process singleton identity
 /// from \c Singleton<Derived>; composes the per-subsystem traits.
 ///
 /// \c Singleton<Derived> is listed first so its subobject is constructed before
@@ -103,22 +103,12 @@ template <typename Derived, typename TargetUnitT = llvm::MachineFunction>
 class HSATool : public Singleton<Derived>,
                 public LLVMUserTrait<Derived>,
                 public LoadedCodeObjectCacheTrait<Derived>,
-                public DeviceToolCodeFatBinaryLoader<Derived>,
+                public ToolDeviceCodeOffloadParserTrait<Derived>,
                 public InstrumentedKernelLoaderAndLauncherTrait<Derived>,
                 public InjectedPayloadCreationPass<Derived, TargetUnitT>,
                 public IntrinsicProcessorRegistryTraitBase<Derived>,
                 public InstrumentationPipelineTrait<Derived, TargetUnitT>,
                 public PacketMonitorTrait<Derived> {
-private:
-  /// Sentinel \c __managed__ variable. Its only purpose is to give HIP-Clang's
-  /// host emission *something* to register so that every Luthier tool TU emits
-  /// \c __hipRegisterFatBinary + \c __hip_fatbin_wrapper + the bundle bytes
-  /// (via \c -fcuda-include-gpubinary) — even tools whose own code is purely
-  /// passthrough
-  /// \c inline lets the in-class initializer also serve as the definition;
-  /// \c used keeps the host TU from optimizing it away
-  static inline __attribute__((managed, used)) char LuthierMarker = 0;
-
 public:
   HSATool(typename Singleton<Derived>::CreationKey,
           const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
@@ -128,16 +118,10 @@ public:
           llvm::Error &Err)
       : Singleton<Derived>(), LLVMUserTrait<Derived>(),
         LoadedCodeObjectCacheTrait<Derived>(CoreApi, VenLoader, Err),
-        DeviceToolCodeFatBinaryLoader<Derived>(CoreApi, AmdExt, VenLoader, Err),
-        InstrumentedKernelLoaderAndLauncherTrait<Derived>(
-            CoreApi, AmdExt, VenLoader,
-            static_cast<DeviceToolCodeLoader &>(*this), Err),
-        PacketMonitorTrait<Derived>(CoreApi, AmdExt, VenLoader, Err) {
-    /// Force instantiation of LuthierMarker so HIP-Clang's host emission
-    /// sees the managed variable even in tools that have no managed/device
-    /// statics of their own
-    (void)&LuthierMarker;
-  }
+        ToolDeviceCodeOffloadParserTrait<Derived>(Err),
+        InstrumentedKernelLoaderAndLauncherTrait<Derived>(CoreApi, AmdExt,
+                                                          VenLoader, Err),
+        PacketMonitorTrait<Derived>(CoreApi, AmdExt, VenLoader, Err) {}
 
   /// Build the instrumentation pass pipeline driver for a target application
   /// module. The returned \c InstrumentationPMDriver is a
@@ -179,8 +163,8 @@ public:
   /// the instrumentation codegen pipeline lowers against.
   llvm::Expected<std::unique_ptr<llvm::TargetMachine>>
   buildTargetMachineForKD(const llvm::amdhsa::kernel_descriptor_t *KD) {
-    const auto AmdExt = DeviceToolCodeLoader::AmdExtSnapshot.getTable();
-    const auto Core = DeviceToolCodeLoader::CoreApiSnapshot.getTable();
+    const auto AmdExt = InstrumentedKernelLoaderAndLauncher::AmdExt.getTable();
+    const auto Core = InstrumentedKernelLoaderAndLauncher::CoreApi.getTable();
 
     hsa_amd_pointer_info_t PointerInfo{};
     PointerInfo.size = sizeof(hsa_amd_pointer_info_t);
@@ -221,6 +205,7 @@ public:
           AMDHSA_BITS_GET(KD->compute_pgm_rsrc1,
                           llvm::amdhsa::COMPUTE_PGM_RSRC1_GFX10_PLUS_WGP_MODE);
       FeaturesOrErr->AddFeature("cumode", /*Enable=*/!IsWGPMode);
+      // TODO: add missing tgsplit feature
     }
 
     std::string ErrMsg;
@@ -244,8 +229,8 @@ public:
   /// Resolve a payload function's host shadow handle to the corresponding
   /// \c llvm::Function inside the given instrumentation module.
   ///
-  /// \c lookupNameByHandle returns the device-side mangled name as
-  /// recorded by \c LoadHIPFATBinaryInfoPass. For \c __global__ kernels
+  /// \c lookupHandleName returns the device-side mangled name as
+  /// recorded by \c ToolDeviceCodeOffloadParserPass. For \c __global__ kernels
   /// (HIP \c __hipRegisterFunction path) the recorded name is the
   /// kernel's natural Itanium mangling; for tagged \c __device__
   /// functions (CXX-plugin export-handle path) the IR pass already
@@ -255,13 +240,13 @@ public:
   /// payload.
   ///
   /// The handle is taken as a typed pointer so callers can pass
-  /// \c &MyTool::myHook directly; \c lookupNameByHandle does the cast to the
+  /// \c &MyTool::myHook directly; \c lookupHandleName does the cast to the
   /// opaque key internally.
   template <typename T>
   llvm::Expected<llvm::Function *>
   resolvePayloadHandle(T *HostHandle, llvm::Module &InstrumentationModule) {
     auto &Self = static_cast<Derived &>(*this);
-    auto NameOrErr = Self.lookupNameByHandle(HostHandle);
+    auto NameOrErr = Self.lookupHandleName(HostHandle);
     LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
 
     if (llvm::Function *F = InstrumentationModule.getFunction(*NameOrErr))
@@ -296,6 +281,26 @@ public:
     LUTHIER_RETURN_ON_ERROR(FnOrErr.takeError());
     return InjectedPayloadCreationPass<
         Derived, TargetUnitT>::createInjectedPayload(**FnOrErr, TargetMI, Args);
+  }
+
+  /// Bring the launcher's name-based device-global lookup into scope alongside
+  /// the host-handle convenience overload below.
+  using InstrumentedKernelLoaderAndLauncher::lookupGlobalVariable;
+
+  /// Resolve a device-global host shadow handle (e.g. \c &MyTool::MyDeviceVar)
+  /// to its \c hsa_executable_symbol_t inside the instrumented executable
+  /// cached under <tt>(KD, Preset)</tt>. Converts the handle to its device
+  /// symbol name via \c lookupHandleName, then forwards to the launcher. The
+  /// handle is taken as a typed pointer so callers can pass \c &MyTool::Var
+  /// directly.
+  template <typename T>
+  llvm::Expected<hsa_executable_symbol_t>
+  lookupGlobalVariable(T *Handle, const llvm::amdhsa::kernel_descriptor_t *KD,
+                       uint64_t Preset = 0) {
+    auto NameOrErr = this->lookupHandleName(Handle);
+    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
+    return InstrumentedKernelLoaderAndLauncher::lookupGlobalVariable(
+        *NameOrErr, KD, Preset);
   }
 };
 

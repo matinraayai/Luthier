@@ -40,7 +40,6 @@
 #define LUTHIER_TOOLING_INSTRUMENTATION_PIPELINE_TRAIT_H
 
 #include "luthier/Common/ErrorCheck.h"
-#include "luthier/HSATooling/DeviceToolCodeLoader.h"
 #include "luthier/HSATooling/HsaMemoryAllocationAccessor.h"
 #include "luthier/HSATooling/LoadedCodeObjectCache.h"
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
@@ -56,6 +55,7 @@
 #include "luthier/ToolCodeGen/MetadataParserAnalysis.h"
 #include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
+#include "luthier/ToolCodeGen/ToolDeviceCodeParser.h"
 #include "luthier/ToolCodeGen/TraceCallGraph.h"
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachinePassManager.h>
@@ -77,7 +77,7 @@ namespace luthier {
 /// \brief CRTP trait that runs Luthier's per-dispatch instrumentation pipeline.
 ///
 /// \tparam Derived the concrete tool (an \c HSATool subclass). It must provide
-/// \c buildTargetMachineForKD, \c getEmbeddedModule,
+/// \c buildTargetMachineForKD, \c parseModule,
 /// \c getIntrinsicProcessorRegistry, and be an \c InstrumentationPass for the
 /// payload-injection adapter cast to succeed — all of which \c HSATool already
 /// supplies.
@@ -228,7 +228,7 @@ public:
             return D.createInstrumentationModule(IModCtx);
           } else {
             auto ModOrErr =
-                D.getEmbeddedModule(ToolTriple, ToolCPU, ToolFeatures, IModCtx);
+                D.parseModule(ToolTriple, ToolCPU, ToolFeatures, IModCtx);
             if (!ModOrErr)
               llvm::report_fatal_error(ModOrErr.takeError());
             return std::move(*ModOrErr);

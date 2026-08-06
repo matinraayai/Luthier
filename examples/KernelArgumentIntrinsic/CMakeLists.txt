@@ -7,6 +7,13 @@ set(CMAKE_HIP_STANDARD 20)
 find_package(hip REQUIRED)
 find_package(LLVM REQUIRED)
 
-luthier_add_tool(LuthierKernelArgumentIntrinsic
-        SOURCES KernelArgumentIntrinsic.hip
-        LIBRARIES LLVMDemangle hip::device hip::host)
+luthier_create_offload_bundle(LuthierKernelArgumentIntrinsicObject KernelArgumentIntrinsic.hip
+        DEVICE_OBJECT_LIBRARIES LuthierKernelArgumentIntrinsic_DEVICE_TARGETS)
+
+target_link_libraries(LuthierKernelArgumentIntrinsicObject PUBLIC LuthierTooling hip::host LLVMDemangle)
+foreach (_DEVICE_TARGET IN LISTS LuthierKernelArgumentIntrinsic_DEVICE_TARGETS)
+    target_link_libraries(${_DEVICE_TARGET} PRIVATE LuthierTooling hip::device)
+endforeach ()
+
+add_library(LuthierKernelArgumentIntrinsic SHARED $<TARGET_OBJECTS:LuthierKernelArgumentIntrinsicObject>)
+target_link_libraries(LuthierKernelArgumentIntrinsic PUBLIC LuthierTooling hip::host LLVMDemangle)

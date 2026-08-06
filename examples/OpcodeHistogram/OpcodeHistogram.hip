@@ -129,6 +129,8 @@ struct OpcodeHistogramTool
                          llvm::FunctionAnalysisManager &);
 };
 
+LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(OpcodeHistogramTool)
+
 __attribute__((device)) uint64_t
     OpcodeHistogramTool::KernelHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];
 
