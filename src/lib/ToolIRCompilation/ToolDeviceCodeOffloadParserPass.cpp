@@ -43,6 +43,7 @@ namespace luthier {
 static void collectAnnotatedSlots(
     llvm::Module &M,
     llvm::StringMap<llvm::SmallVector<llvm::GlobalVariable *, 2>> &Slots,
+    llvm::SmallVectorImpl<llvm::Function *> &SynthesizedDeviceFnHandles,
     llvm::SmallVectorImpl<llvm::Function *> &ExportedDeviceFnHandles) {
   const llvm::GlobalVariable *Annots =
       M.getGlobalVariable("llvm.global.annotations");
@@ -66,6 +67,9 @@ static void collectAnnotatedSlots(
     if (Anno == ExportFunctionHandleMarker) {
       if (auto *Fn = llvm::dyn_cast<llvm::Function>(Annotatee))
         ExportedDeviceFnHandles.push_back(Fn);
+    } else if (Anno == SynthesizedExportFunctionHandleMarker) {
+      if (auto *Fn = llvm::dyn_cast<llvm::Function>(Annotatee))
+        SynthesizedDeviceFnHandles.push_back(Fn);
     } else if (Anno == OffloadSectionBeginAnnotation ||
                Anno == OffloadSectionEndAnnotation ||
                Anno == HipHandleSectionBeginAnnotation ||
@@ -220,7 +224,9 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
 
   llvm::StringMap<llvm::SmallVector<llvm::GlobalVariable *, 2>> SectionSlotsMap;
   llvm::SmallVector<llvm::Function *, 8> ExportedDeviceFnHandles;
-  collectAnnotatedSlots(M, SectionSlotsMap, ExportedDeviceFnHandles);
+  llvm::SmallVector<llvm::Function *, 8> SynthesizedDeviceFnHandles;
+  collectAnnotatedSlots(M, SectionSlotsMap, SynthesizedDeviceFnHandles,
+                        ExportedDeviceFnHandles);
 
   llvm::Type *PtrTy = llvm::PointerType::getUnqual(C);
 
@@ -397,6 +403,17 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
         M, DeviceNameStr->getType(), /*isConstant=*/true,
         llvm::GlobalValue::PrivateLinkage, DeviceNameStr,
         ".luthier.device_fn_name");
+    addHandle(Fn, DeviceNameGV);
+  }
+  for (llvm::Function *Fn : SynthesizedDeviceFnHandles) {
+    llvm::Constant *DeviceNameStr =
+        llvm::ConstantDataArray::getString(C, Fn->getName(), /*AddNull=*/true);
+    auto *DeviceNameGV = new llvm::GlobalVariable(
+        M, DeviceNameStr->getType(), /*isConstant=*/true,
+        llvm::GlobalValue::PrivateLinkage, DeviceNameStr,
+        ".luthier.device_fn_name");
+    /// Set the linkage of the synthesized device function handle
+    Fn->setLinkage(llvm::GlobalValue::InternalLinkage);
     addHandle(Fn, DeviceNameGV);
   }
 
