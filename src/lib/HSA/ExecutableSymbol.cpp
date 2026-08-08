@@ -116,4 +116,17 @@ llvm::Expected<uint32_t> executableSymbolGetKernelPrivateSegmentSize(
   return Out;
 }
 
+llvm::Expected<uint32_t> executableSymbolGetKernelGroupSegmentSize(
+    const ApiTableContainer<::CoreApiTable> &CoreApi,
+    const hsa_executable_symbol_t Symbol) {
+  uint32_t Out;
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      CoreApi.callFunction<&::CoreApiTable::hsa_executable_symbol_get_info_fn>(
+          Symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_GROUP_SEGMENT_SIZE, &Out),
+      llvm::formatv("Failed to get the group segment size of kernel symbol "
+                    "{0:x}",
+                    Symbol.handle)));
+  return Out;
+}
+
 } // namespace luthier::hsa

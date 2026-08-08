@@ -95,6 +95,19 @@ executableSymbolGetKernelPrivateSegmentSize(
     const ApiTableContainer<::CoreApiTable> &CoreApi,
     hsa_executable_symbol_t Symbol);
 
+/// Queries the group (LDS) segment size in bytes that the kernel pointed to
+/// by \p Symbol requires per work-group.
+/// \param CoreApi the \c ::CoreApiTable used to dispatch HSA functions
+/// \param Symbol the \c hsa_executable_symbol_t being queried; must be of
+/// kind \c HSA_SYMBOL_KIND_KERNEL
+/// \return Expects the per-work-group group segment size on success
+/// \sa HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_GROUP_SEGMENT_SIZE
+/// \sa hsa_executable_symbol_get_info
+[[nodiscard]] llvm::Expected<uint32_t>
+executableSymbolGetKernelGroupSegmentSize(
+    const ApiTableContainer<::CoreApiTable> &CoreApi,
+    hsa_executable_symbol_t Symbol);
+
 } // namespace luthier::hsa
 
 //===----------------------------------------------------------------------===//

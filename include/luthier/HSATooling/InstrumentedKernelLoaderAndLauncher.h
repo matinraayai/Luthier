@@ -72,11 +72,22 @@ public:
   operator=(const InstrumentedKernelLoaderAndLauncher &) = delete;
 
   /// Parse \p Relocatable as an AMDGCN ELF, require it contain exactly
-  /// one kernel function (any name — assumed to be the instrumented
-  /// kernel), create + load + freeze a fresh HSA executable, harvest its
-  /// device-global variable symbols, allocate + publish the managed
-  /// variables it carries (each owned by this record), and cache
-  /// everything under the key <tt>(OriginalKD, Preset)</tt>.
+  /// one kernel function excluding global constructor/destructor kernels
+  /// (any name — assumed to be the instrumented kernel), create + load +
+  /// freeze a fresh HSA executable, harvest its device-global variable
+  /// symbols, allocate + publish the managed variables it carries (each
+  /// owned by this record), and cache everything under the key
+  /// <tt>(OriginalKD, Preset)</tt>.
+  ///
+  /// If the relocatable also carries an <tt>amdgcn.device.init</tt> global
+  /// constructor kernel (emitted by the AMDGPU backend's
+  /// <tt>amdgpu-lower-ctor-dtor</tt> pass for dynamically-initialized
+  /// <tt>__device__</tt> globals), it is dispatched once, synchronously,
+  /// right after the managed variables are published and before this call
+  /// returns. If it carries an <tt>amdgcn.device.fini</tt> global
+  /// destructor kernel, its kernel-object address is cached on the record
+  /// and dispatched by \c unloadInstrumentedIfExists right before the
+  /// executable is torn down.
   ///
   /// Takes ownership of \p Relocatable for the lifetime of the resulting
   /// record — the HSA code-object reader keeps a pointer into it.
@@ -93,8 +104,10 @@ public:
 
   /// Tear down the HSA executable + reader cached under
   /// <tt>(OriginalKD, Preset)</tt> and remove the entry from the
-  /// cache. Idempotent: a missing entry is success. Returns any
-  /// joined HSA destruction errors.
+  /// cache. If the cached record carries an <tt>amdgcn.device.fini</tt>
+  /// global destructor kernel (see \c loadInstrumented), it is dispatched
+  /// once, synchronously, before the executable is destroyed. Idempotent: a
+  /// missing entry is success. Returns any joined HSA destruction errors.
   llvm::Error unloadInstrumentedIfExists(
       const llvm::amdhsa::kernel_descriptor_t *OriginalKD, uint64_t Preset = 0);
 
@@ -194,6 +207,15 @@ protected:
     /// \c <base>.managed symbol in its relocatable. Freed when the record is
     /// erased.
     llvm::SmallVector<ManagedAlloc, 2> ManagedAllocs;
+    /// Kernel-object address of this record's <tt>amdgcn.device.fini</tt>
+    /// global-destructor kernel, if its relocatable carried one; \c 0
+    /// otherwise. Dispatched once by \c eraseRecordLocked right before the
+    /// executable is destroyed.
+    uint64_t DtorKO{0};
+    /// Private/group segment sizes required by \c DtorKO's dispatch; only
+    /// meaningful when \c DtorKO is non-zero.
+    uint32_t DtorPrivateSegmentSize{0};
+    uint32_t DtorGroupSegmentSize{0};
   };
 
   /// Cache key — original KD pointer + preset.
@@ -268,6 +290,17 @@ protected:
   /// Lazily probe \c HSA_AMD_SYSTEM_INFO_SVM_SUPPORTED and cache the result.
   /// Caller must hold the writer lock.
   llvm::Expected<bool> getHmmSupported();
+
+  /// Synchronously dispatches the single-work-item, argument-less kernel at
+  /// \p KernelObject on \p Agent using a private queue, and blocks until it
+  /// completes. Used to invoke the <tt>amdgcn.device.init</tt> /
+  /// <tt>amdgcn.device.fini</tt> global constructor/destructor kernels the
+  /// AMDGPU backend's <tt>amdgpu-lower-ctor-dtor</tt> pass may emit into an
+  /// instrumented relocatable.
+  llvm::Error launchNoArgKernelAndWait(hsa_agent_t Agent,
+                                       uint64_t KernelObject,
+                                       uint32_t PrivateSegmentSize,
+                                       uint32_t GroupSegmentSize);
 };
 
 /// \brief CRTP trait that adds an \c hsa_executable_destroy interceptor
