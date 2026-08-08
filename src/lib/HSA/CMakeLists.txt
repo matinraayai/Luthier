@@ -6,9 +6,11 @@ add_library(LuthierHSA OBJECT
         hsa.cpp
         HsaError.cpp
         ISA.cpp
+        Queue.cpp
         Region.cpp
         Memory.cpp
         MemoryPool.cpp
+        Signal.cpp
         SVM.cpp
         VMEM.cpp
 )

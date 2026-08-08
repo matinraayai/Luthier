@@ -25,7 +25,9 @@
 #include "luthier/HSA/LoadedCodeObject.h"
 #include "luthier/HSA/Memory.h"
 #include "luthier/HSA/MemoryPool.h"
+#include "luthier/HSA/Queue.h"
 #include "luthier/HSA/SVM.h"
+#include "luthier/HSA/Signal.h"
 #include "luthier/HSA/VMEM.h"
 #include "luthier/Linker/Linker.h"
 #include "luthier/Object/AMDGCNObjectFile.h"
@@ -50,13 +52,28 @@ namespace luthier {
 
 namespace {
 
-/// Walk the parsed ELF and find the single kernel-function symbol.
+/// Name of the global-constructor kernel the AMDGPU backend's
+/// 'amdgpu-lower-ctor-dtor' pass emits for a module's dynamically
+/// initialized \c __device__ globals (i.e. its lowered \c llvm.global_ctors).
+constexpr llvm::StringLiteral GlobalCtorKernelName = "amdgcn.device.init";
+/// Name of the corresponding global-destructor kernel (lowered
+/// \c llvm.global_dtors).
+constexpr llvm::StringLiteral GlobalDtorKernelName = "amdgcn.device.fini";
+
+/// Walk the parsed ELF and find the single kernel-function symbol, ignoring
+/// the global constructor/destructor kernels (if present) since those are
+/// not user-visible instrumented kernels.
 llvm::Expected<object::AMDGCNKernelFuncSymbolRef>
 findSingleKernel(const object::AMDGCNObjectFile &Obj) {
   llvm::Error IterErr = llvm::Error::success();
   std::optional<object::AMDGCNKernelFuncSymbolRef> Found;
   unsigned KernelCount = 0;
   for (const auto &KSym : Obj.kernel_functions(IterErr)) {
+    auto NameOrErr = KSym.getName();
+    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
+    if (*NameOrErr == GlobalCtorKernelName ||
+        *NameOrErr == GlobalDtorKernelName)
+      continue;
     ++KernelCount;
     Found = KSym;
   }
@@ -64,9 +81,42 @@ findSingleKernel(const object::AMDGCNObjectFile &Obj) {
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       KernelCount == 1,
       llvm::formatv("Instrumented relocatable must contain exactly one "
-                    "kernel function; found {0}",
+                    "kernel function (excluding global constructor/"
+                    "destructor kernels); found {0}",
                     KernelCount)));
   return *Found;
+}
+
+/// Kernel-object address plus the segment sizes needed to dispatch it.
+struct OptionalKernelInfo {
+  uint64_t KernelObject;
+  uint32_t PrivateSegmentSize;
+  uint32_t GroupSegmentSize;
+};
+
+/// Looks up the kernel named \p KernelName inside \p Exec for \p Agent and,
+/// if present, returns its kernel-object address and dispatch segment sizes.
+/// Expects \c std::nullopt (not an error) if no such kernel exists — used to
+/// detect the optional global constructor/destructor kernels.
+llvm::Expected<std::optional<OptionalKernelInfo>>
+findOptionalKernelInfo(const hsa::ApiTableContainer<::CoreApiTable> &Core,
+                       hsa_executable_t Exec, hsa_agent_t Agent,
+                       llvm::StringRef KernelName) {
+  auto SymOrErr = hsa::executableGetSymbolByName(
+      Core, Exec, (KernelName.str() + ".kd"), Agent);
+  LUTHIER_RETURN_ON_ERROR(SymOrErr.takeError());
+  if (!SymOrErr->has_value())
+    return std::nullopt;
+  hsa_executable_symbol_t Sym = **SymOrErr;
+
+  auto KOOrErr = hsa::executableSymbolGetAddress(Core, Sym);
+  LUTHIER_RETURN_ON_ERROR(KOOrErr.takeError());
+  auto PrivSizeOrErr = hsa::executableSymbolGetKernelPrivateSegmentSize(Core, Sym);
+  LUTHIER_RETURN_ON_ERROR(PrivSizeOrErr.takeError());
+  auto GroupSizeOrErr = hsa::executableSymbolGetKernelGroupSegmentSize(Core, Sym);
+  LUTHIER_RETURN_ON_ERROR(GroupSizeOrErr.takeError());
+
+  return OptionalKernelInfo{*KOOrErr, *PrivSizeOrErr, *GroupSizeOrErr};
 }
 
 } // namespace
@@ -102,6 +152,14 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::eraseRecordLocked(
   InstrumentedRecord &R = It->second;
   const auto Core = CoreApi.getTable();
   const auto AmdExtTbl = AmdExt.getTable();
+
+  // Invoke the cached global-destructor kernel ("amdgcn.device.fini"), if
+  // this record has one, while the executable is still alive.
+  if (R.DtorKO != 0)
+    E = llvm::joinErrors(
+        std::move(E), launchNoArgKernelAndWait(R.Agent, R.DtorKO,
+                                               R.DtorPrivateSegmentSize,
+                                               R.DtorGroupSegmentSize));
 
   // Executable first (releases its references into the reader's host
   // memory), then reader.
@@ -602,6 +660,16 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   if (!PrivSizeOrErr)
     return Fail(PrivSizeOrErr.takeError());
 
+  // Detect a global-destructor kernel ("amdgcn.device.fini"), if the
+  // 'amdgpu-lower-ctor-dtor' backend pass emitted one for this instrumented
+  // copy's dynamically-initialized __device__ globals. Its kernel-object
+  // address is cached on the record and dispatched by eraseRecordLocked
+  // right before the executable is torn down.
+  auto DtorInfoOrErr =
+      findOptionalKernelInfo(Core, Exec, Agent, GlobalDtorKernelName);
+  if (!DtorInfoOrErr)
+    return Fail(DtorInfoOrErr.takeError());
+
   InstrumentedRecord Rec;
   Rec.RelocatableBuffer = std::move(Relocatable);
   Rec.Reader = Reader;
@@ -610,6 +678,11 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   Rec.InstrumentedKO = *InstrKOOrErr;
   Rec.PrivateSegmentSize = *PrivSizeOrErr;
   Rec.Agent = Agent;
+  if (DtorInfoOrErr->has_value()) {
+    Rec.DtorKO = (*DtorInfoOrErr)->KernelObject;
+    Rec.DtorPrivateSegmentSize = (*DtorInfoOrErr)->PrivateSegmentSize;
+    Rec.DtorGroupSegmentSize = (*DtorInfoOrErr)->GroupSegmentSize;
+  }
 
   // Harvest this executable's device-global variable symbols for host readback.
   auto HarvestCb = [&](hsa_executable_symbol_t Sym) -> llvm::Error {
@@ -633,12 +706,89 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   if (auto Err = loadManagedVarsForRecord(*Parsed, Rec))
     return Fail(std::move(Err));
 
+  // Invoke the global-constructor kernel ("amdgcn.device.init"), if the
+  // relocatable carried one, now that the managed variables it may
+  // reference have been published. Runs once, synchronously.
+  auto CtorInfoOrErr =
+      findOptionalKernelInfo(Core, Exec, Agent, GlobalCtorKernelName);
+  if (!CtorInfoOrErr)
+    return Fail(CtorInfoOrErr.takeError());
+  if (CtorInfoOrErr->has_value()) {
+    if (auto Err = launchNoArgKernelAndWait(
+            Agent, (*CtorInfoOrErr)->KernelObject,
+            (*CtorInfoOrErr)->PrivateSegmentSize,
+            (*CtorInfoOrErr)->GroupSegmentSize))
+      return Fail(std::move(Err));
+  }
+
   auto [It, Inserted] =
       ByOriginal.try_emplace(Key{OriginalKD, Preset}, std::move(Rec));
   assert(Inserted && "Concurrent insert into ByOriginal under writer lock");
   (void)Inserted;
 
   return InstrSym;
+}
+
+//===----------------------------------------------------------------------===//
+// launchNoArgKernelAndWait
+//===----------------------------------------------------------------------===//
+
+llvm::Error InstrumentedKernelLoaderAndLauncher::launchNoArgKernelAndWait(
+    const hsa_agent_t Agent, const uint64_t KernelObject,
+    const uint32_t PrivateSegmentSize, const uint32_t GroupSegmentSize) {
+  const auto Core = CoreApi.getTable();
+
+  auto QueueSizeOrErr = hsa::agentGetQueueMinSize(Core, Agent);
+  LUTHIER_RETURN_ON_ERROR(QueueSizeOrErr.takeError());
+
+  auto QueueOrErr = hsa::queueCreate(Core, Agent, *QueueSizeOrErr);
+  LUTHIER_RETURN_ON_ERROR(QueueOrErr.takeError());
+  hsa_queue_t *Queue = *QueueOrErr;
+
+  auto SignalOrErr = hsa::signalCreate(Core, 1);
+  if (!SignalOrErr)
+    return llvm::joinErrors(SignalOrErr.takeError(),
+                            hsa::queueDestroy(Core, Queue));
+  hsa_signal_t Signal = *SignalOrErr;
+
+  // Reserve a slot in the queue's ring buffer and spin until it's free.
+  const uint64_t WriteIdx =
+      Core.callFunction<hsa_queue_add_write_index_screlease>(Queue, 1);
+  while (WriteIdx -
+             Core.callFunction<hsa_queue_load_read_index_scacquire>(Queue) >=
+         Queue->size) {
+  }
+
+  auto *Packet = &reinterpret_cast<hsa_kernel_dispatch_packet_t *>(
+      Queue->base_address)[WriteIdx & (Queue->size - 1)];
+  std::memset(Packet, 0, sizeof(*Packet));
+  Packet->setup = 1;
+  Packet->workgroup_size_x = 1;
+  Packet->workgroup_size_y = 1;
+  Packet->workgroup_size_z = 1;
+  Packet->grid_size_x = 1;
+  Packet->grid_size_y = 1;
+  Packet->grid_size_z = 1;
+  Packet->kernel_object = KernelObject;
+  Packet->kernarg_address = nullptr;
+  Packet->group_segment_size = GroupSegmentSize;
+  Packet->private_segment_size = PrivateSegmentSize;
+  Packet->completion_signal = Signal;
+
+  const uint16_t Header =
+      (HSA_PACKET_TYPE_KERNEL_DISPATCH << HSA_PACKET_HEADER_TYPE) |
+      (HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_SCACQUIRE_FENCE_SCOPE) |
+      (HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_SCRELEASE_FENCE_SCOPE);
+  __atomic_store_n(reinterpret_cast<uint16_t *>(Packet), Header,
+                   __ATOMIC_RELEASE);
+
+  Core.callFunction<hsa_signal_store_screlease>(
+      Queue->doorbell_signal, static_cast<hsa_signal_value_t>(WriteIdx));
+
+  hsa::signalWait(Core, Signal, HSA_SIGNAL_CONDITION_LT, 1);
+
+  return llvm::joinErrors(hsa::signalDestroy(Core, Signal),
+                          hsa::queueDestroy(Core, Queue));
 }
 
 } // namespace luthier
