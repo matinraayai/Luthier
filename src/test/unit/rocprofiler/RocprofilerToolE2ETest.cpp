@@ -46,7 +46,11 @@ namespace {
 
 HsaApiTableSnapshot<::CoreApiTable> *CoreSnapshot = nullptr;
 HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER> *LoaderSnapshot = nullptr;
-HsaExtensionTableSnapshot<HSA_EXTENSION_FINALIZER> *FinalizerSnapshot = nullptr;
+// HSA_EXTENSION_FINALIZER is deliberately not snapshotted here. It is the HSAIL
+// finalizer, which the runtime no longer implements: it still answers
+// hsa_system_extension_supported, but hsa_system_get_major_extension_table
+// fails for it, and the snapshot reports that as a fatal error from inside
+// rocprofiler's registration callback, taking the whole binary down with it.
 HsaExtensionTableSnapshot<HSA_EXTENSION_IMAGES> *ImageSnapshot = nullptr;
 HsaApiTableWrapperInstaller<::CoreApiTable> *Wrapper = nullptr;
 HipApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE> *HipSnapshot = nullptr;
@@ -86,9 +90,6 @@ void toolInit() {
   LUTHIER_ABORT_ON_FATAL_ERROR(Err);
   LoaderSnapshot = new HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>(Err);
   LUTHIER_ABORT_ON_FATAL_ERROR(Err);
-  FinalizerSnapshot =
-      new HsaExtensionTableSnapshot<HSA_EXTENSION_FINALIZER>(Err);
-  LUTHIER_ABORT_ON_FATAL_ERROR(Err);
   ImageSnapshot = new HsaExtensionTableSnapshot<HSA_EXTENSION_IMAGES>(Err);
   LUTHIER_ABORT_ON_FATAL_ERROR(Err);
 
@@ -110,7 +111,6 @@ void toolFini(void *) {
   // destruct on the safe path.
   delete Wrapper;
   delete ImageSnapshot;
-  delete FinalizerSnapshot;
   delete LoaderSnapshot;
   delete CoreSnapshot;
   delete HipSnapshot;
@@ -186,13 +186,11 @@ TEST_F(RocprofilerToolE2E, AmdLoaderExtensionFilled) {
             nullptr);
 }
 
-// Validates the hsa_system_get_major_extension_table fix: these previously
+// Validates the hsa_system_get_major_extension_table fix: images previously
 // failed (version-major mismatch) via hsa_system_get_extension_table.
-TEST_F(RocprofilerToolE2E, FinalizerAndImageExtensionsFilled) {
+TEST_F(RocprofilerToolE2E, ImageExtensionFilled) {
   LUTHIER_SKIP_IF_NO_HSA_GPU();
-  ASSERT_TRUE(FinalizerSnapshot->wasRegistrationCallbackInvoked());
   ASSERT_TRUE(ImageSnapshot->wasRegistrationCallbackInvoked());
-  EXPECT_NE(FinalizerSnapshot->getTable().hsa_ext_program_create, nullptr);
   EXPECT_NE(ImageSnapshot->getTable().hsa_ext_image_create, nullptr);
 }
 

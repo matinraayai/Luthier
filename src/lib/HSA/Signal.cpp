@@ -1,4 +1,4 @@
-//===-- Signal.cpp ----------------------------------------------------------===//
+//===-- Signal.cpp --------------------------------------------------------===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -50,6 +50,20 @@ signalWait(const ApiTableContainer<::CoreApiTable> &CoreApi,
           const hsa_signal_value_t CompareValue) {
   return CoreApi.callFunction<hsa_signal_wait_scacquire>(
       Signal, Condition, CompareValue, UINT64_MAX, HSA_WAIT_STATE_BLOCKED);
+}
+
+hsa_signal_value_t signalWaitTimeout(
+    const ApiTableContainer<::CoreApiTable> &CoreApi, const hsa_signal_t Signal,
+    const hsa_signal_condition_t Condition,
+    const hsa_signal_value_t CompareValue, const uint64_t TimeoutHint,
+    const hsa_wait_state_t WaitState) {
+  return CoreApi.callFunction<hsa_signal_wait_scacquire>(
+      Signal, Condition, CompareValue, TimeoutHint, WaitState);
+}
+
+void signalStore(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                 const hsa_signal_t Signal, const hsa_signal_value_t Value) {
+  CoreApi.callFunction<hsa_signal_store_screlease>(Signal, Value);
 }
 
 } // namespace luthier::hsa

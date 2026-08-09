@@ -32,6 +32,7 @@ target_link_libraries(LuthierTooling
         LLVMAMDGPUAsmParser LLVMAMDGPUDesc LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA
         LLVMAMDGPUUtils LLVMAMDGPUCodeGen
         PRIVATE
+        Threads::Threads
         LLVMSymbolize LLVMDebugInfoDWARF LLVMCodeGenTypes LLVMMC LLVMMCA LLVMMCDisassembler LLVMObject
         LLVMSupport LLVMTarget LLVMTargetParser LLVMTransformUtils LLVMBitReader LLVMAnalysis LLVMAsmPrinter
         LLVMCore LLVMPasses LLVMCodeGen LLVMLinker LLVMIRReader)

@@ -28,8 +28,12 @@
 #include "luthier/Common/Singleton.h"
 #include "luthier/HSA/Agent.h"
 #include "luthier/HSA/ExecutableSymbol.h"
+#include "luthier/HSATooling/DevicePrintf.h"
+#include "luthier/HSATooling/HiddenArgBuffers.h"
+#include "luthier/HSATooling/HostcallHandler.h"
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
 #include "luthier/Rocprofiler/ApiTableWrapperInstaller.h"
+#include "luthier/ToolCodeGen/Metadata.h"
 #include <cstdint>
 #include <hsa/hsa.h>
 #include <hsa/hsa_api_trace.h>
@@ -54,6 +58,10 @@ class ObjectFile;
 } // namespace llvm::object
 
 namespace luthier {
+
+namespace object {
+class AMDGCNObjectFile;
+} // namespace object
 
 /// \brief Loader for loading and caching instrumented copies of kernels
 class InstrumentedKernelLoaderAndLauncher {
@@ -85,12 +93,18 @@ public:
   /// <tt>__device__</tt> globals), it is dispatched once, synchronously,
   /// right after the managed variables are published and before this call
   /// returns. If it carries an <tt>amdgcn.device.fini</tt> global
-  /// destructor kernel, its kernel-object address is cached on the record
-  /// and dispatched by \c unloadInstrumentedIfExists right before the
-  /// executable is torn down.
+  /// destructor kernel, it is cached on the record and dispatched by
+  /// \c unloadInstrumentedIfExists right before the executable is torn
+  /// down. See \c launchSingleWorkItemKernelAndWait for how those two are
+  /// dispatched.
+  ///
+  /// Every kernel this finds is described by its kernel descriptor as the
+  /// code object defines it, read off the host copy of the ELF; the loader
+  /// never re-queries the individual segment sizes back out of HSA.
   ///
   /// Takes ownership of \p Relocatable for the lifetime of the resulting
-  /// record — the HSA code-object reader keeps a pointer into it.
+  /// record — the HSA code-object reader keeps a pointer into it, and so do
+  /// the host kernel-descriptor pointers cached on the record.
   ///
   /// \param OriginalKD pointer to the kernel descriptor on the device of
   /// the original (un-instrumented) kernel. The agent that owns the KD's
@@ -183,20 +197,50 @@ protected:
     bool ViaSvm{false};
   };
 
+  /// One hidden (implicit) kernel argument slot, as declared by the kernel's
+  /// entry in the code object's <tt>amdhsa.kernels</tt> metadata. Driving the
+  /// kernarg fill off the metadata rather than a hard-coded struct keeps this
+  /// correct across code-object versions, which reshuffle the hidden block.
+  struct HiddenArgInfo {
+    /// The argument's <tt>.value_kind</tt>; always one of the
+    /// <tt>Hidden*</tt> kinds.
+    amdgpu::hsamd::ValueKind Kind{amdgpu::hsamd::ValueKind::Unknown};
+    /// The argument's <tt>.offset</tt> into the kernarg segment.
+    uint32_t Offset{0};
+    /// The argument's <tt>.size</tt>, in bytes.
+    uint32_t Size{0};
+  };
+
+  /// Everything needed to dispatch one kernel of a loaded instrumented
+  /// executable.
+  struct LoadedKernelInfo {
+    /// The kernel's symbol inside the instrumented executable.
+    hsa_executable_symbol_t Symbol{};
+    /// Address of the kernel descriptor on the device. This is what an AQL
+    /// dispatch packet's \c kernel_object field takes.
+    uint64_t KDDeviceAddress{0};
+    /// The host copy of that same kernel descriptor, pointing into the
+    /// instrumented code object's ELF bytes. Every segment size the dispatch
+    /// needs is read straight from here instead of being re-queried field by
+    /// field through \c hsa_executable_symbol_get_info. Kept alive by
+    /// \c InstrumentedRecord::RelocatableBuffer.
+    const llvm::amdhsa::kernel_descriptor_t *KDHostAddress{nullptr};
+    /// The kernel's hidden arguments, in metadata order.
+    llvm::SmallVector<HiddenArgInfo, 8> HiddenArgs;
+  };
+
   /// One per <tt>(OriginalKD, Preset)</tt> entry.
   struct InstrumentedRecord {
     /// Caller-supplied relocatable bytes. Outlives \c Reader — the HSA
-    /// code-object reader holds a non-owning view into this buffer.
+    /// code-object reader holds a non-owning view into this buffer, and
+    /// every \c LoadedKernelInfo::KDHostAddress points into it.
     std::unique_ptr<llvm::MemoryBuffer> RelocatableBuffer;
     hsa_code_object_reader_t Reader{};
     hsa_executable_t Exec{};
-    hsa_executable_symbol_t InstrumentedKernelSym{};
-    /// Cached kernel-object address; goes into the dispatch packet on
-    /// override.
-    uint64_t InstrumentedKO{0};
-    /// Cached private segment size; \c overrideWithInstrumented bumps
-    /// \c Packet.private_segment_size to at least this value.
-    uint32_t PrivateSegmentSize{0};
+    /// The instrumented kernel itself; \c overrideWithInstrumented dispatches
+    /// off of it, and \c loadInstrumented hands its \c Symbol back to the
+    /// caller.
+    LoadedKernelInfo InstrumentedKernel;
     /// Agent the kernel runs on.
     hsa_agent_t Agent{};
     /// Device-global variable symbols harvested from this instrumented
@@ -207,15 +251,29 @@ protected:
     /// \c <base>.managed symbol in its relocatable. Freed when the record is
     /// erased.
     llvm::SmallVector<ManagedAlloc, 2> ManagedAllocs;
-    /// Kernel-object address of this record's <tt>amdgcn.device.fini</tt>
-    /// global-destructor kernel, if its relocatable carried one; \c 0
-    /// otherwise. Dispatched once by \c eraseRecordLocked right before the
-    /// executable is destroyed.
-    uint64_t DtorKO{0};
-    /// Private/group segment sizes required by \c DtorKO's dispatch; only
-    /// meaningful when \c DtorKO is non-zero.
-    uint32_t DtorPrivateSegmentSize{0};
-    uint32_t DtorGroupSegmentSize{0};
+    /// This record's <tt>amdgcn.device.fini</tt> global-destructor kernel, if
+    /// its relocatable carried one; \c std::nullopt otherwise. Dispatched
+    /// once by \c eraseRecordLocked right before the executable is destroyed.
+    std::optional<LoadedKernelInfo> DtorKernel;
+    /// Constant \c printf format strings this code object's metadata carries,
+    /// needed to decode what its kernels write into a \c hidden_printf_buffer.
+    PrintfFormatStringMap PrintfFormatStrings;
+    /// Buffer through which this record's constructor and destructor kernels
+    /// reach the host, if either declares a \c hidden_hostcall_buffer
+    /// argument; \c nullptr otherwise.
+    ///
+    /// It has to outlive the constructor dispatch rather than be torn down
+    /// with it: a global constructor that allocates device memory through the
+    /// hostcall device-memory service expects that memory to still be there
+    /// when the matching destructor frees it, and the service tracks those
+    /// allocations here.
+    std::unique_ptr<HostcallBufferAllocation> HostcallBufferAlloc;
+    /// Heap backing device-side \c malloc for this record's constructor and
+    /// destructor kernels, if either declares a \c hidden_heap_v1 argument;
+    /// \c nullptr otherwise. Record-scoped for the same reason the hostcall
+    /// buffer is: what the constructor allocates has to still be there when
+    /// the destructor frees it.
+    std::unique_ptr<DeviceHeapBuffer> HeapBuffer;
   };
 
   /// Cache key — original KD pointer + preset.
@@ -245,6 +303,12 @@ protected:
 
   /// Cached \c HSA_AMD_SYSTEM_INFO_SVM_SUPPORTED query result.
   std::optional<bool> HmmSupportedCache;
+
+  /// Answers the hostcall requests made by every kernel this loader
+  /// dispatches. One listener serves every record, and it is only stood up —
+  /// thread and all — once a kernel that can actually make a hostcall is
+  /// about to run.
+  std::unique_ptr<HostcallListener> Listener;
 
   /// Destroy the HSA executable + reader pointed to by \p It, free the record's
   /// managed-variable allocations, and erase the entry from \c ByOriginal.
@@ -291,16 +355,120 @@ protected:
   /// Caller must hold the writer lock.
   llvm::Expected<bool> getHmmSupported();
 
-  /// Synchronously dispatches the single-work-item, argument-less kernel at
-  /// \p KernelObject on \p Agent using a private queue, and blocks until it
-  /// completes. Used to invoke the <tt>amdgcn.device.init</tt> /
+  //===-------------------------------------------------------------------===//
+  // Global constructor / destructor kernel dispatch
+  //===-------------------------------------------------------------------===//
+
+  /// Looks up the kernel named \p KernelName inside the just-loaded
+  /// instrumented executable \p Exec and, if present, returns everything
+  /// needed to dispatch it: its executable symbol, its kernel-descriptor
+  /// address on the device, a pointer to the host copy of that descriptor
+  /// inside \p Obj, and its hidden arguments as declared by \p Obj 's
+  /// metadata. Expects \c std::nullopt (not an error) if \p Obj declares no
+  /// such kernel — used to detect the optional global constructor/destructor
+  /// kernels.
+  ///
+  /// The returned \c LoadedKernelInfo::KDHostAddress points into \p Obj 's
+  /// backing buffer, so the caller must keep that buffer alive for as long as
+  /// it holds on to the result.
+  ///
+  /// \param MetadataDoc \p Obj 's already-parsed metadata document, which the
+  /// hidden arguments are read out of.
+  llvm::Expected<std::optional<LoadedKernelInfo>>
+  findKernelIfPresent(const object::AMDGCNObjectFile &Obj,
+                      llvm::msgpack::Document &MetadataDoc,
+                      hsa_executable_t Exec, hsa_agent_t Agent,
+                      llvm::StringRef KernelName);
+
+  /// The largest per-work-item private (scratch) segment size that can be
+  /// dispatched on \p Agent, in bytes.
+  ///
+  /// The hardware encodes a wave's scratch allocation in
+  /// \c COMPUTE_TMPRING_SIZE.WAVESIZE, a 15-bit (18-bit on gfx12+) count of
+  /// 256-byte granules, which the runtime divides down to a per-work-item
+  /// figure; the AMDGPU backend additionally reserves 64 bytes of every
+  /// work-item's private segment for its own use. This mirrors ROCclr's
+  /// \c GetMaxStackSize, i.e. the ceiling HIP enforces on
+  /// <tt>hipLimitStackSize</tt>.
+  static llvm::Expected<uint32_t>
+  getMaxPrivateSegmentSize(const hsa::ApiTableContainer<::CoreApiTable> &CoreApi,
+                           hsa_agent_t Agent);
+
+  /// \returns \c true if \p Kernel declares a hidden argument of kind
+  /// \p Kind, i.e. if the dispatch has to supply one.
+  static bool declaresHiddenArg(const LoadedKernelInfo &Kernel,
+                                amdgpu::hsamd::ValueKind Kind);
+
+  /// Addresses of the buffers a dispatch stood up behind the hidden arguments
+  /// that need one. A null member means the dispatch provided nothing for
+  /// that argument and its slot is left zeroed.
+  struct HiddenArgBufferAddresses {
+    /// Buffer the kernel's hostcalls are submitted through.
+    void *HostcallBuffer{nullptr};
+    /// Buffer a buffered-\c printf kernel writes its records into.
+    void *PrintfBuffer{nullptr};
+    /// Heap backing device-side \c malloc.
+    void *Heap{nullptr};
+    /// Cooperative-groups grid barrier state.
+    void *GridSyncInfo{nullptr};
+    /// Wrapper a device-enqueued child reports completion against.
+    void *CompletionAction{nullptr};
+  };
+
+  /// Fills in the hidden (implicit) kernel arguments \p HiddenArgs declares
+  /// inside the zero-initialized kernarg buffer \p Kernarg, for a dispatch
+  /// described by \p Packet on \p Queue, pointing each argument that needs a
+  /// buffer at the matching member of \p Buffers. Each argument is written at
+  /// the \c .offset / \c .size its metadata declares.
+  static llvm::Error writeHiddenKernelArguments(
+      llvm::MutableArrayRef<uint8_t> Kernarg,
+      llvm::ArrayRef<HiddenArgInfo> HiddenArgs,
+      const hsa_kernel_dispatch_packet_t &Packet, const hsa_queue_t &Queue,
+      const HiddenArgBufferAddresses &Buffers);
+
+  /// Returns the loader's hostcall listener, starting it (and its thread) if
+  /// this is the first kernel that needs one. Caller must hold the writer
+  /// lock.
+  llvm::Expected<HostcallListener *> getOrCreateHostcallListener();
+
+  /// Allocates a hostcall buffer for \p Agent, sized for a single-wave
+  /// dispatch, and registers it with the loader's listener so packets pushed
+  /// onto it are answered. Caller must hold the writer lock.
+  llvm::Expected<std::unique_ptr<HostcallBufferAllocation>>
+  createAndRegisterHostcallBuffer(hsa_agent_t Agent);
+
+  /// Deregisters \p Buffer from the loader's listener, so that it can be
+  /// freed without the listener still walking it.
+  void unregisterHostcallBuffer(HostcallBufferAllocation &Buffer);
+
+  /// Synchronously dispatches \p Kernel over a single work-item on
+  /// <tt>Rec.Agent</tt> using a private queue, and blocks until it completes.
+  /// Used to invoke the <tt>amdgcn.device.init</tt> /
   /// <tt>amdgcn.device.fini</tt> global constructor/destructor kernels the
   /// AMDGPU backend's <tt>amdgpu-lower-ctor-dtor</tt> pass may emit into an
-  /// instrumented relocatable.
-  llvm::Error launchNoArgKernelAndWait(hsa_agent_t Agent,
-                                       uint64_t KernelObject,
-                                       uint32_t PrivateSegmentSize,
-                                       uint32_t GroupSegmentSize);
+  /// instrumented relocatable. \p Kernel must be one of \p Rec 's own
+  /// kernels, since the record owns the buffers the dispatch hands it.
+  ///
+  /// Every dispatch parameter is read out of \p Kernel 's host kernel
+  /// descriptor. The kernarg segment is backed by a zero-filled buffer of
+  /// \c kernarg_size bytes — non-empty even for these argument-less kernels,
+  /// because of the COV5 hidden arguments — into which
+  /// \c writeHiddenKernelArguments then fills the hidden block. When the
+  /// descriptor sets \c USES_DYNAMIC_STACK the dispatch reserves the largest
+  /// private segment the agent supports: the constructor/destructor kernels
+  /// reach their callees through indirect calls, so the statically-computed
+  /// \c private_segment_fixed_size is 0 no matter how much stack those
+  /// callees need, and there is no way to recover the real requirement.
+  ///
+  /// Hidden arguments that need a buffer are supplied only when \p Kernel
+  /// declares them. Record-scoped ones (the hostcall buffer and the device
+  /// heap) come from \p Rec; the rest — the printf buffer, the grid sync
+  /// structure and the completion action — are allocated for this dispatch
+  /// and released with it. A declared \c hidden_printf_buffer is drained onto
+  /// the host's \c stdout / \c stderr once the dispatch completes.
+  llvm::Error
+  launchSingleWorkItemKernelAndWait(const InstrumentedRecord &Rec,
+                                    const LoadedKernelInfo &Kernel);
 };
 
 /// \brief CRTP trait that adds an \c hsa_executable_destroy interceptor

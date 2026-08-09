@@ -22,6 +22,7 @@
 #include "luthier/HSA/Executable.h"
 #include "luthier/HSA/ExecutableSymbol.h"
 #include "luthier/HSA/HsaError.h"
+#include "luthier/HSA/ISA.h"
 #include "luthier/HSA/LoadedCodeObject.h"
 #include "luthier/HSA/Memory.h"
 #include "luthier/HSA/MemoryPool.h"
@@ -34,16 +35,19 @@
 #include "luthier/Object/ObjectFileUtils.h"
 
 #include <cstring>
+#include <hsa/amd_hsa_queue.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallSet.h>
 #include <llvm/BinaryFormat/ELF.h>
 #include <llvm/Object/ObjectFile.h>
 #include <llvm/Object/SymbolicFile.h>
+#include <llvm/Support/AMDHSAKernelDescriptor.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/Process.h>
 #include <llvm/Support/SmallVectorMemoryBuffer.h>
+#include <llvm/TargetParser/AMDGPUTargetParser.h>
 #include <vector>
 
 #define DEBUG_TYPE "luthier-instrumented-kernel-loader-and-launcher"
@@ -52,12 +56,9 @@ namespace luthier {
 
 namespace {
 
-/// Name of the global-constructor kernel the AMDGPU backend's
-/// 'amdgpu-lower-ctor-dtor' pass emits for a module's dynamically
-/// initialized \c __device__ globals (i.e. its lowered \c llvm.global_ctors).
+/// Name of the global constructor kernel emitted by the AMDGPU backend
 constexpr llvm::StringLiteral GlobalCtorKernelName = "amdgcn.device.init";
-/// Name of the corresponding global-destructor kernel (lowered
-/// \c llvm.global_dtors).
+/// Name of the global destructor kernel emitted by the AMDGPU backend
 constexpr llvm::StringLiteral GlobalDtorKernelName = "amdgcn.device.fini";
 
 /// Walk the parsed ELF and find the single kernel-function symbol, ignoring
@@ -87,36 +88,40 @@ findSingleKernel(const object::AMDGCNObjectFile &Obj) {
   return *Found;
 }
 
-/// Kernel-object address plus the segment sizes needed to dispatch it.
-struct OptionalKernelInfo {
-  uint64_t KernelObject;
-  uint32_t PrivateSegmentSize;
-  uint32_t GroupSegmentSize;
-};
+/// \returns \c true if the kernel described by \p KD reaches its callees
+/// through calls the compiler could not size a stack for, and so needs the
+/// dispatch to reserve a private segment on its behalf.
+///
+/// The AMDGPU backend emits amdgcn.device.init/fini as a loop of *indirect*
+/// calls through .init_array/.fini_array, so it marks them
+/// 'uses_dynamic_stack' and leaves their statically-computed
+/// private_segment_fixed_size at 0 even though the callees need a stack.
+/// Dispatching with that 0 memory-faults as soon as a callee spills.
+bool usesDynamicStack(const llvm::amdhsa::kernel_descriptor_t &KD) {
+  return AMDHSA_BITS_GET(
+             KD.kernel_code_properties,
+             llvm::amdhsa::KERNEL_CODE_PROPERTY_USES_DYNAMIC_STACK) != 0;
+}
 
-/// Looks up the kernel named \p KernelName inside \p Exec for \p Agent and,
-/// if present, returns its kernel-object address and dispatch segment sizes.
-/// Expects \c std::nullopt (not an error) if no such kernel exists — used to
-/// detect the optional global constructor/destructor kernels.
-llvm::Expected<std::optional<OptionalKernelInfo>>
-findOptionalKernelInfo(const hsa::ApiTableContainer<::CoreApiTable> &Core,
-                       hsa_executable_t Exec, hsa_agent_t Agent,
-                       llvm::StringRef KernelName) {
-  auto SymOrErr = hsa::executableGetSymbolByName(
-      Core, Exec, (KernelName.str() + ".kd"), Agent);
-  LUTHIER_RETURN_ON_ERROR(SymOrErr.takeError());
-  if (!SymOrErr->has_value())
-    return std::nullopt;
-  hsa_executable_symbol_t Sym = **SymOrErr;
-
-  auto KOOrErr = hsa::executableSymbolGetAddress(Core, Sym);
-  LUTHIER_RETURN_ON_ERROR(KOOrErr.takeError());
-  auto PrivSizeOrErr = hsa::executableSymbolGetKernelPrivateSegmentSize(Core, Sym);
-  LUTHIER_RETURN_ON_ERROR(PrivSizeOrErr.takeError());
-  auto GroupSizeOrErr = hsa::executableSymbolGetKernelGroupSegmentSize(Core, Sym);
-  LUTHIER_RETURN_ON_ERROR(GroupSizeOrErr.takeError());
-
-  return OptionalKernelInfo{*KOOrErr, *PrivSizeOrErr, *GroupSizeOrErr};
+/// Writes the low \p Size bytes of \p Value into \p Buf at \p Offset, little
+/// endian. Errors out rather than writing out of bounds, and rather than
+/// truncating a value that does not fit the slot the metadata declared.
+llvm::Error writeKernargAt(llvm::MutableArrayRef<uint8_t> Buf, uint32_t Offset,
+                           uint32_t Size, uint64_t Value) {
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      Size <= sizeof(uint64_t) && Offset <= Buf.size() &&
+          Size <= Buf.size() - Offset,
+      llvm::formatv("Hidden kernel argument at offset {0} of size {1} does not "
+                    "fit inside the {2}-byte kernarg segment",
+                    Offset, Size, Buf.size())));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      Size == sizeof(uint64_t) || (Value >> (Size * 8)) == 0,
+      llvm::formatv("Value {0:x} of the hidden kernel argument at offset {1} "
+                    "does not fit in its {2}-byte slot",
+                    Value, Offset, Size)));
+  for (uint32_t I = 0; I < Size; ++I)
+    Buf[Offset + I] = static_cast<uint8_t>(Value >> (8 * I));
+  return llvm::Error::success();
 }
 
 } // namespace
@@ -155,11 +160,19 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::eraseRecordLocked(
 
   // Invoke the cached global-destructor kernel ("amdgcn.device.fini"), if
   // this record has one, while the executable is still alive.
-  if (R.DtorKO != 0)
-    E = llvm::joinErrors(
-        std::move(E), launchNoArgKernelAndWait(R.Agent, R.DtorKO,
-                                               R.DtorPrivateSegmentSize,
-                                               R.DtorGroupSegmentSize));
+  if (R.DtorKernel)
+    E = llvm::joinErrors(std::move(E),
+                         launchSingleWorkItemKernelAndWait(R, *R.DtorKernel));
+
+  // Now that the destructor has had its chance to release whatever the
+  // constructor allocated, stop listening on the hostcall buffer and free it
+  // — along with the heap and any device memory the kernels leaked through
+  // the device-memory service.
+  if (R.HostcallBufferAlloc) {
+    unregisterHostcallBuffer(*R.HostcallBufferAlloc);
+    R.HostcallBufferAlloc.reset();
+  }
+  R.HeapBuffer.reset();
 
   // Executable first (releases its references into the reader's host
   // memory), then reader.
@@ -241,9 +254,10 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented(
         Packet.kernel_object, Preset));
 
   InstrumentedRecord &Rec = It->second;
-  Packet.kernel_object = Rec.InstrumentedKO;
-  Packet.private_segment_size =
-      std::max<uint32_t>(Packet.private_segment_size, Rec.PrivateSegmentSize);
+  Packet.kernel_object = Rec.InstrumentedKernel.KDDeviceAddress;
+  Packet.private_segment_size = std::max<uint32_t>(
+      Packet.private_segment_size,
+      Rec.InstrumentedKernel.KDHostAddress->private_segment_fixed_size);
 
   return llvm::Error::success();
 }
@@ -275,7 +289,7 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::invalidateOriginalExec(
       E = llvm::joinErrors(std::move(E), LoadedMemOrErr.takeError());
       continue;
     }
-    const uint64_t Start = reinterpret_cast<uint64_t>(LoadedMemOrErr->data());
+    const auto Start = reinterpret_cast<uint64_t>(LoadedMemOrErr->data());
     Ranges.push_back(Range{Start, Start + LoadedMemOrErr->size()});
   }
 
@@ -638,48 +652,110 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   if (auto Err = hsa::executableFreeze(Core, Exec))
     return Fail(std::move(Err));
 
-  auto InstrSymOrErr =
-      hsa::executableGetSymbolByName(Core, Exec, KDName, Agent);
-  if (!InstrSymOrErr)
-    return Fail(InstrSymOrErr.takeError());
-  if (!InstrSymOrErr->has_value())
+  // Parse the code object's metadata once: every kernel's hidden-argument
+  // layout and the constant printf format strings all come out of it.
+  auto MDDocOrErr = Parsed->getMetadataDocument();
+  if (!MDDocOrErr)
+    return Fail(MDDocOrErr.takeError());
+  llvm::msgpack::Document &MetadataDoc = **MDDocOrErr;
+
+  auto NoteMDOrErr =
+      amdgpu::hsamd::MetadataParser().parseNoteMetaData(MetadataDoc);
+  if (!NoteMDOrErr)
+    return Fail(NoteMDOrErr.takeError());
+  PrintfFormatStringMap PrintfFormatStrings;
+  if ((*NoteMDOrErr)->Printf) {
+    auto FormatsOrErr = parsePrintfFormatStrings(*(*NoteMDOrErr)->Printf);
+    if (!FormatsOrErr)
+      return Fail(FormatsOrErr.takeError());
+    PrintfFormatStrings = std::move(*FormatsOrErr);
+  }
+
+  // Everything the dispatch needs about the instrumented kernel comes off its
+  // kernel descriptor in the host code object.
+  auto InstrKernelOrErr =
+      findKernelIfPresent(*Parsed, MetadataDoc, Exec, Agent, KernelName);
+  if (!InstrKernelOrErr)
+    return Fail(InstrKernelOrErr.takeError());
+  if (!InstrKernelOrErr->has_value())
     return Fail(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-        "Instrumented executable does not expose a kernel descriptor "
-        "named '{0}'",
-        KDName)));
-  hsa_executable_symbol_t InstrSym = **InstrSymOrErr;
-
-  auto InstrKOOrErr = hsa::executableSymbolGetAddress(Core, InstrSym);
-  if (!InstrKOOrErr)
-    return Fail(InstrKOOrErr.takeError());
-
-  auto PrivSizeOrErr =
-      hsa::executableSymbolGetKernelPrivateSegmentSize(Core, InstrSym);
-  if (!PrivSizeOrErr)
-    return Fail(PrivSizeOrErr.takeError());
+        "The instrumented code object defines kernel function '{0}' but no "
+        "matching kernel descriptor '{1}'",
+        KernelName, KDName)));
+  const hsa_executable_symbol_t InstrSym = (*InstrKernelOrErr)->Symbol;
 
   // Detect a global-destructor kernel ("amdgcn.device.fini"), if the
   // 'amdgpu-lower-ctor-dtor' backend pass emitted one for this instrumented
-  // copy's dynamically-initialized __device__ globals. Its kernel-object
-  // address is cached on the record and dispatched by eraseRecordLocked
-  // right before the executable is torn down.
-  auto DtorInfoOrErr =
-      findOptionalKernelInfo(Core, Exec, Agent, GlobalDtorKernelName);
-  if (!DtorInfoOrErr)
-    return Fail(DtorInfoOrErr.takeError());
+  // copy's dynamically-initialized __device__ globals. It is cached on the
+  // record and dispatched by eraseRecordLocked right before the executable is
+  // torn down.
+  auto DtorKernelOrErr = findKernelIfPresent(*Parsed, MetadataDoc, Exec, Agent,
+                                             GlobalDtorKernelName);
+  if (!DtorKernelOrErr)
+    return Fail(DtorKernelOrErr.takeError());
+
+  // The global-constructor kernel, dispatched further down once the managed
+  // variables it may reference have been published.
+  auto CtorKernelOrErr = findKernelIfPresent(*Parsed, MetadataDoc, Exec, Agent,
+                                             GlobalCtorKernelName);
+  if (!CtorKernelOrErr)
+    return Fail(CtorKernelOrErr.takeError());
 
   InstrumentedRecord Rec;
   Rec.RelocatableBuffer = std::move(Relocatable);
   Rec.Reader = Reader;
   Rec.Exec = Exec;
-  Rec.InstrumentedKernelSym = InstrSym;
-  Rec.InstrumentedKO = *InstrKOOrErr;
-  Rec.PrivateSegmentSize = *PrivSizeOrErr;
+  Rec.InstrumentedKernel = std::move(**InstrKernelOrErr);
   Rec.Agent = Agent;
-  if (DtorInfoOrErr->has_value()) {
-    Rec.DtorKO = (*DtorInfoOrErr)->KernelObject;
-    Rec.DtorPrivateSegmentSize = (*DtorInfoOrErr)->PrivateSegmentSize;
-    Rec.DtorGroupSegmentSize = (*DtorInfoOrErr)->GroupSegmentSize;
+  Rec.DtorKernel = std::move(*DtorKernelOrErr);
+  Rec.PrintfFormatStrings = std::move(PrintfFormatStrings);
+
+  // Stand up the record-scoped buffers if either of the constructor and
+  // destructor kernels can reach them. They belong to the record rather than
+  // to a single dispatch: memory the constructor allocates has to survive
+  // until the destructor releases it, and both the hostcall service and the
+  // heap track those allocations.
+  auto EitherCtorDtorDeclares =
+      [&](amdgpu::hsamd::ValueKind Kind) {
+        return (CtorKernelOrErr->has_value() &&
+                declaresHiddenArg(**CtorKernelOrErr, Kind)) ||
+               (Rec.DtorKernel && declaresHiddenArg(*Rec.DtorKernel, Kind));
+      };
+
+  if (EitherCtorDtorDeclares(
+          amdgpu::hsamd::ValueKind::HiddenHostcallBuffer)) {
+    auto HostcallBufferOrErr = createAndRegisterHostcallBuffer(Agent);
+    if (!HostcallBufferOrErr)
+      return Fail(HostcallBufferOrErr.takeError());
+    Rec.HostcallBufferAlloc = std::move(*HostcallBufferOrErr);
+  }
+
+  // From here on the record owns resources that Fail() does not know how to
+  // release, so unwind them explicitly before handing the error back.
+  auto FailWithRecord = [&](llvm::Error E) -> llvm::Error {
+    if (Rec.HostcallBufferAlloc) {
+      unregisterHostcallBuffer(*Rec.HostcallBufferAlloc);
+      Rec.HostcallBufferAlloc.reset();
+    }
+    Rec.HeapBuffer.reset();
+    return Fail(std::move(E));
+  };
+
+  if (EitherCtorDtorDeclares(amdgpu::hsamd::ValueKind::HiddenHeapV1)) {
+    auto HeapOrErr = DeviceHeapBuffer::create(AmdExt.getTable(), Agent);
+    if (!HeapOrErr)
+      return FailWithRecord(HeapOrErr.takeError());
+    Rec.HeapBuffer = std::move(*HeapOrErr);
+    // The heap sources every slab through the device-memory hostcall, so a
+    // kernel handed a heap but no hostcall buffer would spin on its first
+    // allocation. The compiler emits both arguments together, so this only
+    // trips on a hand-written or rewritten code object.
+    if (!Rec.HostcallBufferAlloc)
+      return FailWithRecord(LUTHIER_MAKE_GENERIC_ERROR(
+          "The instrumented code object declares a hidden_heap_v1 argument "
+          "but no hidden_hostcall_buffer; device-side malloc obtains its "
+          "memory through the hostcall device-memory service and cannot work "
+          "without one"));
   }
 
   // Harvest this executable's device-global variable symbols for host readback.
@@ -695,28 +771,22 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   };
   if (auto Err =
           hsa::executableIterateAgentSymbols(Core, Exec, Agent, HarvestCb))
-    return Fail(std::move(Err));
+    return FailWithRecord(std::move(Err));
 
   // Allocate + publish the managed variables this instrumented copy carries,
   // driven by its own relocatable. The allocations are owned by Rec and freed
   // when the record is erased; loadManagedVarsForRecord frees them itself if it
   // fails here (Rec is not yet cached).
   if (auto Err = loadManagedVarsForRecord(*Parsed, Rec))
-    return Fail(std::move(Err));
+    return FailWithRecord(std::move(Err));
 
   // Invoke the global-constructor kernel ("amdgcn.device.init"), if the
   // relocatable carried one, now that the managed variables it may
   // reference have been published. Runs once, synchronously.
-  auto CtorInfoOrErr =
-      findOptionalKernelInfo(Core, Exec, Agent, GlobalCtorKernelName);
-  if (!CtorInfoOrErr)
-    return Fail(CtorInfoOrErr.takeError());
-  if (CtorInfoOrErr->has_value()) {
-    if (auto Err = launchNoArgKernelAndWait(
-            Agent, (*CtorInfoOrErr)->KernelObject,
-            (*CtorInfoOrErr)->PrivateSegmentSize,
-            (*CtorInfoOrErr)->GroupSegmentSize))
-      return Fail(std::move(Err));
+  if (CtorKernelOrErr->has_value()) {
+    if (auto Err =
+            launchSingleWorkItemKernelAndWait(Rec, **CtorKernelOrErr))
+      return FailWithRecord(std::move(Err));
   }
 
   auto [It, Inserted] =
@@ -728,13 +798,337 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
 }
 
 //===----------------------------------------------------------------------===//
-// launchNoArgKernelAndWait
+// findKernelIfPresent
 //===----------------------------------------------------------------------===//
 
-llvm::Error InstrumentedKernelLoaderAndLauncher::launchNoArgKernelAndWait(
-    const hsa_agent_t Agent, const uint64_t KernelObject,
-    const uint32_t PrivateSegmentSize, const uint32_t GroupSegmentSize) {
+llvm::Expected<
+    std::optional<InstrumentedKernelLoaderAndLauncher::LoadedKernelInfo>>
+InstrumentedKernelLoaderAndLauncher::findKernelIfPresent(
+    const object::AMDGCNObjectFile &Obj, llvm::msgpack::Document &MetadataDoc,
+    hsa_executable_t Exec, hsa_agent_t Agent, llvm::StringRef KernelName) {
   const auto Core = CoreApi.getTable();
+  const std::string KDName = (KernelName + ".kd").str();
+
+  // The kernel descriptor is a 64-byte object the compiler emitted into the
+  // code object itself, so read it straight off the host copy of the ELF
+  // instead of re-querying HSA one segment size at a time.
+  auto KDSymOrErr = Obj.lookupSymbol(KDName);
+  LUTHIER_RETURN_ON_ERROR(KDSymOrErr.takeError());
+  if (!KDSymOrErr->has_value())
+    return std::nullopt;
+
+  auto KDBytesOrErr = object::getContents(**KDSymOrErr);
+  LUTHIER_RETURN_ON_ERROR(KDBytesOrErr.takeError());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      KDBytesOrErr->size() >= sizeof(llvm::amdhsa::kernel_descriptor_t),
+      llvm::formatv("Kernel descriptor '{0}' spans {1} bytes in the "
+                    "instrumented code object; expected at least {2}",
+                    KDName, KDBytesOrErr->size(),
+                    sizeof(llvm::amdhsa::kernel_descriptor_t))));
+
+  LoadedKernelInfo Info;
+  Info.KDHostAddress =
+      reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
+          KDBytesOrErr->data());
+
+  // The loader publishes the same descriptor on the device; that address is
+  // what an AQL packet's kernel_object takes.
+  auto DeviceSymOrErr =
+      hsa::executableGetSymbolByName(Core, Exec, KDName, Agent);
+  LUTHIER_RETURN_ON_ERROR(DeviceSymOrErr.takeError());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      DeviceSymOrErr->has_value(),
+      llvm::formatv("The instrumented executable does not expose a kernel "
+                    "descriptor named '{0}', even though its code object "
+                    "defines one",
+                    KDName)));
+  Info.Symbol = **DeviceSymOrErr;
+  auto KDDeviceAddrOrErr = hsa::executableSymbolGetAddress(Core, Info.Symbol);
+  LUTHIER_RETURN_ON_ERROR(KDDeviceAddrOrErr.takeError());
+  Info.KDDeviceAddress = *KDDeviceAddrOrErr;
+
+  // Harvest the hidden arguments' offsets and widths from the code object's
+  // metadata; they are the only description of the hidden block's layout that
+  // is guaranteed to match the compiler that produced this object.
+  auto KernelMDOrErr =
+      amdgpu::hsamd::MetadataParser().parseKernelMetadata(MetadataDoc, KDName);
+  LUTHIER_RETURN_ON_ERROR(KernelMDOrErr.takeError());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      (*KernelMDOrErr)->Symbol == KDName,
+      llvm::formatv("The instrumented code object defines kernel descriptor "
+                    "'{0}' but has no amdhsa.kernels metadata entry for it",
+                    KDName)));
+  if ((*KernelMDOrErr)->Args) {
+    for (const amdgpu::hsamd::Kernel::Arg::Metadata &Arg :
+         *(*KernelMDOrErr)->Args) {
+      if (Arg.ValKind < amdgpu::hsamd::ValueKind::HiddenArgKindBegin ||
+          Arg.ValKind > amdgpu::hsamd::ValueKind::HiddenArgKindEnd)
+        continue;
+      Info.HiddenArgs.push_back(
+          HiddenArgInfo{Arg.ValKind, Arg.Offset, Arg.Size});
+    }
+  }
+
+  LLVM_DEBUG(luthier::dbgs()
+             << "[InstrumentedKernelLoaderAndLauncher]   found kernel "
+             << llvm::formatv("{0}: KD at {1:x} on the device, {2} on the "
+                              "host, {3} hidden arg(s)\n",
+                              KernelName, Info.KDDeviceAddress,
+                              static_cast<const void *>(Info.KDHostAddress),
+                              Info.HiddenArgs.size()));
+  return Info;
+}
+
+//===----------------------------------------------------------------------===//
+// getMaxPrivateSegmentSize
+//===----------------------------------------------------------------------===//
+
+llvm::Expected<uint32_t>
+InstrumentedKernelLoaderAndLauncher::getMaxPrivateSegmentSize(
+    const hsa::ApiTableContainer<::CoreApiTable> &CoreApi, hsa_agent_t Agent) {
+  /// Bytes per COMPUTE_TMPRING_SIZE.WAVESIZE granule.
+  constexpr uint64_t ScratchGranuleBytes = 256;
+  /// Width of the COMPUTE_TMPRING_SIZE.WAVESIZE field, before and from gfx12.
+  constexpr unsigned WaveSizeFieldBits = 15;
+  constexpr unsigned WaveSizeFieldBitsGFX12 = 18;
+  /// Bytes at the base of every work-item's private segment that the AMDGPU
+  /// backend reserves for itself and that therefore cannot go to the stack.
+  constexpr uint64_t CompilerReservedBytes = 64;
+
+  llvm::SmallVector<hsa_isa_t, 1> ISAs;
+  LUTHIER_RETURN_ON_ERROR(hsa::agentGetSupportedISAs(CoreApi, Agent, ISAs));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      !ISAs.empty(),
+      llvm::formatv("Agent {0:x} does not support any ISA, so the maximum "
+                    "private segment size it accepts cannot be derived",
+                    Agent.handle)));
+  llvm::Expected<std::string> GPUNameOrErr =
+      hsa::isaGetGPUName(CoreApi, ISAs.front());
+  LUTHIER_RETURN_ON_ERROR(GPUNameOrErr.takeError());
+
+  llvm::Expected<uint32_t> WavefrontSizeOrErr =
+      hsa::agentGetWavefrontSize(CoreApi, Agent);
+  LUTHIER_RETURN_ON_ERROR(WavefrontSizeOrErr.takeError());
+
+  // An unrecognized processor parses as major version 0 and takes the
+  // narrower, always-valid field width.
+  const unsigned FieldBits = llvm::AMDGPU::getIsaVersion(*GPUNameOrErr).Major >=
+                                     12
+                                 ? WaveSizeFieldBitsGFX12
+                                 : WaveSizeFieldBits;
+  const uint64_t MaxPerWave =
+      ((uint64_t{1} << FieldBits) - 1) * ScratchGranuleBytes;
+  const uint64_t MaxPerWorkItem = MaxPerWave / *WavefrontSizeOrErr;
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      MaxPerWorkItem > CompilerReservedBytes,
+      llvm::formatv("Agent {0:x} ({1}, wavefront size {2}) cannot fit a "
+                    "private segment larger than the {3} bytes the compiler "
+                    "reserves",
+                    Agent.handle, *GPUNameOrErr, *WavefrontSizeOrErr,
+                    CompilerReservedBytes)));
+  return static_cast<uint32_t>(MaxPerWorkItem - CompilerReservedBytes);
+}
+
+//===----------------------------------------------------------------------===//
+// writeHiddenKernelArguments
+//===----------------------------------------------------------------------===//
+
+bool InstrumentedKernelLoaderAndLauncher::declaresHiddenArg(
+    const LoadedKernelInfo &Kernel, amdgpu::hsamd::ValueKind Kind) {
+  return llvm::any_of(Kernel.HiddenArgs, [Kind](const HiddenArgInfo &Arg) {
+    return Arg.Kind == Kind;
+  });
+}
+
+llvm::Error InstrumentedKernelLoaderAndLauncher::writeHiddenKernelArguments(
+    llvm::MutableArrayRef<uint8_t> Kernarg,
+    llvm::ArrayRef<HiddenArgInfo> HiddenArgs,
+    const hsa_kernel_dispatch_packet_t &Packet, const hsa_queue_t &Queue,
+    const HiddenArgBufferAddresses &Buffers) {
+  using amdgpu::hsamd::ValueKind;
+
+  const uint16_t GroupSize[3]{Packet.workgroup_size_x, Packet.workgroup_size_y,
+                              Packet.workgroup_size_z};
+  const uint32_t GridSize[3]{Packet.grid_size_x, Packet.grid_size_y,
+                             Packet.grid_size_z};
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      GroupSize[0] != 0 && GroupSize[1] != 0 && GroupSize[2] != 0,
+      "Dispatch packet declares a zero-sized workgroup dimension"));
+  const uint16_t GridDims =
+      (Packet.setup >> HSA_KERNEL_DISPATCH_PACKET_SETUP_DIMENSIONS) &
+      ((1u << HSA_KERNEL_DISPATCH_PACKET_SETUP_WIDTH_DIMENSIONS) - 1);
+
+  // hidden_private_base and hidden_shared_base are the high halves of the
+  // scratch and LDS flat apertures. ROCr publishes them in the AMD extension
+  // of the queue struct, whose first member is the hsa_queue_t the core API
+  // hands back — the same reinterpretation ROCclr performs to fill these two
+  // arguments. Both fields sit at the same offsets in amd_queue_t and
+  // amd_queue_v2_t.
+  const auto &AmdQueue = reinterpret_cast<const amd_queue_t &>(Queue);
+
+  /// Index of \p Kind within the X/Y/Z triple that starts at \p First.
+  auto DimensionOf = [](ValueKind Kind, ValueKind First) -> unsigned {
+    return static_cast<unsigned>(Kind) - static_cast<unsigned>(First);
+  };
+
+  for (const HiddenArgInfo &Arg : HiddenArgs) {
+    uint64_t Value = 0;
+    switch (Arg.Kind) {
+    // Number of workgroups in each dimension.
+    case ValueKind::HiddenBlockCountX:
+    case ValueKind::HiddenBlockCountY:
+    case ValueKind::HiddenBlockCountZ: {
+      const unsigned D = DimensionOf(Arg.Kind, ValueKind::HiddenBlockCountX);
+      Value = GridSize[D] / GroupSize[D];
+      break;
+    }
+    case ValueKind::HiddenGroupSizeX:
+    case ValueKind::HiddenGroupSizeY:
+    case ValueKind::HiddenGroupSizeZ:
+      Value = GroupSize[DimensionOf(Arg.Kind, ValueKind::HiddenGroupSizeX)];
+      break;
+    // Size of the trailing partial workgroup, 0 when the grid divides evenly.
+    case ValueKind::HiddenRemainderX:
+    case ValueKind::HiddenRemainderY:
+    case ValueKind::HiddenRemainderZ: {
+      const unsigned D = DimensionOf(Arg.Kind, ValueKind::HiddenRemainderX);
+      Value = GridSize[D] % GroupSize[D];
+      break;
+    }
+    case ValueKind::HiddenGridDims:
+      Value = GridDims;
+      break;
+    // These dispatches always start at the grid origin.
+    case ValueKind::HiddenGlobalOffsetX:
+    case ValueKind::HiddenGlobalOffsetY:
+    case ValueKind::HiddenGlobalOffsetZ:
+      Value = 0;
+      break;
+    case ValueKind::HiddenPrivateBase:
+      Value = AmdQueue.private_segment_aperture_base_hi;
+      break;
+    case ValueKind::HiddenSharedBase:
+      Value = AmdQueue.group_segment_aperture_base_hi;
+      break;
+    case ValueKind::HiddenQueuePtr:
+      Value = reinterpret_cast<uintptr_t>(&Queue);
+      break;
+    // The dispatch requests no group segment beyond the kernel's fixed size.
+    case ValueKind::HiddenDynamicLDSSize:
+      Value = 0;
+      break;
+    // A kernel that makes a hostcall spins until the host answers it, so
+    // handing it a null buffer would hang the dispatch outright. The caller
+    // only leaves this null when the kernel declared the argument but no
+    // listener could be stood up; the kernel then fails the same way it would
+    // under HIP without hostcall support.
+    case ValueKind::HiddenHostcallBuffer:
+      Value = reinterpret_cast<uintptr_t>(Buffers.HostcallBuffer);
+      break;
+    // Buffered printf bump-allocates its records out of this buffer and
+    // checks it for null first, so a null here degrades to dropped output
+    // rather than a fault.
+    case ValueKind::HiddenPrintfBuffer:
+      Value = reinterpret_cast<uintptr_t>(Buffers.PrintfBuffer);
+      break;
+    // Device-side malloc keeps its slab bookkeeping here.
+    case ValueKind::HiddenHeapV1:
+      Value = reinterpret_cast<uintptr_t>(Buffers.Heap);
+      break;
+    // Cooperative-groups barrier state for this grid.
+    case ValueKind::HiddenMultiGridSyncArg:
+      Value = reinterpret_cast<uintptr_t>(Buffers.GridSyncInfo);
+      break;
+    // The already-completed wrapper standing in for the parent of a kernel
+    // the host launched directly.
+    case ValueKind::HiddenCompletionAction:
+      Value = reinterpret_cast<uintptr_t>(Buffers.CompletionAction);
+      break;
+    // Padding, plus the one argument whose correct value here really is a
+    // null pointer. A device-enqueue queue is only usable alongside a host
+    // scheduler that drains it and runs the children pushed onto it; Luthier
+    // runs none, and handing over a queue nobody services would turn a clean
+    // enqueue_kernel failure into child kernels that silently never run.
+    case ValueKind::HiddenNone:
+    case ValueKind::HiddenDefaultQueue:
+      continue;
+    default:
+      return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "Unhandled hidden kernel argument kind {0} at kernarg offset {1}",
+          static_cast<unsigned>(Arg.Kind), Arg.Offset));
+    }
+    LUTHIER_RETURN_ON_ERROR(
+        writeKernargAt(Kernarg, Arg.Offset, Arg.Size, Value));
+  }
+  return llvm::Error::success();
+}
+
+//===----------------------------------------------------------------------===//
+// Hostcall plumbing
+//===----------------------------------------------------------------------===//
+
+llvm::Expected<HostcallListener *>
+InstrumentedKernelLoaderAndLauncher::getOrCreateHostcallListener() {
+  if (!Listener) {
+    auto ListenerOrErr = HostcallListener::create(CoreApi.getTable());
+    LUTHIER_RETURN_ON_ERROR(ListenerOrErr.takeError());
+    Listener = std::move(*ListenerOrErr);
+  }
+  return Listener.get();
+}
+
+llvm::Expected<std::unique_ptr<HostcallBufferAllocation>>
+InstrumentedKernelLoaderAndLauncher::createAndRegisterHostcallBuffer(
+    const hsa_agent_t Agent) {
+  auto ListenerOrErr = getOrCreateHostcallListener();
+  LUTHIER_RETURN_ON_ERROR(ListenerOrErr.takeError());
+
+  // These kernels are dispatched over a single work-item, so one wave can
+  // ever have a request outstanding. Sizing the buffer for the agent's peak
+  // occupancy the way HIP does would cost tens of megabytes for nothing.
+  auto BufferOrErr = HostcallBufferAllocation::create(
+      CoreApi.getTable(), AmdExt.getTable(), Agent, /*NumWaves=*/1);
+  LUTHIER_RETURN_ON_ERROR(BufferOrErr.takeError());
+
+  (*ListenerOrErr)->addBuffer((*BufferOrErr)->getBuffer());
+  return std::move(*BufferOrErr);
+}
+
+void InstrumentedKernelLoaderAndLauncher::unregisterHostcallBuffer(
+    HostcallBufferAllocation &Buffer) {
+  if (Listener)
+    Listener->removeBuffer(Buffer.getBuffer());
+}
+
+//===----------------------------------------------------------------------===//
+// launchSingleWorkItemKernelAndWait
+//===----------------------------------------------------------------------===//
+
+llvm::Error
+InstrumentedKernelLoaderAndLauncher::launchSingleWorkItemKernelAndWait(
+    const InstrumentedRecord &Rec, const LoadedKernelInfo &Kernel) {
+  const auto Core = CoreApi.getTable();
+  const auto AmdExtTbl = AmdExt.getTable();
+  const hsa_agent_t Agent = Rec.Agent;
+
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      Kernel.KDHostAddress != nullptr,
+      "Kernel to dispatch carries no host kernel descriptor"));
+  const llvm::amdhsa::kernel_descriptor_t &KD = *Kernel.KDHostAddress;
+
+  // A kernel that reaches its callees indirectly reports a
+  // private_segment_fixed_size of 0 no matter how much stack those callees
+  // need; nothing can recover the real figure, so reserve the most the agent
+  // will take. The dispatch covers a single work-item, so this is a one-wave
+  // scratch allocation rather than a device-wide one.
+  uint32_t PrivateSegmentSize = KD.private_segment_fixed_size;
+  if (usesDynamicStack(KD)) {
+    llvm::Expected<uint32_t> MaxPrivateSegmentSizeOrErr =
+        getMaxPrivateSegmentSize(Core, Agent);
+    LUTHIER_RETURN_ON_ERROR(MaxPrivateSegmentSizeOrErr.takeError());
+    PrivateSegmentSize =
+        std::max(PrivateSegmentSize, *MaxPrivateSegmentSizeOrErr);
+  }
 
   auto QueueSizeOrErr = hsa::agentGetQueueMinSize(Core, Agent);
   LUTHIER_RETURN_ON_ERROR(QueueSizeOrErr.takeError());
@@ -749,6 +1143,147 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::launchNoArgKernelAndWait(
                             hsa::queueDestroy(Core, Queue));
   hsa_signal_t Signal = *SignalOrErr;
 
+  auto Cleanup = [&](llvm::Error E) -> llvm::Error {
+    return llvm::joinErrors(
+        llvm::joinErrors(std::move(E), hsa::signalDestroy(Core, Signal)),
+        hsa::queueDestroy(Core, Queue));
+  };
+
+  // Build the packet up front so the hidden arguments can be derived from the
+  // very geometry that is about to be dispatched.
+  hsa_kernel_dispatch_packet_t Dispatch{};
+  Dispatch.setup = 1u << HSA_KERNEL_DISPATCH_PACKET_SETUP_DIMENSIONS;
+  Dispatch.workgroup_size_x = 1;
+  Dispatch.workgroup_size_y = 1;
+  Dispatch.workgroup_size_z = 1;
+  Dispatch.grid_size_x = 1;
+  Dispatch.grid_size_y = 1;
+  Dispatch.grid_size_z = 1;
+  Dispatch.kernel_object = Kernel.KDDeviceAddress;
+  Dispatch.group_segment_size = KD.group_segment_fixed_size;
+  Dispatch.private_segment_size = PrivateSegmentSize;
+  Dispatch.completion_signal = Signal;
+
+  // Back the kernarg segment with real memory: even an argument-less ctor/dtor
+  // declares the COV5 hidden arguments, so a null kernarg_address faults if
+  // the kernel touches any of them.
+  void *KernargPtr = nullptr;
+  if (KD.kernarg_size > 0) {
+    auto KernargRegionOrErr = hsa::agentFindKernargRegion(Core, Agent);
+    if (!KernargRegionOrErr)
+      return Cleanup(KernargRegionOrErr.takeError());
+    if (!KernargRegionOrErr->has_value())
+      return Cleanup(LUTHIER_MAKE_HSA_ERROR(llvm::formatv(
+          "No kernarg region on agent {0:x} to back the {1}-byte kernarg "
+          "segment of the constructor/destructor kernel at {2:x}",
+          Agent.handle, KD.kernarg_size, Kernel.KDDeviceAddress)));
+    auto KernargOrErr =
+        hsa::memoryAllocate(Core, **KernargRegionOrErr, KD.kernarg_size);
+    if (!KernargOrErr)
+      return Cleanup(KernargOrErr.takeError());
+    KernargPtr = *KernargOrErr;
+    std::memset(KernargPtr, 0, KD.kernarg_size);
+    Dispatch.kernarg_address = KernargPtr;
+  }
+
+  // Everything below is host-visible memory the device pokes at while the
+  // dispatch runs, so it comes from a host fine-grained pool the agent is
+  // granted access to. These live only as long as the dispatch; the buffers
+  // whose contents have to outlast it belong to the record instead.
+  llvm::SmallVector<void *, 3> DispatchAllocs;
+  auto CleanupDispatchBuffers = [&](llvm::Error E) -> llvm::Error {
+    for (void *Ptr : DispatchAllocs)
+      E = llvm::joinErrors(std::move(E), hsa::memoryPoolFree(AmdExtTbl, Ptr));
+    DispatchAllocs.clear();
+    return Cleanup(std::move(E));
+  };
+
+  hsa_amd_memory_pool_t HostPool{};
+  bool HostPoolResolved = false;
+  auto AllocateDispatchBuffer = [&](size_t Size) -> llvm::Expected<void *> {
+    if (!HostPoolResolved) {
+      llvm::SmallVector<hsa_agent_t, 1> CpuAgents;
+      LUTHIER_RETURN_ON_ERROR(
+          hsa::getAllAgentsWithDeviceType<HSA_DEVICE_TYPE_CPU>(Core, CpuAgents));
+      LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+          !CpuAgents.empty(),
+          "No CPU agent available to back a dispatch's hidden arguments."));
+      auto PoolOrErr = selectManagedVarPool(AmdExtTbl, CpuAgents.front());
+      LUTHIER_RETURN_ON_ERROR(PoolOrErr.takeError());
+      HostPool = *PoolOrErr;
+      HostPoolResolved = true;
+    }
+    auto AllocOrErr = hsa::memoryPoolAllocate(AmdExtTbl, HostPool, Size);
+    LUTHIER_RETURN_ON_ERROR(AllocOrErr.takeError());
+    DispatchAllocs.push_back(*AllocOrErr);
+
+    const llvm::SmallVector<hsa_agent_t, 1> Agents{Agent};
+    LUTHIER_RETURN_ON_ERROR(
+        hsa::agentsAllowAccess(AmdExtTbl, Agents, *AllocOrErr));
+    return *AllocOrErr;
+  };
+
+  HiddenArgBufferAddresses Buffers;
+  Buffers.HostcallBuffer =
+      Rec.HostcallBufferAlloc ? Rec.HostcallBufferAlloc->getDeviceVisibleAddress()
+                              : nullptr;
+  Buffers.Heap =
+      Rec.HeapBuffer ? Rec.HeapBuffer->getDeviceVisibleAddress() : nullptr;
+
+  // A buffered-printf kernel bump-allocates its records out of a buffer the
+  // host reads back once the dispatch is done.
+  if (declaresHiddenArg(Kernel, amdgpu::hsamd::ValueKind::HiddenPrintfBuffer)) {
+    auto PtrOrErr = AllocateDispatchBuffer(DefaultPrintfBufferSize);
+    if (!PtrOrErr)
+      return CleanupDispatchBuffers(PtrOrErr.takeError());
+    if (auto Err = initializePrintfBuffer(llvm::MutableArrayRef<uint8_t>(
+            static_cast<uint8_t *>(*PtrOrErr), DefaultPrintfBufferSize)))
+      return CleanupDispatchBuffers(std::move(Err));
+    Buffers.PrintfBuffer = *PtrOrErr;
+  }
+
+  // Cooperative groups synchronize through this. The dispatch is one
+  // workgroup on one device, so a this_grid() barrier over it is trivially
+  // satisfiable and this_multi_grid() has nothing to join.
+  if (declaresHiddenArg(Kernel,
+                        amdgpu::hsamd::ValueKind::HiddenMultiGridSyncArg)) {
+    auto PtrOrErr = AllocateDispatchBuffer(sizeof(DeviceGridSyncInfo));
+    if (!PtrOrErr)
+      return CleanupDispatchBuffers(PtrOrErr.takeError());
+    initializeSingleGridSyncInfo(
+        *static_cast<DeviceGridSyncInfo *>(*PtrOrErr), /*NumWorkgroups=*/1);
+    Buffers.GridSyncInfo = *PtrOrErr;
+  }
+
+  // The wrapper a device-enqueued child would report completion against.
+  // Nothing enqueued this kernel, so it stands above it already finished.
+  if (declaresHiddenArg(Kernel,
+                        amdgpu::hsamd::ValueKind::HiddenCompletionAction)) {
+    auto PtrOrErr = AllocateDispatchBuffer(sizeof(DeviceAqlWrap));
+    if (!PtrOrErr)
+      return CleanupDispatchBuffers(PtrOrErr.takeError());
+    if (auto Err = LUTHIER_GENERIC_ERROR_CHECK(
+            reinterpret_cast<uintptr_t>(*PtrOrErr) % DeviceAqlWrapAlignment == 0,
+            llvm::formatv("A device-enqueue completion action must be aligned "
+                          "to {0} bytes; the pool returned {1}",
+                          DeviceAqlWrapAlignment, *PtrOrErr)))
+      return CleanupDispatchBuffers(std::move(Err));
+    initializeCompletionAction(*static_cast<DeviceAqlWrap *>(*PtrOrErr));
+    Buffers.CompletionAction = *PtrOrErr;
+  }
+
+  auto CleanupAll = [&](llvm::Error E) -> llvm::Error {
+    if (KernargPtr)
+      E = llvm::joinErrors(std::move(E), hsa::memoryFree(Core, KernargPtr));
+    return CleanupDispatchBuffers(std::move(E));
+  };
+
+  if (auto Err = writeHiddenKernelArguments(
+          llvm::MutableArrayRef<uint8_t>(static_cast<uint8_t *>(KernargPtr),
+                                         KernargPtr ? KD.kernarg_size : 0),
+          Kernel.HiddenArgs, Dispatch, *Queue, Buffers))
+    return CleanupAll(std::move(Err));
+
   // Reserve a slot in the queue's ring buffer and spin until it's free.
   const uint64_t WriteIdx =
       Core.callFunction<hsa_queue_add_write_index_screlease>(Queue, 1);
@@ -759,19 +1294,9 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::launchNoArgKernelAndWait(
 
   auto *Packet = &reinterpret_cast<hsa_kernel_dispatch_packet_t *>(
       Queue->base_address)[WriteIdx & (Queue->size - 1)];
-  std::memset(Packet, 0, sizeof(*Packet));
-  Packet->setup = 1;
-  Packet->workgroup_size_x = 1;
-  Packet->workgroup_size_y = 1;
-  Packet->workgroup_size_z = 1;
-  Packet->grid_size_x = 1;
-  Packet->grid_size_y = 1;
-  Packet->grid_size_z = 1;
-  Packet->kernel_object = KernelObject;
-  Packet->kernarg_address = nullptr;
-  Packet->group_segment_size = GroupSegmentSize;
-  Packet->private_segment_size = PrivateSegmentSize;
-  Packet->completion_signal = Signal;
+  // Dispatch's header is still zero here; the real one is stored below with
+  // release ordering, which is what hands the packet to the packet processor.
+  std::memcpy(Packet, &Dispatch, sizeof(Dispatch));
 
   const uint16_t Header =
       (HSA_PACKET_TYPE_KERNEL_DISPATCH << HSA_PACKET_HEADER_TYPE) |
@@ -785,8 +1310,16 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::launchNoArgKernelAndWait(
 
   hsa::signalWait(Core, Signal, HSA_SIGNAL_CONDITION_LT, 1);
 
-  return llvm::joinErrors(hsa::signalDestroy(Core, Signal),
-                          hsa::queueDestroy(Core, Queue));
+  // The kernel has finished, so nothing is still bump-allocating out of the
+  // printf buffer: render whatever it wrote.
+  llvm::Error E = llvm::Error::success();
+  if (Buffers.PrintfBuffer)
+    E = drainPrintfBuffer(llvm::ArrayRef<uint8_t>(
+                              static_cast<const uint8_t *>(Buffers.PrintfBuffer),
+                              DefaultPrintfBufferSize),
+                          Rec.PrintfFormatStrings);
+
+  return CleanupAll(std::move(E));
 }
 
 } // namespace luthier

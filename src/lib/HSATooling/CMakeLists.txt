@@ -1,4 +1,7 @@
 add_library(LuthierHSATooling OBJECT
+        DevicePrintf.cpp
+        HiddenArgBuffers.cpp
+        HostcallHandler.cpp
         HsaMemoryAllocationAccessor.cpp
         InstrumentedKernelLoaderAndLauncher.cpp
         LoadedCodeObjectCache.cpp

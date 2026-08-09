@@ -25,6 +25,7 @@
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/Error.h>
+#include <optional>
 
 namespace luthier::hsa {
 
@@ -144,9 +145,12 @@ agentIterateMemoryPools(const ApiTableContainer<::AmdExtTable> &AmdExt,
     const CBType &CB;
     llvm::Error Err;
   } Data{Callback, llvm::Error::success()};
+  /// Set the error to be checked before the first iteration
+  (void)Data.Err.operator bool();
 
   auto Iterator = [](hsa_amd_memory_pool_t Pool, void *D) -> hsa_status_t {
     auto *Cb = static_cast<CBData *>(D);
+    llvm::consumeError(std::move(Cb->Err));
     Cb->Err = Cb->CB(Pool);
     if (Cb->Err)
       return HSA_STATUS_INFO_BREAK;
@@ -170,6 +174,23 @@ llvm::Error
 getAllMemoryPoolsOfAgent(const ApiTableContainer<::AmdExtTable> &AmdExt,
                          hsa_agent_t Agent,
                          llvm::SmallVectorImpl<hsa_amd_memory_pool_t> &Pools);
+
+/// Finds the first coarse-grained global memory pool of \p Agent that the
+/// runtime is allowed to allocate from — i.e. where an allocation local to
+/// \p Agent should come from.
+/// \returns \c std::nullopt if the agent exposes no such pool.
+llvm::Expected<std::optional<hsa_amd_memory_pool_t>>
+agentFindCoarseGrainedPool(const ApiTableContainer<::AmdExtTable> &AmdExt,
+                           hsa_agent_t Agent);
+
+/// Finds the first fine-grained global memory pool of \p Agent that the
+/// runtime is allowed to allocate from. Memory from such a pool stays
+/// coherent between the host and the agent without an explicit copy, which is
+/// what a buffer both sides poke at concurrently needs.
+/// \returns \c std::nullopt if the agent exposes no such pool.
+llvm::Expected<std::optional<hsa_amd_memory_pool_t>>
+agentFindFineGrainedPool(const ApiTableContainer<::AmdExtTable> &AmdExt,
+                         hsa_agent_t Agent);
 
 //===----------------------------------------------------------------------===//
 // Allocation

@@ -108,6 +108,20 @@ executableSymbolGetKernelGroupSegmentSize(
     const ApiTableContainer<::CoreApiTable> &CoreApi,
     hsa_executable_symbol_t Symbol);
 
+/// Queries the size in bytes of the kernarg segment the kernel pointed to by
+/// \p Symbol expects. Note this covers the COV5 hidden arguments too, so it
+/// is non-zero even for a kernel with no explicit parameters.
+/// \param CoreApi the \c ::CoreApiTable used to dispatch HSA functions
+/// \param Symbol the \c hsa_executable_symbol_t being queried; must be of
+/// kind \c HSA_SYMBOL_KIND_KERNEL
+/// \return Expects the kernarg segment size on success
+/// \sa HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_SIZE
+/// \sa hsa_executable_symbol_get_info
+[[nodiscard]] llvm::Expected<uint32_t>
+executableSymbolGetKernelKernargSegmentSize(
+    const ApiTableContainer<::CoreApiTable> &CoreApi,
+    hsa_executable_symbol_t Symbol);
+
 } // namespace luthier::hsa
 
 //===----------------------------------------------------------------------===//
