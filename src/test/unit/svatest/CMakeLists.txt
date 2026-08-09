@@ -19,6 +19,7 @@ set(LLVM_LINK_COMPONENTS
         MC
         MCDisassembler
         MIRParser
+        ObjCARCOpts
         Object
         Symbolize
         DebugInfoDWARF
@@ -56,10 +57,12 @@ target_link_libraries(SVAFrameLanesTest PRIVATE
         LuthierAMDGPU
         LuthierIntrinsic
         LuthierCommon
-        $<TARGET_OBJECTS:LuthierToolCodeGen>
-        $<TARGET_OBJECTS:LuthierHSA>
-        $<TARGET_OBJECTS:LuthierLLVM>
-        $<TARGET_OBJECTS:LuthierRocprofilerSDK>
+        LuthierToolCodeGen
+        LuthierToolIRCompilation
+        LuthierObject
+        LuthierHSA
+        LuthierLLVM
+        LuthierRocprofilerSDK
         hsa-runtime64::hsa-runtime64
         rocprofiler-sdk::rocprofiler-sdk
 )

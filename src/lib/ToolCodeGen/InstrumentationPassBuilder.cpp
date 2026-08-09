@@ -1179,7 +1179,7 @@ void InstrumentationPassBuilder::registerPrototypeAnalyses(
 
 void InstrumentationPassBuilder::registerModuleAnalyses(
     llvm::ModuleAnalysisManager &MAM) {
-#define MODULE_PASS(NAME, CREATE_PASS)                                         \
+#define MODULE_ANALYSIS(NAME, CREATE_PASS)                                     \
   MAM.registerPass([&] { return CREATE_PASS; });
 #include "luthier/ToolCodeGen/LuthierPassRegistry.def"
 

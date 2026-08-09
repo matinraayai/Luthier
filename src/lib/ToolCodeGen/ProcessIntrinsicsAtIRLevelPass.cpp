@@ -23,7 +23,6 @@
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
-#include "luthier/ToolCodeGen/WrapperAnalysisPasses.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/StringMap.h>
 #include <llvm/ADT/Twine.h>
