@@ -87,6 +87,30 @@ public:
   /// owned by this record), and cache everything under the key
   /// <tt>(OriginalKD, Preset)</tt>.
   ///
+  /// Calling this again for a key that already has code objects loaded adds
+  /// another one to that entry rather than failing. The addition is bound
+  /// against everything already loaded under the key: every global variable
+  /// those code objects define is declared in the new executable as an
+  /// external agent global variable pointing at the address it already
+  /// occupies (\c hsa_executable_agent_global_variable_define), so the loader
+  /// resolves the addition's undefined references to them as it loads it. HSA
+  /// cannot load into an executable that is already frozen, so each code
+  /// object keeps its own executable and this is what ties them together.
+  ///
+  /// For a reference to resolve this way, the addition has to reach the
+  /// variable through the GOT, which the AMDGPU backend only emits for an
+  /// \c extern declaration of *default* visibility. HIP gives \c __device__
+  /// globals protected visibility, whose references are PC-relative and bound
+  /// at static-link time; ld.lld rejects those outright when they are
+  /// undefined, so such an addition fails to link rather than mis-resolving.
+  ///
+  /// Only the first code object loaded under a key must carry a kernel; later
+  /// additions may carry none, in which case a symbol with a zero \c handle is
+  /// returned. Whichever kernel the *first* code object carries stays the
+  /// instrumented kernel that \c overrideWithInstrumented substitutes into a
+  /// dispatch — additions contribute code and globals without changing what
+  /// runs.
+  ///
   /// If the relocatable also carries an <tt>amdgcn.device.init</tt> global
   /// constructor kernel (emitted by the AMDGPU backend's
   /// <tt>amdgpu-lower-ctor-dtor</tt> pass for dynamically-initialized
@@ -116,27 +140,34 @@ public:
                    const llvm::amdhsa::kernel_descriptor_t *OriginalKD,
                    uint64_t Preset = 0);
 
-  /// Tear down the HSA executable + reader cached under
+  /// Tear down every HSA executable + reader cached under
   /// <tt>(OriginalKD, Preset)</tt> and remove the entry from the
-  /// cache. If the cached record carries an <tt>amdgcn.device.fini</tt>
-  /// global destructor kernel (see \c loadInstrumented), it is dispatched
-  /// once, synchronously, before the executable is destroyed. Idempotent: a
-  /// missing entry is success. Returns any joined HSA destruction errors.
+  /// cache. Code objects are torn down in reverse load order, since a later
+  /// one was bound against the globals of the earlier ones and its destructor
+  /// may still read them. For each code object that carries an
+  /// <tt>amdgcn.device.fini</tt> global destructor kernel (see
+  /// \c loadInstrumented), it is dispatched once, synchronously, before that
+  /// code object's executable is destroyed. Idempotent: a missing entry is
+  /// success. Returns any joined HSA destruction errors.
   llvm::Error unloadInstrumentedIfExists(
       const llvm::amdhsa::kernel_descriptor_t *OriginalKD, uint64_t Preset = 0);
 
   /// Rewrite \p Packet 's <tt>kernel_object</tt> to the cached
   /// instrumented variant for <tt>(Packet.kernel_object, Preset)</tt>,
   /// and bump <tt>private_segment_size</tt> to at least the cached
-  /// value. Returns an error if no such cached variant exists.
+  /// value. The variant is the kernel of the *first* code object loaded under
+  /// the key; code objects added by later \c loadInstrumented calls never
+  /// change what a dispatch runs. Returns an error if no such cached variant
+  /// exists.
   llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
                                        uint64_t Preset = 0);
 
   /// Resolve a device-global variable \p Name to its
-  /// \c hsa_executable_symbol_t inside the instrumented executable cached
-  /// under <tt>(OriginalKD, Preset)</tt>. The symbol lives in that one
-  /// instrumented copy; callers derive the loaded address / size via
-  /// \c hsa::executableSymbolGet*. Errors if no such record or symbol.
+  /// \c hsa_executable_symbol_t inside the code objects cached under
+  /// <tt>(OriginalKD, Preset)</tt>, searched in load order so the code object
+  /// that first defined the variable answers for it. Callers derive the loaded
+  /// address / size via \c hsa::executableSymbolGet*. Errors if no such record
+  /// or symbol.
   llvm::Expected<hsa_executable_symbol_t>
   lookupGlobalVariable(llvm::StringRef Name,
                        const llvm::amdhsa::kernel_descriptor_t *OriginalKD,
@@ -229,7 +260,10 @@ protected:
     llvm::SmallVector<HiddenArgInfo, 8> HiddenArgs;
   };
 
-  /// One per <tt>(OriginalKD, Preset)</tt> entry.
+  /// One code object loaded under a <tt>(OriginalKD, Preset)</tt> entry. The
+  /// first one loaded carries the instrumented kernel; each later
+  /// \c loadInstrumented call for the same key appends another, bound against
+  /// the globals of the ones already there.
   struct InstrumentedRecord {
     /// Caller-supplied relocatable bytes. Outlives \c Reader — the HSA
     /// code-object reader holds a non-owning view into this buffer, and
@@ -237,10 +271,12 @@ protected:
     std::unique_ptr<llvm::MemoryBuffer> RelocatableBuffer;
     hsa_code_object_reader_t Reader{};
     hsa_executable_t Exec{};
-    /// The instrumented kernel itself; \c overrideWithInstrumented dispatches
-    /// off of it, and \c loadInstrumented hands its \c Symbol back to the
-    /// caller.
-    LoadedKernelInfo InstrumentedKernel;
+    /// This code object's kernel, and \c std::nullopt if it carries none —
+    /// only the first code object under a key is required to have one.
+    /// \c loadInstrumented hands its \c Symbol back to the caller, and for the
+    /// first code object of an entry \c overrideWithInstrumented dispatches
+    /// off of it.
+    std::optional<LoadedKernelInfo> Kernel;
     /// Agent the kernel runs on.
     hsa_agent_t Agent{};
     /// Device-global variable symbols harvested from this instrumented
@@ -298,8 +334,12 @@ protected:
     }
   };
 
+  /// Every code object loaded under one key, in load order. Never empty: an
+  /// entry appears when its first code object loads and is erased whole.
+  using CodeObjectList = llvm::SmallVector<InstrumentedRecord, 1>;
+
   /// Authoritative storage of every cached record.
-  llvm::DenseMap<Key, InstrumentedRecord, KeyDenseMapInfo> ByOriginal;
+  llvm::DenseMap<Key, CodeObjectList, KeyDenseMapInfo> ByOriginal;
 
   /// Cached \c HSA_AMD_SYSTEM_INFO_SVM_SUPPORTED query result.
   std::optional<bool> HmmSupportedCache;
@@ -310,11 +350,32 @@ protected:
   /// about to run.
   std::unique_ptr<HostcallListener> Listener;
 
-  /// Destroy the HSA executable + reader pointed to by \p It, free the record's
-  /// managed-variable allocations, and erase the entry from \c ByOriginal.
-  /// Caller must hold the writer lock.
+  /// Destroy every code object of the entry pointed to by \p It — in reverse
+  /// load order, since a later one is bound against the globals of the earlier
+  /// ones — and erase the entry from \c ByOriginal. Caller must hold the
+  /// writer lock.
   llvm::Error eraseRecordLocked(
-      llvm::DenseMap<Key, InstrumentedRecord, KeyDenseMapInfo>::iterator It);
+      llvm::DenseMap<Key, CodeObjectList, KeyDenseMapInfo>::iterator It);
+
+  /// Dispatch \p Rec 's global destructor kernel if it has one, then destroy
+  /// its HSA executable + reader and free the managed-variable storage and
+  /// record-scoped buffers it owns. Does not touch \c ByOriginal. Caller must
+  /// hold the writer lock.
+  llvm::Error eraseCodeObjectLocked(InstrumentedRecord &Rec);
+
+  /// Declare every global variable defined by the already-loaded code objects
+  /// \p Prior inside the not-yet-loaded executable \p Exec, each pointing at
+  /// the device address it already occupies, so that the code object about to
+  /// be loaded into \p Exec resolves its undefined references to them.
+  ///
+  /// A definition injected this way is itself reported by
+  /// \c hsa_executable_iterate_agent_symbols, so the same name shows up again
+  /// in every later code object's symbol table; the earliest definition of a
+  /// name wins and the rest are skipped, because HSA rejects defining one
+  /// twice. Caller must hold the writer lock.
+  llvm::Error
+  defineGlobalsOfPriorCodeObjects(llvm::ArrayRef<InstrumentedRecord> Prior,
+                                  hsa_executable_t Exec, hsa_agent_t Agent);
 
   /// Allocate + publish every managed variable carried by the instrumented
   /// executable \p Rec just loaded: for each \c <base>.managed ELF symbol,

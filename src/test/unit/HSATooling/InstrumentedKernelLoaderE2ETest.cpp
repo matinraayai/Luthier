@@ -157,6 +157,17 @@ protected:
                    << " was not built: " << BufferOrErr.getError().message();
     Relocatable = std::move(*BufferOrErr);
 
+    // The two code objects meant to be added to an entry that already holds
+    // the one above. Tests that need them skip if they were not built.
+    if (auto AddendumOrErr = llvm::MemoryBuffer::getFile(
+            LUTHIER_TEST_ADDENDUM_OBJECT, /*IsText=*/false,
+            /*RequiresNullTerminator=*/false))
+      Addendum = std::move(*AddendumOrErr);
+    if (auto AddendumOrErr = llvm::MemoryBuffer::getFile(
+            LUTHIER_TEST_ADDENDUM_NO_KERNEL_OBJECT, /*IsText=*/false,
+            /*RequiresNullTerminator=*/false))
+      AddendumNoKernel = std::move(*AddendumOrErr);
+
     Loader = std::make_unique<InstrumentedKernelLoaderAndLauncher>(
         *CoreSnapshot, *AmdExtSnapshot, *LoaderSnapshot);
 
@@ -197,6 +208,18 @@ protected:
                                                 "luthier-test-relocatable");
   }
 
+  /// A fresh copy of the additional code object that carries a kernel.
+  std::unique_ptr<llvm::MemoryBuffer> addendumCopy() const {
+    return llvm::MemoryBuffer::getMemBufferCopy(Addendum->getBuffer(),
+                                                "luthier-test-addendum");
+  }
+
+  /// A fresh copy of the additional code object that carries no kernel.
+  std::unique_ptr<llvm::MemoryBuffer> addendumNoKernelCopy() const {
+    return llvm::MemoryBuffer::getMemBufferCopy(
+        AddendumNoKernel->getBuffer(), "luthier-test-addendum-no-kernel");
+  }
+
   /// Reads an \c int device global out of the loaded instrumented copy.
   llvm::Expected<int> readDeviceInt(llvm::StringRef Name) const {
     auto SymOrErr = Loader->lookupGlobalVariable(Name, originalKD());
@@ -216,6 +239,8 @@ protected:
 
   hsa_agent_t Agent{};
   std::unique_ptr<llvm::MemoryBuffer> Relocatable;
+  std::unique_ptr<llvm::MemoryBuffer> Addendum;
+  std::unique_ptr<llvm::MemoryBuffer> AddendumNoKernel;
   std::unique_ptr<InstrumentedKernelLoaderAndLauncher> Loader;
   void *OriginalKDStorage{nullptr};
 };
@@ -236,14 +261,17 @@ TEST_F(InstrumentedKernelLoaderE2E, LoadsARelocatableAndExposesItsKernel) {
   EXPECT_EQ(*NameOrErr, "luthierTestKernel.kd");
 }
 
-TEST_F(InstrumentedKernelLoaderE2E, RejectsASecondLoadOfTheSameKey) {
+// Adding a code object to a key binds it against what is already there, so a
+// byte-for-byte copy of the code object already loaded cannot be added: every
+// global it defines is a global the entry already defines at another address.
+TEST_F(InstrumentedKernelLoaderE2E, RejectsReloadingAnIdenticalCodeObject) {
   auto FirstOrErr = Loader->loadInstrumented(relocatableCopy(), originalKD());
   ASSERT_TRUE(static_cast<bool>(FirstOrErr))
       << llvm::toString(FirstOrErr.takeError());
 
   auto SecondOrErr = Loader->loadInstrumented(relocatableCopy(), originalKD());
   EXPECT_FALSE(static_cast<bool>(SecondOrErr))
-      << "the same (kernel descriptor, preset) must not load twice";
+      << "a code object that redefines the entry's globals must not load";
   llvm::consumeError(SecondOrErr.takeError());
 }
 
@@ -413,6 +441,206 @@ TEST_F(InstrumentedKernelLoaderE2E, SurvivesRepeatedLoadUnloadCycles) {
     EXPECT_NE(Out.find("ctor ran"), std::string::npos) << "cycle " << I;
     EXPECT_NE(Out.find("dtor ran"), std::string::npos) << "cycle " << I;
   }
+}
+
+//===----------------------------------------------------------------------===//
+// Additional code objects
+//
+// A second loadInstrumented for a key that already has code objects adds
+// another one, bound against the globals the earlier ones already loaded.
+// AdditionalCodeObject.hip reads LuthierTestCtorSum — a global that lives in
+// the *first* code object — inside its own amdgcn.device.init, and stashes
+// what it saw in LuthierTestAddendumSawSum, so the binding is checked by
+// reading that back rather than by dispatching anything here.
+//===----------------------------------------------------------------------===//
+
+/// Skips unless the additional code objects were built.
+#define LUTHIER_SKIP_IF_NO_ADDENDUM()                                          \
+  do {                                                                         \
+    if (Addendum == nullptr || AddendumNoKernel == nullptr)                    \
+      GTEST_SKIP() << "the additional code objects were not built";            \
+  } while (0)
+
+TEST_F(InstrumentedKernelLoaderE2E, AddsASecondCodeObjectToAnExistingKey) {
+  LUTHIER_SKIP_IF_NO_ADDENDUM();
+  auto FirstOrErr = Loader->loadInstrumented(relocatableCopy(), originalKD());
+  ASSERT_TRUE(static_cast<bool>(FirstOrErr))
+      << llvm::toString(FirstOrErr.takeError());
+
+  auto SecondOrErr = Loader->loadInstrumented(addendumCopy(), originalKD());
+  ASSERT_TRUE(static_cast<bool>(SecondOrErr))
+      << llvm::toString(SecondOrErr.takeError());
+
+  auto NameOrErr =
+      hsa::executableSymbolGetName(CoreSnapshot->getTable(), *SecondOrErr);
+  ASSERT_TRUE(static_cast<bool>(NameOrErr))
+      << llvm::toString(NameOrErr.takeError());
+  EXPECT_EQ(*NameOrErr, "luthierTestAddendumKernel.kd")
+      << "an addition carrying a kernel hands that kernel back";
+}
+
+// The whole point of the feature: the addition's reference to a global defined
+// by the code object already loaded under the key has to resolve to the
+// address that code object was loaded at.
+TEST_F(InstrumentedKernelLoaderE2E, AdditionResolvesAgainstTheEarlierObject) {
+  LUTHIER_SKIP_IF_NO_ADDENDUM();
+  auto FirstOrErr = Loader->loadInstrumented(relocatableCopy(), originalKD());
+  ASSERT_TRUE(static_cast<bool>(FirstOrErr))
+      << llvm::toString(FirstOrErr.takeError());
+  // The first code object's own constructors have run by now, so the global
+  // the addition is about to read holds 21+41.
+  auto SumOrErr = readDeviceInt("LuthierTestCtorSum");
+  ASSERT_TRUE(static_cast<bool>(SumOrErr))
+      << llvm::toString(SumOrErr.takeError());
+  ASSERT_EQ(*SumOrErr, 21 + 41);
+
+  auto SecondOrErr = Loader->loadInstrumented(addendumCopy(), originalKD());
+  ASSERT_TRUE(static_cast<bool>(SecondOrErr))
+      << llvm::toString(SecondOrErr.takeError());
+
+  // Written by the addition's constructor, out of the other code object's
+  // global. Its initial value is -1, which is what it keeps if the reference
+  // was left dangling.
+  auto SawOrErr = readDeviceInt("LuthierTestAddendumSawSum");
+  ASSERT_TRUE(static_cast<bool>(SawOrErr))
+      << llvm::toString(SawOrErr.takeError());
+  EXPECT_EQ(*SawOrErr, 21 + 41)
+      << "the addition did not read the earlier code object's global";
+}
+
+// Only the first code object under a key has to carry a kernel; an addition
+// may be nothing but a constructor and globals.
+TEST_F(InstrumentedKernelLoaderE2E, AddsACodeObjectCarryingNoKernel) {
+  LUTHIER_SKIP_IF_NO_ADDENDUM();
+  auto FirstOrErr = Loader->loadInstrumented(relocatableCopy(), originalKD());
+  ASSERT_TRUE(static_cast<bool>(FirstOrErr))
+      << llvm::toString(FirstOrErr.takeError());
+
+  auto SecondOrErr =
+      Loader->loadInstrumented(addendumNoKernelCopy(), originalKD());
+  ASSERT_TRUE(static_cast<bool>(SecondOrErr))
+      << llvm::toString(SecondOrErr.takeError());
+  EXPECT_EQ(SecondOrErr->handle, 0u)
+      << "an addition carrying no kernel hands back a zero-handle symbol";
+
+  // It still loaded and still ran its constructor against the earlier object.
+  auto SawOrErr = readDeviceInt("LuthierTestAddendumSawSum");
+  ASSERT_TRUE(static_cast<bool>(SawOrErr))
+      << llvm::toString(SawOrErr.takeError());
+  EXPECT_EQ(*SawOrErr, 21 + 41);
+}
+
+// Globals of every code object under the key are reachable through the entry.
+TEST_F(InstrumentedKernelLoaderE2E, LooksUpGlobalsAcrossEveryCodeObject) {
+  LUTHIER_SKIP_IF_NO_ADDENDUM();
+  auto FirstOrErr = Loader->loadInstrumented(relocatableCopy(), originalKD());
+  ASSERT_TRUE(static_cast<bool>(FirstOrErr))
+      << llvm::toString(FirstOrErr.takeError());
+  auto SecondOrErr = Loader->loadInstrumented(addendumCopy(), originalKD());
+  ASSERT_TRUE(static_cast<bool>(SecondOrErr))
+      << llvm::toString(SecondOrErr.takeError());
+
+  // One from the first code object, one from the addition.
+  auto FromFirstOrErr = readDeviceInt("LuthierTestCtorRan");
+  EXPECT_TRUE(static_cast<bool>(FromFirstOrErr))
+      << llvm::toString(FromFirstOrErr.takeError());
+  auto FromAdditionOrErr = readDeviceInt("LuthierTestAddendumSawSum");
+  EXPECT_TRUE(static_cast<bool>(FromAdditionOrErr))
+      << llvm::toString(FromAdditionOrErr.takeError());
+
+  // The addition was handed the earlier object's global as an external agent
+  // variable, so both name the one address it actually lives at.
+  auto FirstSymOrErr =
+      Loader->lookupGlobalVariable("LuthierTestCtorSum", originalKD());
+  ASSERT_TRUE(static_cast<bool>(FirstSymOrErr))
+      << llvm::toString(FirstSymOrErr.takeError());
+  auto AddrOrErr =
+      hsa::executableSymbolGetAddress(CoreSnapshot->getTable(), *FirstSymOrErr);
+  ASSERT_TRUE(static_cast<bool>(AddrOrErr))
+      << llvm::toString(AddrOrErr.takeError());
+  EXPECT_NE(*AddrOrErr, 0u);
+}
+
+// The instrumented kernel a dispatch runs is the first code object's; adding
+// more must not move it.
+TEST_F(InstrumentedKernelLoaderE2E, AdditionsDoNotChangeTheDispatchedKernel) {
+  LUTHIER_SKIP_IF_NO_ADDENDUM();
+  auto FirstOrErr = Loader->loadInstrumented(relocatableCopy(), originalKD());
+  ASSERT_TRUE(static_cast<bool>(FirstOrErr))
+      << llvm::toString(FirstOrErr.takeError());
+  auto FirstKOOrErr =
+      hsa::executableSymbolGetAddress(CoreSnapshot->getTable(), *FirstOrErr);
+  ASSERT_TRUE(static_cast<bool>(FirstKOOrErr))
+      << llvm::toString(FirstKOOrErr.takeError());
+
+  auto SecondOrErr = Loader->loadInstrumented(addendumCopy(), originalKD());
+  ASSERT_TRUE(static_cast<bool>(SecondOrErr))
+      << llvm::toString(SecondOrErr.takeError());
+
+  hsa_kernel_dispatch_packet_t Packet{};
+  Packet.kernel_object = reinterpret_cast<uint64_t>(originalKD());
+  llvm::Error Err = Loader->overrideWithInstrumented(Packet);
+  EXPECT_FALSE(static_cast<bool>(Err)) << llvm::toString(std::move(Err));
+  llvm::consumeError(std::move(Err));
+  EXPECT_EQ(Packet.kernel_object, *FirstKOOrErr)
+      << "the first code object's kernel stays the instrumented one";
+}
+
+// Unloading the entry has to take every code object with it, newest first.
+TEST_F(InstrumentedKernelLoaderE2E, UnloadTearsDownEveryCodeObject) {
+  LUTHIER_SKIP_IF_NO_ADDENDUM();
+  auto FirstOrErr = Loader->loadInstrumented(relocatableCopy(), originalKD());
+  ASSERT_TRUE(static_cast<bool>(FirstOrErr))
+      << llvm::toString(FirstOrErr.takeError());
+  auto SecondOrErr = Loader->loadInstrumented(addendumCopy(), originalKD());
+  ASSERT_TRUE(static_cast<bool>(SecondOrErr))
+      << llvm::toString(SecondOrErr.takeError());
+
+  llvm::Error Err = Loader->unloadInstrumentedIfExists(originalKD());
+  EXPECT_FALSE(static_cast<bool>(Err)) << llvm::toString(std::move(Err));
+  llvm::consumeError(std::move(Err));
+
+  // Neither code object's globals are reachable any more.
+  auto FirstGoneOrErr = readDeviceInt("LuthierTestCtorRan");
+  EXPECT_FALSE(static_cast<bool>(FirstGoneOrErr));
+  llvm::consumeError(FirstGoneOrErr.takeError());
+  auto SecondGoneOrErr = readDeviceInt("LuthierTestAddendumSawSum");
+  EXPECT_FALSE(static_cast<bool>(SecondGoneOrErr));
+  llvm::consumeError(SecondGoneOrErr.takeError());
+
+  // And the key is free again, so a fresh load succeeds.
+  auto ReloadOrErr = Loader->loadInstrumented(relocatableCopy(), originalKD());
+  EXPECT_TRUE(static_cast<bool>(ReloadOrErr))
+      << llvm::toString(ReloadOrErr.takeError());
+  llvm::consumeError(ReloadOrErr.takeError());
+}
+
+// Presets stay independent: an addition joins the entry it was loaded for.
+TEST_F(InstrumentedKernelLoaderE2E, AdditionsAreScopedToTheirPreset) {
+  LUTHIER_SKIP_IF_NO_ADDENDUM();
+  auto FirstOrErr =
+      Loader->loadInstrumented(relocatableCopy(), originalKD(), /*Preset=*/0);
+  ASSERT_TRUE(static_cast<bool>(FirstOrErr))
+      << llvm::toString(FirstOrErr.takeError());
+  auto OtherOrErr =
+      Loader->loadInstrumented(relocatableCopy(), originalKD(), /*Preset=*/1);
+  ASSERT_TRUE(static_cast<bool>(OtherOrErr))
+      << llvm::toString(OtherOrErr.takeError());
+
+  auto AddedOrErr =
+      Loader->loadInstrumented(addendumCopy(), originalKD(), /*Preset=*/0);
+  ASSERT_TRUE(static_cast<bool>(AddedOrErr))
+      << llvm::toString(AddedOrErr.takeError());
+
+  auto PresentOrErr = Loader->lookupGlobalVariable("LuthierTestAddendumSawSum",
+                                                   originalKD(), /*Preset=*/0);
+  EXPECT_TRUE(static_cast<bool>(PresentOrErr))
+      << llvm::toString(PresentOrErr.takeError());
+  auto MissingOrErr = Loader->lookupGlobalVariable("LuthierTestAddendumSawSum",
+                                                   originalKD(), /*Preset=*/1);
+  EXPECT_FALSE(static_cast<bool>(MissingOrErr))
+      << "preset 1 never had the addition loaded into it";
+  llvm::consumeError(MissingOrErr.takeError());
 }
 
 //===----------------------------------------------------------------------===//
