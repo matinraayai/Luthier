@@ -63,22 +63,34 @@ llvm::Error linkRelocatableToExecutable(llvm::ArrayRef<char> Code,
   llvm::SmallString<128> OutputPath(TmpDir);
   llvm::sys::path::append(OutputPath, "output.so");
 
-  // Locate ld.lld on PATH
-  auto LLDPathOrErr = llvm::sys::findProgramByName("ld.lld");
-  if (!LLDPathOrErr)
-    return LUTHIER_MAKE_ERROR(
-        GenericLuthierError, llvm::formatv("Could not find ld.lld on PATH: {0}",
-                                           LLDPathOrErr.getError().message()));
+  // Locate ld.lld
+  std::string LLDPath;
+  {
+    llvm::SmallString<128> Candidate(LUTHIER_LLVM_TOOLS_BINARY_DIR);
+    llvm::sys::path::append(Candidate, "ld.lld");
+    if (llvm::sys::fs::can_execute(Candidate))
+      LLDPath.assign(Candidate.begin(), Candidate.end());
+  }`
+  if (LLDPath.empty()) {
+    auto LLDPathOrErr = llvm::sys::findProgramByName("ld.lld");
+    if (!LLDPathOrErr)
+      return LUTHIER_MAKE_ERROR(
+          GenericLuthierError,
+          llvm::formatv("Could not find ld.lld in {0} or on PATH: {1}",
+                        LUTHIER_LLVM_TOOLS_BINARY_DIR,
+                        LLDPathOrErr.getError().message()));
+    LLDPath = std::move(*LLDPathOrErr);
+  }
 
   // Invoke ld.lld as a subprocess so it cannot reset the global cl::opt state
   llvm::SmallVector<llvm::StringRef, 8> Args = {
-      *LLDPathOrErr, "-shared",  "--unresolved-symbols=ignore-all",
-      "-o",          OutputPath, InputPath,
+      LLDPath, "-shared",  "--unresolved-symbols=ignore-all",
+      "-o",    OutputPath, InputPath,
   };
 
   std::string StderrStr;
   llvm::raw_string_ostream StderrOS(StderrStr);
-  int RetCode = llvm::sys::ExecuteAndWait(*LLDPathOrErr, Args,
+  int RetCode = llvm::sys::ExecuteAndWait(LLDPath, Args,
                                           /*Env=*/std::nullopt,
                                           /*Redirects=*/{},
                                           /*SecondsToWait=*/0,
