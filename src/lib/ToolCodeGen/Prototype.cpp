@@ -18,6 +18,7 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/Prototype.h"
 #include <cassert>
+#include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/IR/PassInstrumentation.h>
 #include <llvm/IR/PassManagerImpl.h>
 
@@ -33,6 +34,16 @@ Prototype::Prototype(
          "Prototype modules must share an LLVMContext");
 }
 
+void Prototype::forEachTargetMF(
+    PrototypeAnalysisManager &PAM,
+    llvm::function_ref<void(llvm::MachineFunction &)> Fn) {
+  llvm::FunctionAnalysisManager &FAM =
+      PAM.getResult<FunctionAnalysisManagerPrototypeProxy>(*this).getManager();
+  for (llvm::Function &F : *TargetModule) {
+    if (auto *MFRes = FAM.getCachedResult<llvm::MachineFunctionAnalysis>(F))
+      Fn(MFRes->getMF());
+  }
+}
 
 /// Runs \p Pass over \p M, which is the module of \p IP selected by the caller.
 /// Mirrors LLVM's ModuleToFunctionPassAdaptor::run / the machinery in the other

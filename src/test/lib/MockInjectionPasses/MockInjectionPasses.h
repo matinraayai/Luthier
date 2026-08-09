@@ -15,24 +15,23 @@
 //===----------------------------------------------------------------------===//
 /// \file
 /// Test-only mock instrumentation passes deriving from
-/// \c InjectedPayloadCreationPass. Each picks a deterministic set of
-/// MachineInstr's in the target MF and creates an injected-payload
-/// function in the IModule that calls a configured hook for each one.
+/// \c InjectedPayloadCreationPass. Each one is a \c luthier::Prototype -level
+/// pass: it walks the target <tt>MachineFunction</tt>s of the prototype, picks
+/// a deterministic set of <tt>MachineInstr</tt>s out of them, and creates an
+/// injected-payload function in the prototype's instrumentation module that
+/// calls a configured hook for each one.
 ///
-/// Hook lookup: each pass reads a hook name from a global \c cl::opt
-/// (default: \c "bumpCounter") and scans the IModule for a function with
-/// the \c luthier.function.hook attribute whose value matches that name.
+/// Hook lookup: each pass reads the mangled name of the hook function from a
+/// global \c cl::opt (default: \c "_Z11bumpCounterv") and looks that name up
+/// in the prototype's instrumentation module. A pass whose hook is absent from
+/// the IModule is a no-op.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TEST_MOCK_INJECTION_PASSES_H
 #define LUTHIER_TEST_MOCK_INJECTION_PASSES_H
-#include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/InjectedPayloadCreationPass.h"
-#include "luthier/ToolCodeGen/InstrumentationPass.h"
-#include <llvm/CodeGen/MachineFunctionAnalysis.h>
-#include <llvm/CodeGen/TargetInstrInfo.h>
-#include <llvm/CodeGen/TargetSubtargetInfo.h>
-#include <llvm/IR/Module.h>
-#include <llvm/Support/CommandLine.h>
+#include "luthier/ToolCodeGen/Prototype.h"
+#include <llvm/ADT/StringRef.h>
+#include <llvm/IR/PassManager.h>
 
 namespace luthier::test {
 
@@ -44,18 +43,14 @@ llvm::StringRef getMockOpcodeMnemonicOpt();
 //===----------------------------------------------------------------------===//
 
 class MockInjectAtFunctionEntryPass
-    : public luthier::InjectedPayloadCreationPass<MockInjectAtFunctionEntryPass,
-                                                  llvm::MachineFunction> {
+    : public luthier::InjectedPayloadCreationPass<
+          MockInjectAtFunctionEntryPass> {
 public:
   static llvm::StringRef name() {
     return "luthier-mock-inject-at-function-entry";
   }
 
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &IModule,
-                         llvm::ModuleAnalysisManager &IMAM,
-                         llvm::MachineFunction &TargetMF,
-                         llvm::FunctionAnalysisManager &TargetFAM);
+  llvm::PreservedAnalyses run(Prototype &P, PrototypeAnalysisManager &PAM);
 };
 
 //===----------------------------------------------------------------------===//
@@ -63,16 +58,11 @@ public:
 //===----------------------------------------------------------------------===//
 
 class MockInjectAtMBBEntryPass
-    : public luthier::InjectedPayloadCreationPass<MockInjectAtMBBEntryPass,
-                                                  llvm::MachineFunction> {
+    : public luthier::InjectedPayloadCreationPass<MockInjectAtMBBEntryPass> {
 public:
   static llvm::StringRef name() { return "luthier-mock-inject-at-mbb-entry"; }
 
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &IModule,
-                         llvm::ModuleAnalysisManager &IMAM,
-                         llvm::MachineFunction &TargetMF,
-                         llvm::FunctionAnalysisManager &TargetFAM);
+  llvm::PreservedAnalyses run(Prototype &P, PrototypeAnalysisManager &PAM);
 };
 
 //===----------------------------------------------------------------------===//
@@ -80,18 +70,14 @@ public:
 //===----------------------------------------------------------------------===//
 
 class MockInjectAtMBBTerminatorPass
-    : public luthier::InjectedPayloadCreationPass<MockInjectAtMBBTerminatorPass,
-                                                  llvm::MachineFunction> {
+    : public luthier::InjectedPayloadCreationPass<
+          MockInjectAtMBBTerminatorPass> {
 public:
   static llvm::StringRef name() {
     return "luthier-mock-inject-at-mbb-terminator";
   }
 
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &IModule,
-                         llvm::ModuleAnalysisManager &IMAM,
-                         llvm::MachineFunction &TargetMF,
-                         llvm::FunctionAnalysisManager &TargetFAM);
+  llvm::PreservedAnalyses run(Prototype &P, PrototypeAnalysisManager &PAM);
 };
 
 //===----------------------------------------------------------------------===//
@@ -99,16 +85,11 @@ public:
 //===----------------------------------------------------------------------===//
 
 class MockInjectAtAllVALUPass
-    : public luthier::InjectedPayloadCreationPass<MockInjectAtAllVALUPass,
-                                                  llvm::MachineFunction> {
+    : public luthier::InjectedPayloadCreationPass<MockInjectAtAllVALUPass> {
 public:
   static llvm::StringRef name() { return "luthier-mock-inject-at-all-valu"; }
 
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &IModule,
-                         llvm::ModuleAnalysisManager &IMAM,
-                         llvm::MachineFunction &TargetMF,
-                         llvm::FunctionAnalysisManager &TargetFAM);
+  llvm::PreservedAnalyses run(Prototype &P, PrototypeAnalysisManager &PAM);
 };
 
 //===----------------------------------------------------------------------===//
@@ -116,16 +97,11 @@ public:
 //===----------------------------------------------------------------------===//
 
 class MockInjectAtAllScalarPass
-    : public luthier::InjectedPayloadCreationPass<MockInjectAtAllScalarPass,
-                                                  llvm::MachineFunction> {
+    : public luthier::InjectedPayloadCreationPass<MockInjectAtAllScalarPass> {
 public:
   static llvm::StringRef name() { return "luthier-mock-inject-at-all-scalar"; }
 
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &IModule,
-                         llvm::ModuleAnalysisManager &IMAM,
-                         llvm::MachineFunction &TargetMF,
-                         llvm::FunctionAnalysisManager &TargetFAM);
+  llvm::PreservedAnalyses run(Prototype &P, PrototypeAnalysisManager &PAM);
 };
 
 //===----------------------------------------------------------------------===//
@@ -134,16 +110,11 @@ public:
 //===----------------------------------------------------------------------===//
 
 class MockInjectAtOpcodePass
-    : public luthier::InjectedPayloadCreationPass<MockInjectAtOpcodePass,
-                                                  llvm::MachineFunction> {
+    : public luthier::InjectedPayloadCreationPass<MockInjectAtOpcodePass> {
 public:
   static llvm::StringRef name() { return "luthier-mock-inject-at-opcode"; }
 
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &IModule,
-                         llvm::ModuleAnalysisManager &IMAM,
-                         llvm::MachineFunction &TargetMF,
-                         llvm::FunctionAnalysisManager &TargetFAM);
+  llvm::PreservedAnalyses run(Prototype &P, PrototypeAnalysisManager &PAM);
 };
 
 //===----------------------------------------------------------------------===//
@@ -154,17 +125,13 @@ public:
 
 class MockInjectAtAllVGPRDefsWithRegArgPass
     : public luthier::InjectedPayloadCreationPass<
-          MockInjectAtAllVGPRDefsWithRegArgPass, llvm::MachineFunction> {
+          MockInjectAtAllVGPRDefsWithRegArgPass> {
 public:
   static llvm::StringRef name() {
     return "luthier-mock-inject-at-all-vgpr-defs-with-regarg";
   }
 
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &IModule,
-                         llvm::ModuleAnalysisManager &IMAM,
-                         llvm::MachineFunction &TargetMF,
-                         llvm::FunctionAnalysisManager &TargetFAM);
+  llvm::PreservedAnalyses run(Prototype &P, PrototypeAnalysisManager &PAM);
 };
 
 } // namespace luthier::test

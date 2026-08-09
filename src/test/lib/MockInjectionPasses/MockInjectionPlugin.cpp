@@ -15,36 +15,49 @@
 //===----------------------------------------------------------------------===//
 /// \file
 /// Luthier-style pass-plugin shim that registers all of the mock injection
-/// passes with the Instrumentation PM driver's pipeline parser.
+/// passes with the \c InstrumentationPassBuilder's pipeline parser.
 //===----------------------------------------------------------------------===//
 #include "MockInjectionPasses.h"
 #include "luthier/PassPlugin/LuthierPassPlugin.h"
-
-#include <llvm/Passes/PassBuilder.h>
+#include "luthier/ToolCodeGen/InstrumentationPassBuilder.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 
 namespace {
 
 template <typename PassT>
-bool tryParsePass(llvm::StringRef Name, llvm::ModulePassManager &MPM) {
-  if (Name == PassT::name()) {
-    MPM.addPass(PassT());
-    return true;
-  }
-  return false;
+bool tryParsePass(llvm::StringRef Name, luthier::PrototypePassManager &PPM) {
+  if (Name != PassT::name())
+    return false;
+  PPM.addPass(PassT());
+  return true;
 }
 
-void registerMockInjectionPasses(llvm::PassBuilder &PB, void *) {
-  PB.registerPipelineParsingCallback(
-      [](llvm::StringRef Name, llvm::ModulePassManager &MPM,
-         llvm::ArrayRef<llvm::PassBuilder::PipelineElement>) {
+/// Registers every mock injection pass with \p PPB's pipeline parser.
+///
+/// The mock passes run over a whole \c luthier::Prototype, so they are added
+/// straight to the \c PrototypePassManager rather than being wrapped in one of
+/// the single-module adaptors. \c InstrumentationPassBuilder only consults its
+/// parse callbacks with the text inside a \c target(...) or
+/// \c instrumentation(...) block, so a mock pass is spelled
+/// \c instrumentation(<pass-name>) in \c -passes — an injection pass is what
+/// populates the instrumentation module. Only a block naming a single mock pass
+/// is claimed here; anything else falls through to the builder's own parsing.
+void registerMockInjectionPasses(luthier::InstrumentationPassBuilder &PPB,
+                                 void *) {
+  PPB.registerPipelineParsingCallback(
+      [](llvm::StringRef InnerText, luthier::PrototypePassManager &PPM,
+         bool IsTarget) {
         using namespace luthier::test;
-        return tryParsePass<MockInjectAtFunctionEntryPass>(Name, MPM) ||
-               tryParsePass<MockInjectAtMBBEntryPass>(Name, MPM) ||
-               tryParsePass<MockInjectAtMBBTerminatorPass>(Name, MPM) ||
-               tryParsePass<MockInjectAtAllVALUPass>(Name, MPM) ||
-               tryParsePass<MockInjectAtAllScalarPass>(Name, MPM) ||
-               tryParsePass<MockInjectAtOpcodePass>(Name, MPM) ||
-               tryParsePass<MockInjectAtAllVGPRDefsWithRegArgPass>(Name, MPM);
+        if (IsTarget)
+          return false;
+        llvm::StringRef Name = InnerText.trim();
+        return tryParsePass<MockInjectAtFunctionEntryPass>(Name, PPM) ||
+               tryParsePass<MockInjectAtMBBEntryPass>(Name, PPM) ||
+               tryParsePass<MockInjectAtMBBTerminatorPass>(Name, PPM) ||
+               tryParsePass<MockInjectAtAllVALUPass>(Name, PPM) ||
+               tryParsePass<MockInjectAtAllScalarPass>(Name, PPM) ||
+               tryParsePass<MockInjectAtOpcodePass>(Name, PPM) ||
+               tryParsePass<MockInjectAtAllVGPRDefsWithRegArgPass>(Name, PPM);
       });
 }
 
@@ -56,12 +69,5 @@ luthierGetPassPluginInfo() {
           /*PluginName=*/"luthier-mock-injection-plugin",
           /*PluginVersion=*/LLVM_VERSION_STRING,
           /*ExtraArgs=*/nullptr,
-          /*IModuleCreationCallback=*/nullptr,
-          /*RegisterPreIROptimizationPasses=*/nullptr,
-          /*RegisterInstrumentationPassBuilderCallback=*/
-          registerMockInjectionPasses,
-          /*PreLuthierIRIntrinsicLoweringPassesCallback=*/nullptr,
-          /*PostLuthierIRIntrinsicLoweringPassesCallback=*/nullptr,
-          /*RegisterLegacyCodegenPassesCallback=*/nullptr,
-          /*AugmentTargetPassConfigCallback=*/nullptr};
+          /*RegisterPrototypePassBuilderCallback=*/registerMockInjectionPasses};
 }

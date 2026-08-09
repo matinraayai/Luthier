@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_PROTOTYPE_H
 #define LUTHIER_TOOL_CODE_GEN_PROTOTYPE_H
+#include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/IR/Function.h>
@@ -32,6 +33,12 @@ class PassInstrumentationCallbacks;
 } // namespace llvm
 
 namespace luthier {
+
+class Prototype;
+
+using PrototypeAnalysisManager = llvm::AnalysisManager<Prototype>;
+
+using PrototypePassManager = llvm::PassManager<Prototype>;
 
 class Prototype {
   /// Contains the code for the application being instrumented
@@ -68,12 +75,20 @@ public:
   [[nodiscard]] llvm::StringRef getName() const {
     return TargetModule->getName();
   }
+
+  /// \brief Invokes \p Fn on every <tt>llvm::MachineFunction</tt> of the target
+  /// module.
+  ///
+  /// \details A prototype does not own the target MIR directly: \c
+  /// CodeDiscoveryPass lifts it into \c llvm::MachineFunctionAnalysis results
+  /// cached on the \c llvm::FunctionAnalysisManager shared by both of the
+  /// prototype's modules, keyed by the target module's
+  /// <tt>llvm::Function</tt>s. Target functions without a cached result have no
+  /// MIR lifted for them and are skipped, so calling this before code discovery
+  /// has run is a no-op rather than an error.
+  void forEachTargetMF(PrototypeAnalysisManager &PAM,
+                       llvm::function_ref<void(llvm::MachineFunction &)> Fn);
 };
-
-using PrototypeAnalysisManager =
-    llvm::AnalysisManager<Prototype>;
-
-using PrototypePassManager = llvm::PassManager<Prototype>;
 
 //===----------------------------------------------------------------------===//
 // Cross-level analysis-manager proxies
