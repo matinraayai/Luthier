@@ -245,7 +245,7 @@ FunctionPreambleDescriptorAnalysis::run(
           .getManager();
 
   const InjectedPayloadAndInstPoint &IPIP =
-      MAM.getResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+      IPAM.getResult<InjectedPayloadAndInstPointAnalysis>(IP);
 
   for (llvm::Function &F : TargetModule) {
     if (F.isDeclaration())

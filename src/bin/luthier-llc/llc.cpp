@@ -19,6 +19,7 @@
 #include "luthier/ToolCodeGen/CodeObjectManagerAnalysis.h"
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include "luthier/ToolCodeGen/InitialExecutionPointAnalysis.h"
+#include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPassBuilder.h"
 #include "luthier/ToolCodeGen/LuthierFile.h"
@@ -27,7 +28,11 @@
 #include "luthier/ToolCodeGen/MockLoadAMDGPUCodeObjects.h"
 #include "luthier/ToolCodeGen/MockLoaderMemoryAccessor.h"
 #include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
+#include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
+#include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
+#include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
 #include "luthier/ToolCodeGen/Prototype.h"
+#include "luthier/ToolCodeGen/TraceCallGraph.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/Statistic.h"
@@ -135,73 +140,9 @@ static std::unique_ptr<luthier::MockAMDGPULoader> Loader =
 
 static luthier::MockAMDGPULoaderAnalysisOptions MockLoaderOptions;
 
-struct MockAMDGPULoaderInitialEntryPointParser
-    : public llvm::cl::parser<
-          std::pair<uint64_t, std::variant<uint64_t, std::string>>> {
-  MockAMDGPULoaderInitialEntryPointParser(llvm::cl::Option &O)
-      : llvm::cl::parser<
-            std::pair<uint64_t, std::variant<uint64_t, std::string>>>(O) {}
 
-  // parse - Return true on error.
-  bool parse(llvm::cl::Option &O, llvm::StringRef ArgName,
-             llvm::StringRef ArgValue,
-             std::pair<uint64_t, std::variant<uint64_t, std::string>> &Val) {
-    auto [CodeObjectIndexStr, SymbolOrOffset] = ArgValue.split(':');
-    if (CodeObjectIndexStr.getAsInteger(0, Val.first)) {
-      return O.error("Failed to parse the code object index for " +
-                     llvm::Twine(Val.first) + ".");
-    }
-    uint64_t LoadOffset;
-    if (SymbolOrOffset.getAsInteger(0, LoadOffset)) {
-      Val.second = std::string(SymbolOrOffset);
-    } else {
-      Val.second = LoadOffset;
-    }
 
-    return false;
-  }
-};
 
-struct MockAMDGPULoaderInitialExecutionPointParser
-    : public llvm::cl::parser<std::pair<uint64_t, std::string>> {
-  MockAMDGPULoaderInitialExecutionPointParser(llvm::cl::Option &O)
-      : llvm::cl::parser<std::pair<uint64_t, std::string>>(O) {}
-
-  // parse - Return true on error.
-  bool parse(llvm::cl::Option &O, llvm::StringRef ArgName,
-             llvm::StringRef ArgValue, std::pair<uint64_t, std::string> &Val) {
-    auto [CodeObjectIndexStr, Symbol] = ArgValue.split(':');
-    if (CodeObjectIndexStr.getAsInteger(0, Val.first)) {
-      return O.error("Failed to parse the code object index for " +
-                     llvm::Twine(Val.first) + ".");
-    }
-    Val.second = Symbol;
-    return false;
-  }
-};
-
-static llvm::cl::opt<std::pair<uint64_t, std::variant<uint64_t, std::string>>, false,
-              MockAMDGPULoaderInitialEntryPointParser>
-    InitialEntryPoint{
-        "initial-entrypoint",
-        llvm::cl::desc(
-            "The initial entry point of the lifting process. "
-            "Formatted as <code-object-index>:<mangled-symbol-name> or "
-            "<code-object-index>:<load-offset>. \n"
-            "Code objects are zero indexed w.r.t the order they are "
-            "specified to be loaded into the mock loader."),
-        llvm::cl::NotHidden, llvm::cl::cat(OptPluginOptions)};
-
-static llvm::cl::opt<std::pair<uint64_t, std::string>, false,
-                     MockAMDGPULoaderInitialExecutionPointParser>
-    InitialExecutionPoint{
-        "initial-execution-point",
-        llvm::cl::desc(
-            "The initial execution point of the lifting process. "
-            "Formatted as <code-object-index>:<mangled-symbol-name>. \n"
-            "Code objects are zero indexed w.r.t the order they are "
-            "specified to be loaded into the mock loader."),
-        llvm::cl::NotHidden, llvm::cl::cat(OptPluginOptions)};
 
 
 
@@ -849,16 +790,25 @@ static int compileModule(char **argv,
                                          std::nullopt, &PIC);
 
 
-  luthier::PrototypeAnalysisManager PAM;
-  ModuleAnalysisManager MAM;
-  CGSCCAnalysisManager CGAM;
-  FunctionAnalysisManager FAM;
+  // Declaration order matters and must run innermost -> outermost, because
+  // destruction runs in reverse and InnerAnalysisManagerProxy<Inner, Outer>::
+  // Result::~Result() calls InnerAM->clear(). An outer manager therefore has to
+  // be destroyed *before* every manager it proxies, or the proxy result's
+  // destructor writes into a freed AnalysisManager. PAM is the outermost of all
+  // (it proxies MAM, FAM and MFAM), so it goes last; MAM proxies FAM and MFAM,
+  // so it goes after them. This mirrors the LAM/FAM/CGAM/MAM ordering LLVM's own
+  // tools use.
   LoopAnalysisManager LAM;
+  FunctionAnalysisManager FAM;
+  CGSCCAnalysisManager CGAM;
   MachineFunctionAnalysisManager MFAM;
+  ModuleAnalysisManager MAM;
+  luthier::PrototypeAnalysisManager PAM;
 
   for (const auto &Plugin : PluginList)
     Plugin.registerPrototypePassBuilderCallback(PB);
 
+  PB.registerPrototypeAnalyses(PAM);
   PB.registerModuleAnalyses(MAM);
   PB.registerCGSCCAnalyses(CGAM);
   PB.registerFunctionAnalyses(FAM);
@@ -879,144 +829,37 @@ static int compileModule(char **argv,
   MAM.registerPass([&] { return LibcallLoweringModuleAnalysis(); });
   MAM.registerPass([&] { return MachineModuleAnalysis(MMI); });
 
-    MAM.registerPass([&]() {
-    return luthier::InitialEntryPointAnalysis([&](llvm::Module &M,
-                                                  llvm::ModuleAnalysisManager
-                                                      &AM)
-                                                  -> luthier::EntryPoint {
-      llvm::LLVMContext &Ctx = M.getContext();
-      const auto &MockLoader =
-          AM.getResult<luthier::MockAMDGPULoaderAnalysis>(M).getLoader();
-      uint64_t CodeObjectIdx = 0;
-      for (const auto &LCO : MockLoader.loaded_code_objects()) {
-        if (CodeObjectIdx == InitialEntryPoint.first) {
-          if (std::holds_alternative<uint64_t>(InitialEntryPoint.second)) {
-            uint64_t LoadOffset = std::get<uint64_t>(InitialEntryPoint.second);
-            if (LoadOffset > LCO.getLoadedRegion().size()) {
-              Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
-                  llvm::formatv("Offset {0:x} is outside the "
-                                "range of code object index {1}",
-                                LoadOffset, CodeObjectIdx))));
-              return luthier::EntryPoint{};
-            }
-            return luthier::EntryPoint{
-                reinterpret_cast<uint64_t>(LCO.getLoadedRegion().data()) +
-                LoadOffset};
-          } else {
-            std::string SymbolName =
-                std::get<std::string>(InitialEntryPoint.second);
-            std::optional<luthier::object::AMDGCNElfSymbolRef> Symbol{
-                std::nullopt};
-            llvm::Error Err =
-                LCO.getCodeObject().lookupSymbol(SymbolName).moveInto(Symbol);
-            if (Err) {
-              Ctx.emitError(llvm::toString(std::move(Err)));
-              return luthier::EntryPoint{};
-            }
-
-            if (!Symbol.has_value()) {
-              Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
-                  llvm::formatv("Failed to find the symbol {0} in "
-                                "code object index {1}",
-                                SymbolName, CodeObjectIdx))));
-              return luthier::EntryPoint{};
-            }
-            uint64_t LoadOffset;
-            Err = Symbol->getAddress().moveInto(LoadOffset);
-            if (Err) {
-              Ctx.emitError(llvm::toString(std::move(Err)));
-              return luthier::EntryPoint{};
-            }
-            assert(LoadOffset < LCO.getLoadedRegion().size() &&
-                   "Load offset falls outside of the code object");
-            uint64_t LoadAddr =
-                reinterpret_cast<uint64_t>(LCO.getLoadedRegion().data()) +
-                LoadOffset;
-            if (Symbol->isKernelDescriptor()) {
-              auto &KD =
-                  *reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
-                      LoadAddr);
-              return luthier::EntryPoint(KD);
-            } else {
-              return luthier::EntryPoint(LoadAddr);
-            }
-          }
-        }
-        CodeObjectIdx++;
-      };
-      Ctx.emitError(llvm::toString(
-          LUTHIER_MAKE_GENERIC_ERROR("Failed to get the entry point; "
-                                     "Code object index is out of "
-                                     "range")));
-      llvm_unreachable("Should have thrown an error by now");
-    });
-  });
-  MAM.registerPass([&]() {
-    return luthier::InitialExecutionPointAnalysis(
-        [&](llvm::Module &M, llvm::ModuleAnalysisManager &AM)
-            -> const llvm::amdhsa::kernel_descriptor_t & {
-          llvm::LLVMContext &Ctx = M.getContext();
-          const auto &MockLoader =
-              AM.getResult<luthier::MockAMDGPULoaderAnalysis>(M).getLoader();
-          uint64_t CodeObjectIdx = 0;
-          for (const auto &LCO : MockLoader.loaded_code_objects()) {
-            if (CodeObjectIdx == InitialExecutionPoint.first) {
-              std::optional<luthier::object::AMDGCNElfSymbolRef> Symbol{
-                  std::nullopt};
-              llvm::Error Err = LCO.getCodeObject()
-                                    .lookupSymbol(InitialExecutionPoint.second)
-                                    .moveInto(Symbol);
-              if (Err) {
-                Ctx.emitError(llvm::toString(std::move(Err)));
-                llvm_unreachable("Should have thrown an error by now");
-              }
-
-              if (!Symbol.has_value()) {
-                Ctx.emitError(
-                    llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-                        "Failed to find the symbol {0} in "
-                        "code object index {1}",
-                        InitialExecutionPoint.second, CodeObjectIdx))));
-                llvm_unreachable("Should have thrown an error by now");
-              }
-              uint64_t LoadOffset;
-              Err = Symbol->getAddress().moveInto(LoadOffset);
-              if (Err) {
-                Ctx.emitError(llvm::toString(std::move(Err)));
-                llvm_unreachable("Should have thrown an error by now");
-              }
-              assert(LoadOffset < LCO.getLoadedRegion().size() &&
-                     "Load offset falls outside of the code object");
-              uint64_t LoadAddr =
-                  reinterpret_cast<uint64_t>(LCO.getLoadedRegion().data()) +
-                  LoadOffset;
-              if (!Symbol->isKernelDescriptor()) {
-                Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
-                    "Initial execution point is not a kernel symbol")));
-                llvm_unreachable("Should have thrown an error by now");
-              }
-              auto &KD =
-                  *reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
-                      LoadAddr);
-              return KD;
-            }
-            CodeObjectIdx++;
-          };
-          Ctx.emitError(llvm::toString(
-              LUTHIER_MAKE_GENERIC_ERROR("Failed to get the entry point; "
-                                         "Code object index is out of "
-                                         "range")));
-          llvm_unreachable("Should have thrown an error by now");
-        });
-  });
+  // The initial entry/execution points are read from target-module
+  // metadata stamped by MockLoadAMDGPUCodeObjects, so these analyses take
+  // no resolver and know nothing about the mock loader.
+  MAM.registerPass([]() { return luthier::InitialEntryPointAnalysis(); });
+  MAM.registerPass(
+      []() { return luthier::InitialExecutionPointAnalysis(); });
   MAM.registerPass([]() {
     return luthier::MemoryAllocationAnalysis(std::move(
         std::make_unique<luthier::MockLoaderMemoryAccessor>(*Loader)));
   });
 
+  // Owns the Module -> Prototype mapping ParentPrototypeAnalysis serves. It has
+  // to outlive the pipeline, and the prototype is registered into it once the
+  // prototype's modules are final (see below, just before IPPM.run).
+  static luthier::ModuleToPrototypeMap ParentPrototypeMap;
+  MAM.registerPass(
+      []() { return luthier::ParentPrototypeAnalysis(ParentPrototypeMap); });
+
   MAM.registerPass([]() { return luthier::CodeObjectManagerAnalysis(); });
   MAM.registerPass(
       []() { return luthier::MockAMDGPULoaderAnalysis(*Loader); });
+
+  // Intrinsic-lowering passes (ProcessIntrinsicsAtIRLevelPass,
+  // IntrinsicMIRLoweringPass) query this to find the processor for each
+  // luthier:: intrinsic call. The registry's default constructor installs the
+  // built-ins from IntrinsicRegistry.def; it has to outlive the pipeline, so it
+  // is function-local static rather than a captured local.
+  MAM.registerPass([]() -> luthier::IntrinsicsProcessorsAnalysis {
+    static luthier::IntrinsicProcessorRegistry IntrinsicRegistry;
+    return luthier::IntrinsicsProcessorsAnalysis(IntrinsicRegistry);
+  });
 
   PB.registerPipelineParsingCallback(
       [&](llvm::StringRef Name, llvm::ModulePassManager &MPM,
@@ -1039,8 +882,29 @@ static int compileModule(char **argv,
               luthier::InjectedPayloadSideEffectsPrinterPass(llvm::outs())));
           return true;
         }
+        // Takes an output stream, so llvm::PassBuilder cannot construct it from
+        // a bare name. Registered here so a pipeline can ask for MIR output
+        // (paired with machine-function(print)) without -filetype=null.
+        if (Name == "print-mir-prepare") {
+          MPM.addPass(PrintMIRPreparePass(llvm::outs()));
+          return true;
+        }
         return false;
       });
+
+  // Prototype-level passes that need constructor arguments, and so cannot be
+  // listed in LuthierPassRegistry.def's PROTOTYPE_PASS block.
+  PB.registerPipelineParsingCallback([](llvm::StringRef Name,
+                                        luthier::PrototypePassManager &PPM,
+                                        bool IsTarget) {
+    if (IsTarget)
+      return false;
+    if (Name.trim() == "trace-callgraph-printer") {
+      PPM.addPass(luthier::TraceCallGraphPrinter(llvm::outs()));
+      return true;
+    }
+    return false;
+  });
 
   luthier::PrototypePassManager IPPM;
 
@@ -1089,6 +953,23 @@ static int compileModule(char **argv,
     if (auto Err = Parser->loadMIR(*IP, PAM))
       reportError(std::move(Err), InputFilename);
   }
+
+  // Passes that only see one module — the machine-function passes
+  // InjectedPayloadPEIPass and SVAPhysVGPRPinPass — find their way back to the
+  // owning prototype through ParentPrototypeAnalysis. They read it with
+  // getCachedResult, so the result has to be materialized here rather than
+  // left to be computed lazily on first use.
+  ParentPrototypeMap.registerPrototype(*IP);
+  (void)MAM.getResult<luthier::ParentPrototypeAnalysis>(
+      IP->getInstrumentationModule());
+  (void)MAM.getResult<luthier::ParentPrototypeAnalysis>(IP->getTargetModule());
+
+  // InjectedPayloadPEIPass likewise requires a cached
+  // InjectedPayloadAndInstPointAnalysis: a machine-function pass has no way to
+  // compute a Prototype-level analysis itself. Materializing it up front is
+  // safe — a pipeline that goes on to add or remove payloads reports the
+  // analysis as not preserved, which drops this result.
+  (void)PAM.getResult<luthier::InjectedPayloadAndInstPointAnalysis>(*IP);
 
   IPPM.run(*IP, PAM);
 

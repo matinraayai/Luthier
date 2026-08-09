@@ -15,8 +15,9 @@ lit_config.load_config(
       config, os.path.join(config.my_src_root, "lit.cfg.py"))
 
 
-tool_codegen_plugin_path = os.path.join("@CMAKE_BINARY_DIR@/lib", "LuthierToolCodeGenPlugin.so")
-config.substitutions.append(('%luthier_tool_code_gen_plugin', tool_codegen_plugin_path))
+# NOTE: there is deliberately no %luthier_tool_code_gen_plugin substitution.
+# The ToolCodeGen passes are linked directly into luthier-llc, so tests must not
+# load them as a plugin.
 
 tool_ir_compilation_plugin_path = os.path.join("@CMAKE_BINARY_DIR@/lib",
                                  "LuthierToolIRCompilationPlugin.so")
@@ -35,14 +36,16 @@ config.substitutions.append(('%luthier_split_test',
 
 mock_injection_plugin_path = os.path.join("@CMAKE_BINARY_DIR@/lib",
                                           "LuthierMockInjectionPlugin.so")
-# Both flags are needed: -load= pre-dlopens the shared object so its cl::opt
-# globals register before command-line parsing (otherwise pass-specific
-# options like -luthier-mock-inject-opcode are rejected as unknown);
-# -luthier-plugin= registers the plugin with InstrumentationPMDriver so it
-# can resolve mock pass names during pipeline parsing.
+# A single -load-pass-plugin= is enough: luthier::PassPlugin::Load dlopens the
+# shared object (registering its cl::opt globals, so options like
+# -luthier-mock-inject-opcode are accepted) and then invokes the plugin's
+# RegisterPrototypePassBuilderCallback, which is what teaches the
+# InstrumentationPassBuilder to resolve the mock pass names while parsing
+# -passes. The old -load= / -luthier-plugin= pair is gone along with
+# InstrumentationPMDriver.
 config.substitutions.append(
     ('%luthier_mock_injection_plugin',
-     f"-load={mock_injection_plugin_path} -luthier-plugin={mock_injection_plugin_path}"))
+     f"-load-pass-plugin={mock_injection_plugin_path}"))
 
 config.substitutions.append(
     ('%luthier_test_imodule_dir', "@CMAKE_BINARY_DIR@/test/imodule"))

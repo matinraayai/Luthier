@@ -34,6 +34,12 @@ Prototype::Prototype(
          "Prototype modules must share an LLVMContext");
 }
 
+void preserveInnerAnalysisManagerProxies(llvm::PreservedAnalyses &PA) {
+  PA.preserve<ModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<FunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<MachineFunctionAnalysisManagerPrototypeProxy>();
+}
+
 void Prototype::forEachTargetMF(
     PrototypeAnalysisManager &PAM,
     llvm::function_ref<void(llvm::MachineFunction &)> Fn) {
@@ -56,10 +62,15 @@ runModulePass(RunOnTargetModuleAdaptor::PassConceptT &Pass, llvm::Module &M,
       IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
-  // Request PassInstrumentation from the analysis manager; it drives the
-  // instrumenting callbacks around the pass below.
+  // Request PassInstrumentation from the *module* analysis manager; it drives
+  // the instrumenting callbacks around the pass below. Deliberately not taken
+  // from IPAM: the Prototype level runs on a separate, empty PIC because LLVM's
+  // StandardInstrumentations cannot name a Prototype IR unit (see
+  // InstrumentationPassBuilder::PrototypePIC). The pass being wrapped here is a
+  // plain module pass, so the module-level callbacks apply to it and keep
+  // -print-after-all / -time-passes working.
   llvm::PassInstrumentation PI =
-      IPAM.getResult<llvm::PassInstrumentationAnalysis>(IP);
+      MAM.getResult<llvm::PassInstrumentationAnalysis>(M);
 
   // Check the BeforePass callbacks; if asked to skip, do not run the pass and
   // report that everything is preserved.
@@ -79,6 +90,14 @@ runModulePass(RunOnTargetModuleAdaptor::PassConceptT &Pass, llvm::Module &M,
   // preserved. Keep the proxy live so the inner manager is not cleared.
   PA.preserveSet<llvm::AllAnalysesOn<llvm::Module>>();
   PA.preserve<ModuleAnalysisManagerPrototypeProxy>();
+  // Same for the function- and machine-function-level proxies. MAM.invalidate
+  // above already propagated the pass's PA down to the per-function analyses
+  // through MAM's own FunctionAnalysisManagerModuleProxy, so there is nothing
+  // left for the Prototype-level proxies to do — and letting them invalidate
+  // would call InnerAM->clear(), wiping the *entire* shared manager for both
+  // modules, including the cached MachineFunctionAnalysis results that hold the
+  // lifted target MIR.
+  preserveInnerAnalysisManagerProxies(PA);
   return PA;
 }
 

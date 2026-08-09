@@ -15,6 +15,7 @@ set(LLVM_LINK_COMPONENTS
         CodeGenTypes
         Core
         Demangle
+        ipo
         IRPrinter
         IRReader
         Linker
@@ -23,6 +24,7 @@ set(LLVM_LINK_COMPONENTS
         MCDisassembler
         MIRParser
         Object
+        ObjCARCOpts
         Symbolize
         DebugInfoDWARF
         Passes
@@ -49,7 +51,6 @@ target_include_directories(luthier-llc PRIVATE ${LLVM_INCLUDE_DIRS} "${CMAKE_SOU
 target_link_libraries(luthier-llc PRIVATE
         LuthierToolCodeGen
         LuthierToolIRCompilation
-        LuthierToolCodeGenTesting
         LuthierPassPlugin
         LuthierIntrinsic
         LuthierObject

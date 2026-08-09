@@ -58,6 +58,10 @@ MACHINE_FUNCTION_ANALYSIS("luthier-mir-to-ir-translation",
 #define MACHINE_FUNCTION_PASS(NAME, CREATE_PASS)
 #endif
 MACHINE_FUNCTION_PASS("luthier-injected-payload-pei", InjectedPayloadPEIPass())
+// Runs pre-WWM-regalloc on injected-payload MFs; despite operating in service
+// of the prototype's SVA it is a plain MachineFunction pass, so it must not be
+// listed as a PROTOTYPE_PASS.
+MACHINE_FUNCTION_PASS("luthier-sva-phys-vgpr-pin", SVAPhysVGPRPinPass())
 #undef MACHINE_FUNCTION_PASS
 
 // Prototype-level passes and analyses run against \c luthier::Prototype.
@@ -67,10 +71,10 @@ MACHINE_FUNCTION_PASS("luthier-injected-payload-pei", InjectedPayloadPEIPass())
 #ifndef PROTOTYPE_PASS
 #define PROTOTYPE_PASS(NAME, CREATE_PASS)
 #endif
+PROTOTYPE_PASS("luthier-code-discovery", CodeDiscoveryPass())
 PROTOTYPE_PASS("luthier-intrinsic-mir-lowering", IntrinsicMIRLoweringPass())
 PROTOTYPE_PASS("luthier-injected-payload-preserve-live-regs",
                InjectedPayloadPreserveLiveRegsPass())
-PROTOTYPE_PASS("luthier-sva-phys-vgpr-pin", SVAPhysVGPRPinPass())
 PROTOTYPE_PASS("luthier-target-module-patcher", TargetModulePatcherPass())
 #undef PROTOTYPE_PASS
 

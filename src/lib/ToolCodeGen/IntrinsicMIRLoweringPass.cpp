@@ -29,6 +29,7 @@
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
 #include <AMDGPU.h>
 #include <SIInstrInfo.h>
+#include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <SIMachineFunctionInfo.h>
 #include <SIRegisterInfo.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
@@ -663,9 +664,26 @@ bool IntrinsicMIRLoweringPass::lowerIntrinsics(
     }
   }
 
+  // The IModule's MFs are reached through the function analysis manager's
+  // MachineFunctionAnalysis rather than the MMI: that is where the .luthier MIR
+  // parser puts them, and where the other consumers of instrumentation-module
+  // MIR look (InjectedPayloadAndInstPointAnalysis, writeLuthierFile, the target
+  // module patcher). Going through the MMI silently finds nothing for a
+  // MIR-sourced instrumentation module and skips every lowering.
+  llvm::FunctionAnalysisManager &IModuleFAM =
+      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(IModule)
+          .getManager();
+
   for (llvm::Function &F : IModule) {
+    if (F.isDeclaration())
+      continue;
     bool IsInjectedPayload = F.hasFnAttribute(InjectedPayloadAttribute);
-    llvm::MachineFunction *MF = MMI.getMachineFunction(F);
+    llvm::MachineFunction *MF = nullptr;
+    if (auto *MFRes =
+            IModuleFAM.getCachedResult<llvm::MachineFunctionAnalysis>(F))
+      MF = &MFRes->getMF();
+    else
+      MF = MMI.getMachineFunction(F);
     if (!MF)
       continue;
     Changed |= processMachineFunction(*MF, IsInjectedPayload,
@@ -832,7 +850,7 @@ IntrinsicMIRLoweringPass::run(Prototype &IP,
   // downstream passes still need the cached MachineFunctionAnalysis results
   // for the instrumentation module we just mutated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  PA.preserve<ModuleAnalysisManagerPrototypeProxy>();
+  preserveInnerAnalysisManagerProxies(PA);
   return PA;
 }
 

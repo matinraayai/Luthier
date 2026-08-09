@@ -23,6 +23,9 @@
 #include "luthier/ToolCodeGen/MockAMDGPULoader.h"
 #include <llvm/IR/PassManager.h>
 #include <llvm/Support/CommandLine.h>
+#include <string>
+#include <utility>
+#include <variant>
 
 namespace luthier {
 
@@ -37,6 +40,38 @@ struct MockAMDGPULoaderExternalVarParser
   // parse - Return true on error.
   bool parse(llvm::cl::Option &O, llvm::StringRef ArgName,
              llvm::StringRef ArgValue, std::pair<std::string, uint64_t> &Val);
+};
+
+/// \brief Spec of an entry point relative to the mock loader: a code object
+/// index paired with either a symbol name or a load offset into that object.
+using MockAMDGPULoaderEntryPointSpec =
+    std::pair<uint64_t, std::variant<uint64_t, std::string>>;
+
+/// \brief Parser for \c -initial-entrypoint, accepting
+/// \c <code-object-index>:<mangled-symbol-name> or
+/// \c <code-object-index>:<load-offset>
+struct MockAMDGPULoaderInitialEntryPointParser
+    : public llvm::cl::parser<MockAMDGPULoaderEntryPointSpec> {
+
+  MockAMDGPULoaderInitialEntryPointParser(llvm::cl::Option &O)
+      : llvm::cl::parser<MockAMDGPULoaderEntryPointSpec>(O) {}
+
+  // parse - Return true on error.
+  bool parse(llvm::cl::Option &O, llvm::StringRef ArgName,
+             llvm::StringRef ArgValue, MockAMDGPULoaderEntryPointSpec &Val);
+};
+
+/// \brief Parser for \c -initial-execution-point, accepting
+/// \c <code-object-index>:<mangled-symbol-name>
+struct MockAMDGPULoaderInitialExecutionPointParser
+    : public llvm::cl::parser<std::pair<uint64_t, std::string>> {
+
+  MockAMDGPULoaderInitialExecutionPointParser(llvm::cl::Option &O)
+      : llvm::cl::parser<std::pair<uint64_t, std::string>>(O) {}
+
+  // parse - Return true on error.
+  bool parse(llvm::cl::Option &O, llvm::StringRef ArgName,
+             llvm::StringRef ArgValue, std::pair<uint64_t, std::string> &Val);
 };
 
 struct MockAMDGPULoaderAnalysisOptions {
@@ -59,8 +94,42 @@ struct MockAMDGPULoaderAnalysisOptions {
               "A set of external variables to be defined by the loader. Must "
               "be formated as <var1>:<addr1> <var2>:<addr2> etc."),
           llvm::cl::NotHidden, llvm::cl::cat(MockLoaderOptions)};
+
+  llvm::cl::opt<MockAMDGPULoaderEntryPointSpec, false,
+                MockAMDGPULoaderInitialEntryPointParser>
+      InitialEntryPoint{
+          "initial-entrypoint",
+          llvm::cl::desc(
+              "The initial entry point of the lifting process. "
+              "Formatted as <code-object-index>:<mangled-symbol-name> or "
+              "<code-object-index>:<load-offset>. \n"
+              "Code objects are zero indexed w.r.t the order they are "
+              "specified to be loaded into the mock loader."),
+          llvm::cl::NotHidden, llvm::cl::cat(MockLoaderOptions)};
+
+  llvm::cl::opt<std::pair<uint64_t, std::string>, false,
+                MockAMDGPULoaderInitialExecutionPointParser>
+      InitialExecutionPoint{
+          "initial-execution-point",
+          llvm::cl::desc(
+              "The initial execution point of the lifting process. "
+              "Formatted as <code-object-index>:<mangled-symbol-name>. \n"
+              "Code objects are zero indexed w.r.t the order they are "
+              "specified to be loaded into the mock loader."),
+          llvm::cl::NotHidden, llvm::cl::cat(MockLoaderOptions)};
 };
 
+/// \brief Loads the code objects named on the command line into the
+/// \c MockAMDGPULoader, then records the initial entry and execution points on
+/// the module.
+///
+/// \details Resolving \c -initial-entrypoint / \c -initial-execution-point is
+/// this pass's job because their spelling is loader-relative — a code object
+/// index plus a symbol or offset only means something to whoever performed the
+/// load. The resolved addresses are written to the module as
+/// \c luthier.initial_entry_point and \c luthier.initial_execution_point (see
+/// \c InitialEntryPointAnalysis.h), so downstream analyses read them straight
+/// off the module and never need to know a mock loader was involved.
 class MockLoadAMDGPUCodeObjects
     : public llvm::PassInfoMixin<MockLoadAMDGPUCodeObjects> {
   MockAMDGPULoaderAnalysisOptions &Options;

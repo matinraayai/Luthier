@@ -1726,6 +1726,17 @@ CodeDiscoveryPass::run(Prototype &IP,
     PA.preserve<llvm::MachineFunctionAnalysisManagerModuleProxy>();
     PA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
     TargetMAM.invalidate(TargetModule, PA);
+    /// The Prototype-level proxies have to be preserved too, for a stronger
+    /// reason than staleness: their invalidation hooks call InnerAM->clear() on
+    /// the *entire* shared manager (see Prototype.cpp), so letting them fire
+    /// here destroys every cached MachineFunctionAnalysis result — and those
+    /// results own the MachineFunctions, \c MF among them, which this loop goes
+    /// on to use immediately below. Module-level invalidation was already done
+    /// explicitly against TargetMAM above, so these proxies have nothing to
+    /// contribute. Everything else stays unpreserved, so the IP-level analyses
+    /// this invalidate exists for (\c TraceCallGraphAnalysis in particular) are
+    /// still dropped.
+    preserveInnerAnalysisManagerProxies(PA);
     IPAM.invalidate(IP, PA);
 
     /// Translate the machine function to LLVM IR through the pinned
@@ -1847,7 +1858,7 @@ CodeDiscoveryPass::run(Prototype &IP,
   // downstream passes (InstrumentationPMDriver, NewPMAsmPrinter) still need
   // the target module's MachineFunctionAnalysis cache we just populated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  PA.preserve<ModuleAnalysisManagerPrototypeProxy>();
+  preserveInnerAnalysisManagerProxies(PA);
   return PA;
 }
 } // namespace luthier

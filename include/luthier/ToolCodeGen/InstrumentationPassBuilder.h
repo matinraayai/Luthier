@@ -231,6 +231,20 @@ private:
   llvm::PassInstrumentationCallbacks *PIC;
   std::unique_ptr<llvm::PassBuilder> PB;
 
+  /// \brief Instrumentation callbacks used for the \c Prototype level of the
+  /// pipeline, deliberately kept empty.
+  ///
+  /// \details LLVM's \c StandardInstrumentations dispatches on the IR unit type
+  /// via \c llvm::Any and \c llvm_unreachable s on anything outside
+  /// Module/Function/SCC/Loop/MachineFunction (see \c getIRName in
+  /// \c StandardInstrumentations.cpp). \c Prototype is a Luthier-only IR unit,
+  /// so routing \c PassManager<Prototype> 's before/after-pass callbacks
+  /// through the PIC that \c StandardInstrumentations registered against would
+  /// abort — or, in an NDEBUG build, segfault — on the very first pass. The
+  /// nested Module/Function/MachineFunction levels keep using the real PIC, so
+  /// \c -print-after-all and friends still work for everything LLVM can name.
+  llvm::PassInstrumentationCallbacks PrototypePIC;
+
   llvm::SmallVector<ParseCallback, 2> ParseCallbacks;
   llvm::SmallVector<PreCodeDiscoveryCallback, 2> PreCodeDiscoveryCallBacks;
   llvm::SmallVector<PreInstrumentationCallback, 2> PreInstrumentationCallbacks;

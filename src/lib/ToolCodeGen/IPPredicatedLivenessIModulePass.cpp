@@ -386,7 +386,7 @@ IModuleIPPredicatedLivenessAnalysis::run(
       IPAM.getResult<IPPredCFGAnalysis>(IP).getVecCFG();
 
   const InjectedPayloadAndInstPoint &IPIP =
-      MAM.getResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+      IPAM.getResult<InjectedPayloadAndInstPointAnalysis>(IP);
 
   // The IModule's payload side-effects come from a function-level analysis;
   // pre-collect the per-payload result for every payload named in the IPIP

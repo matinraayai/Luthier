@@ -706,10 +706,10 @@ SVStorageAndLoadLocationsAnalysis::run(
       MAM.getResult<llvm::MachineModuleAnalysis>(TargetModule).getMMI();
 
   const InjectedPayloadAndInstPoint &IPIP =
-      MAM.getResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+      IPAM.getResult<InjectedPayloadAndInstPointAnalysis>(IP);
 
   FunctionPreambleDescriptor &FPD =
-      MAM.getResult<FunctionPreambleDescriptorAnalysis>(TargetModule);
+      IPAM.getResult<FunctionPreambleDescriptorAnalysis>(IP);
 
   // TODO(NPM): source PayloadLiveSetsByFn from a migrated
   // IP-level liveness analysis. IModuleIPPredicatedLivenessAnalysis is still

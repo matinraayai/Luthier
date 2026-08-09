@@ -1217,7 +1217,7 @@ TargetModulePatcherPass::run(Prototype &IP,
              << "[TargetModulePatcherPass] === Phase B.3: inline "
                 "injected payloads ===\n");
   const InjectedPayloadAndInstPoint &IPIP =
-      MAM.getResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+      IPAM.getResult<InjectedPayloadAndInstPointAnalysis>(IP);
 
   // `MachineBasicBlock::splitAt` (called by `inlineInjectedPayload` when
   // the payload entry isn't the first MI of its MBB) needs `TracksLiveness`
@@ -1548,7 +1548,7 @@ TargetModulePatcherPass::run(Prototype &IP,
   // cached MachineFunctionAnalysis results for the target module we just
   // mutated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  PA.preserve<ModuleAnalysisManagerPrototypeProxy>();
+  preserveInnerAnalysisManagerProxies(PA);
   return PA;
 }
 

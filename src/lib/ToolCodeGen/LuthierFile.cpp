@@ -133,19 +133,94 @@ namespace luthier {
 
 namespace {
 
-/// Returns a map from metadata slot number to \c MDNode* for every metadata
-/// node reachable from \p M. The slot numbers match the IR printer's
-/// assignment because both use \c ModuleSlotTracker
-llvm::DenseMap<unsigned, llvm::MDNode *> buildSlotToMDNodeMap(llvm::Module &M) {
-  llvm::ModuleSlotTracker MST(&M, /*ShouldInitializeAllMetadata=*/true);
-  llvm::ModuleSlotTracker::MachineMDNodeListType MDList;
-  MST.collectMDNodes(MDList, 0, ~0u);
-  llvm::DenseMap<unsigned, llvm::MDNode *> Out;
-  Out.reserve(MDList.size());
-  for (auto &[Slot, MD] : MDList)
-    Out[Slot] = const_cast<llvm::MDNode *>(MD);
-  return Out;
+/// Resolves a \c Function to its \c MachineFunction, or null when it has none.
+using MFAccessor = llvm::function_ref<llvm::MachineFunction *(llvm::Function &)>;
+
+/// \brief Assigns every \c MDNode in \p M a slot number, and returns both
+/// directions of the mapping.
+///
+/// \details Slot numbers are a name for a node that survives serialization: the
+/// same walk over the same module — before writing, or after parsing it back —
+/// visits the same nodes in the same order, so index N means the same node on
+/// both sides. That is all a \c MDSlotMap entry needs.
+///
+/// The walk deliberately does not use \c ModuleSlotTracker's numbering. Two
+/// reasons: its underlying \c SlotTracker is only initialized as a side effect
+/// of printing (there is no public way to force it, and \c collectMDNodes
+/// silently yields nothing until then), and more importantly it enumerates IR
+/// only. Nodes hanging off a \c MachineInstr — a \c pcsections tag naming an
+/// instrumentation point, which is exactly the kind of node the two modules
+/// share — have no IR user at all and would never be named.
+///
+/// \p GetMF supplies the \c MachineFunction for a \c Function so MI-level
+/// attachments can be reached. Passing an accessor that always returns null
+/// restricts the walk to IR, which is all that is available before the MIR
+/// parser has run.
+struct MDNodeSlots {
+  llvm::DenseMap<unsigned, llvm::MDNode *> SlotToMD;
+  llvm::DenseMap<const llvm::MDNode *, unsigned> MDToSlot;
+
+  void record(llvm::MDNode *MD) {
+    if (!MD || MDToSlot.contains(MD))
+      return;
+    unsigned Slot = MDToSlot.size();
+    MDToSlot[MD] = Slot;
+    SlotToMD[Slot] = MD;
+    /// Nested nodes are numbered too, so a shared node is nameable even when it
+    /// is only reachable as an operand of something else.
+    for (const llvm::MDOperand &Op : MD->operands())
+      if (auto *Nested = llvm::dyn_cast_or_null<llvm::MDNode>(Op.get()))
+        record(Nested);
+  }
+
+  void recordAttachments(const llvm::Value &V) {
+    llvm::SmallVector<std::pair<unsigned, llvm::MDNode *>> Attachments;
+    if (const auto *GO = llvm::dyn_cast<llvm::GlobalObject>(&V))
+      GO->getAllMetadata(Attachments);
+    else if (const auto *I = llvm::dyn_cast<llvm::Instruction>(&V))
+      I->getAllMetadata(Attachments);
+    for (auto &[KindID, MD] : Attachments)
+      record(MD);
+  }
+};
+
+MDNodeSlots buildMDNodeSlots(llvm::Module &M, MFAccessor GetMF) {
+  MDNodeSlots Slots;
+
+  for (llvm::NamedMDNode &NMD : M.named_metadata())
+    for (llvm::MDNode *Op : NMD.operands())
+      Slots.record(Op);
+
+  for (llvm::GlobalVariable &GV : M.globals())
+    Slots.recordAttachments(GV);
+
+  for (llvm::Function &F : M) {
+    Slots.recordAttachments(F);
+    for (llvm::BasicBlock &BB : F)
+      for (llvm::Instruction &I : BB)
+        Slots.recordAttachments(I);
+
+    llvm::MachineFunction *MF = GetMF(F);
+    if (!MF)
+      continue;
+    for (llvm::MachineBasicBlock &MBB : *MF)
+      for (llvm::MachineInstr &MI : MBB) {
+        Slots.record(MI.getPCSections());
+        for (llvm::MachineMemOperand *MMO : MI.memoperands()) {
+          llvm::AAMDNodes AAInfo = MMO->getAAInfo();
+          Slots.record(AAInfo.TBAA);
+          Slots.record(AAInfo.TBAAStruct);
+          Slots.record(AAInfo.Scope);
+          Slots.record(AAInfo.NoAlias);
+        }
+      }
+  }
+
+  return Slots;
 }
+
+/// An accessor for modules whose MIR has not been parsed yet.
+llvm::MachineFunction *noMachineFunctions(llvm::Function &) { return nullptr; }
 
 /// Parses one module out of a text blob according to its \c ModuleFormat
 llvm::Expected<std::unique_ptr<llvm::Module>> parseOneModule(
@@ -206,12 +281,13 @@ llvm::Expected<std::unique_ptr<llvm::Module>> parseOneModule(
 /// \c replaceAllUsesWith because uniqued nodes can't be RAUW'd.
 void patchIModuleMDNodeReferences(
     llvm::Module &IModule, llvm::Module &TargetModule,
-    llvm::ArrayRef<LuthierFileParser::MDSlotEntry> MDSlotMap) {
+    llvm::ArrayRef<LuthierFileParser::MDSlotEntry> MDSlotMap,
+    MFAccessor GetTargetMF, MFAccessor GetIModuleMF) {
   if (MDSlotMap.empty())
     return;
 
-  auto TargetSlotToMD = buildSlotToMDNodeMap(TargetModule);
-  auto IModuleSlotToMD = buildSlotToMDNodeMap(IModule);
+  auto TargetSlotToMD = buildMDNodeSlots(TargetModule, GetTargetMF).SlotToMD;
+  auto IModuleSlotToMD = buildMDNodeSlots(IModule, GetIModuleMF).SlotToMD;
 
   llvm::ValueToValueMapTy VM;
   for (auto &[IModSlot, TgtSlot] : MDSlotMap) {
@@ -333,7 +409,9 @@ llvm::Expected<std::unique_ptr<Prototype>> LuthierFileParser::loadPrototype(
     return IModuleMOrErr.takeError();
   std::unique_ptr<llvm::Module> IModuleM = std::move(*IModuleMOrErr);
 
-  patchIModuleMDNodeReferences(*IModuleM, *TargetM, MDSlotMap);
+  /// Re-linking the two modules' shared MDNodes is deliberately deferred to
+  /// loadMIR: the nodes that need re-linking hang off MachineInstrs, which do
+  /// not exist until the MIR parser has run.
 
   return std::make_unique<Prototype>(std::move(TargetM), std::move(IModuleM));
 }
@@ -342,7 +420,7 @@ llvm::Error LuthierFileParser::loadMIR(Prototype &P,
                                        PrototypeAnalysisManager &PAM) {
   llvm::Module &TargetModule = P.getTargetModule();
   llvm::Module &IModule = P.getInstrumentationModule();
-  if (PAM.isPassRegistered<ModuleAnalysisManagerPrototypeProxy>()) {
+  if (!PAM.isPassRegistered<ModuleAnalysisManagerPrototypeProxy>()) {
     return LUTHIER_MAKE_GENERIC_ERROR(
         "Module analysis manager prototype proxy is not registered");
   }
@@ -359,6 +437,20 @@ llvm::Error LuthierFileParser::loadMIR(Prototype &P,
     return LUTHIER_MAKE_GENERIC_ERROR(
         "Failed to parse the instrumentation module machine functions");
   }
+
+  /// Now that both modules' MIR exists, restore the MDNodes the two of them
+  /// shared before serialization — instrumentation-point tags above all. This
+  /// has to happen here rather than at parse time because those tags are reached
+  /// through MachineInstrs.
+  llvm::FunctionAnalysisManager &FAM =
+      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
+          .getManager();
+  auto GetMF = [&FAM](llvm::Function &F) -> llvm::MachineFunction * {
+    auto *MFRes = FAM.getCachedResult<llvm::MachineFunctionAnalysis>(F);
+    return MFRes ? &MFRes->getMF() : nullptr;
+  };
+  patchIModuleMDNodeReferences(IModule, TargetModule, MDSlotMap, GetMF, GetMF);
+
   return llvm::Error::success();
 }
 
@@ -399,21 +491,34 @@ llvm::Error writeLuthierFile(llvm::raw_ostream &OS, Prototype &IP,
     IModule.print(SS, nullptr);
   }
 
-  // Record MDNode slot pairs shared between both modules so that load()
-  // can restore the cross-module links on reload.
-  auto TargetSlotToMD = buildSlotToMDNodeMap(TargetModule);
-  auto IModuleSlotToMD = buildSlotToMDNodeMap(IModule);
+  // Record MDNode slot pairs shared between both modules so that loadMIR() can
+  // restore the cross-module links on reload. Serializing the two modules
+  // separately turns a node they share into two independent nodes — and the
+  // nodes that matter here are `distinct`, so re-parsing cannot re-unify them
+  // either. Without this map an instrumentation point survives as a payload
+  // attachment and as a target pcsections tag that no longer compare equal, and
+  // InjectedPayloadAndInstPointAnalysis (which matches on pointer identity) sees
+  // no payloads at all.
+  //
+  // The walk has to reach MachineInstr attachments on both sides, since a
+  // pcsections tag has no IR user.
+  auto GetMF = [&FAM](llvm::Function &F) -> llvm::MachineFunction * {
+    auto *MFRes = FAM.getCachedResult<llvm::MachineFunctionAnalysis>(F);
+    return MFRes ? &MFRes->getMF() : nullptr;
+  };
+  auto TargetSlots = buildMDNodeSlots(TargetModule, GetMF);
+  auto IModuleSlots = buildMDNodeSlots(IModule, GetMF);
 
-  llvm::DenseMap<const llvm::MDNode *, unsigned> TargetMDToSlot;
-  TargetMDToSlot.reserve(TargetSlotToMD.size());
-  for (auto &[Slot, MD] : TargetSlotToMD)
-    TargetMDToSlot[MD] = Slot;
-
-  for (auto &[IModSlot, MD] : IModuleSlotToMD) {
-    auto It = TargetMDToSlot.find(MD);
-    if (It != TargetMDToSlot.end())
+  for (auto &[IModSlot, MD] : IModuleSlots.SlotToMD) {
+    auto It = TargetSlots.MDToSlot.find(MD);
+    if (It != TargetSlots.MDToSlot.end())
       Y.MDSlotMap.push_back({IModSlot, It->second});
   }
+  // DenseMap iteration order is unspecified; keep the file deterministic.
+  llvm::sort(Y.MDSlotMap, [](const LuthierFileParser::MDSlotEntry &A,
+                             const LuthierFileParser::MDSlotEntry &B) {
+    return A.IModuleSlot < B.IModuleSlot;
+  });
 
   llvm::yaml::Output Yout(OS);
   Yout << Y;

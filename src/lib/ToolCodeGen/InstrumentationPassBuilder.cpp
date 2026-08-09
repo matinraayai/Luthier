@@ -1148,14 +1148,16 @@ void InstrumentationPassBuilder::crossRegisterProxies(
     llvm::CGSCCAnalysisManager &CGAM, llvm::FunctionAnalysisManager &FAM,
     llvm::LoopAnalysisManager &LAM,
     llvm::MachineFunctionAnalysisManager &MFAM) {
-  // The adaptors run pass instrumentation at the Prototype level, so
-  // PassInstrumentationAnalysis must be available on its analysis manager.
-  // Register it against the PIC held by the wrapped llvm::PassBuilder so
-  // callbacks are shared with the nested Module/Function/MachineFunction
-  // managers.
-  PassInstrumentationCallbacks *ThePIC = PB->getPassInstrumentationCallbacks();
+  // PassManager<Prototype>::run requires PassInstrumentationAnalysis on the
+  // Prototype analysis manager. It must NOT be the PIC held by the wrapped
+  // llvm::PassBuilder: that one carries StandardInstrumentations' callbacks,
+  // which cannot name a Prototype IR unit and abort on the first pass. See
+  // PrototypePIC's declaration for the full rationale. The adaptors instrument
+  // the module passes they wrap using the module-level PassInstrumentation
+  // instead (see runModulePass in Prototype.cpp), so wrapped passes keep the
+  // real callbacks.
   PAM.registerPass(
-      [ThePIC] { return llvm::PassInstrumentationAnalysis(ThePIC); });
+      [this] { return llvm::PassInstrumentationAnalysis(&PrototypePIC); });
 
   PAM.registerPass([&] { return ModuleAnalysisManagerPrototypeProxy(MAM); });
   PAM.registerPass([&] { return FunctionAnalysisManagerPrototypeProxy(FAM); });
@@ -1196,6 +1198,13 @@ void InstrumentationPassBuilder::registerFunctionAnalyses(
 #define FUNCTION_ANALYSIS(NAME, CREATE_PASS)                                   \
   FAM.registerPass([&] { return CREATE_PASS; });
 #include "luthier/ToolCodeGen/LuthierPassRegistry.def"
+
+  // Must forward to the wrapped builder, exactly like registerModuleAnalyses /
+  // registerCGSCCAnalyses / registerLoopAnalyses do. Without this none of the
+  // stock LLVM function analyses — MachineFunctionAnalysis among them — are
+  // registered, and the first pass to query one trips "Analysis passes must be
+  // registered prior to being queried!".
+  PB->registerFunctionAnalyses(FAM);
 }
 
 void InstrumentationPassBuilder::registerLoopAnalyses(
@@ -1208,6 +1217,10 @@ void InstrumentationPassBuilder::registerMachineFunctionAnalyses(
 #define MACHINE_FUNCTION_ANALYSIS(NAME, CREATE_PASS)                           \
   MFAM.registerPass([&] { return CREATE_PASS; });
 #include "luthier/ToolCodeGen/LuthierPassRegistry.def"
+
+  // See registerFunctionAnalyses: the stock LLVM machine-function analyses have
+  // to be registered too.
+  PB->registerMachineFunctionAnalyses(MFAM);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1224,9 +1237,44 @@ Error InstrumentationPassBuilder::parsePipeline(PrototypePassManager &PPM,
         !IsTarget && Remaining.consume_front("instrumentation(");
 
     if (!IsTarget && !IsInstrumentation) {
+      // A bare name at the top level denotes a Prototype-level pass: it runs
+      // over the whole prototype rather than over one of its two modules, so
+      // there is no target(...) / instrumentation(...) wrapper to put it in.
+      StringRef Name = Remaining.take_until([](char C) { return C == ','; });
+      Remaining = Remaining.drop_front(Name.size()).ltrim();
+      if (Remaining.consume_front(","))
+        Remaining = Remaining.ltrim();
+      Name = Name.trim();
+
+      bool Found = false;
+#define PROTOTYPE_PASS(NAME, CREATE_PASS)                                      \
+  if (!Found && Name == NAME) {                                                \
+    PPM.addPass(CREATE_PASS);                                                  \
+    Found = true;                                                              \
+  }
+#include "luthier/ToolCodeGen/LuthierPassRegistry.def"
+
+      if (Found)
+        continue;
+
+      // Give plugins a shot at the bare name before giving up. They are handed
+      // the name as the "inner text" with no enclosing block, which the
+      // IsTarget=false / IsInstrumentation=false pair below distinguishes from
+      // a real instrumentation(...) block.
+      for (auto &Cb : ParseCallbacks) {
+        if (Cb(Name, PPM, /*IsTarget=*/false)) {
+          Found = true;
+          break;
+        }
+      }
+      if (Found)
+        continue;
+
       return LUTHIER_MAKE_GENERIC_ERROR(
-          "expected 'target(...)' or 'instrumentation(...)' at top level of "
-          "-passes (bare pass names are not allowed)");
+          ("unknown Prototype-level pass name '" + Name +
+           "' at top level of -passes (expected a Prototype pass, "
+           "'target(...)', or 'instrumentation(...)')")
+              .str());
     }
 
     size_t Depth = 1;

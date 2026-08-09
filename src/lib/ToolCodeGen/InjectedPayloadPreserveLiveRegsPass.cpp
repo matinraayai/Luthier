@@ -208,7 +208,7 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
   // downstream passes still need the cached MachineFunctionAnalysis results
   // for the instrumentation module we just mutated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  PA.preserve<ModuleAnalysisManagerPrototypeProxy>();
+  preserveInnerAnalysisManagerProxies(PA);
   return PA;
 }
 

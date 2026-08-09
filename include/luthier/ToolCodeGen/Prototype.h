@@ -118,6 +118,24 @@ using PrototypeAnalysisManagerMachineFunctionProxy =
     llvm::OuterAnalysisManagerProxy<PrototypeAnalysisManager,
                                     llvm::MachineFunction>;
 
+/// \brief Marks the three inner analysis-manager proxies as preserved on \p PA.
+///
+/// \details Every Prototype-level pass that reports anything short of
+/// \c PreservedAnalyses::all() must call this unless it genuinely wants the
+/// inner managers emptied. The proxies' invalidation hooks call
+/// \c InnerAM->clear() — for the whole manager, not just the pass's own module
+/// (see the specializations in Prototype.cpp) — which throws away every cached
+/// \c MachineFunctionAnalysis result. Those results own the
+/// <tt>MachineFunction</tt>s, so dropping them silently replaces the lifted
+/// target MIR (and any MIR parsed out of a \c .luthier file) with freshly
+/// created, empty <tt>MachineFunction</tt>s for the next pass that asks.
+///
+/// Per-module and per-function invalidation still happens: a pass that mutates
+/// one module reconciles that module's manager directly (as the adaptors in
+/// this file do), and analyses at the Prototype level are unaffected by this
+/// call.
+void preserveInnerAnalysisManagerProxies(llvm::PreservedAnalyses &PA);
+
 /// \brief Adaptor that runs a single \c llvm::Module pass over the target
 /// module of an \c Prototype.
 ///
