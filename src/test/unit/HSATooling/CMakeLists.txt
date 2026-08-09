@@ -29,7 +29,7 @@ target_link_libraries(HSAToolingTest PRIVATE
 gtest_discover_tests(HSAToolingTest)
 
 #===------------------------------------------------------------------------===#
-# Device relocatable for the end-to-end loader test.
+# Device relocatables for the end-to-end loader test.
 #
 # loadInstrumented takes an AMDGCN relocatable, and prying one out of the HIP
 # driver takes two steps. In the default non-RDC mode the device pipeline runs
@@ -54,36 +54,59 @@ if (CMAKE_HIP_ARCHITECTURES)
     list(GET CMAKE_HIP_ARCHITECTURES 0 _LUTHIER_TEST_HIP_ARCH)
 endif ()
 
-if (_LUTHIER_TEST_HIP_ARCH AND CMAKE_HIP_COMPILER)
-    set(_LUTHIER_TEST_INIT_FINI_OBJECT
-            "${CMAKE_CURRENT_BINARY_DIR}/InitFiniKernels-${_LUTHIER_TEST_HIP_ARCH}.o")
-    set(_LUTHIER_TEST_INIT_FINI_ASM
-            "${CMAKE_CURRENT_BINARY_DIR}/InitFiniKernels-${_LUTHIER_TEST_HIP_ARCH}.s")
-
+# Emits the rule building ${Source} into an AMDGCN relocatable named
+# ${Name}-${arch}.o, and returns its path in ${OutVar}. Any extra arguments are
+# passed on to the HIP compilation step.
+function(luthier_test_device_relocatable OutVar Name Source)
+    set(_Asm "${CMAKE_CURRENT_BINARY_DIR}/${Name}-${_LUTHIER_TEST_HIP_ARCH}.s")
+    set(_Obj "${CMAKE_CURRENT_BINARY_DIR}/${Name}-${_LUTHIER_TEST_HIP_ARCH}.o")
     add_custom_command(
-            OUTPUT "${_LUTHIER_TEST_INIT_FINI_OBJECT}"
+            OUTPUT "${_Obj}"
             COMMAND "${CMAKE_HIP_COMPILER}"
             -x hip --cuda-device-only -S --no-gpu-bundle-output
             -fgpu-allow-device-init -O3 -g0
-            --offload-arch=${_LUTHIER_TEST_HIP_ARCH}
-            -o "${_LUTHIER_TEST_INIT_FINI_ASM}"
-            "${CMAKE_CURRENT_SOURCE_DIR}/InitFiniKernels.hip"
+            --offload-arch=${_LUTHIER_TEST_HIP_ARCH} ${ARGN}
+            -o "${_Asm}" "${Source}"
             COMMAND "${CMAKE_HIP_COMPILER}"
             --target=amdgcn-amd-amdhsa -mcpu=${_LUTHIER_TEST_HIP_ARCH} -c
-            -o "${_LUTHIER_TEST_INIT_FINI_OBJECT}"
-            "${_LUTHIER_TEST_INIT_FINI_ASM}"
-            BYPRODUCTS "${_LUTHIER_TEST_INIT_FINI_ASM}"
-            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/InitFiniKernels.hip"
-            COMMENT "Building the init/fini device relocatable for ${_LUTHIER_TEST_HIP_ARCH}"
+            -o "${_Obj}" "${_Asm}"
+            BYPRODUCTS "${_Asm}"
+            DEPENDS "${Source}"
+            COMMENT "Building the ${Name} device relocatable for ${_LUTHIER_TEST_HIP_ARCH}"
             VERBATIM)
+    set(${OutVar} "${_Obj}" PARENT_SCOPE)
+endfunction()
+
+if (_LUTHIER_TEST_HIP_ARCH AND CMAKE_HIP_COMPILER)
+    # The instrumented copy: one kernel, plus the constructor/destructor kernels.
+    luthier_test_device_relocatable(_LUTHIER_TEST_INIT_FINI_OBJECT
+            InitFiniKernels "${CMAKE_CURRENT_SOURCE_DIR}/InitFiniKernels.hip")
+
+    # Two code objects to add to an entry that already holds the one above: one
+    # carrying a kernel of its own and one carrying none. Both read a global the
+    # first one defines, so they only initialize correctly if the launcher bound
+    # them against it.
+    luthier_test_device_relocatable(_LUTHIER_TEST_ADDENDUM_OBJECT
+            AddendumWithKernel
+            "${CMAKE_CURRENT_SOURCE_DIR}/AdditionalCodeObject.hip"
+            -DLUTHIER_TEST_ADDENDUM_KERNEL)
+    luthier_test_device_relocatable(_LUTHIER_TEST_ADDENDUM_NO_KERNEL_OBJECT
+            AddendumNoKernel
+            "${CMAKE_CURRENT_SOURCE_DIR}/AdditionalCodeObject.hip")
 
     add_custom_target(HSAToolingTestInitFiniObject
-            DEPENDS "${_LUTHIER_TEST_INIT_FINI_OBJECT}")
+            DEPENDS "${_LUTHIER_TEST_INIT_FINI_OBJECT}"
+            "${_LUTHIER_TEST_ADDENDUM_OBJECT}"
+            "${_LUTHIER_TEST_ADDENDUM_NO_KERNEL_OBJECT}")
 else ()
     # Without a HIP compiler or a target architecture there is nothing to load;
     # the test skips on the missing file.
     set(_LUTHIER_TEST_INIT_FINI_OBJECT
             "${CMAKE_CURRENT_BINARY_DIR}/InitFiniKernels-unavailable.o")
+    set(_LUTHIER_TEST_ADDENDUM_OBJECT
+            "${CMAKE_CURRENT_BINARY_DIR}/AddendumWithKernel-unavailable.o")
+    set(_LUTHIER_TEST_ADDENDUM_NO_KERNEL_OBJECT
+            "${CMAKE_CURRENT_BINARY_DIR}/AddendumNoKernel-unavailable.o")
     set(_LUTHIER_TEST_HIP_ARCH "none")
     message(STATUS
             "HSATooling: no HIP compiler / CMAKE_HIP_ARCHITECTURES; the "
@@ -102,6 +125,8 @@ add_llvm_executable(InstrumentedKernelLoaderE2ETest
 target_compile_definitions(InstrumentedKernelLoaderE2ETest PRIVATE
         AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS}
         LUTHIER_TEST_INIT_FINI_OBJECT="${_LUTHIER_TEST_INIT_FINI_OBJECT}"
+        LUTHIER_TEST_ADDENDUM_OBJECT="${_LUTHIER_TEST_ADDENDUM_OBJECT}"
+        LUTHIER_TEST_ADDENDUM_NO_KERNEL_OBJECT="${_LUTHIER_TEST_ADDENDUM_NO_KERNEL_OBJECT}"
         LUTHIER_TEST_INIT_FINI_ARCH="${_LUTHIER_TEST_HIP_ARCH}")
 
 target_include_directories(InstrumentedKernelLoaderE2ETest PRIVATE

@@ -38,11 +38,13 @@
 #include <hsa/amd_hsa_queue.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/SmallSet.h>
+#include <llvm/ADT/StringSet.h>
 #include <llvm/BinaryFormat/ELF.h>
 #include <llvm/Object/ObjectFile.h>
 #include <llvm/Object/SymbolicFile.h>
 #include <llvm/Support/AMDHSAKernelDescriptor.h>
 #include <llvm/Support/Debug.h>
+#include <llvm/Support/Format.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/Process.h>
@@ -64,8 +66,14 @@ constexpr llvm::StringLiteral GlobalDtorKernelName = "amdgcn.device.fini";
 /// Walk the parsed ELF and find the single kernel-function symbol, ignoring
 /// the global constructor/destructor kernels (if present) since those are
 /// not user-visible instrumented kernels.
-llvm::Expected<object::AMDGCNKernelFuncSymbolRef>
-findSingleKernel(const object::AMDGCNObjectFile &Obj) {
+///
+/// \param Required demand a kernel. The first code object loaded under a key
+/// carries the instrumented kernel and so must have exactly one; a code object
+/// added to an existing entry may instead carry only device functions and
+/// globals for the ones already loaded, and gets \c std::nullopt. More than
+/// one kernel is an error either way.
+llvm::Expected<std::optional<object::AMDGCNKernelFuncSymbolRef>>
+findSingleKernel(const object::AMDGCNObjectFile &Obj, bool Required) {
   llvm::Error IterErr = llvm::Error::success();
   std::optional<object::AMDGCNKernelFuncSymbolRef> Found;
   unsigned KernelCount = 0;
@@ -80,12 +88,12 @@ findSingleKernel(const object::AMDGCNObjectFile &Obj) {
   }
   LUTHIER_RETURN_ON_ERROR(std::move(IterErr));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      KernelCount == 1,
-      llvm::formatv("Instrumented relocatable must contain exactly one "
-                    "kernel function (excluding global constructor/"
-                    "destructor kernels); found {0}",
-                    KernelCount)));
-  return *Found;
+      KernelCount <= 1 && (KernelCount == 1 || !Required),
+      llvm::formatv("Instrumented relocatable must contain {0} kernel "
+                    "function (excluding global constructor/destructor "
+                    "kernels); found {1}",
+                    Required ? "exactly one" : "at most one", KernelCount)));
+  return Found;
 }
 
 /// \returns \c true if the kernel described by \p KD reaches its callees
@@ -149,12 +157,26 @@ InstrumentedKernelLoaderAndLauncher::~InstrumentedKernelLoaderAndLauncher() {
 //===----------------------------------------------------------------------===//
 
 llvm::Error InstrumentedKernelLoaderAndLauncher::eraseRecordLocked(
-    llvm::DenseMap<Key, InstrumentedRecord, KeyDenseMapInfo>::iterator It) {
+    llvm::DenseMap<Key, CodeObjectList, KeyDenseMapInfo>::iterator It) {
   LLVM_DEBUG(luthier::dbgs()
              << "[InstrumentedKernelLoaderAndLauncher] eraseRecordLocked KD="
-             << It->first.KD << " preset=" << It->first.Preset << "\n");
+             << It->first.KD << " preset=" << It->first.Preset << " ("
+             << It->second.size() << " code object(s))\n");
   llvm::Error E = llvm::Error::success();
-  InstrumentedRecord &R = It->second;
+  // Reverse load order: a later code object was bound against the globals of
+  // the earlier ones, and its destructor kernel may still read them, so it has
+  // to go first.
+  CodeObjectList &CodeObjects = It->second;
+  for (auto I = CodeObjects.rbegin(), End = CodeObjects.rend(); I != End; ++I)
+    E = llvm::joinErrors(std::move(E), eraseCodeObjectLocked(*I));
+
+  ByOriginal.erase(It);
+  return E;
+}
+
+llvm::Error InstrumentedKernelLoaderAndLauncher::eraseCodeObjectLocked(
+    InstrumentedRecord &R) {
+  llvm::Error E = llvm::Error::success();
   const auto Core = CoreApi.getTable();
   const auto AmdExtTbl = AmdExt.getTable();
 
@@ -184,7 +206,6 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::eraseRecordLocked(
   for (const ManagedAlloc &Alloc : R.ManagedAllocs)
     E = llvm::joinErrors(std::move(E), freeManagedStorage(AmdExtTbl, Alloc));
 
-  ByOriginal.erase(It);
   return E;
 }
 
@@ -229,13 +250,18 @@ InstrumentedKernelLoaderAndLauncher::lookupGlobalVariable(
       llvm::formatv("No instrumented variant cached for kernel_descriptor "
                     "{0:x} preset {1}",
                     reinterpret_cast<uint64_t>(OriginalKD), Preset)));
-  auto SymIt = It->second.NameToVarSymbol.find(Name);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      SymIt != It->second.NameToVarSymbol.end(),
-      llvm::formatv("Global variable '{0}' not found in the instrumented "
-                    "executable for the requested kernel/preset.",
-                    Name)));
-  return SymIt->second;
+  // Load order, so the code object that first defined the variable answers for
+  // it. Later ones re-export it (they were handed it as an external agent
+  // global variable), and every copy names the same device address.
+  for (const InstrumentedRecord &Rec : It->second) {
+    auto SymIt = Rec.NameToVarSymbol.find(Name);
+    if (SymIt != Rec.NameToVarSymbol.end())
+      return SymIt->second;
+  }
+  return LUTHIER_MAKE_GENERIC_ERROR(
+      llvm::formatv("Global variable '{0}' not found in any of the {1} code "
+                    "object(s) loaded for the requested kernel/preset.",
+                    Name, It->second.size()));
 }
 
 //===----------------------------------------------------------------------===//
@@ -253,11 +279,19 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented(
         "No instrumented variant cached for kernel_object {0:x} preset {1}",
         Packet.kernel_object, Preset));
 
-  InstrumentedRecord &Rec = It->second;
-  Packet.kernel_object = Rec.InstrumentedKernel.KDDeviceAddress;
-  Packet.private_segment_size = std::max<uint32_t>(
-      Packet.private_segment_size,
-      Rec.InstrumentedKernel.KDHostAddress->private_segment_fixed_size);
+  // The first code object loaded under the key carries the instrumented
+  // kernel; additions contribute code and globals without changing what a
+  // dispatch runs.
+  const InstrumentedRecord &Rec = It->second.front();
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      Rec.Kernel.has_value(),
+      llvm::formatv("The instrumented variant cached for kernel_object {0:x} "
+                    "preset {1} carries no kernel",
+                    Packet.kernel_object, Preset)));
+  Packet.kernel_object = Rec.Kernel->KDDeviceAddress;
+  Packet.private_segment_size =
+      std::max<uint32_t>(Packet.private_segment_size,
+                         Rec.Kernel->KDHostAddress->private_segment_fixed_size);
 
   return llvm::Error::success();
 }
@@ -554,6 +588,39 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::loadManagedVarsForRecord(
 }
 
 //===----------------------------------------------------------------------===//
+// defineGlobalsOfPriorCodeObjects
+//===----------------------------------------------------------------------===//
+
+llvm::Error
+InstrumentedKernelLoaderAndLauncher::defineGlobalsOfPriorCodeObjects(
+    llvm::ArrayRef<InstrumentedRecord> Prior, hsa_executable_t Exec,
+    hsa_agent_t Agent) {
+  const auto Core = CoreApi.getTable();
+  // Earliest definition of a name wins: a variable handed to one code object
+  // this way is re-reported by its executable's symbol iteration, so it also
+  // appears in the symbol tables of every code object loaded after it, and HSA
+  // refuses to define the same name twice.
+  llvm::StringSet<> Defined;
+  for (const InstrumentedRecord &Rec : Prior) {
+    for (const auto &NameAndSym : Rec.NameToVarSymbol) {
+      llvm::StringRef Name = NameAndSym.getKey();
+      if (!Defined.insert(Name).second)
+        continue;
+      auto AddrOrErr =
+          hsa::executableSymbolGetAddress(Core, NameAndSym.getValue());
+      LUTHIER_RETURN_ON_ERROR(AddrOrErr.takeError());
+      LUTHIER_RETURN_ON_ERROR(hsa::executableDefineExternalAgentGlobalVariable(
+          Core, Exec, Agent, Name, reinterpret_cast<const void *>(*AddrOrErr)));
+      LLVM_DEBUG(luthier::dbgs()
+                 << "[InstrumentedKernelLoaderAndLauncher] bound '" << Name
+                 << "' at " << llvm::format_hex(*AddrOrErr, 18)
+                 << " into executable " << Exec.handle << "\n");
+    }
+  }
+  return llvm::Error::success();
+}
+
+//===----------------------------------------------------------------------===//
 // loadInstrumented
 //===----------------------------------------------------------------------===//
 
@@ -595,11 +662,22 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
 
   llvm::sys::ScopedWriter W(Mutex);
 
-  if (ByOriginal.contains(Key{OriginalKD, Preset}))
-    return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-        "An instrumented variant for kernel_descriptor {0:x} preset {1} "
-        "is already loaded",
-        KDAddr, Preset));
+  // A key that already has code objects is not an error: this one joins them
+  // and is bound against what they define. The map is not mutated between here
+  // and the append below, so this iterator stays valid throughout.
+  const auto EntryIt = ByOriginal.find(Key{OriginalKD, Preset});
+  const bool IsAdditional = EntryIt != ByOriginal.end();
+  if (IsAdditional) {
+    // Every code object under a key is bound to the addresses the others were
+    // loaded at, which only means anything on the agent that loaded them.
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        EntryIt->second.front().Agent.handle == Agent.handle,
+        llvm::formatv("Kernel descriptor {0:x} preset {1} already has code "
+                      "objects loaded on agent {2:x}; cannot add one for "
+                      "agent {3:x}",
+                      KDAddr, Preset, EntryIt->second.front().Agent.handle,
+                      Agent.handle)));
+  }
 
   // The instrumented bytes come out of NewPMAsmPrinter as a REL; link to a
   // shared object so we get a proper .dynsym + PT_DYNAMIC layout.
@@ -618,19 +696,34 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   LUTHIER_RETURN_ON_ERROR(ParsedOrErr.takeError());
   std::unique_ptr<object::AMDGCNObjectFile> Parsed = std::move(*ParsedOrErr);
 
-  auto KernelSymOrErr = findSingleKernel(*Parsed);
+  // Only the first code object of an entry has to carry the instrumented
+  // kernel; an addition may be nothing but device functions and globals.
+  auto KernelSymOrErr = findSingleKernel(*Parsed, /*Required=*/!IsAdditional);
   LUTHIER_RETURN_ON_ERROR(KernelSymOrErr.takeError());
-  auto KernelNameOrErr = KernelSymOrErr->getName();
-  LUTHIER_RETURN_ON_ERROR(KernelNameOrErr.takeError());
-  std::string KernelName(*KernelNameOrErr);
-  std::string KDName = KernelName + ".kd";
+  std::string KernelName;
+  std::string KDName;
+  if (KernelSymOrErr->has_value()) {
+    auto KernelNameOrErr = (*KernelSymOrErr)->getName();
+    LUTHIER_RETURN_ON_ERROR(KernelNameOrErr.takeError());
+    KernelName = std::string(*KernelNameOrErr);
+    KDName = KernelName + ".kd";
+  }
 
-  // Stand up the HSA executable. The instrumented relocatable is self-contained
-  // (its device globals are defined in its own copy), so there are no UND
-  // globals to resolve against a global tool image.
+  // Stand up the HSA executable. A first code object is self-contained (its
+  // device globals are defined in its own copy); an addition resolves its
+  // undefined globals against the ones already loaded under this key.
   auto ExecOrErr = hsa::executableCreate(Core);
   LUTHIER_RETURN_ON_ERROR(ExecOrErr.takeError());
   hsa_executable_t Exec = *ExecOrErr;
+
+  // Has to happen before the code object is loaded: the loader binds undefined
+  // references as it loads, so a definition added afterwards comes too late.
+  if (IsAdditional) {
+    if (auto Err =
+            defineGlobalsOfPriorCodeObjects(EntryIt->second, Exec, Agent))
+      return llvm::joinErrors(std::move(Err),
+                              hsa::executableDestroy(Core, Exec));
+  }
 
   auto ReaderOrErr =
       hsa::codeObjectReaderCreateFromMemory(Core, RelocRef.getBuffer());
@@ -672,17 +765,23 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   }
 
   // Everything the dispatch needs about the instrumented kernel comes off its
-  // kernel descriptor in the host code object.
-  auto InstrKernelOrErr =
-      findKernelIfPresent(*Parsed, MetadataDoc, Exec, Agent, KernelName);
-  if (!InstrKernelOrErr)
-    return Fail(InstrKernelOrErr.takeError());
-  if (!InstrKernelOrErr->has_value())
-    return Fail(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-        "The instrumented code object defines kernel function '{0}' but no "
-        "matching kernel descriptor '{1}'",
-        KernelName, KDName)));
-  const hsa_executable_symbol_t InstrSym = (*InstrKernelOrErr)->Symbol;
+  // kernel descriptor in the host code object. A code object that carries no
+  // kernel hands back a zero-handle symbol.
+  std::optional<LoadedKernelInfo> InstrKernel;
+  hsa_executable_symbol_t InstrSym{};
+  if (!KernelName.empty()) {
+    auto InstrKernelOrErr =
+        findKernelIfPresent(*Parsed, MetadataDoc, Exec, Agent, KernelName);
+    if (!InstrKernelOrErr)
+      return Fail(InstrKernelOrErr.takeError());
+    if (!InstrKernelOrErr->has_value())
+      return Fail(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "The instrumented code object defines kernel function '{0}' but no "
+          "matching kernel descriptor '{1}'",
+          KernelName, KDName)));
+    InstrKernel = std::move(**InstrKernelOrErr);
+    InstrSym = InstrKernel->Symbol;
+  }
 
   // Detect a global-destructor kernel ("amdgcn.device.fini"), if the
   // 'amdgpu-lower-ctor-dtor' backend pass emitted one for this instrumented
@@ -705,7 +804,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   Rec.RelocatableBuffer = std::move(Relocatable);
   Rec.Reader = Reader;
   Rec.Exec = Exec;
-  Rec.InstrumentedKernel = std::move(**InstrKernelOrErr);
+  Rec.Kernel = std::move(InstrKernel);
   Rec.Agent = Agent;
   Rec.DtorKernel = std::move(*DtorKernelOrErr);
   Rec.PrintfFormatStrings = std::move(PrintfFormatStrings);
@@ -789,10 +888,16 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
       return FailWithRecord(std::move(Err));
   }
 
-  auto [It, Inserted] =
-      ByOriginal.try_emplace(Key{OriginalKD, Preset}, std::move(Rec));
-  assert(Inserted && "Concurrent insert into ByOriginal under writer lock");
-  (void)Inserted;
+  if (IsAdditional) {
+    EntryIt->second.push_back(std::move(Rec));
+  } else {
+    CodeObjectList CodeObjects;
+    CodeObjects.push_back(std::move(Rec));
+    auto [It, Inserted] =
+        ByOriginal.try_emplace(Key{OriginalKD, Preset}, std::move(CodeObjects));
+    assert(Inserted && "Concurrent insert into ByOriginal under writer lock");
+    (void)Inserted;
+  }
 
   return InstrSym;
 }
