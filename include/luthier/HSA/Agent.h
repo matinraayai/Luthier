@@ -154,6 +154,13 @@ llvm::Expected<uint16_t>
 agentGetVersionMinor(const ApiTableContainer<::CoreApiTable> &CoreApi,
                      hsa_agent_t Agent);
 
+/// Queries the number of work-items in a wavefront on the \p Agent. Errors
+/// out if the agent reports a wavefront size of zero.
+/// \sa hsa_agent_get_info, HSA_AGENT_INFO_WAVEFRONT_SIZE
+llvm::Expected<uint32_t>
+agentGetWavefrontSize(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                      hsa_agent_t Agent);
+
 //===----------------------------------------------------------------------===//
 // Agent cache iteration
 //===----------------------------------------------------------------------===//
