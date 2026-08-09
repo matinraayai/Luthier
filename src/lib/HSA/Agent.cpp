@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/HSA/Agent.h"
 #include "luthier/Common/ErrorCheck.h"
+#include "luthier/Common/GenericLuthierError.h"
 #include "luthier/HSA/HsaError.h"
 #include "luthier/HSA/Region.h"
 #include <llvm/Support/FormatVariadic.h>
@@ -110,6 +111,19 @@ llvm::Expected<uint16_t>
 agentGetVersionMinor(const ApiTableContainer<::CoreApiTable> &CoreApi,
                      hsa_agent_t Agent) {
   return agentGetInfoT<uint16_t>(CoreApi, Agent, HSA_AGENT_INFO_VERSION_MINOR);
+}
+
+llvm::Expected<uint32_t>
+agentGetWavefrontSize(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                      hsa_agent_t Agent) {
+  llvm::Expected<uint32_t> SizeOrErr =
+      agentGetInfoT<uint32_t>(CoreApi, Agent, HSA_AGENT_INFO_WAVEFRONT_SIZE);
+  LUTHIER_RETURN_ON_ERROR(SizeOrErr.takeError());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      *SizeOrErr != 0,
+      llvm::formatv("Agent {0:x} reported a wavefront size of zero",
+                    Agent.handle)));
+  return *SizeOrErr;
 }
 
 llvm::Error agentGetCaches(const ApiTableContainer<::CoreApiTable> &CoreApi,
