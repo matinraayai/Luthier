@@ -53,8 +53,6 @@
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
-#include <luthier/ToolCodeGen/InstrumentationPMDriver.h>
-#include <luthier/ToolCodeGen/InstrumentationPass.h>
 #include <luthier/ToolCodeGen/IPPredicatedCFG.h>
 #include <luthier/ToolCodeGen/TraceCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
@@ -111,8 +109,6 @@ struct LDSBankConflictTool
     llvm::cl::opt<unsigned> Log2BankSize{
         "log-two-bank-size", llvm::cl::desc("Log2 of the LDS bank size"),
         llvm::cl::init(11), llvm::cl::NotHidden, llvm::cl::cat(Cat)};
-    luthier::InstrumentationPMDriverOptions DriverOpts;
-    luthier::CodeDiscoveryPassOptions DiscoveryOpts;
   } Opts;
 
   std::recursive_mutex Mutex;
@@ -130,10 +126,17 @@ struct LDSBankConflictTool
                  llvm::ArrayRef<luthier::hsa::AqlPacket> Packets,
                  hsa_amd_queue_intercept_packet_writer PacketWriter);
 
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &IModule, llvm::ModuleAnalysisManager &,
-                         llvm::MachineFunction &MF,
-                         llvm::FunctionAnalysisManager &);
+  /// Creates this tool's injected payloads for one target MachineFunction.
+  /// Invoked by \c run for every MachineFunction the code-discovery stage
+  /// lifted into the prototype's target module.
+  void instrumentMachineFunction(llvm::Module &IModule,
+                                 llvm::MachineFunction &MF);
+
+  /// Prototype-level entry point: payload creation reads the target module's
+  /// MIR and writes into the instrumentation module, so it needs both halves of
+  /// the prototype.
+  llvm::PreservedAnalyses run(luthier::Prototype &P,
+                              luthier::PrototypeAnalysisManager &PAM);
 };
 
 __attribute__((device)) float LDSBankConflictTool::NumBankConflicts;
@@ -267,11 +270,8 @@ static luthier::rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
     *LoaderSnapshot{nullptr};
 
 
-luthier::InstrumentationPreservedAnalyses
-LDSBankConflictTool::runInstrumentationPass(llvm::Module &IModule,
-                                            llvm::ModuleAnalysisManager &,
-                                            llvm::MachineFunction &MF,
-                                            llvm::FunctionAnalysisManager &) {
+void LDSBankConflictTool::instrumentMachineFunction(llvm::Module &IModule,
+                         llvm::MachineFunction &MF) {
   auto &Ctx = IModule.getContext();
   auto *BankSizeArg = llvm::ConstantInt::get(llvm::Type::getInt16Ty(Ctx),
                                               Opts.Log2BankSize, false);
@@ -357,7 +357,24 @@ LDSBankConflictTool::runInstrumentationPass(llvm::Module &IModule,
       }
     }
   }
-  return luthier::InstrumentationPreservedAnalyses{};
+}
+
+llvm::PreservedAnalyses
+LDSBankConflictTool::run(luthier::Prototype &P,
+                         luthier::PrototypeAnalysisManager &PAM) {
+  llvm::Module &IModule = P.getInstrumentationModule();
+  P.forEachTargetMF(
+      PAM, [&](llvm::MachineFunction &MF) {
+        instrumentMachineFunction(IModule, MF);
+      });
+  /// Payloads were added to the instrumentation module and instrumentation-point
+  /// metadata attached to target MIs, so no Prototype-level analysis survives.
+  /// The inner analysis-manager proxies must be preserved, though: their
+  /// invalidation clears the whole inner manager, which would discard the lifted
+  /// target MIR the rest of the pipeline still needs.
+  llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
+  luthier::preserveInnerAnalysisManagerProxies(PA);
+  return PA;
 }
 
 void LDSBankConflictTool::onPackets(
@@ -399,8 +416,7 @@ void LDSBankConflictTool::onPackets(
         llvm::consumeError(std::move(MissErr));
         std::unique_ptr<llvm::MemoryBuffer> ObjBuf;
         LUTHIER_REPORT_FATAL_ON_ERROR(
-            this->runInstrumentationPipelineForDispatch(*KD, Opts.DriverOpts,
-                                                        Opts.DiscoveryOpts)
+            this->runInstrumentationPipelineForDispatch(*KD)
                 .moveInto(ObjBuf));
         LUTHIER_REPORT_FATAL_ON_ERROR(
             this->loadInstrumented(std::move(ObjBuf), KD, 0).takeError());

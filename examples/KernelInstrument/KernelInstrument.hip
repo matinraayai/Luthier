@@ -46,8 +46,6 @@
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
-#include <luthier/ToolCodeGen/InstrumentationPMDriver.h>
-#include <luthier/ToolCodeGen/InstrumentationPass.h>
 #include <luthier/ToolCodeGen/IPPredicatedCFG.h>
 #include <luthier/ToolCodeGen/TraceCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>

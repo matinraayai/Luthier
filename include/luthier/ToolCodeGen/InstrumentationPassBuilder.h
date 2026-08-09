@@ -140,11 +140,23 @@ public:
   llvm::Error parsePipeline(PrototypePassManager &PPM,
                             llvm::StringRef PipelineText);
 
+  /// \brief Assemble the standard instrumentation pipeline into \p PPM.
+  ///
+  /// \details Runs code discovery, hands \p InstCallback the chance to add the
+  /// passes that create injected payloads, optimizes and lowers the
+  /// instrumentation module, drives AMDGPU codegen over it, and finally patches
+  /// the result back into the target module. Every registered
+  /// \c register*Callback hook is invoked at its corresponding phase. When
+  /// \p Out is non-null an asm printer is appended for the target module.
+  ///
+  /// The target machine is the one this builder was constructed with; codegen
+  /// needs it as a \c GCNTargetMachine, and narrowing it here rather than in the
+  /// signature keeps AMDGPU-internal types out of this header.
   llvm::Error buildInstrumentationPipeline(
       PrototypePassManager &PPM, PreInstrumentationCallback InstCallback,
       llvm::OptimizationLevel Level, llvm::CodeGenFileType FileType,
-      llvm::GCNTargetMachine &TM, llvm::CGPassBuilderOption &CGPBO,
-      llvm::raw_pwrite_stream *Out, llvm::PassInstrumentationCallbacks *PIC);
+      llvm::CGPassBuilderOption &CGPBO, llvm::raw_pwrite_stream *Out,
+      llvm::PassInstrumentationCallbacks *PIC);
 
   /// Wrap \p Pass so it runs over the target module of the prototype and
   /// append it to \p PPM.

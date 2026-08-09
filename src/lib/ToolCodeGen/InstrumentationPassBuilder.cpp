@@ -1328,8 +1328,8 @@ Error InstrumentationPassBuilder::parsePipeline(PrototypePassManager &PPM,
 Error InstrumentationPassBuilder::buildInstrumentationPipeline(
     PrototypePassManager &PPM, PreInstrumentationCallback InstCallback,
     llvm::OptimizationLevel Level, llvm::CodeGenFileType FileType,
-    llvm::GCNTargetMachine &TM, llvm::CGPassBuilderOption &CGPBO,
-    llvm::raw_pwrite_stream *Out, llvm::PassInstrumentationCallbacks *PIC) {
+    llvm::CGPassBuilderOption &CGPBO, llvm::raw_pwrite_stream *Out,
+    llvm::PassInstrumentationCallbacks *PIC) {
   /// Invoke Pre-code discovery callbacks
   for (auto &CB : PreCodeDiscoveryCallBacks) {
     CB(PPM, Level);
@@ -1366,7 +1366,8 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
     CB(PPM, Level);
   }
 
-  AMDGPUCodeGenPassBuilder CGPB(TM, CGPBO, PIC);
+  AMDGPUCodeGenPassBuilder CGPB(static_cast<llvm::GCNTargetMachine &>(this->TM),
+                                CGPBO, PIC);
 
   if (auto Err = CGPB.buildPipeline(PPM)) {
     return Err;

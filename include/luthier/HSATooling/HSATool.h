@@ -33,7 +33,6 @@
 #include "luthier/PassPlugin/LuthierPassPlugin.h"
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
 #include "luthier/ToolCodeGen/InjectedPayloadCreationPass.h"
-#include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
 #include "luthier/ToolCodeGen/ToolDeviceCodeOffloadParser.h"
 #include <hsa/hsa_ext_amd.h>
@@ -105,7 +104,7 @@ class HSATool : public Singleton<Derived>,
                 public LoadedCodeObjectCacheTrait<Derived>,
                 public ToolDeviceCodeOffloadParserTrait<Derived>,
                 public InstrumentedKernelLoaderAndLauncherTrait<Derived>,
-                public InjectedPayloadCreationPass<Derived, TargetUnitT>,
+                public InjectedPayloadCreationPass<Derived>,
                 public IntrinsicProcessorRegistryTraitBase<Derived>,
                 public InstrumentationPipelineTrait<Derived, TargetUnitT>,
                 public PacketMonitorTrait<Derived> {
@@ -123,31 +122,12 @@ public:
                                                           VenLoader, Err),
         PacketMonitorTrait<Derived>(CoreApi, AmdExt, VenLoader, Err) {}
 
-  /// Build the instrumentation pass pipeline driver for a target application
-  /// module. The returned \c InstrumentationPMDriver is a
-  /// \c PassInfoMixin-shaped pass to be added to a target module pass manager
-  /// by the caller (\c MPM.addPass(tool.buildPipeline(opts, plugins))). The
-  /// driver internally materializes an IModule, runs the IR-level
-  /// instrumentation stages, lowers Luthier intrinsics, and drives the
-  /// per-IModule MIR codegen pipeline.
-  InstrumentationPMDriver
-  buildPipeline(const InstrumentationPMDriverOptions &Opts,
-                llvm::ArrayRef<PassPlugin> Plugins = {}) {
-    return InstrumentationPMDriver(Opts, this->getIntrinsicProcessorRegistry(),
-                                   Plugins);
-  }
-
-  /// Convenience: build the pipeline and immediately run it against \p
-  /// TargetAppM. Equivalent to constructing a one-pass MPM that contains
-  /// \c buildPipeline() and invoking it. Returned \c PreservedAnalyses
-  /// reflects what the driver preserved on the target module's analyses.
-  llvm::PreservedAnalyses
-  runInstrumentationPipeline(llvm::Module &TargetAppM,
-                             llvm::ModuleAnalysisManager &TargetMAM,
-                             const InstrumentationPMDriverOptions &Opts,
-                             llvm::ArrayRef<PassPlugin> Plugins = {}) {
-    return buildPipeline(Opts, Plugins).run(TargetAppM, TargetMAM);
-  }
+  /// \note There is no longer a single "pipeline driver" pass to hand a target
+  /// module pass manager. The instrumentation pipeline now runs over a
+  /// \c Prototype (both modules at once) and is assembled by
+  /// \c InstrumentationPassBuilder::buildInstrumentationPipeline; a tool reaches
+  /// it through \c runInstrumentationPipelineForDispatch on
+  /// \c InstrumentationPipelineTrait.
 
   /// Build a fully-configured \c TargetMachine for the agent that owns the
   /// kernel referenced by \p KD. Resolves the owning agent via
@@ -261,8 +241,7 @@ public:
   /// \c InjectedPayloadCreationPass into the public surface so tool code
   /// can call them directly from \c onPackets / \c runInstrumentationPass
   /// without going through the protected base.
-  using InjectedPayloadCreationPass<Derived,
-                                    TargetUnitT>::createInjectedPayload;
+  using InjectedPayloadCreationPass<Derived>::createInjectedPayload;
 
   /// Convenience overload that takes a HIP host-shadow handle (the
   /// pointer used by HIP to reference a \c __device__ function from the
@@ -275,12 +254,12 @@ public:
   createInjectedPayload(T *HostHandle, llvm::Module &IModule,
                         const llvm::MachineInstr &TargetMI,
                         llvm::ArrayRef<typename InjectedPayloadCreationPass<
-                            Derived, TargetUnitT>::PayloadArg>
+                            Derived>::PayloadArg>
                             Args = {}) {
     auto FnOrErr = resolvePayloadHandle(HostHandle, IModule);
     LUTHIER_RETURN_ON_ERROR(FnOrErr.takeError());
-    return InjectedPayloadCreationPass<
-        Derived, TargetUnitT>::createInjectedPayload(**FnOrErr, TargetMI, Args);
+    return InjectedPayloadCreationPass<Derived>::createInjectedPayload(
+        **FnOrErr, TargetMI, Args);
   }
 
   /// Bring the launcher's name-based device-global lookup into scope alongside

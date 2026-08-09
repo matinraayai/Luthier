@@ -42,8 +42,8 @@
 #include <luthier/ToolCodeGen/IPPredicatedCFG.h>
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
-#include <luthier/ToolCodeGen/InstrumentationPMDriver.h>
-#include <luthier/ToolCodeGen/InstrumentationPass.h>
+#include <luthier/ToolCodeGen/InstrumentationPassBuilder.h>
+#include <luthier/ToolCodeGen/Prototype.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/PrePostAmbleEmitter.h>
@@ -60,7 +60,6 @@ struct LiftLaunchedKernelsTool
 
   struct Options {
     llvm::cl::OptionCategory Cat{"Lift Launched Kernels Tool Options"};
-    luthier::CodeDiscoveryPassOptions DiscoveryOpts;
   } Opts;
 
   std::recursive_mutex Mutex;
@@ -72,12 +71,11 @@ struct LiftLaunchedKernelsTool
                  llvm::ArrayRef<luthier::hsa::AqlPacket> Packets,
                  hsa_amd_queue_intercept_packet_writer PacketWriter);
 
-  /// No-op: the tool only lifts and prints, never injects payloads.
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &, llvm::ModuleAnalysisManager &,
-                         llvm::MachineFunction &,
-                         llvm::FunctionAnalysisManager &) {
-    return luthier::InstrumentationPreservedAnalyses{};
+  /// No-op: the tool only lifts and prints, never injects payloads. Nothing is
+  /// mutated, so every analysis stays valid.
+  llvm::PreservedAnalyses run(luthier::Prototype &,
+                              luthier::PrototypeAnalysisManager &) {
+    return llvm::PreservedAnalyses::all();
   }
 };
 
@@ -104,38 +102,54 @@ void LiftLaunchedKernelsTool::onPackets(
     std::lock_guard<std::recursive_mutex> Lock(Mutex);
 
     if (PrintedKDs.insert(DispatchPacket->kernel_object).second) {
-      llvm::LLVMContext Ctx;
-      auto M = std::make_unique<llvm::Module>("luthier.target", Ctx);
-      M->setTargetTriple(llvm::Triple("amdgcn-amd-amdhsa"));
-
-      // MAM must die before FAM (its proxy-result destructor calls
-      // `FAM->clear()`). C++ destroys in reverse declaration order.
-      llvm::LoopAnalysisManager LAM;
-      llvm::FunctionAnalysisManager FAM;
-      llvm::CGSCCAnalysisManager CGAM;
-      llvm::ModuleAnalysisManager MAM;
-      llvm::PassBuilder PB;
-      PB.registerModuleAnalyses(MAM);
-      PB.registerFunctionAnalyses(FAM);
-      PB.registerLoopAnalyses(LAM);
-      PB.registerCGSCCAnalyses(CGAM);
-      PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
-
       const auto &KD =
           *reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
               DispatchPacket->kernel_object);
 
-      MAM.registerPass([&] {
-        return luthier::InitialEntryPointAnalysis(
-            [&](llvm::Module &, llvm::ModuleAnalysisManager &) {
-              return luthier::EntryPoint(KD);
-            });
-      });
-      MAM.registerPass([&] {
-        return luthier::InitialExecutionPointAnalysis(
-            [&](llvm::Module &, llvm::ModuleAnalysisManager &)
-                -> const llvm::amdhsa::kernel_descriptor_t & { return KD; });
-      });
+      std::unique_ptr<llvm::TargetMachine> TM;
+      LUTHIER_REPORT_FATAL_ON_ERROR(buildTargetMachineForKD(&KD).moveInto(TM));
+
+      llvm::LLVMContext Ctx;
+      auto TargetM = std::make_unique<llvm::Module>("luthier.target", Ctx);
+      TargetM->setTargetTriple(TM->getTargetTriple());
+      TargetM->setDataLayout(TM->createDataLayout());
+      auto IModuleM = std::make_unique<llvm::Module>("luthier.imodule", Ctx);
+      IModuleM->setTargetTriple(TM->getTargetTriple());
+      IModuleM->setDataLayout(TM->createDataLayout());
+
+      // Code discovery reads the dispatch's entry point off the target module
+      // rather than from a resolver callback.
+      luthier::setInitialEntryPoint(*TargetM, luthier::EntryPoint(KD));
+      luthier::setInitialExecutionPoint(*TargetM, KD);
+
+      // CodeDiscoveryPass is a Prototype pass, so it needs both modules even
+      // though this tool never injects anything into the instrumentation one.
+      luthier::Prototype IP(std::move(TargetM), std::move(IModuleM));
+
+      llvm::MachineModuleInfo MMI(TM.get());
+
+      // Innermost manager first: an inner analysis-manager proxy's destructor
+      // clears the manager it proxies, so an outer manager must be declared
+      // after everything it proxies.
+      llvm::LoopAnalysisManager LAM;
+      llvm::FunctionAnalysisManager FAM;
+      llvm::CGSCCAnalysisManager CGAM;
+      llvm::MachineFunctionAnalysisManager MFAM;
+      llvm::ModuleAnalysisManager MAM;
+      luthier::PrototypeAnalysisManager IPAM;
+
+      luthier::InstrumentationPassBuilder PB(*TM);
+      PB.registerPrototypeAnalyses(IPAM);
+      PB.registerModuleAnalyses(MAM);
+      PB.registerCGSCCAnalyses(CGAM);
+      PB.registerFunctionAnalyses(FAM);
+      PB.registerLoopAnalyses(LAM);
+      PB.registerMachineFunctionAnalyses(MFAM);
+      PB.crossRegisterProxies(IPAM, MAM, CGAM, FAM, LAM, MFAM);
+
+      MAM.registerPass([&] { return llvm::MachineModuleAnalysis(MMI); });
+      MAM.registerPass([] { return luthier::InitialEntryPointAnalysis(); });
+      MAM.registerPass([] { return luthier::InitialExecutionPointAnalysis(); });
       MAM.registerPass([&] {
         return luthier::MemoryAllocationAnalysis(
             std::make_unique<luthier::HsaMemoryAllocationAccessor>(
@@ -146,19 +160,15 @@ void LiftLaunchedKernelsTool::onPackets(
       MAM.registerPass([&] {
         return luthier::MetadataParserAnalysis(MetadataParserInstance);
       });
-      MAM.registerPass([] { return luthier::TraceCallGraphAnalysis(); });
-      MAM.registerPass(
-          [] { return luthier::FunctionPreambleDescriptorAnalysis(); });
-      MAM.registerPass([] { return luthier::IPPredCFGAnalysis(); });
 
-      llvm::ModulePassManager MPM;
-      MPM.addPass(luthier::CodeDiscoveryPass(Opts.DiscoveryOpts));
-      MPM.run(*M, MAM);
+      luthier::PrototypePassManager IPPM;
+      IPPM.addPass(luthier::CodeDiscoveryPass());
+      IPPM.run(IP, IPAM);
 
       luthier::errs() << "Lifted kernel for kernel_object 0x"
                       << llvm::Twine::utohexstr(DispatchPacket->kernel_object)
                       << ":\n";
-      M->print(luthier::errs(), /*AAW=*/nullptr);
+      IP.getTargetModule().print(luthier::errs(), /*AAW=*/nullptr);
       luthier::errs() << "\n";
     }
     PacketWriter(&Packet, 1);

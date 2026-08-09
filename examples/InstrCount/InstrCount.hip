@@ -63,8 +63,6 @@
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
 #include <luthier/ToolCodeGen/InstructionTracesAnalysis.h>
-#include <luthier/ToolCodeGen/InstrumentationPMDriver.h>
-#include <luthier/ToolCodeGen/InstrumentationPass.h>
 #include <luthier/ToolCodeGen/IPPredicatedCFG.h>
 #include <luthier/ToolCodeGen/TraceCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
@@ -159,8 +157,6 @@ struct InstrCountTool
         llvm::cl::desc("Whether to demangle kernel names before printing"),
         llvm::cl::init(true), llvm::cl::NotHidden, llvm::cl::cat(Cat)};
 
-    luthier::InstrumentationPMDriverOptions DriverOpts;
-    luthier::CodeDiscoveryPassOptions DiscoveryOpts;
   } Opts;
 
   std::recursive_mutex Mutex;
@@ -194,11 +190,17 @@ struct InstrCountTool
   // InstrumentationPMDriver for each MachineFunction in the discovered
   // target module.
   //===---------------------------------------------------------------===//
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &IModule,
-                         llvm::ModuleAnalysisManager &IMAM,
-                         llvm::MachineFunction &MF,
-                         llvm::FunctionAnalysisManager &TargetFAM);
+  /// Creates this tool's injected payloads for one target MachineFunction.
+  /// Invoked by \c run for every MachineFunction the code-discovery stage
+  /// lifted into the prototype's target module.
+  void instrumentMachineFunction(llvm::Module &IModule,
+                                 llvm::MachineFunction &MF);
+
+  /// Prototype-level entry point: payload creation reads the target module's
+  /// MIR and writes into the instrumentation module, so it needs both halves of
+  /// the prototype.
+  llvm::PreservedAnalyses run(luthier::Prototype &P,
+                              luthier::PrototypeAnalysisManager &PAM);
 };
 
 //===----------------------------------------------------------------------===//
@@ -248,11 +250,8 @@ static luthier::rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
 // InstrCountTool::runInstrumentationPass
 //===----------------------------------------------------------------------===//
 
-luthier::InstrumentationPreservedAnalyses
-InstrCountTool::runInstrumentationPass(llvm::Module &IModule,
-                                       llvm::ModuleAnalysisManager &,
-                                       llvm::MachineFunction &MF,
-                                       llvm::FunctionAnalysisManager &) {
+void InstrCountTool::instrumentMachineFunction(llvm::Module &IModule,
+                    llvm::MachineFunction &MF) {
   luthier::errs() << "[InstrCountTool] runInstrumentationPass for MF '"
                   << MF.getName() << "' starting at instr idx "
                   << NextInstrIdx << "\n";
@@ -282,7 +281,24 @@ InstrCountTool::runInstrumentationPass(llvm::Module &IModule,
   luthier::errs() << "[InstrCountTool] runInstrumentationPass for MF '"
                   << MF.getName() << "' visited "
                   << (NextInstrIdx - StartIdx) << " MI(s)\n";
-  return luthier::InstrumentationPreservedAnalyses{};
+}
+
+llvm::PreservedAnalyses
+InstrCountTool::run(luthier::Prototype &P,
+                    luthier::PrototypeAnalysisManager &PAM) {
+  llvm::Module &IModule = P.getInstrumentationModule();
+  P.forEachTargetMF(
+      PAM, [&](llvm::MachineFunction &MF) {
+        instrumentMachineFunction(IModule, MF);
+      });
+  /// Payloads were added to the instrumentation module and instrumentation-point
+  /// metadata attached to target MIs, so no Prototype-level analysis survives.
+  /// The inner analysis-manager proxies must be preserved, though: their
+  /// invalidation clears the whole inner manager, which would discard the lifted
+  /// target MIR the rest of the pipeline still needs.
+  llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
+  luthier::preserveInnerAnalysisManagerProxies(PA);
+  return PA;
 }
 
 //===----------------------------------------------------------------------===//
@@ -339,8 +355,7 @@ void InstrCountTool::onPackets(
         llvm::consumeError(std::move(MissErr));
         std::unique_ptr<llvm::MemoryBuffer> ObjBuf;
         LUTHIER_REPORT_FATAL_ON_ERROR(
-            this->runInstrumentationPipelineForDispatch(*KD, Opts.DriverOpts,
-                                                        Opts.DiscoveryOpts)
+            this->runInstrumentationPipelineForDispatch(*KD)
                 .moveInto(ObjBuf));
         LUTHIER_REPORT_FATAL_ON_ERROR(
             this->loadInstrumented(std::move(ObjBuf), KD, 0).takeError());
