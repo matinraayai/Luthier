@@ -187,6 +187,48 @@ llvm::Error getAllMemoryPoolsOfAgent(
       });
 }
 
+namespace {
+
+/// Walks \p Agent 's pools and returns the first allocatable one for which
+/// \p IsWantedGranularity holds.
+template <typename PredicateType>
+llvm::Expected<std::optional<hsa_amd_memory_pool_t>>
+findAllocatablePool(const ApiTableContainer<::AmdExtTable> &AmdExt,
+                    hsa_agent_t Agent,
+                    const PredicateType &IsWantedGranularity) {
+  std::optional<hsa_amd_memory_pool_t> Found;
+  LUTHIER_RETURN_ON_ERROR(agentIterateMemoryPools(
+      AmdExt, Agent, [&](hsa_amd_memory_pool_t Pool) -> llvm::Error {
+        if (Found)
+          return llvm::Error::success();
+        llvm::Expected<bool> WantedOrErr = IsWantedGranularity(AmdExt, Pool);
+        LUTHIER_RETURN_ON_ERROR(WantedOrErr.takeError());
+        if (!*WantedOrErr)
+          return llvm::Error::success();
+        llvm::Expected<bool> AllocOrErr =
+            memoryPoolGetRuntimeAllocAllowed(AmdExt, Pool);
+        LUTHIER_RETURN_ON_ERROR(AllocOrErr.takeError());
+        if (*AllocOrErr)
+          Found = Pool;
+        return llvm::Error::success();
+      }));
+  return Found;
+}
+
+} // namespace
+
+llvm::Expected<std::optional<hsa_amd_memory_pool_t>>
+agentFindCoarseGrainedPool(const ApiTableContainer<::AmdExtTable> &AmdExt,
+                           hsa_agent_t Agent) {
+  return findAllocatablePool(AmdExt, Agent, memoryPoolIsCoarseGrained);
+}
+
+llvm::Expected<std::optional<hsa_amd_memory_pool_t>>
+agentFindFineGrainedPool(const ApiTableContainer<::AmdExtTable> &AmdExt,
+                         hsa_agent_t Agent) {
+  return findAllocatablePool(AmdExt, Agent, memoryPoolIsFineGrained);
+}
+
 //===----------------------------------------------------------------------===//
 // Allocation
 //===----------------------------------------------------------------------===//

@@ -57,6 +57,34 @@ signalWait(const ApiTableContainer<::CoreApiTable> &CoreApi,
           hsa_signal_t Signal, hsa_signal_condition_t Condition,
           hsa_signal_value_t CompareValue);
 
+/// Blocks the calling thread until \p Signal 's value compares true against
+/// \p CompareValue under \p Condition, or until roughly \p TimeoutHint
+/// system-clock ticks have elapsed — whichever happens first.
+/// \param CoreApi the HSA ::CoreApi table container used to perform HSA calls
+/// \param Signal the \c hsa_signal_t being waited on
+/// \param Condition the comparison operator used to evaluate the wait
+/// condition
+/// \param CompareValue the value \p Signal is compared against
+/// \param TimeoutHint maximum duration of the wait, in
+/// \c HSA_SYSTEM_INFO_TIMESTAMP_FREQUENCY ticks; treated as a hint by HSA
+/// \param WaitState whether the thread should spin or block while waiting
+/// \return the value of \p Signal observed when the wait returned; when the
+/// wait timed out this need not satisfy the wait condition
+/// \sa hsa_signal_wait_scacquire
+hsa_signal_value_t
+signalWaitTimeout(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                  hsa_signal_t Signal, hsa_signal_condition_t Condition,
+                  hsa_signal_value_t CompareValue, uint64_t TimeoutHint,
+                  hsa_wait_state_t WaitState);
+
+/// Stores \p Value into \p Signal with release memory ordering.
+/// \param CoreApi the HSA ::CoreApi table container used to perform HSA calls
+/// \param Signal the \c hsa_signal_t being written
+/// \param Value the value to store
+/// \sa hsa_signal_store_screlease
+void signalStore(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                 hsa_signal_t Signal, hsa_signal_value_t Value);
+
 } // namespace luthier::hsa
 
 #endif // LUTHIER_HSA_SIGNAL_H

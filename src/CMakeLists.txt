@@ -5,6 +5,10 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 find_package(hip REQUIRED CONFIG)
 
+# The hostcall listener runs on a std::thread.
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
 find_package(rocprofiler-sdk REQUIRED CONFIG)
 
 find_package(hsa-runtime64 REQUIRED CONFIG)

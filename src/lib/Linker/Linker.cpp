@@ -70,7 +70,7 @@ llvm::Error linkRelocatableToExecutable(llvm::ArrayRef<char> Code,
     llvm::sys::path::append(Candidate, "ld.lld");
     if (llvm::sys::fs::can_execute(Candidate))
       LLDPath.assign(Candidate.begin(), Candidate.end());
-  }`
+  }
   if (LLDPath.empty()) {
     auto LLDPathOrErr = llvm::sys::findProgramByName("ld.lld");
     if (!LLDPathOrErr)

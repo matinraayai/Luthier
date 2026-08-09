@@ -2,7 +2,9 @@ add_library(LuthierLinker OBJECT
         Linker.cpp
 )
 
-target_compile_definitions(LuthierLinker PRIVATE ${LLVM_DEFINITIONS})
+# Pass the LLVM tools directory for locating lld at runtime
+target_compile_definitions(LuthierLinker PRIVATE ${LLVM_DEFINITIONS}
+        LUTHIER_LLVM_TOOLS_BINARY_DIR="${LLVM_TOOLS_BINARY_DIR}")
 
 target_include_directories(LuthierLinker
         PUBLIC
