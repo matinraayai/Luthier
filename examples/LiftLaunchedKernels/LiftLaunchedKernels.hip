@@ -128,38 +128,44 @@ void LiftLaunchedKernelsTool::onPackets(
 
       llvm::MachineModuleInfo MMI(TM.get());
 
-      // Innermost manager first: an inner analysis-manager proxy's destructor
-      // clears the manager it proxies, so an outer manager must be declared
-      // after everything it proxies.
-      llvm::LoopAnalysisManager LAM;
-      llvm::FunctionAnalysisManager FAM;
-      llvm::CGSCCAnalysisManager CGAM;
-      llvm::MachineFunctionAnalysisManager MFAM;
-      llvm::ModuleAnalysisManager MAM;
+      // Each module of the prototype gets its own managers, so that a pass over
+      // one module cannot clear the other's cached results. Innermost manager
+      // first: an inner analysis-manager proxy's destructor clears the manager
+      // it proxies, so an outer manager must be declared after everything it
+      // proxies.
+      llvm::LoopAnalysisManager TargetLAM, ILAM;
+      llvm::FunctionAnalysisManager TargetFAM, IFAM;
+      llvm::CGSCCAnalysisManager TargetCGAM, ICGAM;
+      llvm::MachineFunctionAnalysisManager TargetMFAM, IMFAM;
+      llvm::ModuleAnalysisManager TargetMAM, IMAM;
       luthier::PrototypeAnalysisManager IPAM;
+
+      const luthier::InstrumentationPassBuilder::ModuleAnalysisManagers
+          TargetAMs{TargetMAM, TargetCGAM, TargetFAM, TargetLAM, TargetMFAM};
+      const luthier::InstrumentationPassBuilder::ModuleAnalysisManagers IAMs{
+          IMAM, ICGAM, IFAM, ILAM, IMFAM};
 
       luthier::InstrumentationPassBuilder PB(*TM);
       PB.registerPrototypeAnalyses(IPAM);
-      PB.registerModuleAnalyses(MAM);
-      PB.registerCGSCCAnalyses(CGAM);
-      PB.registerFunctionAnalyses(FAM);
-      PB.registerLoopAnalyses(LAM);
-      PB.registerMachineFunctionAnalyses(MFAM);
-      PB.crossRegisterProxies(IPAM, MAM, CGAM, FAM, LAM, MFAM);
+      PB.registerAnalyses(TargetAMs);
+      PB.registerAnalyses(IAMs);
+      PB.crossRegisterProxies(IPAM, TargetAMs, IAMs);
 
-      MAM.registerPass([&] { return llvm::MachineModuleAnalysis(MMI); });
-      MAM.registerPass([] { return luthier::InitialEntryPointAnalysis(); });
-      MAM.registerPass([] { return luthier::InitialExecutionPointAnalysis(); });
-      MAM.registerPass([&] {
-        return luthier::MemoryAllocationAnalysis(
-            std::make_unique<luthier::HsaMemoryAllocationAccessor>(
-                *this, *::CoreApiSnapshot, *::AmdExtSnapshot,
-                ::LoaderSnapshot->getTable()));
-      });
       luthier::amdgpu::hsamd::MetadataParser MetadataParserInstance;
-      MAM.registerPass([&] {
-        return luthier::MetadataParserAnalysis(MetadataParserInstance);
-      });
+      for (llvm::ModuleAnalysisManager *M : {&TargetMAM, &IMAM}) {
+        M->registerPass([&] { return llvm::MachineModuleAnalysis(MMI); });
+        M->registerPass([] { return luthier::InitialEntryPointAnalysis(); });
+        M->registerPass([] { return luthier::InitialExecutionPointAnalysis(); });
+        M->registerPass([&] {
+          return luthier::MemoryAllocationAnalysis(
+              std::make_unique<luthier::HsaMemoryAllocationAccessor>(
+                  *this, *::CoreApiSnapshot, *::AmdExtSnapshot,
+                  ::LoaderSnapshot->getTable()));
+        });
+        M->registerPass([&] {
+          return luthier::MetadataParserAnalysis(MetadataParserInstance);
+        });
+      }
 
       luthier::PrototypePassManager IPPM;
       IPPM.addPass(luthier::CodeDiscoveryPass());

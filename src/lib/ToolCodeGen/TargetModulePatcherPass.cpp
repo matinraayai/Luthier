@@ -444,8 +444,7 @@ preloadedValueForSVA(ScalarValueArgument SA) {
 /// \c KernelInfo.RequestedKernelArguments. The SVA storage register for
 /// the entry MBB comes from \c SVLocations.
 llvm::Error
-emitInitialEntryKernelSetup(llvm::MachineModuleInfo &TargetMMI,
-                            llvm::Module &TargetModule,
+emitInitialEntryKernelSetup(llvm::Module &TargetModule,
                             const FunctionPreambleDescriptor &FPD,
                             const SVStorageAndLoadLocations &SVLocations,
                             const StateValueArraySpecs &Specs) {
@@ -541,7 +540,6 @@ emitInitialEntryKernelSetup(llvm::MachineModuleInfo &TargetMMI,
         return Err;
     }
   }
-  (void)TargetMMI;
   (void)TargetModule;
   return llvm::Error::success();
 }
@@ -837,14 +835,14 @@ void inlineInjectedPayload(const llvm::MachineFunction &InjectedPayloadMF,
 /// Build a VMap that maps each IModule global object (GVs, non-payload
 /// non-hook Functions) to a fresh handle created in the target module,
 /// and for every IModule function that owns a MachineFunction *and* is
-/// neither a payload nor a hook, deep-clone its MIR into the target MMI
+/// neither a payload nor a hook, deep-clone its MIR into the target FAM
 /// keyed on the new target-module Function. Returns the VMap so the
 /// per-payload inliner can resolve cross-module operands. This subsumes
 /// the previous Linker-based approach: we need explicit MF cloning for
 /// the non-payload functions, not just IR handles.
 llvm::Error cloneIModuleIntoTarget(llvm::Module &IModule,
                                    llvm::Module &TargetModule,
-                                   const llvm::MachineModuleInfo &IMMI,
+                                   llvm::FunctionAnalysisManager &IFAM,
                                    llvm::FunctionAnalysisManager &TargetFAM,
                                    llvm::ValueToValueMapTy &VMap) {
   LLVM_DEBUG(luthier::dbgs()
@@ -852,18 +850,34 @@ llvm::Error cloneIModuleIntoTarget(llvm::Module &IModule,
              << "IModule has "
              << std::distance(IModule.global_begin(), IModule.global_end())
              << " global(s), " << IModule.size() << " function(s)\n");
-  unsigned ClonedGVs = 0;
+  // Pass 0 — move, rather than copy, every tool global into the target module.
+  // A moved GlobalVariable keeps its identity, so every reference to it — from
+  // the IModule MIR that pass 2 clones and Phase B.3 inlines, and from the
+  // target module afterwards — stays valid without remapping, and the target
+  // binary ends up with exactly one definition instead of a definition plus an
+  // orphaned original. Copying instead left the definition behind in the
+  // IModule and produced a second, separately-attributed GlobalVariable whose
+  // initializer had to be re-derived.
+  llvm::SmallVector<llvm::GlobalVariable *, 8> MovedGVs;
   for (auto &GV : IModule.globals()) {
-    ++ClonedGVs;
-    LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   clone GV '"
-                               << GV.getName() << "'\n");
-    auto *NewGV = new llvm::GlobalVariable(
-        TargetModule, GV.getValueType(), GV.isConstant(), GV.getLinkage(),
-        /*Initializer=*/nullptr, GV.getName(), /*InsertBefore=*/nullptr,
-        GV.getThreadLocalMode(), GV.getType()->getAddressSpace());
-    NewGV->copyAttributesFrom(&GV);
-    VMap[&GV] = NewGV;
+    // The llvm.* metadata globals (llvm.used, llvm.compiler.used,
+    // llvm.global.annotations, ...) list payloads and hooks, neither of which
+    // is cloned into the target module. Moving them would drag those
+    // references across, so they stay behind in the IModule.
+    if (GV.getName().starts_with("llvm."))
+      continue;
+    MovedGVs.push_back(&GV);
   }
+  for (llvm::GlobalVariable *GV : MovedGVs) {
+    LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   move GV '"
+                               << GV->getName() << "'\n");
+    IModule.removeGlobalVariable(GV);
+    TargetModule.insertGlobalVariable(GV);
+    // cloneMFInto requires a VMap entry for every global operand it walks; a
+    // moved global maps to itself.
+    VMap[GV] = GV;
+  }
+  const unsigned MovedGVCount = MovedGVs.size();
 
   // Pass 1 — create every (non-payload) Function's IR handle in the
   // target module and stash it in VMap. The MF-clone step in pass 2
@@ -901,31 +915,16 @@ llvm::Error cloneIModuleIntoTarget(llvm::Module &IModule,
     VMap[&F] = NewF;
   }
 
-  // Deep-clone global-variable initializers. The GV handles above are created
-  // without an initializer (declarations); copy each defined IModule global's
-  // initializer over, remapped through VMap so any references to other cloned
-  // globals/functions resolve to their target-module handles. This must run
-  // after the function-handle pass since an initializer may reference a
-  // function. Without this, tool globals such as InstrCountTool::Counter stay
-  // undefined in the target module: AMDGPU's PC-relative (R_AMDGPU_REL32)
-  // references to them then fail to link (undefined protected symbol / needs
-  // -fPIC), and the tool's per-dispatch counter read-back has no storage to
-  // resolve against. The SPIR-V path masked this because SPIR-V -> LLVM IR
-  // translation folds these definitions in differently.
-  for (auto &GV : IModule.globals()) {
-    if (!GV.hasInitializer())
+  // A moved global brings its initializer with it, but that initializer may
+  // name an IModule function, which does get a fresh target-module handle. Remap
+  // in place so such a reference follows the function to the target module
+  // rather than dangling back into the IModule after teardown. This has to run
+  // after the function-handle pass above, and is a no-op for the common case of
+  // a tool counter initialized to zero.
+  for (llvm::GlobalVariable *GV : MovedGVs) {
+    if (!GV->hasInitializer())
       continue;
-    // Skip the LLVM intrinsic metadata globals (`llvm.compiler.used`,
-    // `llvm.used`, `llvm.global.annotations`, ...). Their initializers list
-    // payloads/hooks that are intentionally NOT cloned into the target module
-    // (payloads are inlined per-MI; hooks never reach the target binary), so
-    // remapping them would leave dangling cross-module references into the
-    // IModule — corrupting use-lists and crashing when the IModule is torn
-    // down. They stay as bare declarations, exactly as before.
-    if (GV.getName().starts_with("llvm."))
-      continue;
-    auto *NewGV = llvm::cast<llvm::GlobalVariable>(VMap[&GV]);
-    NewGV->setInitializer(llvm::MapValue(GV.getInitializer(), VMap));
+    GV->setInitializer(llvm::MapValue(GV->getInitializer(), VMap));
   }
 
   // Pass 2 — for each definition with a body, give the target-side
@@ -942,7 +941,14 @@ llvm::Error cloneIModuleIntoTarget(llvm::Module &IModule,
     auto *BB = llvm::BasicBlock::Create(TargetModule.getContext(), "", NewF);
     new llvm::UnreachableInst(TargetModule.getContext(), BB);
 
-    const auto *SrcMF = IMMI.getMachineFunction(F);
+    // The instrumentation module's MIR lives in its own FAM as
+    // MachineFunctionAnalysis results, exactly as the target module's does --
+    // MachineModuleInfo does not track MachineFunctions under the new PM.
+    // getCachedResult, not getResult: a Function that never went through ISel
+    // must read as "no MF" rather than have an empty one made for it.
+    auto *SrcMFRes = IFAM.getCachedResult<llvm::MachineFunctionAnalysis>(F);
+    const llvm::MachineFunction *SrcMF =
+        SrcMFRes ? &SrcMFRes->getMF() : nullptr;
     if (SrcMF == nullptr) {
       LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   no MF for '"
                                  << F.getName() << "', skip MF clone\n");
@@ -967,7 +973,7 @@ llvm::Error cloneIModuleIntoTarget(llvm::Module &IModule,
   LLVM_DEBUG(luthier::dbgs()
              << "[TargetModulePatcherPass] cloneIModuleIntoTarget "
                 "done: "
-             << ClonedGVs << " GV(s), " << ClonedFuncHandles
+             << MovedGVCount << " GV(s) moved, " << ClonedFuncHandles
              << " Fn handle(s) (" << SkippedPayloads << " payload(s) skipped), "
              << ClonedMFs << " MF clone(s)\n");
   return llvm::Error::success();
@@ -1103,23 +1109,23 @@ TargetModulePatcherPass::run(Prototype &IP,
 
   llvm::LLVMContext &Ctx = IModule.getContext();
 
-  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
-  // MAM caches results for both the instrumentation and target modules,
-  // keyed by module reference.
-  llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
-          .getManager();
+  // This pass reads both halves of the prototype, and each has its own
+  // managers.
+  llvm::ModuleAnalysisManager &IMAM =
+      IPAM.getResult<IModuleAnalysisManagerPrototypeProxy>(IP).getManager();
 
-  // The IModule's MMI holds payloads / hooks / helper MFs. Target kernels
-  // live in the target module's FAM cache (populated by CodeDiscoveryPass
-  // via MachineFunctionAnalysis). The two MMI universes are completely
-  // disjoint, so we must source target MFs via the FAM and IModule MFs
-  // via this MMI.
+  // Only used for its TargetMachine: under the new PM a MachineModuleInfo does
+  // not track MachineFunctions. Each module's MIR lives in that module's own
+  // FunctionAnalysisManager as MachineFunctionAnalysis results -- the target's
+  // populated by CodeDiscoveryPass, the instrumentation module's by ISel.
   llvm::MachineModuleInfo &IMMI =
-      MAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI();
+      IMAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI();
 
   llvm::FunctionAnalysisManager &TargetFAM =
-      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
+      IPAM.getResult<TargetFunctionAnalysisManagerPrototypeProxy>(IP)
+          .getManager();
+  llvm::FunctionAnalysisManager &IFAM =
+      IPAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(IP)
           .getManager();
   auto getTargetMF = [&](llvm::Function &F) -> llvm::MachineFunction & {
     return TargetFAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
@@ -1145,8 +1151,7 @@ TargetModulePatcherPass::run(Prototype &IP,
       IPAM.getResult<FunctionPreambleDescriptorAnalysis>(IP);
 
   llvm::MachineFunctionAnalysisManager &TargetMFAM =
-      MAM.getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(
-             TargetModule)
+      IPAM.getResult<TargetMachineFunctionAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   // ============= Phase A: SVA Setup & Storage Code Emission ===============
@@ -1169,16 +1174,12 @@ TargetModulePatcherPass::run(Prototype &IP,
   }
 
   // Phase A.2: initial-entry-kernel SVA preload setup (scratch + kernarg
-  // spills into SVA lanes) at every kernel entry that uses the SVA.
-  // emitInitialEntryKernelSetup also needs target-side MF access; it
-  // takes a MachineModuleInfo today but operates by looking up MFs for
-  // FPD.Kernels. We pass IMMI as a placeholder — the function ignores
-  // it where target lookups are needed (a follow-on cleanup will switch
-  // it to FAM too once we audit the helper).
+  // spills into SVA lanes) at every kernel entry that uses the SVA. The
+  // MachineFunctions come straight off FPD.Kernels, so no manager is needed.
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] === Phase A.2: "
                                 "emitInitialEntryKernelSetup ===\n");
-  if (auto Err = emitInitialEntryKernelSetup(IMMI, TargetModule, FPD,
-                                             SVLocations, *SVASpecs)) {
+  if (auto Err = emitInitialEntryKernelSetup(TargetModule, FPD, SVLocations,
+                                             *SVASpecs)) {
     Ctx.emitError(llvm::toString(std::move(Err)));
     return llvm::PreservedAnalyses::none();
   }
@@ -1194,7 +1195,7 @@ TargetModulePatcherPass::run(Prototype &IP,
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] === Phase B.1: "
                                 "cloneIModuleIntoTarget ===\n");
   llvm::ValueToValueMapTy VMap;
-  if (auto Err = cloneIModuleIntoTarget(IModule, TargetModule, IMMI, TargetFAM,
+  if (auto Err = cloneIModuleIntoTarget(IModule, TargetModule, IFAM, TargetFAM,
                                         VMap)) {
     Ctx.emitError(llvm::toString(std::move(Err)));
     return llvm::PreservedAnalyses::none();
@@ -1246,18 +1247,21 @@ TargetModulePatcherPass::run(Prototype &IP,
     ++PayloadCount;
     llvm::DenseMap<const llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
         MBBMap;
-    const auto *InjectedPayloadMF =
-        IMMI.getMachineFunction(*InjectedPayloadFunc);
-    if (!InjectedPayloadMF) {
+    auto *InjectedPayloadMFRes =
+        IFAM.getCachedResult<llvm::MachineFunctionAnalysis>(
+            *InjectedPayloadFunc);
+    if (!InjectedPayloadMFRes) {
       Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
           "TargetModulePatcherPass: payload function '{0}' has no "
-          "MachineFunction in the IModule MMI",
+          "MachineFunction in the instrumentation module",
           InjectedPayloadFunc->getName()))));
       return llvm::PreservedAnalyses::none();
     }
-    patchFrameInfo(*InjectedPayloadMF,
+    const llvm::MachineFunction &InjectedPayloadMF =
+        InjectedPayloadMFRes->getMF();
+    patchFrameInfo(InjectedPayloadMF,
                    *InsertionPointMI->getParent()->getParent());
-    inlineInjectedPayload(*InjectedPayloadMF, *InsertionPointMI, MBBMap, VMap);
+    inlineInjectedPayload(InjectedPayloadMF, *InsertionPointMI, MBBMap, VMap);
   }
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   Phase B.3 inlined "
                              << PayloadCount << " payload(s)\n");
@@ -1548,7 +1552,17 @@ TargetModulePatcherPass::run(Prototype &IP,
   // cached MachineFunctionAnalysis results for the target module we just
   // mutated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  preserveInnerAnalysisManagerProxies(PA);
+  // The patcher clones globals into the target module, strips stale register
+  // attributes and splices payload MIR into target MFs. It edits those MFs in
+  // place — none are created or destroyed — so the cached
+  // MachineFunctionAnalysis results stay live, which the asm printer scheduled
+  // after this pass depends on. Prototype-level analyses are all dropped.
+  PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
   return PA;
 }
 

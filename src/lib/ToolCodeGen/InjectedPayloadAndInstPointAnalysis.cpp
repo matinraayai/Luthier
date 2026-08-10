@@ -51,8 +51,11 @@ InjectedPayloadAndInstPointAnalysis::run(Prototype &P,
   llvm::Module &TargetModule = P.getTargetModule();
   llvm::Module &IModule = P.getInstrumentationModule();
 
+  // Only the target module's MIR is walked below, so this is the target
+  // module's FunctionAnalysisManager.
   llvm::FunctionAnalysisManager &FAM =
-      PAM.getResult<FunctionAnalysisManagerPrototypeProxy>(P).getManager();
+      PAM.getResult<TargetFunctionAnalysisManagerPrototypeProxy>(P)
+          .getManager();
 
   // Build a reverse map: pcsections MDNode* → MachineInstr* for all target MIs.
   llvm::DenseMap<const llvm::MDNode *, llvm::MachineInstr *> PCSToMI;

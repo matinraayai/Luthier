@@ -213,16 +213,31 @@ public:
 
     llvm::MachineModuleInfo MMI(TM.get());
 
+    // Each of the prototype's two modules gets its own set of managers. They
+    // must not be shared: LLVM reaches a module's inner managers through
+    // proxies whose invalidation hook clears the inner manager wholesale
+    // (FunctionAnalysisManagerModuleProxy::Result::invalidate in
+    // PassManager.cpp), and a nested llvm::ModulePassManager re-invalidates
+    // after every pass it runs. With one shared set, the first pass of the
+    // instrumentation module's IR pipeline to report PreservedAnalyses::none()
+    // therefore destroys the target module's cached MachineFunctionAnalysis
+    // results -- and with them the lifted target MIR those results own.
+    //
     // Declaration order matters: these are destroyed in reverse, and an inner
     // analysis-manager proxy's destructor clears the manager it proxies. So an
     // outer manager must be declared after everything it proxies -- innermost
-    // first, the Prototype manager (which proxies all three) last.
-    llvm::LoopAnalysisManager LAM;
-    llvm::FunctionAnalysisManager FAM;
-    llvm::CGSCCAnalysisManager CGAM;
-    llvm::MachineFunctionAnalysisManager MFAM;
-    llvm::ModuleAnalysisManager MAM;
+    // first, the Prototype manager (which proxies all six) last.
+    llvm::LoopAnalysisManager TargetLAM, ILAM;
+    llvm::FunctionAnalysisManager TargetFAM, IFAM;
+    llvm::CGSCCAnalysisManager TargetCGAM, ICGAM;
+    llvm::MachineFunctionAnalysisManager TargetMFAM, IMFAM;
+    llvm::ModuleAnalysisManager TargetMAM, IMAM;
     luthier::PrototypeAnalysisManager IPAM;
+
+    const luthier::InstrumentationPassBuilder::ModuleAnalysisManagers
+        TargetAMs{TargetMAM, TargetCGAM, TargetFAM, TargetLAM, TargetMFAM};
+    const luthier::InstrumentationPassBuilder::ModuleAnalysisManagers IAMs{
+        IMAM, ICGAM, IFAM, ILAM, IMFAM};
 
     // PIC + SI must outlive the pipeline run. StandardInstrumentations reads
     // --print-after-all / --print-before-all / --print-changed / -time-passes
@@ -233,25 +248,34 @@ public:
     luthier::InstrumentationPassBuilder PB(*TM, llvm::PipelineTuningOptions(),
                                            std::nullopt, &PIC);
     PB.registerPrototypeAnalyses(IPAM);
-    PB.registerModuleAnalyses(MAM);
-    PB.registerCGSCCAnalyses(CGAM);
-    PB.registerFunctionAnalyses(FAM);
-    PB.registerLoopAnalyses(LAM);
-    PB.registerMachineFunctionAnalyses(MFAM);
-    PB.crossRegisterProxies(IPAM, MAM, CGAM, FAM, LAM, MFAM);
+    PB.registerAnalyses(TargetAMs);
+    PB.registerAnalyses(IAMs);
+    PB.crossRegisterProxies(IPAM, TargetAMs, IAMs);
 
-    SI.registerCallbacks(PIC, &MAM);
+    // StandardInstrumentations takes a single ModuleAnalysisManager, used only
+    // by its optional debug instrumentation (-print-changed, CFG checking).
+    // The instrumentation module is where all the heavy pipelines run, so it is
+    // the one worth wiring up.
+    SI.registerCallbacks(PIC, &IMAM);
 
     luthier::amdgpu::hsamd::MetadataParser MetadataParserInstance;
-    registerInstrumentationAnalyses(KD, *TM, MMI, MetadataParserInstance, MAM,
-                                    MFAM);
+    // Both modules need the common analyses: a module analysis is resolved out
+    // of the manager belonging to the module it is asked about. The single MMI
+    // is deliberately shared -- it owns the MCContext the MachineFunctions of
+    // both modules are created against, and TargetModulePatcherPass moves MIR
+    // between them.
+    registerInstrumentationAnalyses(KD, *TM, MMI, MetadataParserInstance,
+                                    TargetMAM, TargetMFAM);
+    registerInstrumentationAnalyses(KD, *TM, MMI, MetadataParserInstance, IMAM,
+                                    IMFAM);
 
     // Intrinsic lowering resolves each luthier:: intrinsic through this
     // registry, which the tool owns.
-    MAM.registerPass([&D] {
-      return luthier::IntrinsicsProcessorsAnalysis(
-          D.getIntrinsicProcessorRegistry());
-    });
+    for (llvm::ModuleAnalysisManager *M : {&TargetMAM, &IMAM})
+      M->registerPass([&D] {
+        return luthier::IntrinsicsProcessorsAnalysis(
+            D.getIntrinsicProcessorRegistry());
+      });
 
     // The machine-function passes InjectedPayloadPEIPass and SVAPhysVGPRPinPass
     // resolve their module back to the owning prototype through this map, and
@@ -259,8 +283,9 @@ public:
     // materialized before the pipeline runs.
     luthier::ModuleToPrototypeMap ParentMap;
     ParentMap.registerPrototype(IP);
-    MAM.registerPass(
-        [&ParentMap] { return luthier::ParentPrototypeAnalysis(ParentMap); });
+    for (llvm::ModuleAnalysisManager *M : {&TargetMAM, &IMAM})
+      M->registerPass(
+          [&ParentMap] { return luthier::ParentPrototypeAnalysis(ParentMap); });
 
     llvm::SmallVector<char, 0> ObjBuf;
     llvm::raw_svector_ostream ObjOS(ObjBuf);
@@ -282,10 +307,11 @@ public:
         Level, llvm::CodeGenFileType::ObjectFile, CGPBO, &ObjOS, &PIC));
 
     // ParentPrototypeAnalysis is consumed via getCachedResult, so materialize it
-    // for both modules up front.
-    (void)MAM.getResult<luthier::ParentPrototypeAnalysis>(
+    // for both modules up front, each in its own manager.
+    (void)IMAM.getResult<luthier::ParentPrototypeAnalysis>(
         IP.getInstrumentationModule());
-    (void)MAM.getResult<luthier::ParentPrototypeAnalysis>(IP.getTargetModule());
+    (void)TargetMAM.getResult<luthier::ParentPrototypeAnalysis>(
+        IP.getTargetModule());
 
     IPPM.run(IP, IPAM);
 

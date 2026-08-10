@@ -688,22 +688,21 @@ SVStorageAndLoadLocationsAnalysis::run(
   llvm::Module &TargetModule = IP.getTargetModule();
   llvm::Module &IModule = IP.getInstrumentationModule();
 
-  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
-  // MAM caches results for both modules, keyed by the module reference.
-  llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
+  // Everything below is read out of the target module, so the target module's
+  // own managers are the ones to go through.
+  llvm::ModuleAnalysisManager &TargetMAM =
+      IPAM.getResult<TargetModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   llvm::FunctionAnalysisManager &TargetFAM =
-      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
+      IPAM.getResult<TargetFunctionAnalysisManagerPrototypeProxy>(IP)
           .getManager();
   llvm::MachineFunctionAnalysisManager &TargetMFAM =
-      MAM.getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(
-                TargetModule)
+      IPAM.getResult<TargetMachineFunctionAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   const llvm::MachineModuleInfo &TargetMMI =
-      MAM.getResult<llvm::MachineModuleAnalysis>(TargetModule).getMMI();
+      TargetMAM.getResult<llvm::MachineModuleAnalysis>(TargetModule).getMMI();
 
   const InjectedPayloadAndInstPoint &IPIP =
       IPAM.getResult<InjectedPayloadAndInstPointAnalysis>(IP);

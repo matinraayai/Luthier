@@ -103,20 +103,34 @@ public:
     return PIC;
   }
 
-  /// Register the cross-level analysis-manager proxies that let passes
-  /// running over an \c Prototype reach the per-module, per-function, and
-  /// per-machine-function analyses on \p MAM, \p FAM, and \p MFAM (and
-  /// vice-versa). Also registers \c PassInstrumentationAnalysis on \p IPAM
-  /// using the PIC held by the wrapped \c llvm::PassBuilder.
+  /// \brief The LLVM analysis managers serving a single module of a
+  /// \c Prototype.
   ///
-  /// Modeled on \c llvm::PassBuilder::crossRegisterProxies; call this once
-  /// after \c PB.crossRegisterProxies has wired up the inner levels.
+  /// \details A prototype's two modules get one bundle each. They may not be
+  /// shared: LLVM's per-module proxies clear the inner manager they reach
+  /// whenever a module pass does not preserve them, so one shared bundle lets a
+  /// pass over one module destroy the other's results. See
+  /// \c luthier::PrototypeInnerAnalysisManagerProxy.
+  struct ModuleAnalysisManagers {
+    llvm::ModuleAnalysisManager &MAM;
+    llvm::CGSCCAnalysisManager &CGAM;
+    llvm::FunctionAnalysisManager &FAM;
+    llvm::LoopAnalysisManager &LAM;
+    llvm::MachineFunctionAnalysisManager &MFAM;
+  };
+
+  /// Register the cross-level analysis-manager proxies that let passes running
+  /// over an \c Prototype reach the per-module, per-function, and
+  /// per-machine-function analyses of either of its modules (and vice-versa).
+  /// Also registers \c PassInstrumentationAnalysis on \p PAM using the PIC held
+  /// by the wrapped \c llvm::PassBuilder, and wires up the inner levels of both
+  /// \p Target and \p Instrumentation via
+  /// \c llvm::PassBuilder::crossRegisterProxies.
+  ///
+  /// Modeled on \c llvm::PassBuilder::crossRegisterProxies; call this once.
   void crossRegisterProxies(PrototypeAnalysisManager &PAM,
-                            llvm::ModuleAnalysisManager &MAM,
-                            llvm::CGSCCAnalysisManager &CGAM,
-                            llvm::FunctionAnalysisManager &FAM,
-                            llvm::LoopAnalysisManager &LAM,
-                            llvm::MachineFunctionAnalysisManager &MFAM);
+                            const ModuleAnalysisManagers &Target,
+                            const ModuleAnalysisManagers &Instrumentation);
 
   void registerPrototypeAnalyses(PrototypeAnalysisManager &PAM);
 
@@ -130,6 +144,10 @@ public:
 
   void
   registerMachineFunctionAnalyses(llvm::MachineFunctionAnalysisManager &MFAM);
+
+  /// Convenience wrapper registering every level's analyses on \p AMs; call
+  /// once per module of the prototype.
+  void registerAnalyses(const ModuleAnalysisManagers &AMs);
 
   /// Parse a top-level pipeline string of the form
   ///   target(<inner>) [, instrumentation(<inner>) ...]

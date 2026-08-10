@@ -46,11 +46,10 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
 
   llvm::Module &IModule = IP.getInstrumentationModule();
 
-  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
-  // MAM caches results for both modules, keyed by module reference.
+  // This pass only reads the instrumentation module, so it goes through that
+  // module's own managers.
   llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
-          .getManager();
+      IPAM.getResult<IModuleAnalysisManagerPrototypeProxy>(IP).getManager();
 
   llvm::MachineModuleInfo &MMI =
       MAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI();
@@ -208,7 +207,16 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
   // downstream passes still need the cached MachineFunctionAnalysis results
   // for the instrumentation module we just mutated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  preserveInnerAnalysisManagerProxies(PA);
+  // Preservation copies are emitted into existing injected-payload MFs in the
+  // instrumentation module. No MachineFunction is created or destroyed and the
+  // target module is untouched, so the inner managers remain accurate; only
+  // Prototype-level analyses over payload liveness are dropped.
+  PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
   return PA;
 }
 

@@ -420,20 +420,26 @@ llvm::Error LuthierFileParser::loadMIR(Prototype &P,
                                        PrototypeAnalysisManager &PAM) {
   llvm::Module &TargetModule = P.getTargetModule();
   llvm::Module &IModule = P.getInstrumentationModule();
-  if (!PAM.isPassRegistered<ModuleAnalysisManagerPrototypeProxy>()) {
+  if (!PAM.isPassRegistered<TargetModuleAnalysisManagerPrototypeProxy>() ||
+      !PAM.isPassRegistered<IModuleAnalysisManagerPrototypeProxy>()) {
     return LUTHIER_MAKE_GENERIC_ERROR(
         "Module analysis manager prototype proxy is not registered");
   }
-  llvm::ModuleAnalysisManager &MAM =
-      PAM.getResult<ModuleAnalysisManagerPrototypeProxy>(P).getManager();
+  // Each module is parsed through its own ModuleAnalysisManager:
+  // MIRParser::parseMachineFunctions reaches the FunctionAnalysisManager that
+  // will own the parsed MachineFunctions through the MAM it is handed.
+  llvm::ModuleAnalysisManager &TargetMAM =
+      PAM.getResult<TargetModuleAnalysisManagerPrototypeProxy>(P).getManager();
+  llvm::ModuleAnalysisManager &IMAM =
+      PAM.getResult<IModuleAnalysisManagerPrototypeProxy>(P).getManager();
 
   if (TargetMIRParser &&
-      TargetMIRParser->parseMachineFunctions(TargetModule, MAM)) {
+      TargetMIRParser->parseMachineFunctions(TargetModule, TargetMAM)) {
     return LUTHIER_MAKE_GENERIC_ERROR(
         "Failed to parse the target module machine functions");
   }
   if (InstrumentationMIRParser &&
-      InstrumentationMIRParser->parseMachineFunctions(IModule, MAM)) {
+      InstrumentationMIRParser->parseMachineFunctions(IModule, IMAM)) {
     return LUTHIER_MAKE_GENERIC_ERROR(
         "Failed to parse the instrumentation module machine functions");
   }
@@ -442,14 +448,20 @@ llvm::Error LuthierFileParser::loadMIR(Prototype &P,
   /// shared before serialization — instrumentation-point tags above all. This
   /// has to happen here rather than at parse time because those tags are reached
   /// through MachineInstrs.
-  llvm::FunctionAnalysisManager &FAM =
-      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
+  llvm::FunctionAnalysisManager &TargetFAM =
+      PAM.getResult<TargetFunctionAnalysisManagerPrototypeProxy>(P)
           .getManager();
-  auto GetMF = [&FAM](llvm::Function &F) -> llvm::MachineFunction * {
-    auto *MFRes = FAM.getCachedResult<llvm::MachineFunctionAnalysis>(F);
-    return MFRes ? &MFRes->getMF() : nullptr;
+  llvm::FunctionAnalysisManager &IFAM =
+      PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
+          .getManager();
+  auto makeGetMF = [](llvm::FunctionAnalysisManager &FAM) {
+    return [&FAM](llvm::Function &F) -> llvm::MachineFunction * {
+      auto *MFRes = FAM.getCachedResult<llvm::MachineFunctionAnalysis>(F);
+      return MFRes ? &MFRes->getMF() : nullptr;
+    };
   };
-  patchIModuleMDNodeReferences(IModule, TargetModule, MDSlotMap, GetMF, GetMF);
+  patchIModuleMDNodeReferences(IModule, TargetModule, MDSlotMap,
+                               makeGetMF(TargetFAM), makeGetMF(IFAM));
 
   return llvm::Error::success();
 }
@@ -464,17 +476,22 @@ llvm::Error writeLuthierFile(llvm::raw_ostream &OS, Prototype &IP,
   llvm::Module &TargetModule = IP.getTargetModule();
   llvm::Module &IModule = IP.getInstrumentationModule();
 
-  if (!IPAM.isPassRegistered<FunctionAnalysisManagerPrototypeProxy>())
+  if (!IPAM.isPassRegistered<TargetFunctionAnalysisManagerPrototypeProxy>() ||
+      !IPAM.isPassRegistered<IModuleFunctionAnalysisManagerPrototypeProxy>())
     return LUTHIER_MAKE_GENERIC_ERROR(
         "Function analysis manager prototype proxy is not registered");
 
-  llvm::FunctionAnalysisManager &FAM =
-      IPAM.getResult<FunctionAnalysisManagerPrototypeProxy>(IP).getManager();
+  llvm::FunctionAnalysisManager &TargetFAM =
+      IPAM.getResult<TargetFunctionAnalysisManagerPrototypeProxy>(IP)
+          .getManager();
+  llvm::FunctionAnalysisManager &IFAM =
+      IPAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(IP)
+          .getManager();
 
   // Target module: MIR if any function has a cached MFA, else IR text.
-  if (moduleHasCachedMIR(TargetModule, FAM)) {
+  if (moduleHasCachedMIR(TargetModule, TargetFAM)) {
     Y.TargetModuleFormat = LuthierFileParser::ModuleFormat::MIR;
-    serializeModuleAsMIR(TargetModule, FAM, Y.TargetModuleText.S);
+    serializeModuleAsMIR(TargetModule, TargetFAM, Y.TargetModuleText.S);
   } else {
     Y.TargetModuleFormat = LuthierFileParser::ModuleFormat::IR;
     llvm::raw_string_ostream SS(Y.TargetModuleText.S);
@@ -482,9 +499,9 @@ llvm::Error writeLuthierFile(llvm::raw_ostream &OS, Prototype &IP,
   }
 
   // Instrumentation module: same test.
-  if (moduleHasCachedMIR(IModule, FAM)) {
+  if (moduleHasCachedMIR(IModule, IFAM)) {
     Y.InstrumentationModuleFormat = LuthierFileParser::ModuleFormat::MIR;
-    serializeModuleAsMIR(IModule, FAM, Y.InstrumentationModuleText.S);
+    serializeModuleAsMIR(IModule, IFAM, Y.InstrumentationModuleText.S);
   } else {
     Y.InstrumentationModuleFormat = LuthierFileParser::ModuleFormat::IR;
     llvm::raw_string_ostream SS(Y.InstrumentationModuleText.S);
@@ -502,12 +519,14 @@ llvm::Error writeLuthierFile(llvm::raw_ostream &OS, Prototype &IP,
   //
   // The walk has to reach MachineInstr attachments on both sides, since a
   // pcsections tag has no IR user.
-  auto GetMF = [&FAM](llvm::Function &F) -> llvm::MachineFunction * {
-    auto *MFRes = FAM.getCachedResult<llvm::MachineFunctionAnalysis>(F);
-    return MFRes ? &MFRes->getMF() : nullptr;
+  auto makeGetMF = [](llvm::FunctionAnalysisManager &FAM) {
+    return [&FAM](llvm::Function &F) -> llvm::MachineFunction * {
+      auto *MFRes = FAM.getCachedResult<llvm::MachineFunctionAnalysis>(F);
+      return MFRes ? &MFRes->getMF() : nullptr;
+    };
   };
-  auto TargetSlots = buildMDNodeSlots(TargetModule, GetMF);
-  auto IModuleSlots = buildMDNodeSlots(IModule, GetMF);
+  auto TargetSlots = buildMDNodeSlots(TargetModule, makeGetMF(TargetFAM));
+  auto IModuleSlots = buildMDNodeSlots(IModule, makeGetMF(IFAM));
 
   for (auto &[IModSlot, MD] : IModuleSlots.SlotToMD) {
     auto It = TargetSlots.MDToSlot.find(MD);

@@ -790,76 +790,97 @@ static int compileModule(char **argv,
                                          std::nullopt, &PIC);
 
 
+  // Each of the prototype's two modules gets its own set of managers. Sharing
+  // one set is what let a pass over the instrumentation module clear the target
+  // module's cached MachineFunctionAnalysis results: LLVM's per-module proxies
+  // clear the inner manager they reach wholesale whenever a module pass does not
+  // preserve them (FunctionAnalysisManagerModuleProxy::Result::invalidate in
+  // PassManager.cpp), and a nested llvm::ModulePassManager re-invalidates after
+  // every pass it runs.
+  //
   // Declaration order matters and must run innermost -> outermost, because
-  // destruction runs in reverse and InnerAnalysisManagerProxy<Inner, Outer>::
-  // Result::~Result() calls InnerAM->clear(). An outer manager therefore has to
-  // be destroyed *before* every manager it proxies, or the proxy result's
-  // destructor writes into a freed AnalysisManager. PAM is the outermost of all
-  // (it proxies MAM, FAM and MFAM), so it goes last; MAM proxies FAM and MFAM,
-  // so it goes after them. This mirrors the LAM/FAM/CGAM/MAM ordering LLVM's own
-  // tools use.
-  LoopAnalysisManager LAM;
-  FunctionAnalysisManager FAM;
-  CGSCCAnalysisManager CGAM;
-  MachineFunctionAnalysisManager MFAM;
-  ModuleAnalysisManager MAM;
+  // destruction runs in reverse and a proxy Result's destructor calls clear() on
+  // the managers it proxies. An outer manager therefore has to be destroyed
+  // *before* every manager it proxies, or the proxy result's destructor writes
+  // into a freed AnalysisManager. PAM is the outermost of all (it proxies both
+  // modules' MAM, FAM and MFAM), so it goes last; each MAM proxies its own FAM
+  // and MFAM, so it goes after them. This mirrors the LAM/FAM/CGAM/MAM ordering
+  // LLVM's own tools use.
+  LoopAnalysisManager TargetLAM, ILAM;
+  FunctionAnalysisManager TargetFAM, IFAM;
+  CGSCCAnalysisManager TargetCGAM, ICGAM;
+  MachineFunctionAnalysisManager TargetMFAM, IMFAM;
+  ModuleAnalysisManager TargetMAM, IMAM;
   luthier::PrototypeAnalysisManager PAM;
 
-  for (const auto &Plugin : PluginList)
-    Plugin.registerPrototypePassBuilderCallback(PB);
-
-  PB.registerPrototypeAnalyses(PAM);
-  PB.registerModuleAnalyses(MAM);
-  PB.registerCGSCCAnalyses(CGAM);
-  PB.registerFunctionAnalyses(FAM);
-  PB.registerLoopAnalyses(LAM);
-  PB.registerMachineFunctionAnalyses(MFAM);
-  PB.crossRegisterProxies(PAM, MAM, CGAM, FAM, LAM, MFAM);
-  SI.registerCallbacks(PIC, &MAM);
-
-  FAM.registerPass([&] { return TargetLibraryAnalysis(TLII); });
-
-  MAM.registerPass([&] {
-    const TargetOptions &Opts = Target->Options;
-    return RuntimeLibraryAnalysis(
-        IP->getTargetModule().getTargetTriple(), Target->Options.ExceptionModel,
-        Target->Options.FloatABIType, Target->Options.EABIVersion,
-        Opts.MCOptions.ABIName, Target->Options.VecLib);
-  });
-  MAM.registerPass([&] { return LibcallLoweringModuleAnalysis(); });
-  MAM.registerPass([&] { return MachineModuleAnalysis(MMI); });
-
-  // The initial entry/execution points are read from target-module
-  // metadata stamped by MockLoadAMDGPUCodeObjects, so these analyses take
-  // no resolver and know nothing about the mock loader.
-  MAM.registerPass([]() { return luthier::InitialEntryPointAnalysis(); });
-  MAM.registerPass(
-      []() { return luthier::InitialExecutionPointAnalysis(); });
-  MAM.registerPass([]() {
-    return luthier::MemoryAllocationAnalysis(std::move(
-        std::make_unique<luthier::MockLoaderMemoryAccessor>(*Loader)));
-  });
+  const luthier::InstrumentationPassBuilder::ModuleAnalysisManagers TargetAMs{
+      TargetMAM, TargetCGAM, TargetFAM, TargetLAM, TargetMFAM};
+  const luthier::InstrumentationPassBuilder::ModuleAnalysisManagers IAMs{
+      IMAM, ICGAM, IFAM, ILAM, IMFAM};
 
   // Owns the Module -> Prototype mapping ParentPrototypeAnalysis serves. It has
   // to outlive the pipeline, and the prototype is registered into it once the
   // prototype's modules are final (see below, just before IPPM.run).
   static luthier::ModuleToPrototypeMap ParentPrototypeMap;
-  MAM.registerPass(
-      []() { return luthier::ParentPrototypeAnalysis(ParentPrototypeMap); });
 
-  MAM.registerPass([]() { return luthier::CodeObjectManagerAnalysis(); });
-  MAM.registerPass(
-      []() { return luthier::MockAMDGPULoaderAnalysis(*Loader); });
+  for (const auto &Plugin : PluginList)
+    Plugin.registerPrototypePassBuilderCallback(PB);
 
-  // Intrinsic-lowering passes (ProcessIntrinsicsAtIRLevelPass,
-  // IntrinsicMIRLoweringPass) query this to find the processor for each
-  // luthier:: intrinsic call. The registry's default constructor installs the
-  // built-ins from IntrinsicRegistry.def; it has to outlive the pipeline, so it
-  // is function-local static rather than a captured local.
-  MAM.registerPass([]() -> luthier::IntrinsicsProcessorsAnalysis {
-    static luthier::IntrinsicProcessorRegistry IntrinsicRegistry;
-    return luthier::IntrinsicsProcessorsAnalysis(IntrinsicRegistry);
-  });
+  PB.registerPrototypeAnalyses(PAM);
+  PB.registerAnalyses(TargetAMs);
+  PB.registerAnalyses(IAMs);
+  PB.crossRegisterProxies(PAM, TargetAMs, IAMs);
+  // StandardInstrumentations takes a single ModuleAnalysisManager, used only by
+  // its optional debug instrumentation. The instrumentation module is where the
+  // heavy pipelines run, so it is the one worth wiring up.
+  SI.registerCallbacks(PIC, &IMAM);
+
+  // Everything below is registered on both modules' managers: a module analysis
+  // is resolved out of the manager belonging to the module it is asked about.
+  // The single MMI is deliberately shared -- it owns the MCContext the
+  // MachineFunctions of both modules are created against.
+  for (FunctionAnalysisManager *F : {&TargetFAM, &IFAM})
+    F->registerPass([&] { return TargetLibraryAnalysis(TLII); });
+
+  for (ModuleAnalysisManager *M : {&TargetMAM, &IMAM}) {
+    M->registerPass([&] {
+      const TargetOptions &Opts = Target->Options;
+      return RuntimeLibraryAnalysis(IP->getTargetModule().getTargetTriple(),
+                                    Target->Options.ExceptionModel,
+                                    Target->Options.FloatABIType,
+                                    Target->Options.EABIVersion,
+                                    Opts.MCOptions.ABIName,
+                                    Target->Options.VecLib);
+    });
+    M->registerPass([&] { return LibcallLoweringModuleAnalysis(); });
+    M->registerPass([&] { return MachineModuleAnalysis(MMI); });
+
+    // The initial entry/execution points are read from target-module
+    // metadata stamped by MockLoadAMDGPUCodeObjects, so these analyses take
+    // no resolver and know nothing about the mock loader.
+    M->registerPass([]() { return luthier::InitialEntryPointAnalysis(); });
+    M->registerPass([]() { return luthier::InitialExecutionPointAnalysis(); });
+    M->registerPass([]() {
+      return luthier::MemoryAllocationAnalysis(std::move(
+          std::make_unique<luthier::MockLoaderMemoryAccessor>(*Loader)));
+    });
+
+    M->registerPass(
+        []() { return luthier::ParentPrototypeAnalysis(ParentPrototypeMap); });
+
+    M->registerPass([]() { return luthier::CodeObjectManagerAnalysis(); });
+    M->registerPass([]() { return luthier::MockAMDGPULoaderAnalysis(*Loader); });
+
+    // Intrinsic-lowering passes (ProcessIntrinsicsAtIRLevelPass,
+    // IntrinsicMIRLoweringPass) query this to find the processor for each
+    // luthier:: intrinsic call. The registry's default constructor installs the
+    // built-ins from IntrinsicRegistry.def; it has to outlive the pipeline, so
+    // it is function-local static rather than a captured local.
+    M->registerPass([]() -> luthier::IntrinsicsProcessorsAnalysis {
+      static luthier::IntrinsicProcessorRegistry IntrinsicRegistry;
+      return luthier::IntrinsicsProcessorsAnalysis(IntrinsicRegistry);
+    });
+  }
 
   PB.registerPipelineParsingCallback(
       [&](llvm::StringRef Name, llvm::ModulePassManager &MPM,
@@ -960,9 +981,10 @@ static int compileModule(char **argv,
   // getCachedResult, so the result has to be materialized here rather than
   // left to be computed lazily on first use.
   ParentPrototypeMap.registerPrototype(*IP);
-  (void)MAM.getResult<luthier::ParentPrototypeAnalysis>(
+  (void)IMAM.getResult<luthier::ParentPrototypeAnalysis>(
       IP->getInstrumentationModule());
-  (void)MAM.getResult<luthier::ParentPrototypeAnalysis>(IP->getTargetModule());
+  (void)TargetMAM.getResult<luthier::ParentPrototypeAnalysis>(
+      IP->getTargetModule());
 
   // InjectedPayloadPEIPass likewise requires a cached
   // InjectedPayloadAndInstPointAnalysis: a machine-function pass has no way to

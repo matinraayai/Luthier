@@ -61,13 +61,14 @@ IPPredicatedCFG::getIPPredCFG(Prototype &IP,
                               PrototypeAnalysisManager &IPAM) {
   llvm::Module &TargetModule = IP.getTargetModule();
 
-  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
-  // MAM caches results for both modules, keyed by the module reference.
-  llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
+  // Everything below is read out of the target module, so the target module's
+  // own managers are the ones to go through.
+  llvm::ModuleAnalysisManager &TargetMAM =
+      IPAM.getResult<TargetModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
   llvm::FunctionAnalysisManager &FAM =
-      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
+      TargetMAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(
+                   TargetModule)
           .getManager();
 
   auto Out = std::unique_ptr<IPPredicatedCFG>(new IPPredicatedCFG());

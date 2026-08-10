@@ -97,9 +97,12 @@ llvm::Function *getHook(Prototype &P) {
 /// \c MachineModuleInfo, both of which the downstream pipeline still needs.
 llvm::PreservedAnalyses payloadsCreatedPA() {
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  PA.preserve<ModuleAnalysisManagerPrototypeProxy>();
-  PA.preserve<FunctionAnalysisManagerPrototypeProxy>();
-  PA.preserve<MachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
   return PA;
 }
 

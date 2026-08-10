@@ -807,15 +807,11 @@ TraceCallGraphAnalysis::run(Prototype &IP,
   llvm::Module &TargetModule = IP.getTargetModule();
   llvm::Module &IModule = IP.getInstrumentationModule();
 
-  llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
-          .getManager();
-
   llvm::FunctionAnalysisManager &TargetFAM =
-      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
+      IPAM.getResult<TargetFunctionAnalysisManagerPrototypeProxy>(IP)
           .getManager();
   llvm::FunctionAnalysisManager &IFAM =
-      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(IModule)
+      IPAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   // The AppMI → payloads map is built inline from the IModule's payload

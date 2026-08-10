@@ -231,17 +231,14 @@ FunctionPreambleDescriptorAnalysis::run(
   llvm::Module &TargetModule = IP.getTargetModule();
   llvm::Module &IModule = IP.getInstrumentationModule();
 
-  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
-  // MAM caches results for both modules, keyed by the module reference.
-  llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
-          .getManager();
-
+  // Each module of the prototype has its own ModuleAnalysisManager; a module
+  // analysis is resolved out of the manager belonging to the module it is
+  // asked about.
   llvm::FunctionAnalysisManager &TargetFAM =
-      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
+      IPAM.getResult<TargetFunctionAnalysisManagerPrototypeProxy>(IP)
           .getManager();
   llvm::FunctionAnalysisManager &IFAM =
-      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(IModule)
+      IPAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   const InjectedPayloadAndInstPoint &IPIP =

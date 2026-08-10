@@ -376,11 +376,10 @@ IModuleIPPredicatedLivenessAnalysis::run(
 
   llvm::Module &IModule = IP.getInstrumentationModule();
 
-  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
-  // MAM caches results for both modules, keyed by the module reference.
+  // This pass only reads the instrumentation module, so it goes through that
+  // module's own managers.
   llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
-          .getManager();
+      IPAM.getResult<IModuleAnalysisManagerPrototypeProxy>(IP).getManager();
 
   IPPredicatedCFG &CFG =
       IPAM.getResult<IPPredCFGAnalysis>(IP).getVecCFG();

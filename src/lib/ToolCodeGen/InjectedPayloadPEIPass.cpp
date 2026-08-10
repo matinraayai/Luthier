@@ -156,27 +156,26 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
 
   auto &TargetModule = P->getTargetModule();
 
-  // SVStorageAndLoadLocationsAnalysis is an Prototype-level
-  // analysis, and FunctionPreambleDescriptorAnalysis is likewise IP-level.
-  // The outer IPAM proxy on this MF exposes cached IPAM lookups.
-  //
-  // TODO(NPM): the proxy indexes cached results by Prototype*,
-  // but a MachineFunction pass has no natural handle to its containing IP.
-  // Wiring the SVStorage/FPD lookups from an MF pass requires the driver
-  // to expose the enclosing IP through a small MAM accessor (mirroring
-  // TargetAppModuleAndMAMAnalysis). Until that landing, callers of this
-  // pass are broken.
+  // SVStorageAndLoadLocationsAnalysis is a Prototype-level analysis, so a
+  // MachineFunction pass cannot compute one; it is read out of the cache
+  // through the outer proxy, keyed by the prototype ParentPrototypeAnalysis
+  // resolved above. buildInstrumentationPipeline materializes it just before
+  // the machine-pass stage — after the last Prototype-level pass that reports
+  // PreservedAnalyses::none(), which would otherwise drop it again.
   const auto &IPAMProxy =
       MFAM.getResult<PrototypeAnalysisManagerMachineFunctionProxy>(
           MF);
-  (void)IPAMProxy;
 
-  const SVStorageAndLoadLocations *StateValueLocations = nullptr;
+  const SVStorageAndLoadLocations *StateValueLocations =
+      IPAMProxy.getCachedResult<SVStorageAndLoadLocationsAnalysis>(*P);
+  if (!StateValueLocations) {
+    Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
+        "SV locations analysis has not been cached")));
+    return llvm::PreservedAnalyses::all();
+  }
+
   const InstPointSVALoadPlan *LoadPlan =
-      StateValueLocations
-          ? StateValueLocations->getStateValueArrayLoadPlanForInstPoint(
-                *TargetMI)
-          : nullptr;
+      StateValueLocations->getStateValueArrayLoadPlanForInstPoint(*TargetMI);
   if (!LoadPlan) {
     Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
         "No SVA load plan recorded for instrumentation point in {0}",

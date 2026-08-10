@@ -1572,10 +1572,10 @@ CodeDiscoveryPass::run(Prototype &IP,
   LLVM_DEBUG(luthier::dbgs()
                  << "[CodeDiscoveryPass] Running code discovery pass\n";);
 
-  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
-  // MAM caches results for both modules, keyed by the module reference.
+  // Code discovery only writes the target module, so it goes through that
+  // module's own managers.
   llvm::ModuleAnalysisManager &TargetMAM =
-      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
+      IPAM.getResult<TargetModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   llvm::MachineModuleInfo &TargetMMI =
@@ -1736,7 +1736,16 @@ CodeDiscoveryPass::run(Prototype &IP,
     /// contribute. Everything else stays unpreserved, so the IP-level analyses
     /// this invalidate exists for (\c TraceCallGraphAnalysis in particular) are
     /// still dropped.
-    preserveInnerAnalysisManagerProxies(PA);
+    // The MF just populated, and every MF lifted before it, must stay cached —
+    // the loop keeps using MF immediately below, and later iterations walk the
+    // ones already discovered. Module-level invalidation for the target module
+    // was done explicitly above, so the inner proxies are all still accurate.
+    PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
+    PA.preserve<TargetFunctionAnalysisManagerPrototypeProxy>();
+    PA.preserve<TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+    PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
+    PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
+    PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
     IPAM.invalidate(IP, PA);
 
     /// Translate the machine function to LLVM IR through the pinned
@@ -1858,7 +1867,15 @@ CodeDiscoveryPass::run(Prototype &IP,
   // downstream passes (InstrumentationPMDriver, NewPMAsmPrinter) still need
   // the target module's MachineFunctionAnalysis cache we just populated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  preserveInnerAnalysisManagerProxies(PA);
+  // Everything this pass produced is the lifted MIR itself, held by the cached
+  // MachineFunctionAnalysis results; dropping them would discard the pass's
+  // entire output. Only Prototype-level analyses are invalidated.
+  PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
   return PA;
 }
 } // namespace luthier

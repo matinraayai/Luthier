@@ -628,11 +628,14 @@ bool IntrinsicMIRLoweringPass::lowerIntrinsics(
   llvm::Module &IModule = IP.getInstrumentationModule();
   llvm::Module &TargetModule = IP.getTargetModule();
 
-  // The IP-side proxy hands out the outer ModuleAnalysisManager; the same
-  // MAM caches results for both modules, keyed by the module reference.
-  llvm::ModuleAnalysisManager &MAM =
-      IPAM.getResult<ModuleAnalysisManagerPrototypeProxy>(IP)
+  // Each module of the prototype has its own ModuleAnalysisManager; a module
+  // analysis is resolved out of the manager belonging to the module it is
+  // asked about.
+  llvm::ModuleAnalysisManager &TargetMAM =
+      IPAM.getResult<TargetModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
+  llvm::ModuleAnalysisManager &MAM =
+      IPAM.getResult<IModuleAnalysisManagerPrototypeProxy>(IP).getManager();
 
   llvm::MachineModuleInfo &MMI =
       MAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI();
@@ -641,7 +644,7 @@ bool IntrinsicMIRLoweringPass::lowerIntrinsics(
       MAM.getResult<IntrinsicsProcessorsAnalysis>(IModule);
 
   bool IsInitialEntryPointKernel =
-      MAM.getResult<InitialEntryPointAnalysis>(TargetModule)
+      TargetMAM.getResult<InitialEntryPointAnalysis>(TargetModule)
           .getInitialEntryPoint()
           .isKernel();
 
@@ -850,7 +853,17 @@ IntrinsicMIRLoweringPass::run(Prototype &IP,
   // downstream passes still need the cached MachineFunctionAnalysis results
   // for the instrumentation module we just mutated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  preserveInnerAnalysisManagerProxies(PA);
+  // This pass rewrites MIR inside the instrumentation module and attaches SVA
+  // spec metadata to it. It does not touch the target module at all, and it
+  // handles its own module's MIR in place rather than through an analysis, so
+  // every inner analysis-manager proxy stays valid; only Prototype-level
+  // analyses derived from the instrumentation module's MIR are dropped.
+  PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
   return PA;
 }
 

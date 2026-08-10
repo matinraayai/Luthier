@@ -157,13 +157,17 @@ KernelArgumentIntrinsicTool::run(luthier::Prototype &P,
       PAM, [&](llvm::MachineFunction &MF) {
         instrumentMachineFunction(IModule, MF);
       });
-  /// Payloads were added to the instrumentation module and instrumentation-point
-  /// metadata attached to target MIs, so no Prototype-level analysis survives.
-  /// The inner analysis-manager proxies must be preserved, though: their
-  /// invalidation clears the whole inner manager, which would discard the lifted
-  /// target MIR the rest of the pipeline still needs.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  luthier::preserveInnerAnalysisManagerProxies(PA);
+  // Payload creation only adds functions to the instrumentation module and
+  // attaches instrumentation-point metadata to target MIs. No MachineFunction
+  // is created or destroyed, so every cached MachineFunctionAnalysis result —
+  // including the lifted target MIR this pass just walked — stays valid.
+  PA.preserve<luthier::TargetModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::TargetFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
   return PA;
 }
 

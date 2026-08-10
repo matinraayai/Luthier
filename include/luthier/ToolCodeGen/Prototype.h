@@ -81,11 +81,10 @@ public:
   ///
   /// \details A prototype does not own the target MIR directly: \c
   /// CodeDiscoveryPass lifts it into \c llvm::MachineFunctionAnalysis results
-  /// cached on the \c llvm::FunctionAnalysisManager shared by both of the
-  /// prototype's modules, keyed by the target module's
-  /// <tt>llvm::Function</tt>s. Target functions without a cached result have no
-  /// MIR lifted for them and are skipped, so calling this before code discovery
-  /// has run is a no-op rather than an error.
+  /// cached on the target module's \c llvm::FunctionAnalysisManager, keyed by
+  /// the target module's <tt>llvm::Function</tt>s. Target functions without a
+  /// cached result have no MIR lifted for them and are skipped, so calling this
+  /// before code discovery has run is a no-op rather than an error.
   void forEachTargetMF(PrototypeAnalysisManager &PAM,
                        llvm::function_ref<void(llvm::MachineFunction &)> Fn);
 };
@@ -94,21 +93,125 @@ public:
 // Cross-level analysis-manager proxies
 //===----------------------------------------------------------------------===//
 
-using ModuleAnalysisManagerPrototypeProxy =
-    llvm::InnerAnalysisManagerProxy<llvm::ModuleAnalysisManager,
-                                    Prototype>;
+/// Identifies which of a prototype's two modules an inner analysis manager
+/// serves. Used only to give the proxies below distinct \c llvm::AnalysisKey s.
+enum class PrototypeModuleKind { Target, Instrumentation };
 
+/// \brief Prototype-level proxy for the analysis manager of type
+/// \p AnalysisManagerT that serves the \p Kind module of the prototype.
+///
+/// \details Luthier's counterpart to \c llvm::InnerAnalysisManagerProxy. It
+/// differs only in being keyed by \p Kind as well as by manager type, so that a
+/// prototype can hand out one manager per module at every level below itself
+/// instead of one manager shared by both.
+///
+/// The two modules must not share a manager. LLVM reaches a module's inner
+/// managers through its own per-module proxies (\c
+/// llvm::FunctionAnalysisManagerModuleProxy and friends), and their
+/// invalidation hook responds to a module pass that does not preserve the proxy
+/// by calling \c InnerAM->clear() — the whole manager, not the passing module's
+/// share of it, and without consulting any cached result's own \c invalidate.
+/// Fourteen of the module passes in the default O2 pipeline do exactly that
+/// (\c AMDGPUAttributorPass, \c GlobalDCEPass and \c Annotation2MetadataPass
+/// among them), as does the AMDGPU ISel pipeline. With a shared manager the
+/// first of them to report a change destroys the target module's cached
+/// \c llvm::MachineFunctionAnalysis results — and the <tt>MachineFunction</tt>s
+/// those results own — even though the pass only ever ran on the
+/// instrumentation module. Splitting the managers confines each clear to the
+/// module whose pass triggered it.
+template <typename AnalysisManagerT, PrototypeModuleKind Kind>
+class PrototypeInnerAnalysisManagerProxy
+    : public llvm::AnalysisInfoMixin<
+          PrototypeInnerAnalysisManagerProxy<AnalysisManagerT, Kind>> {
+public:
+  class Result {
+  public:
+    explicit Result(AnalysisManagerT &InnerAM) : InnerAM(&InnerAM) {}
+
+    /// The moved-from state is nulled out: this result carries the duty of
+    /// clearing the manager, and only one copy of it may.
+    Result(Result &&Arg) : InnerAM(Arg.InnerAM) { Arg.InnerAM = nullptr; }
+
+    Result &operator=(Result &&RHS) {
+      InnerAM = RHS.InnerAM;
+      RHS.InnerAM = nullptr;
+      return *this;
+    }
+
+    /// Clears the manager if this result is destroyed without having seen an
+    /// invalidate call, mirroring \c llvm::InnerAnalysisManagerProxy::Result.
+    ~Result() {
+      if (InnerAM)
+        InnerAM->clear();
+    }
+
+    AnalysisManagerT &getManager() { return *InnerAM; }
+
+    bool invalidate(Prototype &IP, const llvm::PreservedAnalyses &PA,
+                    typename PrototypeAnalysisManager::Invalidator &Inv) {
+      auto PAC = PA.getChecker<PrototypeInnerAnalysisManagerProxy>();
+      if (!PAC.preserved() &&
+          !PAC.template preservedSet<llvm::AllAnalysesOn<Prototype>>()) {
+        InnerAM->clear();
+        return true; // the proxy result itself is now invalid
+      }
+      return false;
+    }
+
+  private:
+    AnalysisManagerT *InnerAM;
+  };
+
+  explicit PrototypeInnerAnalysisManagerProxy(AnalysisManagerT &InnerAM)
+      : InnerAM(&InnerAM) {}
+
+  Result run(Prototype &IP, PrototypeAnalysisManager &AM) {
+    return Result(*InnerAM);
+  }
+
+private:
+  friend llvm::AnalysisInfoMixin<
+      PrototypeInnerAnalysisManagerProxy<AnalysisManagerT, Kind>>;
+
+  static llvm::AnalysisKey Key;
+
+  AnalysisManagerT *InnerAM;
+};
+
+template <typename AnalysisManagerT, PrototypeModuleKind Kind>
+llvm::AnalysisKey
+    PrototypeInnerAnalysisManagerProxy<AnalysisManagerT, Kind>::Key;
+
+using TargetModuleAnalysisManagerPrototypeProxy =
+    PrototypeInnerAnalysisManagerProxy<llvm::ModuleAnalysisManager,
+                                       PrototypeModuleKind::Target>;
+
+using IModuleAnalysisManagerPrototypeProxy =
+    PrototypeInnerAnalysisManagerProxy<llvm::ModuleAnalysisManager,
+                                       PrototypeModuleKind::Instrumentation>;
+
+using TargetFunctionAnalysisManagerPrototypeProxy =
+    PrototypeInnerAnalysisManagerProxy<llvm::FunctionAnalysisManager,
+                                       PrototypeModuleKind::Target>;
+
+using IModuleFunctionAnalysisManagerPrototypeProxy =
+    PrototypeInnerAnalysisManagerProxy<llvm::FunctionAnalysisManager,
+                                       PrototypeModuleKind::Instrumentation>;
+
+using TargetMachineFunctionAnalysisManagerPrototypeProxy =
+    PrototypeInnerAnalysisManagerProxy<llvm::MachineFunctionAnalysisManager,
+                                       PrototypeModuleKind::Target>;
+
+using IModuleMachineFunctionAnalysisManagerPrototypeProxy =
+    PrototypeInnerAnalysisManagerProxy<llvm::MachineFunctionAnalysisManager,
+                                       PrototypeModuleKind::Instrumentation>;
+
+/// The outer proxies are one type each: they are registered separately on each
+/// module's managers, and both registrations point back at the same
+/// \c PrototypeAnalysisManager.
 using PrototypeAnalysisManagerModuleProxy =
     llvm::OuterAnalysisManagerProxy<PrototypeAnalysisManager,
                                     llvm::Module>;
-
-using FunctionAnalysisManagerPrototypeProxy =
-    llvm::InnerAnalysisManagerProxy<llvm::FunctionAnalysisManager,
-                                    Prototype>;
-
-using MachineFunctionAnalysisManagerPrototypeProxy =
-    llvm::InnerAnalysisManagerProxy<llvm::MachineFunctionAnalysisManager,
-                                    Prototype>;
 
 using PrototypeAnalysisManagerFunctionProxy =
     llvm::OuterAnalysisManagerProxy<PrototypeAnalysisManager,
@@ -118,23 +221,14 @@ using PrototypeAnalysisManagerMachineFunctionProxy =
     llvm::OuterAnalysisManagerProxy<PrototypeAnalysisManager,
                                     llvm::MachineFunction>;
 
-/// \brief Marks the three inner analysis-manager proxies as preserved on \p PA.
-///
-/// \details Every Prototype-level pass that reports anything short of
-/// \c PreservedAnalyses::all() must call this unless it genuinely wants the
-/// inner managers emptied. The proxies' invalidation hooks call
-/// \c InnerAM->clear() — for the whole manager, not just the pass's own module
-/// (see the specializations in Prototype.cpp) — which throws away every cached
-/// \c MachineFunctionAnalysis result. Those results own the
-/// <tt>MachineFunction</tt>s, so dropping them silently replaces the lifted
-/// target MIR (and any MIR parsed out of a \c .luthier file) with freshly
-/// created, empty <tt>MachineFunction</tt>s for the next pass that asks.
-///
-/// Per-module and per-function invalidation still happens: a pass that mutates
-/// one module reconciles that module's manager directly (as the adaptors in
-/// this file do), and analyses at the Prototype level are unaffected by this
-/// call.
-void preserveInnerAnalysisManagerProxies(llvm::PreservedAnalyses &PA);
+/// \note Any Prototype-level pass reporting less than
+/// \c PreservedAnalyses::all() must state explicitly which of the six inner
+/// analysis-manager proxies it preserves. A proxy it does not name is dropped,
+/// and a dropped proxy clears the manager behind it — throwing away that
+/// module's cached \c llvm::MachineFunctionAnalysis results along with the
+/// <tt>MachineFunction</tt>s those results own. Naming only the proxies of the
+/// module a pass actually disturbed now leaves the other module untouched,
+/// which is the whole point of splitting them.
 
 /// \brief Adaptor that runs a single \c llvm::Module pass over the target
 /// module of an \c Prototype.
@@ -221,28 +315,7 @@ createRunOnInstrumentationModuleAdaptor(ModulePassT &&Pass) {
 
 } // namespace luthier
 
-//===----------------------------------------------------------------------===//
-// Explicit specializations of the inner proxies' invalidation hooks.
-//===----------------------------------------------------------------------===//
-//
-// These MUST live in \c namespace llvm: an explicit specialization of a member
-// has to be declared in a namespace enclosing the specialized template.
 namespace llvm {
-
-template <>
-bool luthier::ModuleAnalysisManagerPrototypeProxy::Result::invalidate(
-    luthier::Prototype &IP, const PreservedAnalyses &PA,
-    luthier::PrototypeAnalysisManager::Invalidator &Inv);
-
-template <>
-bool luthier::FunctionAnalysisManagerPrototypeProxy::Result::
-    invalidate(luthier::Prototype &IP, const PreservedAnalyses &PA,
-               luthier::PrototypeAnalysisManager::Invalidator &Inv);
-
-template <>
-bool luthier::MachineFunctionAnalysisManagerPrototypeProxy::Result::
-    invalidate(luthier::Prototype &IP, const PreservedAnalyses &PA,
-               luthier::PrototypeAnalysisManager::Invalidator &Inv);
 
 extern template class PassManager<luthier::Prototype>;
 extern template class AnalysisManager<luthier::Prototype>;

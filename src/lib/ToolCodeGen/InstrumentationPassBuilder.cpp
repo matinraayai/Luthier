@@ -623,6 +623,14 @@ Error AMDGPUCodeGenPassBuilder::buildPipeline(PrototypePassManager &PPM) const {
   /// TODO: Add other required analysis here
   PPM.addPass(InjectedPayloadPreserveLiveRegsPass());
 
+  // Stage 3 runs SVAPhysVGPRPinPass and InjectedPayloadPEIPass, which are
+  // MachineFunction passes and so can only read Prototype-level analyses out of
+  // the cache. Materialize what they need here rather than earlier: every
+  // Prototype pass above reports PreservedAnalyses::none(), which drops any
+  // Prototype-level result computed before it.
+  PPM.addPass(llvm::RequireAnalysisPass<SVStorageAndLoadLocationsAnalysis,
+                                        Prototype, PrototypeAnalysisManager>());
+
   // ---- Stage 3: machine-passes half of the AMDGPU codegen pipeline. --------
   //
   // Mirrors the back portion of CodeGenPassBuilder::buildPipeline (from
@@ -1144,10 +1152,8 @@ InstrumentationPassBuilder::~InstrumentationPassBuilder() = default;
 //===----------------------------------------------------------------------===//
 
 void InstrumentationPassBuilder::crossRegisterProxies(
-    PrototypeAnalysisManager &PAM, llvm::ModuleAnalysisManager &MAM,
-    llvm::CGSCCAnalysisManager &CGAM, llvm::FunctionAnalysisManager &FAM,
-    llvm::LoopAnalysisManager &LAM,
-    llvm::MachineFunctionAnalysisManager &MFAM) {
+    PrototypeAnalysisManager &PAM, const ModuleAnalysisManagers &Target,
+    const ModuleAnalysisManagers &Instrumentation) {
   // PassManager<Prototype>::run requires PassInstrumentationAnalysis on the
   // Prototype analysis manager. It must NOT be the PIC held by the wrapped
   // llvm::PassBuilder: that one carries StandardInstrumentations' callbacks,
@@ -1159,17 +1165,52 @@ void InstrumentationPassBuilder::crossRegisterProxies(
   PAM.registerPass(
       [this] { return llvm::PassInstrumentationAnalysis(&PrototypePIC); });
 
-  PAM.registerPass([&] { return ModuleAnalysisManagerPrototypeProxy(MAM); });
-  PAM.registerPass([&] { return FunctionAnalysisManagerPrototypeProxy(FAM); });
+  // One inner proxy per IR level per module, so that a Prototype-level pass can
+  // name exactly the managers it disturbed.
   PAM.registerPass(
-      [&] { return MachineFunctionAnalysisManagerPrototypeProxy(MFAM); });
+      [&] { return TargetModuleAnalysisManagerPrototypeProxy(Target.MAM); });
+  PAM.registerPass(
+      [&] { return TargetFunctionAnalysisManagerPrototypeProxy(Target.FAM); });
+  PAM.registerPass([&] {
+    return TargetMachineFunctionAnalysisManagerPrototypeProxy(Target.MFAM);
+  });
+  PAM.registerPass([&] {
+    return IModuleAnalysisManagerPrototypeProxy(Instrumentation.MAM);
+  });
+  PAM.registerPass([&] {
+    return IModuleFunctionAnalysisManagerPrototypeProxy(Instrumentation.FAM);
+  });
+  PAM.registerPass([&] {
+    return IModuleMachineFunctionAnalysisManagerPrototypeProxy(
+        Instrumentation.MFAM);
+  });
 
-  MAM.registerPass([&] { return PrototypeAnalysisManagerModuleProxy(PAM); });
-  FAM.registerPass([&] { return PrototypeAnalysisManagerFunctionProxy(PAM); });
-  MFAM.registerPass(
-      [&] { return PrototypeAnalysisManagerMachineFunctionProxy(PAM); });
+  // Each module's inner levels are wired up separately. That is what keeps the
+  // wholesale InnerAM->clear() in LLVM's per-module proxies (PassManager.cpp,
+  // FunctionAnalysisManagerModuleProxy::Result::invalidate) confined to the
+  // managers of the module whose pass triggered it: a nested
+  // llvm::ModulePassManager re-invalidates after every pass it runs, so a pass
+  // over the instrumentation module would otherwise wipe the target module's
+  // cached MachineFunctionAnalysis results — and the MachineFunctions they own.
+  for (const ModuleAnalysisManagers &AMs : {Target, Instrumentation}) {
+    AMs.MAM.registerPass(
+        [&] { return PrototypeAnalysisManagerModuleProxy(PAM); });
+    AMs.FAM.registerPass(
+        [&] { return PrototypeAnalysisManagerFunctionProxy(PAM); });
+    AMs.MFAM.registerPass(
+        [&] { return PrototypeAnalysisManagerMachineFunctionProxy(PAM); });
 
-  PB->crossRegisterProxies(LAM, FAM, CGAM, MAM, &MFAM);
+    PB->crossRegisterProxies(AMs.LAM, AMs.FAM, AMs.CGAM, AMs.MAM, &AMs.MFAM);
+  }
+}
+
+void InstrumentationPassBuilder::registerAnalyses(
+    const ModuleAnalysisManagers &AMs) {
+  registerModuleAnalyses(AMs.MAM);
+  registerCGSCCAnalyses(AMs.CGAM);
+  registerFunctionAnalyses(AMs.FAM);
+  registerLoopAnalyses(AMs.LAM);
+  registerMachineFunctionAnalyses(AMs.MFAM);
 }
 
 void InstrumentationPassBuilder::registerPrototypeAnalyses(
