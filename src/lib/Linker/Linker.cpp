@@ -44,7 +44,7 @@ llvm::Error linkRelocatableToExecutable(llvm::ArrayRef<char> Code,
                       EC.message()));
 
   auto CleanupTmpDir = llvm::scope_exit(
-      [&TmpDir]() { fprintf(stderr, "[LINKPROBE] kept %s\n", TmpDir.c_str()); });
+      [&TmpDir]() { (void)llvm::sys::fs::remove_directories(TmpDir); });
 
   // Write the relocatable input to a temp file
   llvm::SmallString<128> InputPath(TmpDir);

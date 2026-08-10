@@ -349,9 +349,20 @@ llvm::Error cloneMFInto(
     ConstRegisterMasks.insert(Mask);
 
   // Clone instructions.
+  //
+  // Iterate instrs(), not the block itself: MachineBasicBlock::iterator is a
+  // bundle_iterator and stops at bundle heads, so plain iteration silently
+  // drops everything inside a bundle. The BUNDLE header still gets copied --
+  // and MachineInstr::setFlags below carries BundledPred/BundledSucc across,
+  // since those are MIFlags -- leaving a header that claims members it does not
+  // have. On AMDGPU that loses the S_GETPC_B64/S_ADD_U32/S_ADDC_U32 triple that
+  // materializes a global's address, so e.g. a cloned hook's
+  // GLOBAL_ATOMIC_ADD_X2_SADDR ends up reading an uninitialized SGPR pair
+  // instead of the counter it is supposed to update. push_back appends to the
+  // raw instruction list, so it is correct for bundle members too.
   for (auto &SrcMBB : *SrcMF) {
     auto *DstMBB = Src2DstMBB[const_cast<llvm::MachineBasicBlock *>(&SrcMBB)];
-    for (auto &SrcMI : SrcMBB) {
+    for (auto &SrcMI : SrcMBB.instrs()) {
       const auto &MCID = TII->get(SrcMI.getOpcode());
       auto *DstMI = DstMF->CreateMachineInstr(MCID, SrcMI.getDebugLoc(),
                                               /*NoImplicit=*/true);

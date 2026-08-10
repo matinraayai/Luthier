@@ -138,7 +138,17 @@ protected:
               ResolvedArgs.push_back(ReadVal);
             }
           }
-          Builder.CreateCall(&HookFn, ResolvedArgs);
+          llvm::CallInst *HookCall = Builder.CreateCall(&HookFn, ResolvedArgs);
+          // A payload is spliced into the middle of a target MachineFunction,
+          // so it must never tail-call. Left alone, this call sits in tail
+          // position ahead of the `ret void` below and TailCallElimPass marks
+          // it `tail`; ISel then lowers it to SI_TCRETURN, a terminator that
+          // jumps rather than calls. TargetModulePatcherPass drops that
+          // terminator when it inlines the payload -- correctly, since a return
+          // cannot survive mid-block -- and the call to the hook disappears,
+          // leaving only a dangling PC-relative reference to it. `notail` keeps
+          // the call a real call all the way through ISel.
+          HookCall->setTailCallKind(llvm::CallInst::TCK_NoTail);
           return llvm::Error::success();
         });
 

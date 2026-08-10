@@ -40,6 +40,7 @@
 #define LUTHIER_TOOLING_INSTRUMENTATION_PIPELINE_TRAIT_H
 
 #include "luthier/Common/ErrorCheck.h"
+#include "luthier/LLVM/streams.h"
 #include "luthier/HSATooling/HsaMemoryAllocationAccessor.h"
 #include "luthier/HSATooling/LoadedCodeObjectCache.h"
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
@@ -69,6 +70,7 @@
 #include <llvm/Passes/StandardInstrumentations.h>
 #include <llvm/Support/AMDHSAKernelDescriptor.h>
 #include <llvm/Support/Error.h>
+#include <llvm/Support/FileSystem.h>
 #include <llvm/Support/SmallVectorMemoryBuffer.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/CGPassBuilderOption.h>
@@ -314,6 +316,25 @@ public:
         IP.getTargetModule());
 
     IPPM.run(IP, IPAM);
+
+    // --luthier-dump-instrumented: the pipeline already wrote both modules'
+    // MIR; add the relocatable it produced, so the emitted code can be
+    // inspected (llvm-objdump -d) without re-running the pipeline.
+    if (llvm::StringRef Prefix = luthier::getInstrumentedDumpPrefix();
+        !Prefix.empty()) {
+      std::string Path =
+          (Prefix + "." + llvm::Twine(luthier::getInstrumentedDumpIndex()) +
+           ".o")
+              .str();
+      std::error_code EC;
+      llvm::raw_fd_ostream ObjFile(Path, EC, llvm::sys::fs::OF_None);
+      if (EC)
+        luthier::errs() << "luthier-dump-instrumented: cannot open " << Path
+                        << ": " << EC.message() << "\n";
+      else
+        ObjFile.write(ObjBuf.data(), ObjBuf.size());
+      luthier::advanceInstrumentedDumpIndex();
+    }
 
     return std::make_unique<llvm::SmallVectorMemoryBuffer>(
         std::move(ObjBuf), "luthier.instrumented",

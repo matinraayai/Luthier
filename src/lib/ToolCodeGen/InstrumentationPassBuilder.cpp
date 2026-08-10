@@ -1,4 +1,4 @@
-//===-- InstrumentationPassBuilder.cpp -------------------------------===//
+//===-- InstrumentationPassBuilder.cpp ------------------------------------===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -100,7 +100,10 @@
 #include <llvm/Passes/CodeGenPassBuilder.h>
 #include <llvm/Passes/OptimizationLevel.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <atomic>
+#include <llvm/CodeGen/MIRPrinter.h>
 #include <llvm/Support/CommandLine.h>
+#include <llvm/Support/FileSystem.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/CGPassBuilderOption.h>
@@ -629,6 +632,12 @@ Error AMDGPUCodeGenPassBuilder::buildPipeline(PrototypePassManager &PPM) const {
   // Prototype pass above reports PreservedAnalyses::none(), which drops any
   // Prototype-level result computed before it.
   PPM.addPass(llvm::RequireAnalysisPass<SVStorageAndLoadLocationsAnalysis,
+                                        Prototype, PrototypeAnalysisManager>());
+  // InjectedPayloadPEIPass also *writes* to the preamble descriptor, recording
+  // which target kernels need the SVA scratch+stack setup that
+  // TargetModulePatcherPass emits afterwards. Materializing it here gives that
+  // write somewhere to land.
+  PPM.addPass(llvm::RequireAnalysisPass<FunctionPreambleDescriptorAnalysis,
                                         Prototype, PrototypeAnalysisManager>());
 
   // ---- Stage 3: machine-passes half of the AMDGPU codegen pipeline. --------

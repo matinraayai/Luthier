@@ -265,14 +265,27 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   }
 
   // ---- Update the FunctionPreambleDescriptor on the target side ----------
-  // PrePostAmbleEmitter consults this to decide which kernel/device-fn
-  // prologues need scratch+stack setup. Mark the target accordingly.
+  // TargetModulePatcherPass consults this in Phase A.2 to decide which target
+  // kernels need the SVA scratch+stack setup emitted at their entry. Reached
+  // the same way as the SV locations above: through the outer proxy, keyed by
+  // the parent prototype. getCachedResult hands back a mutable Result, and
+  // FunctionPreambleDescriptor::invalidate always answers false, so this update
+  // survives the rest of the machine pipeline and is still there when the
+  // patcher reads the descriptor.
   //
-  // TODO(NPM): FunctionPreambleDescriptorAnalysis is now an IP-level
-  // analysis. Reaching its result from this MF pass has the same missing-IP
-  // problem as the SVStorage lookup above; the descriptor update is left
-  // broken until the accessor lands.
-  FunctionPreambleDescriptor *PKInfo = nullptr;
+  // Without it the descriptor's entry for this kernel keeps
+  // RequiresScratchAndStackSetup false; unless a payload also requested a
+  // scalar kernel argument, usesSVA() is then false, the kernel's SVA prologue
+  // is never emitted, and the read-lanes above pull the stack pointer and flat
+  // scratch base out of an uninitialized VGPR -- a page fault at the first
+  // instrumentation point that actually executes.
+  FunctionPreambleDescriptor *PKInfo =
+      IPAMProxy.getCachedResult<FunctionPreambleDescriptorAnalysis>(*P);
+  if (!PKInfo) {
+    Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
+        "Function preamble descriptor has not been cached")));
+    return llvm::PreservedAnalyses::all();
+  }
   const llvm::MachineFunction *TargetMF = TargetMI->getMF();
   bool RequiresAccessToStack = false;
   if (StateValueStorage.getStateValueStorageReg() == 0) {
@@ -281,7 +294,7 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   }
   if (MFI.hasStackObjects() || MFI.hasCalls())
     RequiresAccessToStack = true;
-  if (RequiresAccessToStack && PKInfo) {
+  if (RequiresAccessToStack) {
     if (TargetMF->getFunction().getCallingConv() ==
         llvm::CallingConv::AMDGPU_KERNEL) {
       PKInfo->Kernels[TargetMF].RequiresScratchAndStackSetup = true;
@@ -294,6 +307,26 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   // ---- Emit the prologue ------------------------------------------------
   llvm::MachineBasicBlock &EntryMBB = MF.front();
   auto EntryInsertPt = EntryMBB.SkipPHIsAndLabels(EntryMBB.begin());
+
+  /// Declares the SVA VGPR live-in on \p MBB when nothing in this payload
+  /// defines it.
+  ///
+  /// The SVA VGPR belongs to the kernel this payload is spliced into, not to
+  /// the payload: under a VGPR storage scheme the kernel's prologue sets it up
+  /// and it simply enters the payload live, with no def anywhere in this MF.
+  /// The read/write-lane pairs below would then read an undefined physical
+  /// register as far as the machine verifier is concerned. The other storage
+  /// schemes go through emitCodeToLoadSVA, which materializes the value into
+  /// SVAVGPR here, so for those it is defined locally and must not be declared
+  /// live-in.
+  auto declareSVALiveIn = [&](llvm::MachineBasicBlock &MBB) {
+    if (StateValueStorage.requiresLoadAndStoreBeforeUse())
+      return;
+    if (!MBB.isLiveIn(SVAVGPR))
+      MBB.addLiveIn(SVAVGPR);
+  };
+
+  declareSVALiveIn(EntryMBB);
 
   // If the SVS isn't already a free VGPR, load the SVA into the SVA VGPR.
   // emitCodeToLoadSVA is a no-op for VGPRStateValueArrayStorage; for the
@@ -330,6 +363,11 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   for (llvm::MachineBasicBlock &MBB : MF) {
     if (!MBB.isReturnBlock())
       continue;
+    // A payload with more than one block reaches its returns without ever
+    // defining the SVA VGPR, so those blocks need the same live-in as the
+    // entry; for a single-block payload this is the entry block and the call
+    // is a no-op.
+    declareSVALiveIn(MBB);
     auto FirstTerm = MBB.getFirstTerminator();
     // Reverse order: frame-reg restore, then SVS store.
     for (const auto &[PhysReg, SpillLane] : FrameSpillSlots) {

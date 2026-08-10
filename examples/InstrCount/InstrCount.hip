@@ -330,6 +330,14 @@ void InstrCountTool::onPackets(
     const bool ActiveRegion = NumKernelLaunched >= Opts.KernelBeginInterval &&
                               NumKernelLaunched < Opts.KernelEndInterval;
 
+    // The launcher's cache is keyed by the *original* kernel descriptor, and
+    // overrideWithInstrumented rewrites Packet.kernel_object in place. Capture
+    // the key before that happens: the counter read-back below needs it, and by
+    // then DispatchPacket->kernel_object names the instrumented variant.
+    const auto *OriginalKD =
+        reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
+            DispatchPacket->kernel_object);
+
     bool MustDestroySignalAfterLaunch = false;
     if (DispatchPacket->completion_signal.handle == 0) {
       LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
@@ -348,9 +356,7 @@ void InstrCountTool::onPackets(
       // If the (kernel_object, preset) pair isn't already cached, run the
       // pipeline and load the resulting relocatable into the launcher.
       // overrideWithInstrumented succeeds iff the cache has the variant.
-      const auto *KD =
-          reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
-              DispatchPacket->kernel_object);
+      const auto *KD = OriginalKD;
       // Probe the cache; on miss, run the pipeline + load and re-try the
       // override. The probe Error MUST be bound to a local so its
       // destructor doesn't trip the unhandled-error abort.
@@ -397,9 +403,7 @@ void InstrCountTool::onPackets(
     // call the dispatch path already uses; counter address comes from
     // the device-tool code loader's HSA executable symbol record.
     if (ActiveRegion) {
-      const auto *KernelDesc =
-          reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
-              DispatchPacket->kernel_object);
+      const auto *KernelDesc = OriginalKD;
       hsa_amd_pointer_info_t CounterAgentInfo{};
       CounterAgentInfo.size = sizeof(CounterAgentInfo);
       hsa_status_t PInfoStatus = AmdExt.callFunction<hsa_amd_pointer_info>(
