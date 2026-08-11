@@ -56,11 +56,10 @@ void raiseMachineInstr(const llvm::MachineInstr &MI,
                        llvm::IRBuilderBase &Builder,
                        TraceFunctionTranslator &Translator);
 
-/// \brief Used by the \c CodeDiscoveryPass to translate Machine instructions
-/// in a machine function trace to LLVM IR and inserts the translated IR into
-/// the associated LLVM Function handle. The translated IR can then be used
-/// to query semantics-related information about the instructions inside
-/// the target module
+/// \brief Translates machine instructions inside trace functions to LLVM IR and
+/// inserts the translated IR into the associated LLVM Function handle.
+/// The translated IR can then be used to query value and semantics-related
+/// information about the instructions inside the target module
 /// \details The translator performs a per-basic block translation of the
 /// machine function. Each basic block maintains a mapping between registers
 /// and a list of available LLVM values hashed based on their type. The map
