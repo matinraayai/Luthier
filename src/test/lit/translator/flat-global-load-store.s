@@ -8,7 +8,7 @@
 // RUN:   -o - 2>/dev/null | %tee_out FileCheck %s
 
 // FLAT semantics smoke test: global_load_dword + global_store_dword must
-// lift through MIRToIRTranslator without assertion and emit proper typed
+// lift through TraceFunctionTranslator without assertion and emit proper typed
 // load/store IR against ptr addrspace(1).
 
 // CHECK: define {{.*}} @flat_rmw

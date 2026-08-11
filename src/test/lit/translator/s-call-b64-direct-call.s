@@ -15,7 +15,7 @@
 //   - CodeDiscoveryPass rewrites the direct-call $simm16 from a 16-bit
 //     displacement to MO_GlobalAddress(callee Function) after the
 //     callgraph resolves the target.
-//   - MIRToIRTranslator's S_CALL_B64_sem emits:
+//   - TraceFunctionTranslator's S_CALL_B64_sem emits:
 //       (a) a call to llvm.amdgcn.s.getpc that writes the return address
 //           (post-PC) into the $sdst register file (s[30:31] in this kernel);
 //       (b) a direct call to the resolved callee Function.

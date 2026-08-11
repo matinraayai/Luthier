@@ -52,7 +52,6 @@
 #include "luthier/ToolCodeGen/InstrumentationPassBuilder.h"
 #include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
-#include "luthier/ToolCodeGen/MIRToIRTranslationAnalysis.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 #include "luthier/ToolCodeGen/Metadata.h"
 #include "luthier/ToolCodeGen/MetadataParserAnalysis.h"
@@ -61,6 +60,7 @@
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "luthier/ToolCodeGen/ToolDeviceCodeParser.h"
+#include "luthier/ToolCodeGen/TraceFunctionTranslationAnalysis.h"
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/IR/LLVMContext.h>
@@ -126,7 +126,8 @@ public:
 
     MAM.registerPass([&] { return llvm::MachineModuleAnalysis(MMI); });
     MFAM.registerPass([] { return luthier::InstructionTracesAnalysis(); });
-    MFAM.registerPass([] { return luthier::MIRToIRTranslationAnalysis(); });
+    MFAM.registerPass(
+        [] { return luthier::TraceFunctionTranslationAnalysis(); });
     /// The initial entry and execution points are recorded as target-module
     /// metadata rather than resolved through a callback (see
     /// InitialEntryPointAnalysis.h); \c stampInitialPoints below writes \p KD

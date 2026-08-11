@@ -26,12 +26,12 @@
 #include "luthier/ToolCodeGen/InitialExecutionPointAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
 #include "luthier/ToolCodeGen/MIRConvenience.h"
-#include "luthier/ToolCodeGen/MIRToIRTranslationAnalysis.h"
-#include "luthier/ToolCodeGen/MIRToIRTranslator.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "luthier/ToolCodeGen/PseudoOpcodeAndRegMapper.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
+#include "luthier/ToolCodeGen/TraceFunctionTranslationAnalysis.h"
+#include "luthier/ToolCodeGen/TraceFunctionTranslator.h"
 #include <MCTargetDesc/AMDGPUMCExpr.h>
 #include <SIMachineFunctionInfo.h>
 #include <SIRegisterInfo.h>
@@ -854,8 +854,8 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
 
   /// Set pre-loaded kernel argument field for targets that support it.
   /// The preloaded kernargs occupy the SGPRs immediately after the standard
-  /// user SGPRs; the MIRToIRTranslator seeds them with the equivalent kernarg
-  /// loads (using the captured offset/length attributes).
+  /// user SGPRs; the TraceFunctionTranslator seeds them with the equivalent
+  /// kernarg loads (using the captured offset/length attributes).
   if (ST.hasKernargPreload()) {
     unsigned PreloadLength = AMDHSA_BITS_GET(
         KDOnHost.kernarg_preload, llvm::amdhsa::KERNARG_PRELOAD_SPEC_LENGTH);
@@ -916,8 +916,9 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   /// SGPR allocation on \c !hasArchitectedSGPRs(). The feature is on by
   /// default for GFX12+, but is a plain subtarget feature (\c
   /// +architected-sgprs) that can also be enabled on some GFX9 parts, so gate
-  /// on the predicate rather than a generation check. The \c MIRToIRTranslator
-  /// seeds the architected TTMP registers directly for these targets.
+  /// on the predicate rather than a generation check. The \c
+  /// TraceFunctionTranslator seeds the architected TTMP registers directly for
+  /// these targets.
   if (!ST.hasArchitectedSGPRs()) {
     if (!F->hasFnAttribute("amdgpu-no-workgroup-id-x"))
       MFI->addWorkGroupIDX();
@@ -1625,13 +1626,13 @@ CodeDiscoveryPass::run(Prototype &IP,
   llvm::SmallDenseSet<EntryPoint> VisitedPointsOfEntry{};
 
   /// Prototype of the device functions, computed up front via the stateless
-  /// MIRToIRTranslator factory so we don't construct (and re-construct) a
+  /// TraceFunctionTranslator factory so we don't construct (and re-construct) a
   /// translator over the initial entry-point MF before the worklist loop.
   const llvm::MachineFunction &InitialExecPointMF =
       InitialExecPointMFAndSymbol->first;
   const llvm::Function &InitialExecPointFn = InitialExecPointMF.getFunction();
   llvm::Expected<llvm::FunctionType *> DeviceFuncPrototypeOrErr =
-      MIRToIRTranslator::computeStandardDeviceFunctionType(
+      TraceFunctionTranslator::computeStandardDeviceFunctionType(
           Ctx, InitialExecPointMF.getSubtarget<llvm::GCNSubtarget>(),
           InitialExecPointFn.getFnAttributeAsParsedInteger("amdgpu-num-sgpr"),
           InitialExecPointFn.getFnAttributeAsParsedInteger("amdgpu-num-vgpr"));
@@ -1751,7 +1752,7 @@ CodeDiscoveryPass::run(Prototype &IP,
     /// Translate the machine function to LLVM IR through the pinned
     /// translation analysis; the initial flush performs the full translation
     TranslationState &Translation =
-        MFAM.getResult<MIRToIRTranslationAnalysis>(MF);
+        MFAM.getResult<TraceFunctionTranslationAnalysis>(MF);
     if (llvm::Error Err = Translation.flush()) {
       Ctx.emitError(llvm::toString(std::move(Err)));
       /// MF is fully populated with MIR and the translator may have started

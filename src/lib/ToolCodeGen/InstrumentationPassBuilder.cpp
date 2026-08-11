@@ -31,7 +31,6 @@
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
 #include "luthier/ToolCodeGen/IntrinsicMIRLoweringPass.h"
-#include "luthier/ToolCodeGen/MIRToIRTranslationAnalysis.h"
 #include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/ToolCodeGen/ProcessIntrinsicsAtIRLevelPass.h"
@@ -40,6 +39,7 @@
 #include "luthier/ToolCodeGen/SVAPhysVGPRPinPass.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/TargetModulePatcherPass.h"
+#include "luthier/ToolCodeGen/TraceFunctionTranslationAnalysis.h"
 
 #include <AMDGPU.h>
 #include <AMDGPUCtorDtorLowering.h>

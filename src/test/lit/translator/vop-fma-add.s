@@ -8,7 +8,7 @@
 // RUN:   -o - 2>/dev/null | %tee_out FileCheck %s
 
 // VOPSem smoke test: v_add_u32_e32 and v_fmac_f32_e32 must lift through
-// MIRToIRTranslator without assertion and emit typed add / fma IR.
+// TraceFunctionTranslator without assertion and emit typed add / fma IR.
 
 // CHECK: define {{.*}} @vop_fma
 // CHECK-DAG: call float @llvm.fma.f32

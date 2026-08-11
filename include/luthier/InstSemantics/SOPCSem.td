@@ -271,7 +271,7 @@ def S_CMP_U_F16_sem : InstSISemantic<S_CMP_U_F16> {
 //   M0[14:11] := $src1 & 0xF        // per-operand enable mask
 //   MODE.GPR_IDX_EN := 1            // bit 27
 // Other M0/MODE bits are preserved. The companion read-side wrapper in
-// `MIRToIRTranslator::emitIndexedVGPRSrc` consults MODE.GPR_IDX_EN at
+// `TraceFunctionTranslator::emitIndexedVGPRSrc` consults MODE.GPR_IDX_EN at
 // every VALU operand read; pairs with `S_SET_GPR_IDX_OFF` to bracket
 // the indexed region.
 //------------------------------------------------------------------------------

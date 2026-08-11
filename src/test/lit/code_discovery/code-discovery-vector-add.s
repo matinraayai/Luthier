@@ -7,7 +7,7 @@
 // RUN:   -initial-execution-point=0:vector_add.kd \
 // RUN:   -o /dev/null 2>&1 | %tee_out FileCheck %s
 
-// Smoke test that CodeDiscoveryPass + MIRToIRTranslator can lift a real
+// Smoke test that CodeDiscoveryPass + TraceFunctionTranslator can lift a real
 // HIP-compiled SAXPY-style kernel (global loads, ALU, control flow with
 // EXEC narrowing, global store).
 

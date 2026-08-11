@@ -7,7 +7,7 @@
 // RUN:   -initial-execution-point=0:reg_md.kd \
 // RUN:   -o - 2>/dev/null | %tee_out FileCheck %s
 
-// MIRToIRTranslator: every IR value produced for a (slice of a) physical
+// TraceFunctionTranslator: every IR value produced for a (slice of a) physical
 // register is tagged with !luthier.reg metadata; constant/argument seeds
 // at kernel entry (and seeds whose tags survived simplifyInstruction folds
 // onto a Constant) land in the function-level !luthier.entry_reg_map.

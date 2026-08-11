@@ -8,7 +8,7 @@
 // RUN:    -o /dev/null 2>&1 || true) > %t.out && \
 // RUN: FileCheck %s < %t.out
 
-// Regression test for two bugs in MIRToIRTranslator that were exposed by
+// Regression test for two bugs in TraceFunctionTranslator that were exposed by
 // kernels with control-flow on scalar-register/immediate comparisons:
 //   * In `getOperandAsValue` the immediate operand defaulted to i64, while
 //     register operands defaulted to the register's natural width (e.g. i32

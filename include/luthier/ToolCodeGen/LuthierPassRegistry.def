@@ -50,8 +50,8 @@ FUNCTION_ANALYSIS("luthier-injected-payload-side-effects",
 #endif
 MACHINE_FUNCTION_ANALYSIS("luthier-instruction-traces",
                           InstructionTracesAnalysis())
-MACHINE_FUNCTION_ANALYSIS("luthier-mir-to-ir-translation",
-                          MIRToIRTranslationAnalysis())
+MACHINE_FUNCTION_ANALYSIS("luthier-trace-function-translation",
+                          TraceFunctionTranslationAnalysis())
 #undef MACHINE_FUNCTION_ANALYSIS
 
 #ifndef MACHINE_FUNCTION_PASS

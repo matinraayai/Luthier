@@ -8,7 +8,7 @@
 // RUN:   -o - 2>/dev/null | %tee_out FileCheck %s
 
 // DSSem smoke test: ds_read_b32 / ds_write_b32 must lift through
-// MIRToIRTranslator into typed load/store against ptr addrspace(3).
+// TraceFunctionTranslator into typed load/store against ptr addrspace(3).
 
 // CHECK: define {{.*}} @ds_rmw
 // CHECK-DAG: load i32, ptr addrspace(3)

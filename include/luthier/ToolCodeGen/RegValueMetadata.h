@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 /// \file RegValueMetadata.h
 /// Helpers for attaching/reading register-provenance metadata produced by
-/// \c MIRToIRTranslator. Each translated IR value that represents the
+/// \c TraceFunctionTranslator. Each translated IR value that represents the
 /// content of a (slice of a) physical register is tagged so downstream
 /// passes can trace how a value was constructed.
 ///
