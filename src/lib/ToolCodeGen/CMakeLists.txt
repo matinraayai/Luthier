@@ -56,7 +56,7 @@ add_library(LuthierToolCodeGen OBJECT
         MIInlineAsmEmitter.cpp
         NewPMAsmPrinter.cpp
         FunctionAnnotations.cpp
-        TraceCallGraph.cpp
+        PrototypeCallGraph.cpp
         PredicatedMachineBasicBlock.cpp
         Prototype.cpp
         InstrumentationPassBuilder.cpp

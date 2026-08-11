@@ -1,4 +1,4 @@
-//===-- TraceCallGraph.cpp - Luthier IR call graph analysis ---------------===//
+//===-- PrototypeCallGraph.cpp - Luthier IR call graph analysis -----------===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,9 +14,9 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements the \c TraceCallGraphAnalysis Prototype analysis.
+/// Implements the \c PrototypeCallGraphAnalysis Prototype analysis.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGen/TraceCallGraph.h"
+#include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/Prototype.h"
@@ -49,19 +49,19 @@
 #include <string>
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "trace-callgraph"
+#define DEBUG_TYPE "prototype-callgraph"
 
 namespace luthier {
 
-bool TraceCallGraph::invalidate(
+bool PrototypeCallGraph::invalidate(
     Prototype &, const llvm::PreservedAnalyses &PA,
     PrototypeAnalysisManager::Invalidator &) {
-  auto PAC = PA.getChecker<TraceCallGraphAnalysis>();
+  auto PAC = PA.getChecker<PrototypeCallGraphAnalysis>();
   return !PAC.preserved() &&
          !PAC.preservedSet<llvm::AllAnalysesOn<Prototype>>();
 }
 
-llvm::AnalysisKey TraceCallGraphAnalysis::Key;
+llvm::AnalysisKey PrototypeCallGraphAnalysis::Key;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -387,7 +387,7 @@ namespace {
 /// Maps each target-module \c MachineInstr (identified via its pcsections
 /// \c MDNode) to the ordered list of injected-payload functions attached to
 /// it. Built from the IModule + the target module's cached MFs so
-/// \c TraceCallGraphAnalysis is self-contained (independent of
+/// \c PrototypeCallGraphAnalysis is self-contained (independent of
 /// \c InjectedPayloadAndInstPointAnalysis, which cannot be queried at
 /// \c CodeDiscoveryPass time).
 using AppMIToPayloadsMap =
@@ -444,7 +444,7 @@ static bool resolveViaPayloads(
         llvm::Function *,
         llvm::SmallVector<std::pair<llvm::CallInst *, llvm::Function *>>>
         &KnownCallers,
-    llvm::LLVMContext &Ctx, TraceCallGraph &Out);
+    llvm::LLVMContext &Ctx, PrototypeCallGraph &Out);
 
 // ---------------------------------------------------------------------------
 // Full IR-level call-target trace (target module + injected payloads)
@@ -460,7 +460,7 @@ static void runTrace(llvm::Module &TargetModule,
                      llvm::Module &IModule,
                      llvm::FunctionAnalysisManager &IFAM,
                      const AppMIToPayloadsMap &AppMIToPayloads,
-                     TraceCallGraph &Out) {
+                     PrototypeCallGraph &Out) {
   const llvm::DataLayout &DL = TargetModule.getDataLayout();
   const llvm::DataLayout &IDL = IModule.getDataLayout();
   llvm::LLVMContext &Ctx = TargetModule.getContext();
@@ -531,7 +531,7 @@ static void runTrace(llvm::Module &TargetModule,
               if (llvm::is_contained(Targets, TgtFn))
                 continue;
               LLVM_DEBUG(luthier::dbgs()
-                         << "[TraceCallGraph] Resolved call in "
+                         << "[PrototypeCallGraph] Resolved call in "
                          << F.getName() << " → " << TgtFn->getName()
                          << " (via function handle)\n");
               Targets.push_back(TgtFn);
@@ -553,8 +553,8 @@ static void runTrace(llvm::Module &TargetModule,
             if (llvm::is_contained(Targets, Target))
               continue;
             LLVM_DEBUG(luthier::dbgs()
-                       << "[TraceCallGraph] Resolved call in " << F.getName()
-                       << " → " << Target->getName() << "\n");
+                       << "[PrototypeCallGraph] Resolved call in "
+                       << F.getName() << " → " << Target->getName() << "\n");
             Targets.push_back(Target);
             KnownCallers[Target].emplace_back(CI, &F);
             Changed = true;
@@ -612,7 +612,7 @@ static void runTrace(llvm::Module &TargetModule,
           llvm::isa<llvm::InlineAsm>(CI->getCalledOperand()))
         continue;
       if (!Out.CallTargets.contains(CI)) {
-        LLVM_DEBUG(luthier::dbgs() << "[TraceCallGraph] Unresolved call in "
+        LLVM_DEBUG(luthier::dbgs() << "[PrototypeCallGraph] Unresolved call in "
                                    << F.getName() << "\n");
         Out.IncompleteCallSites.insert(CI);
         Out.FullyRecovered = false;
@@ -621,7 +621,7 @@ static void runTrace(llvm::Module &TargetModule,
   }
 
   LLVM_DEBUG(luthier::dbgs()
-             << "[TraceCallGraph] Resolved " << Out.CallTargets.size()
+             << "[PrototypeCallGraph] Resolved " << Out.CallTargets.size()
              << " call sites; " << Out.IncompleteCallSites.size()
              << " incomplete; fully_recovered=" << Out.FullyRecovered << "\n");
 }
@@ -708,7 +708,7 @@ static bool resolveViaPayloads(
         llvm::Function *,
         llvm::SmallVector<std::pair<llvm::CallInst *, llvm::Function *>>>
         &KnownCallers,
-    llvm::LLVMContext &Ctx, TraceCallGraph &Out) {
+    llvm::LLVMContext &Ctx, PrototypeCallGraph &Out) {
   if (AppMIToPayloads.empty())
     return false;
 
@@ -765,7 +765,7 @@ static bool resolveViaPayloads(
               // module — most likely into the IModule itself, which is
               // never a legal call target for the target application.
               Ctx.emitError(
-                  llvm::formatv("[TraceCallGraph] Injected payload '{0}' "
+                  llvm::formatv("[PrototypeCallGraph] Injected payload '{0}' "
                                 "attached to instrumentation point in "
                                 "target function '{1}' writes register "
                                 "'{2}' with a handle to non-target-module "
@@ -781,9 +781,9 @@ static bool resolveViaPayloads(
             if (llvm::is_contained(Targets, TgtFn))
               continue;
             LLVM_DEBUG(luthier::dbgs()
-                       << "[TraceCallGraph] Resolved call in " << F.getName()
-                       << " → " << TgtFn->getName() << " via payload '"
-                       << Payload->getName() << "'\n");
+                       << "[PrototypeCallGraph] Resolved call in "
+                       << F.getName() << " → " << TgtFn->getName()
+                       << " via payload '" << Payload->getName() << "'\n");
             Targets.push_back(TgtFn);
             KnownCallers[TgtFn].emplace_back(CI, &F);
             Changed = true;
@@ -799,10 +799,10 @@ static bool resolveViaPayloads(
 // Analysis implementation
 // ---------------------------------------------------------------------------
 
-TraceCallGraph
-TraceCallGraphAnalysis::run(Prototype &IP,
+PrototypeCallGraph
+PrototypeCallGraphAnalysis::run(Prototype &IP,
                             PrototypeAnalysisManager &IPAM) {
-  TraceCallGraph Out;
+  PrototypeCallGraph Out;
 
   llvm::Module &TargetModule = IP.getTargetModule();
   llvm::Module &IModule = IP.getInstrumentationModule();
@@ -828,9 +828,9 @@ TraceCallGraphAnalysis::run(Prototype &IP,
 // Printing
 // ---------------------------------------------------------------------------
 
-void TraceCallGraph::print(llvm::raw_ostream &OS) const {
-  OS << "TraceCallGraph (fully_recovered=" << (FullyRecovered ? "yes" : "no")
-     << "):\n";
+void PrototypeCallGraph::print(llvm::raw_ostream &OS) const {
+  OS << "PrototypeCallGraph (fully_recovered="
+     << (FullyRecovered ? "yes" : "no") << "):\n";
 
   // CallTargets / IncompleteCallSites are hashed containers with no stable
   // iteration order; format each entry into a string and sort before printing
@@ -874,7 +874,7 @@ void TraceCallGraph::print(llvm::raw_ostream &OS) const {
 }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-void TraceCallGraph::dump() const { print(luthier::dbgs()); }
+void PrototypeCallGraph::dump() const { print(luthier::dbgs()); }
 #endif
 
 // ---------------------------------------------------------------------------
@@ -882,9 +882,9 @@ void TraceCallGraph::dump() const { print(luthier::dbgs()); }
 // ---------------------------------------------------------------------------
 
 llvm::PreservedAnalyses
-TraceCallGraphPrinter::run(Prototype &IP,
+PrototypeCallGraphPrinter::run(Prototype &IP,
                            PrototypeAnalysisManager &IPAM) {
-  IPAM.getResult<TraceCallGraphAnalysis>(IP).print(OS);
+  IPAM.getResult<PrototypeCallGraphAnalysis>(IP).print(OS);
   return llvm::PreservedAnalyses::all();
 }
 

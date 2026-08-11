@@ -32,7 +32,7 @@
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
 #include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
 #include "luthier/ToolCodeGen/Prototype.h"
-#include "luthier/ToolCodeGen/TraceCallGraph.h"
+#include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/Statistic.h"
@@ -920,8 +920,8 @@ static int compileModule(char **argv,
                                         bool IsTarget) {
     if (IsTarget)
       return false;
-    if (Name.trim() == "trace-callgraph-printer") {
-      PPM.addPass(luthier::TraceCallGraphPrinter(llvm::outs()));
+    if (Name.trim() == "prototype-callgraph-printer") {
+      PPM.addPass(luthier::PrototypeCallGraphPrinter(llvm::outs()));
       return true;
     }
     return false;

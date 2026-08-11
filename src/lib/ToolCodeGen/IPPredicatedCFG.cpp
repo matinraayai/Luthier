@@ -26,7 +26,7 @@
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
-#include "luthier/ToolCodeGen/TraceCallGraph.h"
+#include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
@@ -74,7 +74,7 @@ IPPredicatedCFG::getIPPredCFG(Prototype &IP,
   auto Out = std::unique_ptr<IPPredicatedCFG>(new IPPredicatedCFG());
 
   // Reverse map from IR BasicBlock → MachineBasicBlock, used to look up
-  // which MBB owns a CallInst that appears in the TraceCallGraph.
+  // which MBB owns a CallInst that appears in the PrototypeCallGraph.
   llvm::DenseMap<const llvm::BasicBlock *, llvm::MachineBasicBlock *> IRBBToMBB;
 
   llvm::Function *EntryFunc = nullptr;
@@ -126,8 +126,8 @@ IPPredicatedCFG::getIPPredCFG(Prototype &IP,
     }
   }
 
-  // ── Phase 3: inter-procedural edges from TraceCallGraph ─────────────────
-  auto &CG = IPAM.getResult<TraceCallGraphAnalysis>(IP);
+  // ── Phase 3: inter-procedural edges from PrototypeCallGraph ─────────────
+  auto &CG = IPAM.getResult<PrototypeCallGraphAnalysis>(IP);
 
   for (auto &[CI, Targets] : CG.call_targets()) {
     auto *SrcMBB = IRBBToMBB.lookup(CI->getParent());

@@ -59,8 +59,8 @@
 #include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/ToolCodeGen/Prototype.h"
+#include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "luthier/ToolCodeGen/ToolDeviceCodeParser.h"
-#include "luthier/ToolCodeGen/TraceCallGraph.h"
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/IR/LLVMContext.h>
@@ -142,7 +142,7 @@ public:
               D.getLoaderTableSnapshot().getTable()));
     });
     MAM.registerPass([&] { return luthier::MetadataParserAnalysis(MDParser); });
-    // TraceCallGraphAnalysis, IPPredCFGAnalysis and
+    // PrototypeCallGraphAnalysis, IPPredCFGAnalysis and
     // FunctionPreambleDescriptorAnalysis are Prototype analyses; they are
     // registered on the PrototypeAnalysisManager (see
     // registerPrototypeAnalyses on InstrumentationPassBuilder), not here.
@@ -316,25 +316,6 @@ public:
         IP.getTargetModule());
 
     IPPM.run(IP, IPAM);
-
-    // --luthier-dump-instrumented: the pipeline already wrote both modules'
-    // MIR; add the relocatable it produced, so the emitted code can be
-    // inspected (llvm-objdump -d) without re-running the pipeline.
-    if (llvm::StringRef Prefix = luthier::getInstrumentedDumpPrefix();
-        !Prefix.empty()) {
-      std::string Path =
-          (Prefix + "." + llvm::Twine(luthier::getInstrumentedDumpIndex()) +
-           ".o")
-              .str();
-      std::error_code EC;
-      llvm::raw_fd_ostream ObjFile(Path, EC, llvm::sys::fs::OF_None);
-      if (EC)
-        luthier::errs() << "luthier-dump-instrumented: cannot open " << Path
-                        << ": " << EC.message() << "\n";
-      else
-        ObjFile.write(ObjBuf.data(), ObjBuf.size());
-      luthier::advanceInstrumentedDumpIndex();
-    }
 
     return std::make_unique<llvm::SmallVectorMemoryBuffer>(
         std::move(ObjBuf), "luthier.instrumented",

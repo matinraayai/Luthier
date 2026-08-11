@@ -36,10 +36,10 @@
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/ToolCodeGen/ProcessIntrinsicsAtIRLevelPass.h"
 #include "luthier/ToolCodeGen/Prototype.h"
+#include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "luthier/ToolCodeGen/SVAPhysVGPRPinPass.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/TargetModulePatcherPass.h"
-#include "luthier/ToolCodeGen/TraceCallGraph.h"
 
 #include <AMDGPU.h>
 #include <AMDGPUCtorDtorLowering.h>

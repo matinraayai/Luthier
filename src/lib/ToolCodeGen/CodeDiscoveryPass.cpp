@@ -29,9 +29,9 @@
 #include "luthier/ToolCodeGen/MIRToIRTranslationAnalysis.h"
 #include "luthier/ToolCodeGen/MIRToIRTranslator.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
+#include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "luthier/ToolCodeGen/PseudoOpcodeAndRegMapper.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
-#include "luthier/ToolCodeGen/TraceCallGraph.h"
 #include <MCTargetDesc/AMDGPUMCExpr.h>
 #include <SIMachineFunctionInfo.h>
 #include <SIRegisterInfo.h>
@@ -1720,8 +1720,8 @@ CodeDiscoveryPass::run(Prototype &IP,
     /// Invalidate all module-level analysis not related to Functions and
     /// Machine Functions proxies because we just added a new machine function
     /// and they are now stale. Also invalidate the IP-level analyses (in
-    /// particular \c TraceCallGraphAnalysis) so the next iteration's callgraph
-    /// query sees the new MF.
+    /// particular \c PrototypeCallGraphAnalysis) so the next iteration's
+    /// callgraph query sees the new MF.
     llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
     PA.preserve<llvm::MachineFunctionAnalysisManagerModuleProxy>();
     PA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
@@ -1734,8 +1734,8 @@ CodeDiscoveryPass::run(Prototype &IP,
     /// on to use immediately below. Module-level invalidation was already done
     /// explicitly against TargetMAM above, so these proxies have nothing to
     /// contribute. Everything else stays unpreserved, so the IP-level analyses
-    /// this invalidate exists for (\c TraceCallGraphAnalysis in particular) are
-    /// still dropped.
+    /// this invalidate exists for (\c PrototypeCallGraphAnalysis in particular)
+    /// are still dropped.
     // The MF just populated, and every MF lifted before it, must stay cached —
     // the loop keeps using MF immediately below, and later iterations walk the
     // ones already discovered. Module-level invalidation for the target module
@@ -1760,10 +1760,12 @@ CodeDiscoveryPass::run(Prototype &IP,
     }
 
     /// Go over all discovered call target addresses and add them to be visited
-    /// (if not visited already). We ask the IP-level \c TraceCallGraphAnalysis
-    /// directly — payload-side extension is a no-op when the IModule has no
-    /// injected payloads yet (which is always the case at code-discovery time).
-    const TraceCallGraph &CG = IPAM.getResult<TraceCallGraphAnalysis>(IP);
+    /// (if not visited already). We ask the IP-level
+    /// \c PrototypeCallGraphAnalysis directly — payload-side extension is a
+    /// no-op when the IModule has no injected payloads yet (which is always the
+    /// case at code-discovery time).
+    const PrototypeCallGraph &CG =
+        IPAM.getResult<PrototypeCallGraphAnalysis>(IP);
     for (uint64_t Addr : CG.discovered_addrs()) {
       LLVM_DEBUG(luthier::dbgs()
                  << "[CodeDiscoveryPass] Callgraph discovered target 0x"

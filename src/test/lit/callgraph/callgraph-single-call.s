@@ -1,13 +1,13 @@
 // RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx908 -filetype=obj %s -o %t.o && \
 // RUN: ld.lld -shared --unresolved-symbols=ignore-all -o %t %t.o && \
 // RUN: luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx908 \
-// RUN:   '-passes=target(luthier-mock-load-amdgpu-code-objects),luthier-code-discovery,trace-callgraph-printer' \
+// RUN:   '-passes=target(luthier-mock-load-amdgpu-code-objects),luthier-code-discovery,prototype-callgraph-printer' \
 // RUN:   -code-object-paths=%t \
 // RUN:   -initial-entrypoint=0:_Z6kernelv.kd \
 // RUN:   -initial-execution-point=0:_Z6kernelv.kd \
 // RUN:   -o - 2>&1 | %tee_out FileCheck %s
 
-// CHECK: TraceCallGraph (fully_recovered=yes)
+// CHECK: PrototypeCallGraph (fully_recovered=yes)
 // CHECK: Resolved call sites ({{[0-9]+}}):
 // CHECK: _Z6kernelv -> [_Z3barvx0x0]
 // CHECK: Incomplete call sites (0):

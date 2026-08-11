@@ -54,7 +54,7 @@
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
 #include <luthier/ToolCodeGen/IPPredicatedCFG.h>
-#include <luthier/ToolCodeGen/TraceCallGraph.h>
+#include <luthier/ToolCodeGen/PrototypeCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/NewPMAsmPrinter.h>

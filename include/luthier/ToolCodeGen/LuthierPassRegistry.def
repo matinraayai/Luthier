@@ -90,5 +90,5 @@ PROTOTYPE_ANALYSIS("luthier-function-preamble-descriptor",
                    FunctionPreambleDescriptorAnalysis())
 PROTOTYPE_ANALYSIS("luthier-sv-storage-and-load-locations",
                    SVStorageAndLoadLocationsAnalysis())
-PROTOTYPE_ANALYSIS("luthier-trace-call-graph", TraceCallGraphAnalysis())
+PROTOTYPE_ANALYSIS("luthier-prototype-call-graph", PrototypeCallGraphAnalysis())
 #undef PROTOTYPE_ANALYSIS

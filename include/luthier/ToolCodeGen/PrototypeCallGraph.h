@@ -1,4 +1,4 @@
-//===-- TraceCallGraph.h - Luthier IR call graph analysis -------*- C++ -*-===//
+//===-- PrototypeCallGraph.h - Luthier IR call graph analysis ---*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file TraceCallGraph.h
-/// Declares the \c TraceCallGraph Prototype analysis that recovers
+/// \file
+/// Declares the \c PrototypeCallGraph Prototype analysis that recovers
 /// the call graph of a Luthier-translated target IR module, extended to
 /// follow register writes performed by injected payload functions in the
 /// instrumentation module.
@@ -37,8 +37,8 @@
 /// call site to a function inside the instrumentation module is a hard
 /// error.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOL_CODE_GEN_TRACE_CALL_GRAPH_H
-#define LUTHIER_TOOL_CODE_GEN_TRACE_CALL_GRAPH_H
+#ifndef LUTHIER_TOOL_CODE_GEN_PROTOTYPE_CALL_GRAPH_H
+#define LUTHIER_TOOL_CODE_GEN_PROTOTYPE_CALL_GRAPH_H
 #include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
@@ -57,8 +57,8 @@ class raw_ostream;
 
 namespace luthier {
 
-/// Result of the \c TraceCallGraphAnalysis.
-class TraceCallGraph {
+/// Result of the \c PrototypeCallGraphAnalysis.
+class PrototypeCallGraph {
 public:
   using CallTargetsMapT =
       llvm::DenseMap<llvm::CallInst *, llvm::SmallVector<llvm::Function *>>;
@@ -66,7 +66,7 @@ public:
   using IncompleteCallSitesSetT = llvm::DenseSet<llvm::CallInst *>;
 
 public:
-  // Populated by TraceCallGraphAnalysis. Direct access is used by the
+  // Populated by PrototypeCallGraphAnalysis. Direct access is used by the
   // analysis implementation (and the target-module-only helper for
   // CodeDiscoveryPass); external readers should prefer the accessor methods
   // below.
@@ -180,25 +180,25 @@ public:
 /// Prototype analysis that recovers the IR-level call graph of a
 /// Luthier-translated target module. Consults the instrumentation module for
 /// injected payload writes that override register-mediated call targets.
-class TraceCallGraphAnalysis
-    : public llvm::AnalysisInfoMixin<TraceCallGraphAnalysis> {
-  friend llvm::AnalysisInfoMixin<TraceCallGraphAnalysis>;
+class PrototypeCallGraphAnalysis
+    : public llvm::AnalysisInfoMixin<PrototypeCallGraphAnalysis> {
+  friend llvm::AnalysisInfoMixin<PrototypeCallGraphAnalysis>;
   static llvm::AnalysisKey Key;
 
 public:
-  using Result = TraceCallGraph;
+  using Result = PrototypeCallGraph;
 
   Result run(Prototype &IP,
              PrototypeAnalysisManager &IPAM);
 };
 
-/// Pass that prints the \c TraceCallGraph result to an output stream.
-class TraceCallGraphPrinter
-    : public llvm::PassInfoMixin<TraceCallGraphPrinter> {
+/// Pass that prints the \c PrototypeCallGraph result to an output stream.
+class PrototypeCallGraphPrinter
+    : public llvm::PassInfoMixin<PrototypeCallGraphPrinter> {
   llvm::raw_ostream &OS;
 
 public:
-  explicit TraceCallGraphPrinter(llvm::raw_ostream &OS) : OS(OS) {}
+  explicit PrototypeCallGraphPrinter(llvm::raw_ostream &OS) : OS(OS) {}
 
   llvm::PreservedAnalyses run(Prototype &IP,
                               PrototypeAnalysisManager &IPAM);
