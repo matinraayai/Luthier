@@ -19,6 +19,7 @@
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
+#include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
 #include <AMDGPU.h>
@@ -53,9 +54,9 @@
 
 namespace luthier {
 
-bool PrototypeCallGraph::invalidate(
-    Prototype &, const llvm::PreservedAnalyses &PA,
-    PrototypeAnalysisManager::Invalidator &) {
+bool PrototypeCallGraph::invalidate(Prototype &,
+                                    const llvm::PreservedAnalyses &PA,
+                                    PrototypeAnalysisManager::Invalidator &) {
   auto PAC = PA.getChecker<PrototypeCallGraphAnalysis>();
   return !PAC.preserved() &&
          !PAC.preservedSet<llvm::AllAnalysesOn<Prototype>>();
@@ -438,7 +439,7 @@ buildAppMIToPayloadsMap(llvm::Module &TargetModule,
 static bool resolveViaPayloads(
     llvm::Module &TargetModule, llvm::Module &IModule,
     const llvm::DataLayout &IDL, llvm::FunctionAnalysisManager &IFAM,
-    const AppMIToPayloadsMap &AppMIToPayloads,
+    const InjectedPayloadAndInstPointAnalysis::Result &AppMIToPayloads,
     llvm::DenseMap<uint64_t, llvm::Function *> &AddrToFunc,
     llvm::DenseMap<
         llvm::Function *,
@@ -455,12 +456,11 @@ static bool resolveViaPayloads(
 /// points are always consulted; when \p AppMIToPayloads is empty (e.g. at
 /// CodeDiscoveryPass time before any payload has been injected) the payload
 /// step is a natural no-op.
-static void runTrace(llvm::Module &TargetModule,
-                     llvm::FunctionAnalysisManager &TargetFAM,
-                     llvm::Module &IModule,
-                     llvm::FunctionAnalysisManager &IFAM,
-                     const AppMIToPayloadsMap &AppMIToPayloads,
-                     PrototypeCallGraph &Out) {
+static void
+runTrace(llvm::Module &TargetModule, llvm::FunctionAnalysisManager &TargetFAM,
+         llvm::Module &IModule, llvm::FunctionAnalysisManager &IFAM,
+         const InjectedPayloadAndInstPointAnalysis::Result &AppMIToPayloads,
+         PrototypeCallGraph &Out) {
   const llvm::DataLayout &DL = TargetModule.getDataLayout();
   const llvm::DataLayout &IDL = IModule.getDataLayout();
   llvm::LLVMContext &Ctx = TargetModule.getContext();
@@ -577,9 +577,9 @@ static void runTrace(llvm::Module &TargetModule,
             for (unsigned Idx = 0;
                  Idx < SiteCI->arg_size() && Idx < F.arg_size(); ++Idx) {
               ValConstMap EmptyMap;
-              if (llvm::Constant *ArgC = tryEvalConst(
-                      SiteCI->getArgOperand(Idx), EmptyMap, SiteCache, DL,
-                      TargetFAM))
+              if (llvm::Constant *ArgC =
+                      tryEvalConst(SiteCI->getArgOperand(Idx), EmptyMap,
+                                   SiteCache, DL, TargetFAM))
                 SubstMap[F.getArg(Idx)] = ArgC;
             }
             if (!SubstMap.empty())
@@ -594,8 +594,8 @@ static void runTrace(llvm::Module &TargetModule,
     // fixed-point loop above needs another pass so the newly-resolved sites
     // can feed inter-procedural argument propagation.
     if (!Changed &&
-        resolveViaPayloads(TargetModule, IModule, IDL, IFAM,
-                           AppMIToPayloads, AddrToFunc, KnownCallers, Ctx, Out))
+        resolveViaPayloads(TargetModule, IModule, IDL, IFAM, AppMIToPayloads,
+                           AddrToFunc, KnownCallers, Ctx, Out))
       Changed = true;
   }
 
@@ -640,10 +640,10 @@ struct PayloadWrite {
 };
 } // namespace
 
-static void collectPayloadWrites(
-    llvm::Function &Payload, const llvm::DataLayout &IDL,
-    llvm::FunctionAnalysisManager &IFAM,
-    llvm::SmallVectorImpl<PayloadWrite> &Out) {
+static void collectPayloadWrites(llvm::Function &Payload,
+                                 const llvm::DataLayout &IDL,
+                                 llvm::FunctionAnalysisManager &IFAM,
+                                 llvm::SmallVectorImpl<PayloadWrite> &Out) {
   for (llvm::Instruction &I : llvm::instructions(Payload)) {
     auto *CI = llvm::dyn_cast<llvm::CallInst>(&I);
     if (!CI)
@@ -679,10 +679,10 @@ static void collectPayloadWrites(
 /// Build a map from a target-module MI's trace address to the MI itself,
 /// used to go from a target IR \c CallInst's \c MD_pcsections back to the
 /// \c MachineInstr it was lifted from.
-static llvm::DenseMap<uint64_t, llvm::MachineInstr *>
-buildTraceAddrToMIMap(const AppMIToPayloadsMap &AppMIToPayloads) {
+static llvm::DenseMap<uint64_t, llvm::MachineInstr *> buildTraceAddrToMIMap(
+    const InjectedPayloadAndInstPointAnalysis::Result &AppMIToPayloads) {
   llvm::DenseMap<uint64_t, llvm::MachineInstr *> Out;
-  for (const auto &[MI, _] : AppMIToPayloads) {
+  for (const auto &[MI, _] : AppMIToPayloads.mi_payloads()) {
     auto *MD = TargetMachineInstrMDNode::getInstrMDNodeIfExists(*MI);
     if (!MD)
       continue;
@@ -702,14 +702,14 @@ buildTraceAddrToMIMap(const AppMIToPayloadsMap &AppMIToPayloads) {
 static bool resolveViaPayloads(
     llvm::Module &TargetModule, llvm::Module &IModule,
     const llvm::DataLayout &IDL, llvm::FunctionAnalysisManager &IFAM,
-    const AppMIToPayloadsMap &AppMIToPayloads,
+    const InjectedPayloadAndInstPointAnalysis::Result &AppMIToPayloads,
     llvm::DenseMap<uint64_t, llvm::Function *> &AddrToFunc,
     llvm::DenseMap<
         llvm::Function *,
         llvm::SmallVector<std::pair<llvm::CallInst *, llvm::Function *>>>
         &KnownCallers,
     llvm::LLVMContext &Ctx, PrototypeCallGraph &Out) {
-  if (AppMIToPayloads.empty())
+  if (AppMIToPayloads.size() == 0)
     return false;
 
   llvm::DenseMap<uint64_t, llvm::MachineInstr *> TraceAddrToMI =
@@ -734,9 +734,10 @@ static bool resolveViaPayloads(
       if (MIIt == TraceAddrToMI.end())
         continue;
       llvm::MachineInstr *AppMI = MIIt->second;
-      auto PayloadsIt = AppMIToPayloads.find(AppMI);
-      if (PayloadsIt == AppMIToPayloads.end())
+      if (!AppMIToPayloads.contains(*AppMI))
         continue;
+
+      auto PayloadsIt = AppMIToPayloads.at(*AppMI);
 
       llvm::MCRegister CalleeReg = getIndirectCallTargetReg(*AppMI);
       if (!CalleeReg)
@@ -744,7 +745,7 @@ static bool resolveViaPayloads(
       const llvm::TargetRegisterInfo *TRI =
           AppMI->getMF()->getSubtarget().getRegisterInfo();
 
-      for (llvm::Function *Payload : PayloadsIt->second) {
+      for (llvm::Function *Payload : PayloadsIt) {
         llvm::SmallVector<PayloadWrite, 4> Writes;
         collectPayloadWrites(*Payload, IDL, IFAM, Writes);
         for (PayloadWrite &W : Writes) {
@@ -800,8 +801,7 @@ static bool resolveViaPayloads(
 // ---------------------------------------------------------------------------
 
 PrototypeCallGraph
-PrototypeCallGraphAnalysis::run(Prototype &IP,
-                            PrototypeAnalysisManager &IPAM) {
+PrototypeCallGraphAnalysis::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   PrototypeCallGraph Out;
 
   llvm::Module &TargetModule = IP.getTargetModule();
@@ -814,13 +814,8 @@ PrototypeCallGraphAnalysis::run(Prototype &IP,
       IPAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
-  // The AppMI → payloads map is built inline from the IModule's payload
-  // functions and the target module's cached MFs. Payload-side resolution
-  // always runs; an empty map (no injected payloads yet) makes it a no-op.
-  AppMIToPayloadsMap AppMIToPayloads =
-      buildAppMIToPayloadsMap(TargetModule, TargetFAM, IModule);
-
-  runTrace(TargetModule, TargetFAM, IModule, IFAM, AppMIToPayloads, Out);
+  runTrace(TargetModule, TargetFAM, IModule, IFAM,
+           IPAM.getResult<InjectedPayloadAndInstPointAnalysis>(IP), Out);
   return Out;
 }
 
@@ -882,8 +877,7 @@ void PrototypeCallGraph::dump() const { print(luthier::dbgs()); }
 // ---------------------------------------------------------------------------
 
 llvm::PreservedAnalyses
-PrototypeCallGraphPrinter::run(Prototype &IP,
-                           PrototypeAnalysisManager &IPAM) {
+PrototypeCallGraphPrinter::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   IPAM.getResult<PrototypeCallGraphAnalysis>(IP).print(OS);
   return llvm::PreservedAnalyses::all();
 }
