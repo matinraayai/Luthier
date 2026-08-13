@@ -31,9 +31,9 @@
 #define LUTHIER_TOOLING_INSTRUMENTATION_PIPELINE_TRAIT_H
 
 #include "luthier/Common/ErrorCheck.h"
-#include "luthier/LLVM/streams.h"
 #include "luthier/HSATooling/HsaMemoryAllocationAccessor.h"
 #include "luthier/HSATooling/LoadedCodeObjectCache.h"
+#include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
 #include "luthier/ToolCodeGen/EntryPoint.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
@@ -41,12 +41,10 @@
 #include "luthier/ToolCodeGen/InitialExecutionPointAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPassBuilder.h"
-#include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
-#include "luthier/ToolCodeGen/Metadata.h"
-#include "luthier/ToolCodeGen/MetadataParserAnalysis.h"
 #include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
+#include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
@@ -107,23 +105,16 @@ public:
   /// pass run that consumes them. After the common analyses are registered, the
   /// tool's optional \c registerInstrumentationAnalyses(MAM, MFAM) hook (if
   /// present) is invoked so a tool can add its own.
-  void registerInstrumentationAnalyses(
-      const llvm::amdhsa::kernel_descriptor_t &KD, llvm::TargetMachine &TM,
-      llvm::MachineModuleInfo &MMI, amdgpu::hsamd::MetadataParser &MDParser,
-      llvm::ModuleAnalysisManager &MAM,
-      llvm::MachineFunctionAnalysisManager &MFAM) {
+  void
+  registerInstrumentationAnalyses(llvm::MachineModuleInfo &MMI,
+                                  llvm::ModuleAnalysisManager &MAM,
+                                  llvm::MachineFunctionAnalysisManager &MFAM) {
     Derived &D = derived();
-    (void)TM;
 
     MAM.registerPass([&] { return llvm::MachineModuleAnalysis(MMI); });
     MFAM.registerPass([] { return luthier::InstructionTracesAnalysis(); });
     MFAM.registerPass(
         [] { return luthier::TraceFunctionTranslationAnalysis(); });
-    /// The initial entry and execution points are recorded as target-module
-    /// metadata rather than resolved through a callback (see
-    /// InitialEntryPointAnalysis.h); \c stampInitialPoints below writes \p KD
-    /// there, and these analyses just parse it.
-    (void)KD;
     MAM.registerPass([] { return luthier::InitialEntryPointAnalysis(); });
     MAM.registerPass([] { return luthier::InitialExecutionPointAnalysis(); });
     MAM.registerPass([&] {
@@ -133,7 +124,6 @@ public:
               D.getCoreApiTableSnapshot(), D.getAmdExtTableSnapshot(),
               D.getLoaderTableSnapshot().getTable()));
     });
-    MAM.registerPass([&] { return luthier::MetadataParserAnalysis(MDParser); });
     // PrototypeCallGraphAnalysis, IPPredCFGAnalysis and
     // FunctionPreambleDescriptorAnalysis are Prototype analyses; they are
     // registered on the PrototypeAnalysisManager (see
@@ -148,13 +138,14 @@ public:
   }
 
   /// Assemble and run the standard instrumentation pipeline for the kernel
-  /// referenced by \p KD, returning the resulting relocatable object-file bytes.
+  /// referenced by \p KD, returning the resulting relocatable object-file
+  /// bytes.
   ///
   /// The pipeline itself comes from
   /// \c InstrumentationPassBuilder::buildInstrumentationPipeline: code
-  /// discovery, the tool's payload injection, IModule optimization and intrinsic
-  /// lowering, AMDGPU codegen, and finally the target-module patch plus asm
-  /// printing. \p Level selects the optimization level used for the
+  /// discovery, the tool's payload injection, IModule optimization and
+  /// intrinsic lowering, AMDGPU codegen, and finally the target-module patch
+  /// plus asm printing. \p Level selects the optimization level used for the
   /// instrumentation module's IR pipeline.
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>>
   runInstrumentationPipelineForDispatch(
@@ -223,8 +214,8 @@ public:
     llvm::ModuleAnalysisManager TargetMAM, IMAM;
     luthier::PrototypeAnalysisManager IPAM;
 
-    const luthier::InstrumentationPassBuilder::ModuleAnalysisManagers
-        TargetAMs{TargetMAM, TargetCGAM, TargetFAM, TargetLAM, TargetMFAM};
+    const luthier::InstrumentationPassBuilder::ModuleAnalysisManagers TargetAMs{
+        TargetMAM, TargetCGAM, TargetFAM, TargetLAM, TargetMFAM};
     const luthier::InstrumentationPassBuilder::ModuleAnalysisManagers IAMs{
         IMAM, ICGAM, IFAM, ILAM, IMFAM};
 
@@ -247,16 +238,13 @@ public:
     // the one worth wiring up.
     SI.registerCallbacks(PIC, &IMAM);
 
-    luthier::amdgpu::hsamd::MetadataParser MetadataParserInstance;
     // Both modules need the common analyses: a module analysis is resolved out
     // of the manager belonging to the module it is asked about. The single MMI
     // is deliberately shared -- it owns the MCContext the MachineFunctions of
     // both modules are created against, and TargetModulePatcherPass moves MIR
     // between them.
-    registerInstrumentationAnalyses(KD, *TM, MMI, MetadataParserInstance,
-                                    TargetMAM, TargetMFAM);
-    registerInstrumentationAnalyses(KD, *TM, MMI, MetadataParserInstance, IMAM,
-                                    IMFAM);
+    registerInstrumentationAnalyses(MMI, TargetMAM, TargetMFAM);
+    registerInstrumentationAnalyses(MMI, IMAM, IMFAM);
 
     // Intrinsic lowering resolves each luthier:: intrinsic through this
     // registry, which the tool owns.
@@ -295,8 +283,8 @@ public:
         },
         Level, llvm::CodeGenFileType::ObjectFile, CGPBO, &ObjOS, &PIC));
 
-    // ParentPrototypeAnalysis is consumed via getCachedResult, so materialize it
-    // for both modules up front, each in its own manager.
+    // ParentPrototypeAnalysis is consumed via getCachedResult, so materialize
+    // it for both modules up front, each in its own manager.
     (void)IMAM.getResult<luthier::ParentPrototypeAnalysis>(
         IP.getInstrumentationModule());
     (void)TargetMAM.getResult<luthier::ParentPrototypeAnalysis>(
