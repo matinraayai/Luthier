@@ -1058,7 +1058,7 @@ initLiftedDeviceFunctionEntry(uint64_t DeviceEntryPointAddr,
 /// basic block
 /// \return \c llvm::Error indicating the success or failure of the operation
 static llvm::Error
-convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
+convertAndAddMCOperandsToMI(const llvm::MCInst & RealInst,
                             llvm::MachineInstrBuilder &MIBuilder) {
   const unsigned Opcode = MIBuilder->getOpcode();
   const llvm::MCInstrDesc &MCID = MIBuilder->getDesc();
@@ -1068,7 +1068,7 @@ convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
   assert(MF && "MI is not part of a machine function");
   const bool IsDirectBranch =
       MIBuilder->isBranch() && !MIBuilder->isIndirectBranch();
-  for (auto [MCOpIdx, MCOp] : llvm::enumerate(MCOperands)) {
+  for (auto [MCOpIdx, MCOp] : llvm::enumerate(RealInst.getOperands())) {
     if (MCOp.isReg()) {
       LLVM_DEBUG(luthier::dbgs()
                  << "[CodeDiscoveryPass] Converting MC register operand "
@@ -1161,7 +1161,8 @@ convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
     MIBuilder->addMemOperand(*MF, MMO);
   }
 
-  if (size_t NumMCOps = MCOperands.size(); NumMCOps < MCID.NumOperands) {
+  if (size_t NumMCOps = RealInst.getNumOperands();
+      NumMCOps < MCID.NumOperands) {
     LLVM_DEBUG(luthier::dbgs() << "[CodeDiscoveryPass] Must fixup instruction ";
                MIBuilder->print(luthier::dbgs()); luthier::dbgs() << "\n";
                luthier::dbgs()
@@ -1245,21 +1246,9 @@ convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
     }
   }
 
-  /// FIXME: Test to see if this is necessary and not covered already by
-  /// tied operand logic above.
   /// SDWA instructions with dst_unused:UNUSED_PRESERVE partially write their
   /// destination (only the selected byte/word lane), so the untouched lanes
-  /// must be preserved from the destination register's prior value. Real
-  /// hardware has no separate encoding bits for this "vdst_in" source: it
-  /// simply reads back the same physical register named by $vdst before
-  /// overwriting it, so the SDWA pseudo's MCID has no explicit operand slot
-  /// for it at all (unlike the VOP3/FLAT/etc. `$vdst_in` ties handled by the
-  /// missing-explicit-operand loop above, which *are* real operand slots).
-  /// The MachineVerifier nonetheless requires this to be modeled as an
-  /// implicit use of $vdst that is tied to the def, or it flags the
-  /// instruction as illegal (SIInstrInfo::verifyInstruction). Synthesize
-  /// that implicit tied use here, mirroring what SIPeepholeSDWA does when it
-  /// forms this same kind of SDWA instruction from IR-level codegen.
+  /// must be preserved from the destination register's prior value.
   if (llvm::SIInstrInfo::isSDWA(*MIBuilder)) {
     int DstUnusedIdx =
         llvm::AMDGPU::getNamedOperandIdx(Opcode, llvm::AMDGPU::OpName::dst_unused);
@@ -1284,6 +1273,15 @@ convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
         MIBuilder->tieOperands(VDstIdx, ImplicitUseIdx);
       }
     }
+  }
+
+  if (const int RealFIIdx = llvm::AMDGPU::getNamedOperandIdx(
+          RealInst.getOpcode(), llvm::AMDGPU::OpName::fi);
+      RealFIIdx != -1) {
+    LLVM_DEBUG(luthier::dbgs()
+               << "[CodeDiscoveryPass] Dropping the $fi operand, which the "
+                  "pseudo opcode does not model\n");
+    MIBuilder->removeOperand(RealFIIdx);
   }
 
   /// Add implicit use of the execute mask if it's not already reflected in
@@ -1404,7 +1402,7 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
               "[CodeDiscoveryPass] Populating {0} operands for instruction\n",
               MCID.operands().size()));
       LUTHIER_RETURN_ON_ERROR(
-          convertAndAddMCOperandsToMI(MCInst.getOperands(), Builder));
+          convertAndAddMCOperandsToMI(MCInst, Builder));
 
       LLVM_DEBUG(luthier::dbgs() << "[CodeDiscoveryPass] Built instruction: ";
                  Builder->print(luthier::dbgs()); luthier::dbgs() << "\n");
