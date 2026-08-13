@@ -325,9 +325,7 @@ class TraceFunctionTranslator {
   /// After translation is complete, run a worklist-driven
   /// \c llvm::simplifyInstruction + trivial-dead removal sweep over all
   /// non-trace instructions in the translated function. Trace instructions
-  /// (those whose \c MD_pcsections metadata is a
-  /// \c TargetMachineInstrMDNode with a non-empty trace instruction
-  /// address) are preserved as-is
+  /// are preserved as-is
   void optimizeNonTraceInsts();
 
   /// True iff a VALU MI's named-register access should be wrapped with
