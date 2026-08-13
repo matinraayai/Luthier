@@ -389,6 +389,25 @@ llvm::Value *TraceFunctionTranslator::extractChunkFromSource(
   // Fast path: source width tiles cleanly into VecChunkSize lanes. Use
   // vector extractelement.
   if (KeyTotalWidth % VecChunkSize == 0) {
+    if (NumChunks == 1 && KeyTotalWidth == VecChunkSize) {
+      assert(Idx == 0 && "single-lane source: only index 0 is valid");
+      if (auto It = RegValueMap.find(ChunkIntTy); It != RegValueMap.end())
+        return It->second;
+      llvm::Value *Pivot = nullptr;
+      for (auto &[T, V] : RegValueMap) {
+        if (T->getPrimitiveSizeInBits() == VecChunkSize &&
+            (T->isIntOrIntVectorTy() || T->isFPOrFPVectorTy())) {
+          Pivot = V;
+          break;
+        }
+      }
+      if (!Pivot)
+        Pivot = getOrCreateIntOrFloatTypeForReg(RegValueMap, Builder);
+      llvm::Value *Out = Builder.CreateBitOrPointerCast(Pivot, ChunkIntTy);
+      RegValueMap[ChunkIntTy] = Out;
+      return Out;
+    }
+
     llvm::Value *TheVec = breakdownToVecTyFromAvailableValues(
         RegValueMap, KeyTotalWidth, VecChunkSize, Builder);
 
@@ -573,13 +592,50 @@ llvm::Value *TraceFunctionTranslator::materializeFromOverlapping(
                         return std::gcd(A, B.ChunkEnd - B.ChunkStart);
                       });
 
+  const unsigned NumLanes = RNumHalves / OptimalNumHalves;
+  const unsigned OptimalChunkSizeInBits = RegGranule * OptimalNumHalves;
+
+  // Materialize a single OptimalChunkSize-wide chunk from source K, cache
+  // it under its absolute sub-key, and return the cast-to-IntN value.
+  // SrcChunkStart is the source-relative offset (in halves) within K;
+  // AbsChunkStart is the chunk's absolute offset in the register file.
+  auto ExtractOneChunk = [&](unsigned SrcChunkStart, unsigned AbsChunkStart,
+                             const RegFileKey &K) -> llvm::Value * {
+    RegFileKey SubRegKey =
+        std::make_tuple(BaseReg, AbsChunkStart, OptimalNumHalves);
+    unsigned SrcElIdx = SrcChunkStart / OptimalNumHalves;
+    llvm::Value *ChunkVal = extractChunkFromSource(
+        State, K, OptimalChunkSizeInBits, SrcElIdx, 1, Builder);
+    State[SubRegKey][ChunkVal->getType()] = ChunkVal;
+    ChunkVal = Builder.CreateBitOrPointerCast(
+        ChunkVal, Builder.getIntNTy(OptimalChunkSizeInBits));
+    State[SubRegKey][ChunkVal->getType()] = ChunkVal;
+    return ChunkVal;
+  };
+
+  // Fast path: the requested slot is exactly one chunk wide. Wrapping the
+  // scalar in a <1 x T> and bitcasting back to T produces an
+  // insertelement+bitcast pair that InstSimplify (run by
+  // optimizeNonTraceInsts) does not fold, so return the chunk value
+  // directly. Exactly one of {NonOverlap, Overlap} carries the chunk in
+  // this case because they partition [RStart, REnd).
+  if (NumLanes == 1) {
+    llvm::Value *ChunkVal = nullptr;
+    if (!NonOverlapChunks.empty()) {
+      const auto &C = NonOverlapChunks[0];
+      ChunkVal = ExtractOneChunk(0, C.ChunkStart, C.KeyReg);
+    } else {
+      const auto &C = OverlapChunks[0];
+      ChunkVal =
+          ExtractOneChunk(C.SrcChunkStart, RStart + C.ChunkStart, C.Src->RegKey);
+    }
+    return Builder.CreateBitOrPointerCast(ChunkVal, &RegType);
+  }
+
   // Step 6: Construct a vector type to materialize chunks
   auto *WorkingTy = llvm::FixedVectorType::get(
-      Builder.getIntNTy(OptimalNumHalves * RegGranule),
-      RNumHalves / OptimalNumHalves);
+      Builder.getIntNTy(OptimalChunkSizeInBits), NumLanes);
   llvm::Value *Result = llvm::PoisonValue::get(WorkingTy);
-
-  unsigned OptimalChunkSizeInBits = RegGranule * OptimalNumHalves;
 
   // InsertChunkFn inserts chunks into Result.
   // SrcChunkStart: source-relative start offset (in halves) within K.
@@ -588,18 +644,9 @@ llvm::Value *TraceFunctionTranslator::materializeFromOverlapping(
                            unsigned ChunkEnd, const RegFileKey &K) {
     unsigned NumChunks = ChunkEnd - ChunkStart;
     for (unsigned CI = 0; CI < NumChunks; CI += OptimalNumHalves) {
-      // Cache key must use the absolute position in the register file.
-      RegFileKey SubRegKey =
-          std::make_tuple(BaseReg, RStart + ChunkStart + CI, OptimalNumHalves);
-      unsigned SrcElIdx = (SrcChunkStart + CI) / OptimalNumHalves;
-      // DestElIdx indexes into WorkingTy which starts at RStart.
       unsigned DestElIdx = (ChunkStart + CI) / OptimalNumHalves;
-      llvm::Value *ChunkVal = extractChunkFromSource(
-          State, K, OptimalChunkSizeInBits, SrcElIdx, 1, Builder);
-      State[SubRegKey][ChunkVal->getType()] = ChunkVal;
-      ChunkVal = Builder.CreateBitOrPointerCast(
-          ChunkVal, Builder.getIntNTy(OptimalChunkSizeInBits));
-      State[SubRegKey][ChunkVal->getType()] = ChunkVal;
+      llvm::Value *ChunkVal = ExtractOneChunk(
+          SrcChunkStart + CI, RStart + ChunkStart + CI, K);
       Result = Builder.CreateInsertElement(Result, ChunkVal, DestElIdx);
     }
   };
