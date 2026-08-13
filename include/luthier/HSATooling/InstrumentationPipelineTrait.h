@@ -13,12 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file InstrumentationPipelineTrait.h
-/// CRTP trait that owns the per-dispatch instrumentation pipeline shared by
-/// every HSA tool: it builds the target \c Module / analysis managers,
-/// registers the common instrumentation analyses, and drives
-/// the standard prototype-level instrumentation pipeline to
-/// produce an instrumented relocatable for a dispatched kernel.
+/// \file
+/// CRTP trait for creating and running the instrumentation pipeline used by
+/// every HSA tool.
 ///
 /// The trait forwards a set of optional, plugin-style callbacks to
 /// the pipeline builder. Each callback is detected on \c Derived via a
@@ -27,12 +24,7 @@
 /// points (all optional) are:
 ///   - \c onBeginDispatchInstrumentation()
 ///   - \c createInstrumentationModule(llvm::LLVMContext &)
-///   - \c augmentInstrumentationPassBuilder(llvm::PassBuilder &)
 ///   - \c preIROptimizationPasses(llvm::ModulePassManager &)
-///   - \c preLuthierIRIntrinsicLoweringPasses(llvm::ModulePassManager &)
-///   - \c postLuthierIRIntrinsicLoweringPasses(llvm::ModulePassManager &)
-///   - \c augmentTargetPassConfig(llvm::PassRegistry &,
-///        llvm::TargetPassConfig &, llvm::TargetMachine &)
 ///   - \c registerInstrumentationAnalyses(llvm::ModuleAnalysisManager &,
 ///        llvm::MachineFunctionAnalysisManager &)
 //===----------------------------------------------------------------------===//
