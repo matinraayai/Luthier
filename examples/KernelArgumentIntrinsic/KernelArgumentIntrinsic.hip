@@ -44,14 +44,14 @@
 #include <luthier/ToolCodeGen/CodeDiscoveryPass.h>
 #include <luthier/ToolCodeGen/EntryPoint.h>
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
+#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
-#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
-#include <luthier/ToolCodeGen/PrototypeCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/NewPMAsmPrinter.h>
 #include <luthier/ToolCodeGen/PrePostAmbleEmitter.h>
+#include <luthier/ToolCodeGen/PrototypeCallGraph.h>
 #include <mutex>
 
 #undef DEBUG_TYPE
@@ -111,12 +111,6 @@ struct KernelArgumentIntrinsicTool
                  llvm::ArrayRef<luthier::hsa::AqlPacket> Packets,
                  hsa_amd_queue_intercept_packet_writer PacketWriter);
 
-  /// Creates this tool's injected payloads for one target MachineFunction.
-  /// Invoked by \c run for every MachineFunction the code-discovery stage
-  /// lifted into the prototype's target module.
-  void instrumentMachineFunction(llvm::Module &IModule,
-                                 llvm::MachineFunction &MF);
-
   /// Prototype-level entry point: payload creation reads the target module's
   /// MIR and writes into the instrumentation module, so it needs both halves of
   /// the prototype.
@@ -126,7 +120,8 @@ struct KernelArgumentIntrinsicTool
 
 __attribute__((managed)) dim3 KernelArgumentIntrinsicTool::BlockCount{0, 0, 0};
 
-__attribute__((device, used)) void KernelArgumentIntrinsicTool::accessKernelArg() {
+__attribute__((device, used)) void
+KernelArgumentIntrinsicTool::accessKernelArg() {
   KernelArgumentIntrinsicTool::BlockCount = gridDim;
 }
 
@@ -134,29 +129,22 @@ LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(KernelArgumentIntrinsicTool)
 
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
-static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>
-    *AmdExtSnapshot{nullptr};
+static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable> *AmdExtSnapshot{
+    nullptr};
 static luthier::rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
     *LoaderSnapshot{nullptr};
-
-
-void KernelArgumentIntrinsicTool::instrumentMachineFunction(
-    llvm::Module &IModule, llvm::MachineFunction &MF) {
-  if (MF.empty())
-    return;
-  LUTHIER_REPORT_FATAL_ON_ERROR(this->createInjectedPayload(
-      &KernelArgumentIntrinsicTool::accessKernelArg, IModule,
-      MF.begin()->front(), {}));
-}
 
 llvm::PreservedAnalyses
 KernelArgumentIntrinsicTool::run(luthier::Prototype &P,
                                  luthier::PrototypeAnalysisManager &PAM) {
   llvm::Module &IModule = P.getInstrumentationModule();
-  P.forEachTargetMF(
-      PAM, [&](llvm::MachineFunction &MF) {
-        instrumentMachineFunction(IModule, MF);
-      });
+  P.forEachTargetMF(PAM, [&](llvm::MachineFunction &MF) {
+    if (MF.empty())
+      return;
+    LUTHIER_REPORT_FATAL_ON_ERROR(this->createInjectedPayload(
+        &KernelArgumentIntrinsicTool::accessKernelArg, IModule,
+        MF.begin()->front(), {}));
+  });
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
   // Payload creation only adds functions to the instrumentation module and
   // attaches instrumentation-point metadata to target MIs. No MachineFunction
@@ -212,8 +200,7 @@ void KernelArgumentIntrinsicTool::onPackets(
         llvm::consumeError(std::move(MissErr));
         std::unique_ptr<llvm::MemoryBuffer> ObjBuf;
         LUTHIER_REPORT_FATAL_ON_ERROR(
-            this->runInstrumentationPipelineForDispatch(*KD)
-                .moveInto(ObjBuf));
+            this->runInstrumentationPipelineForDispatch(*KD).moveInto(ObjBuf));
         LUTHIER_REPORT_FATAL_ON_ERROR(
             this->loadInstrumented(std::move(ObjBuf), KD, 0).takeError());
         LUTHIER_REPORT_FATAL_ON_ERROR(
@@ -232,9 +219,9 @@ void KernelArgumentIntrinsicTool::onPackets(
             DispatchPacket->completion_signal, HSA_SIGNAL_CONDITION_LT,
             SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
     if (Current >= SignalValue)
-      llvm::report_fatal_error(llvm::formatv(
-          "Wait timeout for signal {0:x}",
-          DispatchPacket->completion_signal.handle));
+      llvm::report_fatal_error(
+          llvm::formatv("Wait timeout for signal {0:x}",
+                        DispatchPacket->completion_signal.handle));
     if (MustDestroySignalAfterLaunch) {
       LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
           Core.callFunction<&::CoreApiTable::hsa_signal_destroy_fn>(
@@ -289,9 +276,8 @@ static void atToolInit(void *) {
     if (Err)
       llvm::report_fatal_error(std::move(Err));
 
-    KernelArgumentIntrinsicTool::createInstance(*CoreApiSnapshot,
-                                                *AmdExtSnapshot, *LoaderSnapshot,
-                                                Err);
+    KernelArgumentIntrinsicTool::createInstance(
+        *CoreApiSnapshot, *AmdExtSnapshot, *LoaderSnapshot, Err);
     if (Err)
       llvm::report_fatal_error(std::move(Err));
 

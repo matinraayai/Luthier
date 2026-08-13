@@ -22,7 +22,6 @@
 /// \c requires-expression; if \c Derived does not define a given method, the
 /// corresponding driver callback is a no-op. The detected customization
 /// points (all optional) are:
-///   - \c onBeginDispatchInstrumentation()
 ///   - \c createInstrumentationModule(llvm::LLVMContext &)
 ///   - \c preIROptimizationPasses(llvm::ModulePassManager &)
 ///   - \c registerInstrumentationAnalyses(llvm::ModuleAnalysisManager &,
@@ -162,11 +161,6 @@ public:
       const llvm::amdhsa::kernel_descriptor_t &KD,
       llvm::OptimizationLevel Level = llvm::OptimizationLevel::O2) {
     Derived &D = derived();
-
-    if constexpr (requires(Derived &Tool) {
-                    Tool.onBeginDispatchInstrumentation();
-                  })
-      D.onBeginDispatchInstrumentation();
 
     std::unique_ptr<llvm::TargetMachine> TM;
     LUTHIER_RETURN_ON_ERROR(D.buildTargetMachineForKD(&KD).moveInto(TM));

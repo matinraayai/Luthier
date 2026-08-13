@@ -43,10 +43,10 @@
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
 #include <luthier/ToolCodeGen/InstrumentationPassBuilder.h>
-#include <luthier/ToolCodeGen/Prototype.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/PrePostAmbleEmitter.h>
+#include <luthier/ToolCodeGen/Prototype.h>
 #include <luthier/ToolCodeGen/PrototypeCallGraph.h>
 #include <mutex>
 #include <unordered_set>
@@ -155,7 +155,8 @@ void LiftLaunchedKernelsTool::onPackets(
       for (llvm::ModuleAnalysisManager *M : {&TargetMAM, &IMAM}) {
         M->registerPass([&] { return llvm::MachineModuleAnalysis(MMI); });
         M->registerPass([] { return luthier::InitialEntryPointAnalysis(); });
-        M->registerPass([] { return luthier::InitialExecutionPointAnalysis(); });
+        M->registerPass(
+            [] { return luthier::InitialExecutionPointAnalysis(); });
         M->registerPass([&] {
           return luthier::MemoryAllocationAnalysis(
               std::make_unique<luthier::HsaMemoryAllocationAccessor>(
