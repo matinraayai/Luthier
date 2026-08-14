@@ -48,6 +48,16 @@ void SIInstrSemanticsEmitter::emitRegisterReference(
     return;
   }
 
+  /// Subtarget-aware register references
+  if (Def->getName() == "GetExecReg") {
+    OS << "Translator.TRI.getExec()";
+    return;
+  }
+  if (Def->getName() == "GetVCCReg") {
+    OS << "Translator.TRI.getVCC()";
+    return;
+  }
+
   llvm::PrintFatalError(Loc, "Register operand " + Def->getName() +
                                  " is neither a `Register` nor a "
                                  "`SuperRegFactory<[...]>` record");

@@ -459,6 +459,14 @@ def DirectCall;
 
 def GetWavefrontSize;
 
+/// Subtarget-aware EXEC register. Emits \c Translator.TRI.getExec() —
+/// \c AMDGPU::EXEC_LO on wave32, \c AMDGPU::EXEC on wave64.
+def GetExecReg;
+
+/// Subtarget-aware VCC register. Emits \c Translator.TRI.getVCC() —
+/// \c AMDGPU::VCC_LO on wave32, \c AMDGPU::VCC on wave64.
+def GetVCCReg;
+
 /// Parameterized integer LLVM type. Takes a single dag argument that resolves
 /// to a C++ \c unsigned expression giving the bit width. Emits
 /// \c Builder.getIntNTy(<width>). Typical use: \c (LLVMIntNTy (GetWavefrontSize))

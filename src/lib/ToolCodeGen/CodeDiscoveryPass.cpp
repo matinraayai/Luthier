@@ -1066,6 +1066,9 @@ convertAndAddMCOperandsToMI(const llvm::MCInst & RealInst,
   assert(MBB && "MI is not part of a machine basic block");
   llvm::MachineFunction *MF = MBB->getParent();
   assert(MF && "MI is not part of a machine function");
+  auto *TRI = static_cast<const llvm::SIRegisterInfo *>(
+      MF->getSubtarget().getRegisterInfo());
+  llvm::MCRegister ExecReg = TRI->getExec();
   const bool IsDirectBranch =
       MIBuilder->isBranch() && !MIBuilder->isIndirectBranch();
   for (auto [MCOpIdx, MCOp] : llvm::enumerate(RealInst.getOperands())) {
@@ -1286,10 +1289,10 @@ convertAndAddMCOperandsToMI(const llvm::MCInst & RealInst,
 
   /// Add implicit use of the execute mask if it's not already reflected in
   /// the machine instruction
-  if (MCID.hasImplicitUseOfPhysReg(llvm::AMDGPU::EXEC) &&
-      !MIBuilder->hasRegisterImplicitUseOperand(llvm::AMDGPU::EXEC)) {
+  if (MCID.hasImplicitUseOfPhysReg(ExecReg) &&
+      !MIBuilder->hasRegisterImplicitUseOperand(ExecReg)) {
     MIBuilder->addOperand(
-        llvm::MachineOperand::CreateReg(llvm::AMDGPU::EXEC, false, true));
+        llvm::MachineOperand::CreateReg(ExecReg, false, true));
   }
 
   return llvm::Error::success();
