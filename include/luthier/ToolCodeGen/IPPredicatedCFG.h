@@ -35,12 +35,6 @@ class IPPredicatedCFG;
 class PredicatedMachineBasicBlock;
 
 /// \brief Inter-procedural predicated control-flow graph for target modules
-///
-/// \details Each node is a \c PredicatedMachineBasicBlock — a single MBB broken
-/// down to have either scalar or vector instructions. Intra-procedural edges
-/// come from MBB successor links; inter-procedural call edges come from
-/// \c PrototypeCallGraph.  MBBs whose call targets could not be fully resolved
-/// are flagged with \c hasUnresolvedEdges().
 class IPPredicatedCFG {
 private:
   llvm::SmallVector<std::unique_ptr<PredMBBBuilder>> AllPredMBBs{};

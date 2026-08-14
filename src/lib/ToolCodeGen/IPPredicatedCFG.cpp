@@ -27,10 +27,14 @@
 #include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
+#include "luthier/ToolCodeGen/TraceFunctionTranslationAnalysis.h"
 #include <llvm/ADT/DenseMap.h>
+#include <llvm/ADT/SmallPtrSet.h>
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/CFG.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/FormatVariadic.h>
@@ -70,6 +74,9 @@ IPPredicatedCFG::getIPPredCFG(Prototype &IP,
       TargetMAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(
                    TargetModule)
           .getManager();
+  llvm::MachineFunctionAnalysisManager &MFAM =
+      IPAM.getResult<TargetMachineFunctionAnalysisManagerPrototypeProxy>(IP)
+          .getManager();
 
   auto Out = std::unique_ptr<IPPredicatedCFG>(new IPPredicatedCFG());
 
@@ -77,12 +84,22 @@ IPPredicatedCFG::getIPPredCFG(Prototype &IP,
   // which MBB owns a CallInst that appears in the PrototypeCallGraph.
   llvm::DenseMap<const llvm::BasicBlock *, llvm::MachineBasicBlock *> IRBBToMBB;
 
+  // Reverse map from a translated BodyBB (i.e. an IR BB set as an MBB's
+  // \c getBasicBlock()) to its owning \c PredMBBBuilder.
+  llvm::DenseMap<const llvm::BasicBlock *, PredMBBBuilder *> BodyBBToBuilder;
+
   llvm::Function *EntryFunc = nullptr;
 
   // ── Phase 1: create one PredMBBBuilder per MBB ──────────────────────────
   for (llvm::Function &F : TargetModule) {
     llvm::MachineFunction &MF =
         FAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
+
+    // Bring the lifted IR up to date before we start reading it: Phase 2
+    // walks IR-terminator successors, so every MBB must have a BodyBB.
+    TranslationState &Translation =
+        MFAM.getResult<TraceFunctionTranslationAnalysis>(MF);
+    LUTHIER_RETURN_ON_ERROR(Translation.flush());
 
     if (F.hasFnAttribute(InitialEntryPointAttr)) {
       if (EntryFunc)
@@ -99,8 +116,14 @@ IPPredicatedCFG::getIPPredCFG(Prototype &IP,
       Out->MBBToPredMBB[MBB] = &Builder;
       if (!FirstBuilder)
         FirstBuilder = &Builder;
-      if (const llvm::BasicBlock *BB = MBB.getBasicBlock())
-        IRBBToMBB[BB] = &MBB;
+      const llvm::BasicBlock *BB = MBB.getBasicBlock();
+      if (!BB)
+        return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+            "MBB {0} in function {1} has no associated IR basic block; the "
+            "trace function translator must have run before IPPredicatedCFG",
+            MBB.getNumber(), F.getName()));
+      IRBBToMBB[BB] = &MBB;
+      BodyBBToBuilder[BB] = &Builder;
     }
     if (FirstBuilder)
       Out->MFToEntryPredMBB[&MF] = FirstBuilder;
@@ -117,12 +140,26 @@ IPPredicatedCFG::getIPPredCFG(Prototype &IP,
     Out->EntryPredMBB = It->second;
   }
 
-  // ── Phase 2: intra-procedural edges from MBB successor links ────────────
+  // ── Phase 2: intra-procedural edges from the translated IR ─────────────
   for (auto &Builder : Out->AllPredMBBs) {
-    llvm::MachineBasicBlock &MBB = Builder->getPredMBB().getMBB();
-    for (llvm::MachineBasicBlock *Succ : MBB.successors()) {
-      if (auto *SuccBuilder = Out->MBBToPredMBB.lookup(*Succ))
+    const llvm::MachineBasicBlock &MBB = Builder->getPredMBB().getMBB();
+    const llvm::BasicBlock *BodyBB = MBB.getBasicBlock();
+    if (!BodyBB->getTerminatorOrNull())
+      continue;
+
+    llvm::SmallPtrSet<const llvm::BasicBlock *, 8> Seen;
+    llvm::SmallVector<const llvm::BasicBlock *, 8> Worklist(
+        llvm::succ_begin(BodyBB), llvm::succ_end(BodyBB));
+    while (!Worklist.empty()) {
+      const llvm::BasicBlock *N = Worklist.pop_back_val();
+      if (!Seen.insert(N).second)
+        continue;
+      if (auto *SuccBuilder = BodyBBToBuilder.lookup(N)) {
         Builder->addSuccessorBlock(*SuccBuilder);
+        continue;
+      }
+      for (const llvm::BasicBlock *Next : llvm::successors(N))
+        Worklist.push_back(Next);
     }
   }
 

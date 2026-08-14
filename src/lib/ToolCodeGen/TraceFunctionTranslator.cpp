@@ -1416,7 +1416,8 @@ TraceFunctionTranslator::getRegFileKey(llvm::MCRegister Reg) const {
   }
 
   unsigned BaseHwIdx =
-      TRI.getEncodingValue(BaseReg) & llvm::AMDGPU::HWEncoding::REG_IDX_MASK;
+      TRI.getEncodingValue(getPhysReg(BaseReg)) &
+                       llvm::AMDGPU::HWEncoding::REG_IDX_MASK;
 
   unsigned Offset = (HwIdx - BaseHwIdx) * 2 + IsHi16;
 

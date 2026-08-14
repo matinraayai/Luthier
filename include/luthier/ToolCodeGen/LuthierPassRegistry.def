@@ -76,6 +76,7 @@ PROTOTYPE_PASS("luthier-intrinsic-mir-lowering", IntrinsicMIRLoweringPass())
 PROTOTYPE_PASS("luthier-injected-payload-preserve-live-regs",
                InjectedPayloadPreserveLiveRegsPass())
 PROTOTYPE_PASS("luthier-target-module-patcher", TargetModulePatcherPass())
+PROTOTYPE_PASS("luthier-print-ip-pred-cfg", IPPredCFGPrinter(llvm::outs()))
 #undef PROTOTYPE_PASS
 
 #ifndef PROTOTYPE_ANALYSIS
