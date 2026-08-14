@@ -45,7 +45,9 @@
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/CFG.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/IRBuilderFolder.h>
 #include <llvm/IR/IntrinsicsAMDGPU.h>
+#include <llvm/IR/PatternMatch.h>
 #include <llvm/IR/ValueHandle.h>
 #include <llvm/IR/ValueMap.h>
 #include <llvm/MC/TargetRegistry.h>
@@ -71,6 +73,174 @@ struct TagBB {
 };
 
 template struct Access<TagBB, &llvm::MachineBasicBlock::BB>;
+
+/// Recursive worker for \c isProvablyAllOnesInt. \p Visited is used to
+/// break PHI cycles: when we re-encounter a node we're currently
+/// analyzing, we optimistically treat the back-edge as if it produces
+/// all-ones. If every non-cycle leaf turns out to be a \c -1 constant,
+/// this optimism holds; if any leaf is not, propagation up returns
+/// false and the fold is rejected.
+bool isProvablyAllOnesIntImpl(const llvm::Value *V,
+                              llvm::SmallPtrSetImpl<const llvm::Value *>
+                                  &Visited) {
+  if (!V)
+    return false;
+  if (auto *CI = llvm::dyn_cast<llvm::ConstantInt>(V))
+    return CI->isMinusOne();
+  if (auto *Phi = llvm::dyn_cast<llvm::PHINode>(V)) {
+    if (Phi->getNumIncomingValues() == 0)
+      return false;
+    if (!Visited.insert(Phi).second)
+      return true;
+    for (const llvm::Value *In : Phi->incoming_values())
+      if (!isProvablyAllOnesIntImpl(In, Visited))
+        return false;
+    return true;
+  }
+  return false;
+}
+
+/// True iff \p V is provably an all-ones bit pattern of its integer
+/// type. Handles a constant \c -1, a PHI that transitively merges only
+/// \c -1 constants (with arbitrary cycles among intermediate PHIs), and
+/// combinations thereof. Non-PHI / non-constant values are treated
+/// conservatively.
+bool isProvablyAllOnesInt(const llvm::Value *V) {
+  llvm::SmallPtrSet<const llvm::Value *, 8> Visited;
+  return isProvablyAllOnesIntImpl(V, Visited);
+}
+
+/// AMDGPU-specific compile-time fold for target intrinsics whose result
+/// can be computed statically from their operands.
+///
+/// Currently handles:
+///   * <tt>llvm.amdgcn.readfirstlane(<Constant>)</tt> \c → \c <Constant>
+///     — the value is uniform, so cross-lane broadcast is a no-op.
+///   * <tt>llvm.amdgcn.readlane(<Constant>, <any>)</tt> \c → \c <Constant>
+///     — same rationale, regardless of the lane index.
+///   * <tt>llvm.amdgcn.mbcnt.lo(0, X)</tt> \c → \c X — with a zero mask,
+///     no lane's bit is counted so the popcount contributes 0.
+///   * <tt>llvm.amdgcn.mbcnt.hi(0, X)</tt> \c → \c X — same.
+llvm::Value *tryFoldAMDGPUIntrinsic(llvm::Intrinsic::ID ID,
+                                    llvm::ArrayRef<llvm::Value *> Args) {
+  switch (ID) {
+  case llvm::Intrinsic::amdgcn_readfirstlane:
+    if (Args.size() >= 1 && llvm::isa<llvm::Constant>(Args[0]))
+      return Args[0];
+    return nullptr;
+  case llvm::Intrinsic::amdgcn_readlane:
+    if (Args.size() >= 1 && llvm::isa<llvm::Constant>(Args[0]))
+      return Args[0];
+    return nullptr;
+  case llvm::Intrinsic::amdgcn_mbcnt_lo:
+  case llvm::Intrinsic::amdgcn_mbcnt_hi:
+    if (Args.size() >= 2)
+      if (auto *M = llvm::dyn_cast<llvm::ConstantInt>(Args[0]);
+          M && M->isZero())
+        return Args[1];
+    return nullptr;
+  default:
+    return nullptr;
+  }
+}
+
+/// A folder for \c llvm::IRBuilder that layers AMDGPU-specific
+/// intrinsic simplification on top of \c llvm::InstSimplifyFolder.
+class LuthierAMDGPUFolder final : public llvm::IRBuilderFolder {
+  llvm::InstSimplifyFolder Base;
+
+public:
+  explicit LuthierAMDGPUFolder(const llvm::DataLayout &DL) : Base(DL) {}
+
+  llvm::Value *FoldBinOp(llvm::Instruction::BinaryOps Opc, llvm::Value *LHS,
+                         llvm::Value *RHS) const override {
+    return Base.FoldBinOp(Opc, LHS, RHS);
+  }
+
+  llvm::Value *FoldExactBinOp(llvm::Instruction::BinaryOps Opc,
+                              llvm::Value *LHS, llvm::Value *RHS,
+                              bool IsExact) const override {
+    return Base.FoldExactBinOp(Opc, LHS, RHS, IsExact);
+  }
+  llvm::Value *FoldNoWrapBinOp(llvm::Instruction::BinaryOps Opc,
+                               llvm::Value *LHS, llvm::Value *RHS, bool HasNUW,
+                               bool HasNSW) const override {
+    return Base.FoldNoWrapBinOp(Opc, LHS, RHS, HasNUW, HasNSW);
+  }
+  llvm::Value *FoldBinOpFMF(llvm::Instruction::BinaryOps Opc, llvm::Value *LHS,
+                            llvm::Value *RHS,
+                            llvm::FastMathFlags FMF) const override {
+    return Base.FoldBinOpFMF(Opc, LHS, RHS, FMF);
+  }
+  llvm::Value *FoldUnOpFMF(llvm::Instruction::UnaryOps Opc, llvm::Value *V,
+                           llvm::FastMathFlags FMF) const override {
+    return Base.FoldUnOpFMF(Opc, V, FMF);
+  }
+  llvm::Value *FoldCmp(llvm::CmpInst::Predicate P, llvm::Value *LHS,
+                       llvm::Value *RHS) const override {
+    return Base.FoldCmp(P, LHS, RHS);
+  }
+  llvm::Value *FoldGEP(llvm::Type *Ty, llvm::Value *Ptr,
+                       llvm::ArrayRef<llvm::Value *> IdxList,
+                       llvm::GEPNoWrapFlags NW) const override {
+    return Base.FoldGEP(Ty, Ptr, IdxList, NW);
+  }
+  llvm::Value *FoldSelect(llvm::Value *C, llvm::Value *True, llvm::Value *False,
+                          llvm::FastMathFlags FMF =
+                              llvm::FastMathFlags()) const override {
+    return Base.FoldSelect(C, True, False, FMF);
+  }
+  llvm::Value *
+  FoldExtractValue(llvm::Value *Agg,
+                   llvm::ArrayRef<unsigned> IdxList) const override {
+    return Base.FoldExtractValue(Agg, IdxList);
+  }
+  llvm::Value *
+  FoldInsertValue(llvm::Value *Agg, llvm::Value *Val,
+                  llvm::ArrayRef<unsigned> IdxList) const override {
+    return Base.FoldInsertValue(Agg, Val, IdxList);
+  }
+  llvm::Value *FoldExtractElement(llvm::Value *Vec,
+                                  llvm::Value *Idx) const override {
+    return Base.FoldExtractElement(Vec, Idx);
+  }
+  llvm::Value *FoldInsertElement(llvm::Value *Vec, llvm::Value *NewElt,
+                                 llvm::Value *Idx) const override {
+    return Base.FoldInsertElement(Vec, NewElt, Idx);
+  }
+  llvm::Value *FoldShuffleVector(llvm::Value *V1, llvm::Value *V2,
+                                 llvm::ArrayRef<int> Mask) const override {
+    return Base.FoldShuffleVector(V1, V2, Mask);
+  }
+  llvm::Value *FoldCast(llvm::Instruction::CastOps Op, llvm::Value *V,
+                        llvm::Type *DestTy) const override {
+    return Base.FoldCast(Op, V, DestTy);
+  }
+  llvm::Value *FoldUnaryIntrinsic(
+      llvm::Intrinsic::ID ID, llvm::Value *Op, llvm::Type *Ty,
+      llvm::FastMathFlags FMF = llvm::FastMathFlags()) const override {
+    if (llvm::Value *V = tryFoldAMDGPUIntrinsic(ID, {Op}))
+      return V;
+    return Base.FoldUnaryIntrinsic(ID, Op, Ty, FMF);
+  }
+  llvm::Value *FoldBinaryIntrinsic(
+      llvm::Intrinsic::ID ID, llvm::Value *LHS, llvm::Value *RHS,
+      llvm::Type *Ty,
+      llvm::FastMathFlags FMF = llvm::FastMathFlags()) const override {
+    if (llvm::Value *V = tryFoldAMDGPUIntrinsic(ID, {LHS, RHS}))
+      return V;
+    return Base.FoldBinaryIntrinsic(ID, LHS, RHS, Ty, FMF);
+  }
+  llvm::Value *CreatePointerCast(llvm::Constant *C,
+                                 llvm::Type *DestTy) const override {
+    return Base.CreatePointerCast(C, DestTy);
+  }
+  llvm::Value *
+  CreatePointerBitCastOrAddrSpaceCast(llvm::Constant *C,
+                                      llvm::Type *DestTy) const override {
+    return Base.CreatePointerBitCastOrAddrSpaceCast(C, DestTy);
+  }
+};
 
 } // namespace
 
@@ -501,13 +671,12 @@ llvm::Value *TraceFunctionTranslator::materializeFromOverlapping(
       ToBeFixedPhis.emplace_back(&MBB, ReadKeyReg, Phi);
       State[ReadKeyReg][&RegType] = Phi;
       return Phi;
-    } else {
-      // Entry block - freeze(poison)
-      llvm::Value *InitVal =
-          Builder.CreateFreeze(llvm::PoisonValue::get(&RegType));
-      State[ReadKeyReg][&RegType] = InitVal;
-      return InitVal;
     }
+    // Entry block - freeze(poison)
+    llvm::Value *InitVal =
+        Builder.CreateFreeze(llvm::PoisonValue::get(&RegType));
+    State[ReadKeyReg][&RegType] = InitVal;
+    return InitVal;
   }
 
   // Step 3: Sort overlaps by the size of overlap with the target register
@@ -2219,7 +2388,7 @@ void TraceFunctionTranslator::translate() {
   for (llvm::MachineBasicBlock &MBB : MF)
     translateMBBBody(MBB);
 
-  /// Pass 3: insert an EXEC-mask predicate check before every vector MBB's
+  /// Insert an EXEC-mask predicate check before every vector MBB's
   /// BodyBB. The check BB receives all of the BodyBB's existing predecessor
   /// edges and dispatches to either the BodyBB (lane active) or a synthetic
   /// skip block (lane inactive). Existing per-register placeholder PHIs that
@@ -2266,6 +2435,13 @@ void TraceFunctionTranslator::translate() {
     llvm::IRBuilder<>{SkipBB}.CreateBr(BodyBB);
   }
 
+  /// Snapshot the per-BB register-file state into a \c WeakTrackingVH
+  /// shadow before \c fixupPhis, \c foldHwregIntrinsics, or
+  /// \c optimizeNonTraceInsts can rewrite or erase any of the tracked
+  /// Values. \c WeakTrackingVH follows RAUW and nulls on erase, so the
+  /// shadow stays coherent through the remaining pipeline.
+  snapshotBBExitStates();
+
   /// Fixup all dangeling PHIs
   fixupPhis();
 
@@ -2275,10 +2451,33 @@ void TraceFunctionTranslator::translate() {
   /// entry MODE constant flows through to the optimizer.
   foldHwregIntrinsics();
 
+  /// First pass over CheckBBs: catches the entry-MBB constant-EXEC case
+  /// (where \c ExecVal is a compile-time \c -1) so \c optimizeNonTraceInsts
+  /// below can DCE the dead chain in one sweep.
+  foldTriviallyActiveExecChecks();
+
   /// Final cleanup: simplify and remove dead non-trace IR. Trace
   /// instructions (those whose pcsections carry a trace instruction
-  /// address) are preserved verbatim
+  /// address) are preserved verbatim. \c LuthierAMDGPUFolder folds
+  /// AMDGPU intrinsic calls with foldable constant operands (used
+  /// through the folder-backed IRBuilders and by a targeted pass at
+  /// this function's worklist init); the pre-worklist pass here also
+  /// applies the same fold to existing intrinsic instructions before
+  /// \c simplifyInstruction runs.
   optimizeNonTraceInsts();
+
+  /// Second CheckBB fold pass: InstSimplify's PHI-collapse just above
+  /// may have exposed \c ExecVal as \c -1 in blocks whose EXEC arrived
+  /// as an unresolved PHI at emission. Any constant-true CondBr is
+  /// rewritten to an unconditional branch, SkipBB is dropped, and the
+  /// mbcnt / lshr / and / trunc chain (dead-with-no-uses now) is DCE'd
+  /// locally.
+  foldTriviallyActiveExecChecks();
+
+  /// Serialize the per-BB exit register-file state as function-level
+  /// \c luthier.bb_exit_reg_map metadata so downstream passes can trace
+  /// which SSA value represents each register slice at BB boundaries.
+  emitBBExitRegMapMetadata();
 
   LLVM_DEBUG(luthier::dbgs()
              << "[TraceFunctionTranslator] Translation complete for '"
@@ -2288,7 +2487,17 @@ void TraceFunctionTranslator::translate() {
 void TraceFunctionTranslator::emitExecPredicateCheck(
     const llvm::MachineBasicBlock &VectorMBB, llvm::BasicBlock *CheckBB,
     llvm::BasicBlock *BodyBB, llvm::BasicBlock *SkipBB) {
-  llvm::IRBuilder<> Builder(CheckBB);
+  llvm::IRBuilder<LuthierAMDGPUFolder, llvm::IRBuilderCallbackInserter>
+      Builder(CheckBB->getContext(),
+              LuthierAMDGPUFolder{MF.getDataLayout()},
+              llvm::IRBuilderCallbackInserter{[](llvm::Instruction *I) {
+                LLVM_DEBUG(
+                    luthier::dbgs()
+                    << "[TraceFunctionTranslator] Inserting exec predicate "
+                       "instruction "
+                    << *I << "\n");
+              }});
+  Builder.SetInsertPoint(CheckBB);
 
   /// EXEC value at the entry of the CheckBB. If the vector MBB has MIR
   /// predecessors, place a placeholder PHI that fixupPhis will resolve from
@@ -2332,6 +2541,108 @@ void TraceFunctionTranslator::emitExecPredicateCheck(
   llvm::Value *IsActive =
       Builder.CreateTrunc(Bit, Builder.getInt1Ty(), "exec.is.active");
   Builder.CreateCondBr(IsActive, BodyBB, SkipBB);
+
+  /// Populate this CheckBB's slot in \c ExitStateShadow directly from the
+  /// placeholder PHIs assigned to the vector MBB. Every such PHI now lives
+  /// in \c CheckBB — either hoisted from BodyBB or created above
+  /// for EXEC — and represents both the entry- and exit-state of \c CheckBB
+  /// for its register slice, since CheckBB does not mutate any tracked
+  /// physical register. \c SkipBB is intentionally never populated.
+  auto &CheckShadow = ExitStateShadow[CheckBB];
+  for (const auto &TBF : ToBeFixedPhis) {
+    if (TBF.MBB != &VectorMBB || !TBF.Phi)
+      continue;
+    CheckShadow[TBF.RegKey].emplace_back(TBF.Phi->getType(),
+                                         llvm::WeakTrackingVH(TBF.Phi));
+  }
+}
+
+void TraceFunctionTranslator::foldTriviallyActiveExecChecks() {
+  using namespace llvm::PatternMatch;
+  /// Snapshot the entries up-front so the per-CheckBB cleanup below can
+  /// erase from \c VectorCheckBBs (and delete the CheckBB itself, which
+  /// invalidates the map's key hash otherwise) without invalidating our
+  /// iteration.
+  llvm::SmallVector<std::pair<const llvm::MachineBasicBlock *,
+                              llvm::BasicBlock *>,
+                    16>
+      Snapshot(VectorCheckBBs.begin(), VectorCheckBBs.end());
+  for (const auto &KV : Snapshot) {
+    llvm::BasicBlock *CheckBB = KV.second;
+    if (!CheckBB || CheckBB->empty())
+      continue;
+
+    auto *CondBr = llvm::dyn_cast<llvm::CondBrInst>(CheckBB->getTerminator());
+    if (!CondBr)
+      continue;
+
+    /// Match the exact chain emitted by \c emitExecPredicateCheck:
+    ///   trunc(and(lshr(<ExecVal>, <LaneId>), 1), i1)
+    /// Also accept a trivially-true constant condition, which is what
+    /// upstream \c optimizeNonTraceInsts constant-propagation may have
+    /// already reduced the chain to.
+    llvm::Value *ExecVal = nullptr;
+    if (auto *CI = llvm::dyn_cast<llvm::ConstantInt>(CondBr->getCondition())) {
+      if (!CI->isOne())
+        continue;
+    } else if (!match(CondBr->getCondition(),
+                      m_Trunc(m_And(m_LShr(m_Value(ExecVal), m_Value()),
+                                    m_SpecificInt(1)))) ||
+               !isProvablyAllOnesInt(ExecVal)) {
+      continue;
+    }
+
+    llvm::BasicBlock *BodyBB = CondBr->getSuccessor(0);
+    llvm::BasicBlock *SkipBB = CondBr->getSuccessor(1);
+
+    /// Replace the conditional branch with an unconditional branch to
+    /// BodyBB and DCE the dead trunc / and / lshr / mbcnt chain rooted
+    /// at the former condition. Local DCE is required because this fold
+    /// can run after \c optimizeNonTraceInsts (when upstream
+    /// constant-propagation has revealed a foldable chain), so no later
+    /// sweep is guaranteed to clean up.
+    llvm::Value *DeadRoot = CondBr->getCondition();
+    llvm::IRBuilder<> B(CondBr);
+    B.CreateBr(BodyBB);
+    CondBr->eraseFromParent();
+    if (auto *DeadI = llvm::dyn_cast<llvm::Instruction>(DeadRoot)) {
+      llvm::SmallVector<llvm::WeakTrackingVH, 8> DCE;
+      DCE.emplace_back(DeadI);
+      while (!DCE.empty()) {
+        auto *I =
+            llvm::dyn_cast_or_null<llvm::Instruction>(DCE.pop_back_val());
+        if (!I || !llvm::isInstructionTriviallyDead(I))
+          continue;
+        for (llvm::Use &Op : I->operands())
+          if (auto *OI = llvm::dyn_cast<llvm::Instruction>(Op.get()))
+            DCE.emplace_back(OI);
+        I->eraseFromParent();
+      }
+    }
+
+    /// SkipBB was reachable only from this CheckBB. Drop the predecessor
+    /// edge from any successors so their PHIs get patched up, then erase
+    /// SkipBB itself if it's now unreferenced. SkipBBs carry no metadata
+    /// (per the exit-reg-map design) so they're safe to delete outright.
+    for (llvm::BasicBlock *Succ : llvm::successors(SkipBB))
+      Succ->removePredecessor(SkipBB);
+    if (SkipBB->use_empty()) {
+      SkipBB->dropAllReferences();
+      ExecScaffoldBBs.erase(SkipBB);
+      SkipBB->eraseFromParent();
+    }
+
+    /// If CheckBB is now a pure pass-through (just the unconditional
+    /// branch to BodyBB, no hoisted register-value PHIs left), merge it
+    /// with its BodyBB successor
+    if (CheckBB->size() == 1 &&
+        CheckBB != &CheckBB->getParent()->getEntryBlock()) {
+      ExecScaffoldBBs.erase(CheckBB);
+      ExitStateShadow.erase(CheckBB);
+      VectorCheckBBs.erase(KV.first);
+      llvm::TryToSimplifyUncondBranchFromEmptyBlock(CheckBB);
+    }
+  }
 }
 
 bool TraceFunctionTranslator::shouldEmitGPRIndexAccess(
@@ -2625,11 +2936,29 @@ void TraceFunctionTranslator::optimizeNonTraceInsts() {
 
   llvm::SmallVector<llvm::WeakTrackingVH, 64> Worklist;
   for (llvm::BasicBlock &BB : F) {
-    if (ExecScaffoldBBs.contains(&BB))
-      continue;
-    for (llvm::Instruction &I : BB)
-      if (!IsTrace(&I))
-        Worklist.emplace_back(&I);
+    for (llvm::Instruction &I : BB) {
+      if (IsTrace(&I))
+        continue;
+      /// Apply AMDGPU-specific intrinsic folds up-front that the optimizations
+      /// won't be able to do themselves
+      if (auto *Call = llvm::dyn_cast<llvm::CallInst>(&I)) {
+        if (llvm::Function *Callee = Call->getCalledFunction()) {
+          llvm::Intrinsic::ID ID = Callee->getIntrinsicID();
+          if (ID != llvm::Intrinsic::not_intrinsic) {
+            llvm::SmallVector<llvm::Value *, 4> Args(
+                Call->arg_begin(), Call->arg_end());
+            if (llvm::Value *V = tryFoldAMDGPUIntrinsic(ID, Args)) {
+              for (llvm::User *U : I.users())
+                if (auto *UI = llvm::dyn_cast<llvm::Instruction>(U))
+                  if (!IsTrace(UI))
+                    Worklist.emplace_back(UI);
+              I.replaceAllUsesWith(V);
+            }
+          }
+        }
+      }
+      Worklist.emplace_back(&I);
+    }
   }
 
   while (!Worklist.empty()) {
@@ -2638,8 +2967,6 @@ void TraceFunctionTranslator::optimizeNonTraceInsts() {
     if (!I)
       continue;
     if (IsTrace(I))
-      continue;
-    if (ExecScaffoldBBs.contains(I->getParent()))
       continue;
     if (llvm::Value *V = llvm::simplifyInstruction(I, SQ)) {
       for (llvm::User *U : I->users())
@@ -2677,6 +3004,71 @@ void TraceFunctionTranslator::optimizeNonTraceInsts() {
       I->eraseFromParent();
     }
   }
+}
+
+void TraceFunctionTranslator::snapshotBBExitStates() {
+  /// Populate only the primary body BB entries; CheckBB entries were
+  /// already populated inline by \c emitExecPredicateCheck during Pass 3.
+  for (const auto &BBEntry : VM) {
+    const llvm::MachineBasicBlock &MBB = BBEntry.first.get();
+    const llvm::BasicBlock *PrimaryBB = MBB.*get(TagBB());
+    if (!PrimaryBB)
+      continue;
+    auto &Dst = ExitStateShadow[PrimaryBB];
+    for (const auto &KV : BBEntry.second) {
+      auto &Slot = Dst[KV.first];
+      Slot.reserve(KV.second.size());
+      for (const auto &TV : KV.second) {
+        if (!TV.second)
+          continue;
+        Slot.emplace_back(TV.first, llvm::WeakTrackingVH(TV.second));
+      }
+    }
+  }
+}
+
+void TraceFunctionTranslator::emitBBExitRegMapMetadata() {
+  auto &F = const_cast<llvm::Function &>(MF.getFunction());
+  if (F.empty())
+    return;
+
+  llvm::SmallVector<llvm::MDNode *, 16> PerBBEntries;
+  PerBBEntries.reserve(F.size());
+
+  for (llvm::BasicBlock &BB : F) {
+    auto ShadowIt = ExitStateShadow.find(&BB);
+    if (ShadowIt == ExitStateShadow.end())
+      continue; // SkipBBs and any BB without a shadow entry get no MD.
+
+    /// \c Names owns the display strings; \c Slices holds \c StringRef
+    /// views into \c Names, so \c Names must not reallocate during the
+    /// build loop below. Pre-count slices and \c reserve up-front so the
+    /// vector's storage address stays stable.
+    size_t Total = 0;
+    for (const auto &KV : ShadowIt->second)
+      Total += KV.second.size();
+    llvm::SmallVector<std::string, 8> Names;
+    llvm::SmallVector<BBExitRegSlice, 8> Slices;
+    Names.reserve(Total);
+    Slices.reserve(Total);
+
+    for (const auto &KV : ShadowIt->second) {
+      const RegFileKey &Key = KV.first;
+      RegValueDesc Desc{std::get<0>(Key), std::get<1>(Key), std::get<2>(Key)};
+      for (const auto &TV : KV.second) {
+        llvm::Value *V = TV.second;
+        if (!V)
+          continue;
+        Names.emplace_back(
+            formatRegValueDescName(Desc, TRI.getName(Desc.BaseReg)));
+        Slices.push_back({V, Desc, llvm::StringRef(Names.back())});
+      }
+    }
+
+    PerBBEntries.emplace_back(buildBBExitRegMapEntry(F, &BB, Slices));
+  }
+
+  setBBExitRegMap(F, PerBBEntries);
 }
 
 } // namespace luthier

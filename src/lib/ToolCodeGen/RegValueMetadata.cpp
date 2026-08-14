@@ -17,6 +17,7 @@
 
 #include <GCNSubtarget.h>
 #include <SIRegisterInfo.h>
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instruction.h>
@@ -136,6 +137,93 @@ void addEntryRegMapping(llvm::Function &F, llvm::Value *V,
   }
   NewOps.emplace_back(NewEntry);
   F.setMetadata(EntryRegMapMDKindName, llvm::MDNode::get(Ctx, NewOps));
+}
+
+llvm::MDNode *buildBBExitRegMapEntry(llvm::Function &F,
+                                     const llvm::BasicBlock *BB,
+                                     llvm::ArrayRef<BBExitRegSlice> Slices) {
+  llvm::LLVMContext &Ctx = F.getContext();
+  auto *I32 = llvm::Type::getInt32Ty(Ctx);
+
+  llvm::SmallVector<llvm::Metadata *, 8> SliceOps;
+  SliceOps.reserve(Slices.size());
+  for (const BBExitRegSlice &S : Slices) {
+    if (!S.V)
+      continue;
+    llvm::Metadata *Ops[5] = {
+        llvm::ValueAsMetadata::get(S.V),
+        llvm::MDString::get(Ctx, S.Name),
+        llvm::ConstantAsMetadata::get(
+            llvm::ConstantInt::get(I32, S.Desc.BaseReg.id())),
+        llvm::ConstantAsMetadata::get(
+            llvm::ConstantInt::get(I32, S.Desc.HalfWordOffset)),
+        llvm::ConstantAsMetadata::get(
+            llvm::ConstantInt::get(I32, S.Desc.NumHalves)),
+    };
+    SliceOps.emplace_back(llvm::MDNode::get(Ctx, Ops));
+  }
+
+  llvm::Constant *BA = llvm::BlockAddress::get(
+      &F, const_cast<llvm::BasicBlock *>(BB));
+  llvm::Metadata *EntryOps[2] = {
+      llvm::ValueAsMetadata::get(BA),
+      llvm::MDNode::get(Ctx, SliceOps),
+  };
+  return llvm::MDNode::get(Ctx, EntryOps);
+}
+
+void setBBExitRegMap(llvm::Function &F,
+                     llvm::ArrayRef<llvm::MDNode *> PerBBEntries) {
+  llvm::LLVMContext &Ctx = F.getContext();
+  if (PerBBEntries.empty()) {
+    F.setMetadata(BBExitRegMapMDKindName, nullptr);
+    return;
+  }
+  llvm::SmallVector<llvm::Metadata *, 8> Ops;
+  Ops.reserve(PerBBEntries.size());
+  for (llvm::MDNode *E : PerBBEntries)
+    Ops.emplace_back(E);
+  F.setMetadata(BBExitRegMapMDKindName, llvm::MDNode::get(Ctx, Ops));
+}
+
+void getBBExitRegMap(
+    const llvm::Function &F,
+    llvm::DenseMap<const llvm::BasicBlock *,
+                   llvm::SmallVector<std::pair<RegValueDesc, llvm::Value *>, 8>>
+        &Out) {
+  auto *MD = F.getMetadata(BBExitRegMapMDKindName);
+  if (!MD)
+    return;
+  for (const llvm::MDOperand &Op : MD->operands()) {
+    auto *Entry = llvm::dyn_cast_or_null<llvm::MDNode>(Op.get());
+    if (!Entry || Entry->getNumOperands() != 2)
+      continue;
+    auto *BAConst =
+        llvm::mdconst::dyn_extract<llvm::BlockAddress>(Entry->getOperand(0));
+    auto *Slices = llvm::dyn_cast<llvm::MDNode>(Entry->getOperand(1).get());
+    if (!BAConst || !Slices)
+      continue;
+    const llvm::BasicBlock *BB = BAConst->getBasicBlock();
+    auto &List = Out[BB];
+    for (const llvm::MDOperand &SOp : Slices->operands()) {
+      auto *SN = llvm::dyn_cast_or_null<llvm::MDNode>(SOp.get());
+      if (!SN || SN->getNumOperands() != 5)
+        continue;
+      auto *VMD = llvm::dyn_cast<llvm::ValueAsMetadata>(SN->getOperand(0).get());
+      auto *Base =
+          llvm::mdconst::dyn_extract<llvm::ConstantInt>(SN->getOperand(2));
+      auto *Off =
+          llvm::mdconst::dyn_extract<llvm::ConstantInt>(SN->getOperand(3));
+      auto *Halves =
+          llvm::mdconst::dyn_extract<llvm::ConstantInt>(SN->getOperand(4));
+      if (!VMD || !VMD->getValue() || !Base || !Off || !Halves)
+        continue;
+      RegValueDesc D{llvm::MCRegister(Base->getZExtValue()),
+                     static_cast<unsigned>(Off->getZExtValue()),
+                     static_cast<unsigned>(Halves->getZExtValue())};
+      List.emplace_back(D, VMD->getValue());
+    }
+  }
 }
 
 std::string formatRegValueDescName(const RegValueDesc &D,

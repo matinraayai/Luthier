@@ -28,6 +28,7 @@
 #include <llvm/CodeGen/MachineDominators.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Value.h>
+#include <llvm/IR/ValueHandle.h>
 #include <llvm/MC/MCRegister.h>
 #include <llvm/Support/Error.h>
 
@@ -308,10 +309,35 @@ class TraceFunctionTranslator {
       VectorCheckBBs{};
 
   /// All synthetic IR basic blocks (CheckBB + SkipBB) emitted as part of
-  /// the EXEC mask predicate scaffolding. Instructions inside these blocks
-  /// are preserved verbatim by \c optimizeNonTraceInsts so that downstream
-  /// analyses can rely on the predicate IR pattern being intact
+  /// the EXEC mask predicate scaffolding. Populated by Pass 3 and left in
+  /// place so downstream analyses can still discover the scaffold shape
+  /// via CFG inspection; \c optimizeNonTraceInsts no longer treats these
+  /// blocks specially, so their instructions are subject to normal DCE
+  /// like any non-trace IR
   llvm::SmallPtrSet<const llvm::BasicBlock *, 8> ExecScaffoldBBs{};
+
+  /// Per-BB \c WeakTrackingVH shadow of the tracked register-file state
+  /// as it exits each LLVM \c BasicBlock. Entries are populated at two
+  /// distinct moments:
+  ///   - Primary body BB per MBB: populated in \c snapshotBBExitStates
+  ///     from \c VM after Pass 3 finishes but before \c fixupPhis runs.
+  ///   - Synthetic \c CheckBB per vector MBB: populated inline in
+  ///     \c emitExecPredicateCheck from the placeholder PHIs hoisted
+  ///     into that CheckBB.
+  ///   - Synthetic \c SkipBB: intentionally never populated; SkipBB gets
+  ///     no exit-reg-map metadata.
+  /// \c WeakTrackingVH follows RAUW (single-value PHIs collapsed by
+  /// \c fixupPhis end up pointing at their surviving incoming value) and
+  /// nulls on erase (so DCE by \c optimizeNonTraceInsts leaves the
+  /// shadow safe to dereference during post-translation emission — and
+  /// dropped entries are what tells the emitter to omit slices whose
+  /// SSA source was optimized away)
+  llvm::DenseMap<
+      const llvm::BasicBlock *,
+      llvm::DenseMap<
+          RegFileKey,
+          llvm::SmallVector<std::pair<llvm::Type *, llvm::WeakTrackingVH>, 2>>>
+      ExitStateShadow{};
 
   /// Build the EXEC-mask per-lane active predicate in \p CheckBB and emit a
   /// conditional branch to either \p BodyBB (active lane) or \p SkipBB
@@ -327,6 +353,36 @@ class TraceFunctionTranslator {
   /// non-trace instructions in the translated function. Trace instructions
   /// are preserved as-is
   void optimizeNonTraceInsts();
+
+  /// For every synthetic vector-MBB \c CheckBB, if the EXEC value
+  /// dominating its per-lane predicate is provably all-ones (a
+  /// \c ConstantInt with all bits set, or a \c PHINode whose incoming
+  /// values are all such constants), replace the conditional branch
+  /// with an unconditional branch to the body BB. This trivially makes
+  /// the entire mbcnt/lshr/and/trunc chain dead, so
+  /// \c optimizeNonTraceInsts strips it. Runs after \c foldHwregIntrinsics
+  /// (so EXEC PHIs have their incoming values populated) and before
+  /// \c optimizeNonTraceInsts (which then cleans up the resulting dead
+  /// IR). Also erases the now-unreachable \c SkipBB if safe.
+  void foldTriviallyActiveExecChecks();
+
+  /// Copy \c VM into \c ExitStateShadow for the primary body BB of each
+  /// MBB, converting each raw \c Value* into a \c WeakTrackingVH so
+  /// subsequent RAUW / erasure by \c fixupPhis, \c foldHwregIntrinsics,
+  /// and \c optimizeNonTraceInsts is followed automatically. Called
+  /// after Pass 3 completes but before \c fixupPhis. Does not touch
+  /// scaffold BB entries — those are populated inline by
+  /// \c emitExecPredicateCheck.
+  void snapshotBBExitStates();
+
+  /// Attach \c luthier.bb_exit_reg_map to the translated function using
+  /// \c ExitStateShadow. Iterates \c F's BBs in order and emits one
+  /// tuple per BB that has a shadow entry: primary body BBs (from
+  /// \c snapshotBBExitStates) and scaffold CheckBBs (from
+  /// \c emitExecPredicateCheck). Scaffold SkipBBs, having no shadow
+  /// entry, contribute no tuple. Called as the final step of
+  /// \c translate() after \c optimizeNonTraceInsts.
+  void emitBBExitRegMapMetadata();
 
   /// True iff a VALU MI's named-register access should be wrapped with
   /// the conditional indexed-VGPR-access expansion: subtarget supports

@@ -11,10 +11,8 @@
 // mbcnt.lo is needed to compute the lane id; mbcnt.hi must NOT be emitted.
 
 // CHECK: define {{.*}} @wave32_vec
-// CHECK-DAG: call i32 @llvm.amdgcn.mbcnt.lo(i32 -1, i32 0)
-// CHECK-DAG: lshr i32 {{.*}}, %{{.*}}
-// CHECK-DAG: trunc i32 %{{.*}} to i1
-// CHECK-DAG: br i1 %{{.*}}, label %{{.*}}, label %skip
+// CHECK: check:
+// CHECK-NEXT: br label %
 // CHECK-NOT: call i32 @llvm.amdgcn.mbcnt.hi
 
   .text
