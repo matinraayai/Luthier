@@ -13,11 +13,10 @@ function(luthier_fetch_llvm_src llvm_include_dirs llvm_src_out)
     if (LLVM_REPOSITORY)
         set(LLVM_REPOSITORY "${CMAKE_MATCH_1}")
     else ()
-        # Fallback to standard string format (Upstream LLVM)
         string(REGEX MATCH "#define LLVM_REPOSITORY \"([^\"]+)\"" LLVM_REPOSITORY "${LLVM_VCS_REVISION_CONTENTS}")
         set(LLVM_REPOSITORY "${CMAKE_MATCH_1}")
     endif ()
-
+    # Extract Git hash
     string(REGEX MATCH "#define LLVM_REVISION R\"\\(([^\"]+)\\)\"" LLVM_REVISION "${LLVM_VCS_REVISION_CONTENTS}")
     if (LLVM_REVISION)
         set(LLVM_REVISION "${CMAKE_MATCH_1}")
