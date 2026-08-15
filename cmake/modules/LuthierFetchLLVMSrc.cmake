@@ -9,11 +9,22 @@ function(luthier_fetch_llvm_src llvm_include_dirs llvm_src_out)
     file(READ "${llvm_include_dirs}/llvm/Support/VCSRevision.h" LLVM_VCS_REVISION_CONTENTS)
 
     # Extract Repository URL
-    string(REGEX MATCH "#define LLVM_REPOSITORY \"([^\"]+)\"" LLVM_REPOSITORY "${LLVM_VCS_REVISION_CONTENTS}")
-    set(LLVM_REPOSITORY "${CMAKE_MATCH_1}")
-    # Extract Git hash
-    string(REGEX MATCH "#define LLVM_REVISION \"([^\"]+)\"" LLVM_REVISION "${LLVM_VCS_REVISION_CONTENTS}")
-    set(LLVM_REVISION "${CMAKE_MATCH_1}")
+    string(REGEX MATCH "#define LLVM_REPOSITORY R\"\\(([^\"]+)\\)\"" LLVM_REPOSITORY "${LLVM_VCS_REVISION_CONTENTS}")
+    if (LLVM_REPOSITORY)
+        set(LLVM_REPOSITORY "${CMAKE_MATCH_1}")
+    else ()
+        # Fallback to standard string format (Upstream LLVM)
+        string(REGEX MATCH "#define LLVM_REPOSITORY \"([^\"]+)\"" LLVM_REPOSITORY "${LLVM_VCS_REVISION_CONTENTS}")
+        set(LLVM_REPOSITORY "${CMAKE_MATCH_1}")
+    endif ()
+
+    string(REGEX MATCH "#define LLVM_REVISION R\"\\(([^\"]+)\\)\"" LLVM_REVISION "${LLVM_VCS_REVISION_CONTENTS}")
+    if (LLVM_REVISION)
+        set(LLVM_REVISION "${CMAKE_MATCH_1}")
+    else ()
+        string(REGEX MATCH "#define LLVM_REVISION \"([^\"]+)\"" LLVM_REVISION "${LLVM_VCS_REVISION_CONTENTS}")
+        set(LLVM_REVISION "${CMAKE_MATCH_1}")
+    endif ()
 
     message(STATUS "Determined LLVM repository URL: ${LLVM_REPOSITORY}, revision: ${LLVM_REVISION}")
 
