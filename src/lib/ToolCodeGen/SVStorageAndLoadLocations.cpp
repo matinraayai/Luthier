@@ -474,8 +474,7 @@ SVStorageAndLoadLocations::getStateValueArrayLoadPlanForInstPoint(
 }
 
 llvm::Error SVStorageAndLoadLocations::calculate(
-    const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
-    llvm::FunctionAnalysisManager &TargetFAM,
+    const llvm::Module &TargetM, llvm::FunctionAnalysisManager &TargetFAM,
     llvm::MachineFunctionAnalysisManager &TargetMFAM,
     const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
     const llvm::DenseMap<const llvm::Function *, PayloadLiveSets>
@@ -724,8 +723,8 @@ SVStorageAndLoadLocationsAnalysis::run(
   // this analysis are broken until that migration lands.
   llvm::DenseMap<const llvm::Function *, PayloadLiveSets> PayloadLiveSetsByFn;
 
-  if (auto Err = Out.calculate(TargetMMI, TargetModule, TargetFAM, TargetMFAM,
-                               IPIP, FPD, PayloadLiveSetsByFn))
+  if (auto Err = Out.calculate(TargetModule, TargetFAM, TargetMFAM, IPIP, FPD,
+                               PayloadLiveSetsByFn))
     TargetModule.getContext().emitError(llvm::toString(std::move(Err)));
 
   return Out;

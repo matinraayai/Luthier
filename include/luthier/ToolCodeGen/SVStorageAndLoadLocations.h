@@ -137,8 +137,7 @@ public:
   /// \return an \c llvm::Error indicating the success or failure of the
   /// operation
   llvm::Error calculate(
-      const llvm::MachineModuleInfo &TargetMMI, const llvm::Module &TargetM,
-      llvm::FunctionAnalysisManager &TargetFAM,
+      const llvm::Module &TargetM, llvm::FunctionAnalysisManager &TargetFAM,
       llvm::MachineFunctionAnalysisManager &TargetMFAM,
       const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
       const llvm::DenseMap<const llvm::Function *, PayloadLiveSets>
