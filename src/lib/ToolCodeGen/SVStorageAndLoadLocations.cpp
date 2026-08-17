@@ -678,6 +678,14 @@ llvm::Error SVStorageAndLoadLocations::calculate(
   return llvm::Error::success();
 }
 
+bool SVStorageAndLoadLocations::invalidate(
+    Prototype &, const llvm::PreservedAnalyses &PA,
+    PrototypeAnalysisManager::Invalidator &) {
+  auto PAC = PA.getChecker<SVStorageAndLoadLocationsAnalysis>();
+  return !PAC.preserved() &&
+         !PAC.preservedSet<llvm::AllAnalysesOn<Prototype>>();
+}
+
 llvm::AnalysisKey SVStorageAndLoadLocationsAnalysis::Key;
 
 SVStorageAndLoadLocationsAnalysis::Result

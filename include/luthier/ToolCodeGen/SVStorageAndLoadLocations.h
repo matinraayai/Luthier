@@ -161,10 +161,8 @@ public:
   [[nodiscard]] const InstPointSVALoadPlan *
   getStateValueArrayLoadPlanForInstPoint(const llvm::MachineInstr &MI) const;
 
-  bool invalidate(Prototype &, const llvm::PreservedAnalyses &,
-                  PrototypeAnalysisManager::Invalidator &) {
-    return false;
-  }
+  bool invalidate(Prototype &IP, const llvm::PreservedAnalyses &PA,
+                  PrototypeAnalysisManager::Invalidator &Inv);
 };
 
 /// \brief \c Prototype-level analysis that computes, for the target
