@@ -35,28 +35,6 @@ namespace luthier {
 
 #if defined(__HIPCC__)
 
-/// \brief Macro to use to prevent the compiler from optimizing a code region
-/// away
-/// \details This macro places an empty volatile inline assembly with "memory"
-/// side-effects to prevent the compiler from dead-code eliminating a basic
-/// block
-#define LUTHIER_DONT_OPTIMIZE __asm__ __volatile__("" : : : "memory");
-
-/// \brief Macro to use on all values involved in an intrinsic device
-/// binding, to prevent their elimination from the binding prototype by the
-/// compiler
-/// \details This macro places an empty volatile inline assembly with
-/// the arbitrary constraint on the passed <tt>Value</t>>, which will prevent
-/// the compiler from optimizing it away
-/// \note These operations will not show up in the IR of a Luthier device
-/// module, as the body of Luthier intrinsic bindings are removed at the end of
-/// the LLVM IR pipeline
-/// \param Value the L-value to prevent optimization on
-template <typename T>
-__attribute__((device, always_inline)) void doNotOptimize(T const &Value) {
-  __asm__ __volatile__("" : : "X"((void*)(&Value)) : "memory");
-}
-
 /// \brief Intrinsic to read the value of a register
 /// \details The readReg intrinsic reads the value of the \p Reg and returns it
 /// \tparam T the return type of the output; Must be of integral type and be
