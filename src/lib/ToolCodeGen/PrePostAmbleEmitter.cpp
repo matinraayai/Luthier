@@ -15,8 +15,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the Pre and post amble emitter, as well as the
-/// \c FunctionPreambleDescriptor and its analysis pass.
+/// This file implements the Pre and post amble emitter.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/Common/ErrorCheck.h"
@@ -221,60 +220,4 @@ static void emitCodeToMoveSVA(llvm::ModuleAnalysisManager &TargetMAM,
   }
 }
 
-llvm::AnalysisKey FunctionPreambleDescriptorAnalysis::Key;
-
-FunctionPreambleDescriptorAnalysis::Result
-FunctionPreambleDescriptorAnalysis::run(
-    Prototype &IP, PrototypeAnalysisManager &IPAM) {
-  Result Out;
-
-  llvm::Module &TargetModule = IP.getTargetModule();
-  llvm::Module &IModule = IP.getInstrumentationModule();
-
-  // Each module of the prototype has its own ModuleAnalysisManager; a module
-  // analysis is resolved out of the manager belonging to the module it is
-  // asked about.
-  llvm::FunctionAnalysisManager &TargetFAM =
-      IPAM.getResult<TargetFunctionAnalysisManagerPrototypeProxy>(IP)
-          .getManager();
-  llvm::FunctionAnalysisManager &IFAM =
-      IPAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(IP)
-          .getManager();
-
-  const InjectedPayloadAndInstPoint &IPIP =
-      IPAM.getResult<InjectedPayloadAndInstPointAnalysis>(IP);
-
-  for (llvm::Function &F : TargetModule) {
-    if (F.isDeclaration())
-      continue;
-
-    llvm::MachineFunction &MF =
-        TargetFAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
-
-    // KernelPreambleSpecs and DeviceFunctionPreambleSpecs each carry their own
-    // RequestedKernelArguments field; grab a reference to whichever this MF
-    // maps to so the payload walk below is oblivious to the distinction.
-    auto &RequestedKernelArguments =
-        F.getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL
-            ? Out.Kernels.insert({&MF, {}})
-                  .first->second.RequestedKernelArguments
-            : Out.DeviceFunctions.insert({&MF, {}})
-                  .first->second.RequestedKernelArguments;
-
-    for (llvm::MachineBasicBlock &MBB : MF) {
-      for (llvm::MachineInstr &MI : MBB) {
-        if (!IPIP.contains(MI))
-          continue;
-        for (llvm::Function *Payload : IPIP.at(MI)) {
-          const InjectedPayloadSideEffects &SE =
-              IFAM.getResult<InjectedPayloadSideEffectsAnalysis>(*Payload);
-          for (ScalarValueArgument SA : SE.svas())
-            RequestedKernelArguments.insert(SA);
-        }
-      }
-    }
-  }
-
-  return Out;
-}
 } // namespace luthier

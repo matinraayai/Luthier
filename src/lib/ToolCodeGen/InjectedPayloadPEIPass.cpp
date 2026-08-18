@@ -23,7 +23,6 @@
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
-#include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
@@ -264,29 +263,8 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
     return llvm::PreservedAnalyses::all();
   }
 
-  // ---- Update the FunctionPreambleDescriptor on the target side ----------
-  // TargetModulePatcherPass consults this in Phase A.2 to decide which target
-  // kernels need the SVA scratch+stack setup emitted at their entry. Reached
-  // the same way as the SV locations above: through the outer proxy, keyed by
-  // the parent prototype. getCachedResult hands back a mutable Result, and
-  // FunctionPreambleDescriptor::invalidate always answers false, so this update
-  // survives the rest of the machine pipeline and is still there when the
-  // patcher reads the descriptor.
-  //
-  // Without it the descriptor's entry for this kernel keeps
-  // RequiresScratchAndStackSetup false; unless a payload also requested a
-  // scalar kernel argument, usesSVA() is then false, the kernel's SVA prologue
-  // is never emitted, and the read-lanes above pull the stack pointer and flat
-  // scratch base out of an uninitialized VGPR -- a page fault at the first
-  // instrumentation point that actually executes.
-  FunctionPreambleDescriptor *PKInfo =
-      IPAMProxy.getCachedResult<FunctionPreambleDescriptorAnalysis>(*P);
-  if (!PKInfo) {
-    Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
-        "Function preamble descriptor has not been cached")));
-    return llvm::PreservedAnalyses::all();
-  }
-  const llvm::MachineFunction *TargetMF = TargetMI->getMF();
+  // Local "does this payload need to read the instrumentation frame regs
+  // back from the SVA lanes?" flag.
   bool RequiresAccessToStack = false;
   if (StateValueStorage.getStateValueStorageReg() == 0) {
     // SVA is spilled — payload necessarily needs FS to load it.
@@ -294,14 +272,6 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   }
   if (MFI.hasStackObjects() || MFI.hasCalls())
     RequiresAccessToStack = true;
-  if (RequiresAccessToStack) {
-    if (TargetMF->getFunction().getCallingConv() ==
-        llvm::CallingConv::AMDGPU_KERNEL) {
-      PKInfo->Kernels[TargetMF].RequiresScratchAndStackSetup = true;
-    } else {
-      PKInfo->DeviceFunctions[TargetMF].RequiresScratchAndStackSetup = true;
-    }
-  }
   (void)TargetModule;
 
   // ---- Emit the prologue ------------------------------------------------

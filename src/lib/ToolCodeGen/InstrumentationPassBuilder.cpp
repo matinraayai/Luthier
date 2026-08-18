@@ -31,7 +31,6 @@
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
 #include "luthier/ToolCodeGen/IntrinsicMIRLoweringPass.h"
 #include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
-#include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/ToolCodeGen/ProcessIntrinsicsAtIRLevelPass.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
@@ -631,12 +630,6 @@ Error AMDGPUCodeGenPassBuilder::buildPipeline(PrototypePassManager &PPM) const {
   // Prototype pass above reports PreservedAnalyses::none(), which drops any
   // Prototype-level result computed before it.
   PPM.addPass(llvm::RequireAnalysisPass<SVStorageAndLoadLocationsAnalysis,
-                                        Prototype, PrototypeAnalysisManager>());
-  // InjectedPayloadPEIPass also *writes* to the preamble descriptor, recording
-  // which target kernels need the SVA scratch+stack setup that
-  // TargetModulePatcherPass emits afterwards. Materializing it here gives that
-  // write somewhere to land.
-  PPM.addPass(llvm::RequireAnalysisPass<FunctionPreambleDescriptorAnalysis,
                                         Prototype, PrototypeAnalysisManager>());
 
   // ---- Stage 3: machine-passes half of the AMDGPU codegen pipeline. --------

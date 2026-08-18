@@ -25,7 +25,6 @@
 #include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/Prototype.h"
-#include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachinePassManager.h>
@@ -139,7 +138,7 @@ public:
   llvm::Error calculate(
       const llvm::Module &TargetM, llvm::FunctionAnalysisManager &TargetFAM,
       llvm::MachineFunctionAnalysisManager &TargetMFAM,
-      const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
+      const InjectedPayloadAndInstPoint &IPIP,
       const llvm::DenseMap<const llvm::Function *, PayloadLiveSets>
           &PayloadLiveSetsByFn);
 

@@ -476,7 +476,7 @@ SVStorageAndLoadLocations::getStateValueArrayLoadPlanForInstPoint(
 llvm::Error SVStorageAndLoadLocations::calculate(
     const llvm::Module &TargetM, llvm::FunctionAnalysisManager &TargetFAM,
     llvm::MachineFunctionAnalysisManager &TargetMFAM,
-    const InjectedPayloadAndInstPoint &IPIP, FunctionPreambleDescriptor &FPD,
+    const InjectedPayloadAndInstPoint &IPIP,
     const llvm::DenseMap<const llvm::Function *, PayloadLiveSets>
         &PayloadLiveSetsByFn) {
   // Module-wide "do not clobber" set: every register that's live in any
@@ -546,10 +546,6 @@ llvm::Error SVStorageAndLoadLocations::calculate(
                               TargetMFAM.getResult<llvm::SlotIndexesAnalysis>(*MF).getMBBEndIdx(&MBB),
                               StateValueFixedLocation);
       }
-      if (MF->getFunction().getCallingConv() !=
-          llvm::CallingConv::AMDGPU_KERNEL) {
-        FPD.DeviceFunctions[MF].RequiresPreAndPostAmble = false;
-      }
     }
     for (const auto &[InsertionPointMI, HookFunctions] : IPIP.mi_payloads()) {
       llvm::DenseSet<llvm::MCPhysReg> IPDoNotClobber =
@@ -567,10 +563,6 @@ llvm::Error SVStorageAndLoadLocations::calculate(
     // If not, we'll have to shuffle between possible state value array
     // storage schemes
     for (const auto &MF : MFs) {
-      if (MF->getFunction().getCallingConv() ==
-          llvm::CallingConv::AMDGPU_KERNEL) {
-        FPD.DeviceFunctions[MF].RequiresPreAndPostAmble = true;
-      }
       auto &MRI = MF->getRegInfo();
       // Pick the highest numbered VGPR not accessed by the Hooks
       // to hold the value state
@@ -710,14 +702,8 @@ SVStorageAndLoadLocationsAnalysis::run(
       IPAM.getResult<TargetMachineFunctionAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
-  const llvm::MachineModuleInfo &TargetMMI =
-      TargetMAM.getResult<llvm::MachineModuleAnalysis>(TargetModule).getMMI();
-
   const InjectedPayloadAndInstPoint &IPIP =
       IPAM.getResult<InjectedPayloadAndInstPointAnalysis>(IP);
-
-  FunctionPreambleDescriptor &FPD =
-      IPAM.getResult<FunctionPreambleDescriptorAnalysis>(IP);
 
   // TODO(NPM): source PayloadLiveSetsByFn from a migrated
   // IP-level liveness analysis. IPPredicatedLivenessAnalysis is still
@@ -725,7 +711,7 @@ SVStorageAndLoadLocationsAnalysis::run(
   // this analysis are broken until that migration lands.
   llvm::DenseMap<const llvm::Function *, PayloadLiveSets> PayloadLiveSetsByFn;
 
-  if (auto Err = Out.calculate(TargetModule, TargetFAM, TargetMFAM, IPIP, FPD,
+  if (auto Err = Out.calculate(TargetModule, TargetFAM, TargetMFAM, IPIP,
                                PayloadLiveSetsByFn))
     TargetModule.getContext().emitError(llvm::toString(std::move(Err)));
 
