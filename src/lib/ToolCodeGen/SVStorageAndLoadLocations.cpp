@@ -680,9 +680,11 @@ llvm::Error SVStorageAndLoadLocations::calculate(
 bool SVStorageAndLoadLocations::invalidate(
     Prototype &, const llvm::PreservedAnalyses &PA,
     PrototypeAnalysisManager::Invalidator &) {
+  // Because this is read from the inner machine-passes pipeline via
+  // PrototypeAnalysisManagerMachineFunctionProxy::getCachedResult,
+  // Model this as a stateless outer analysis
   auto PAC = PA.getChecker<SVStorageAndLoadLocationsAnalysis>();
-  return !PAC.preserved() &&
-         !PAC.preservedSet<llvm::AllAnalysesOn<Prototype>>();
+  return !PAC.preservedWhenStateless();
 }
 
 llvm::AnalysisKey SVStorageAndLoadLocationsAnalysis::Key;

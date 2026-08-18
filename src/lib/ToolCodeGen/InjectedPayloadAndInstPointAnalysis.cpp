@@ -33,12 +33,11 @@ namespace luthier {
 bool InjectedPayloadAndInstPoint::invalidate(
     Prototype &P, const llvm::PreservedAnalyses &PA,
     PrototypeAnalysisManager::Invalidator &Inv) {
-  /// Invalidates this cached result whenever \c
-  /// InjectedPayloadAndInstPointAnalysis is not preserved — i.e., whenever a
-  /// pass adds or removes injected payload functions from the IModule.
+  // Because this is read from the inner machine-passes pipeline via
+  // PrototypeAnalysisManagerMachineFunctionProxy::getCachedResult,
+  // Model this as a stateless outer analysis
   auto PAC = PA.getChecker<InjectedPayloadAndInstPointAnalysis>();
-  return !PAC.preserved() &&
-         !PAC.preservedSet<llvm::AllAnalysesOn<Prototype>>();
+  return !PAC.preservedWhenStateless();
 }
 
 llvm::AnalysisKey InjectedPayloadAndInstPointAnalysis::Key;

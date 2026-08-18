@@ -31,8 +31,8 @@ namespace luthier {
 /// noinline attribute as  well as a \c LUTHIER_INTRINSIC_ATTRIBUTE attribute
 /// to be recognized by Luthier as an intrinsic
 #define LUTHIER_INTRINSIC_ANNOTATE                                             \
-  __attribute__((device,                                                       \
-                 annotate(LUTHIER_STRINGIFY(LUTHIER_INTRINSIC_ATTRIBUTE))))
+  extern __attribute__((                                                       \
+      device, annotate(LUTHIER_STRINGIFY(LUTHIER_INTRINSIC_ATTRIBUTE))))
 
 #if defined(__HIPCC__)
 
