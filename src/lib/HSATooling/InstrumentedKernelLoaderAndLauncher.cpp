@@ -127,10 +127,12 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::unloadAll() {
              << "[InstrumentedKernelLoaderAndLauncher] unloadAll: "
              << ByOriginal.size() << " record(s)\n");
   llvm::Error E = llvm::Error::success();
-  for (auto It = ByOriginal.begin(); It != ByOriginal.end();) {
-    auto Curr = It++;
-    E = llvm::joinErrors(std::move(E), eraseRecordLocked(Curr));
-  }
+  // eraseRecordLocked calls ByOriginal.erase, which bumps DenseMap's epoch and
+  // may rehome other buckets — no surviving iterator can bridge iterations.
+  // Drain via begin() each pass; DenseMap::end() is recomputed on each cmp.
+  while (!ByOriginal.empty())
+    E = llvm::joinErrors(std::move(E),
+                         eraseRecordLocked(ByOriginal.begin()));
   return E;
 }
 
