@@ -24,9 +24,9 @@
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
+#include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/LuthierBranchRelaxation.h"
-#include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/ToolCodeGen/SVAFrameLanes.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
@@ -65,6 +65,77 @@
 namespace luthier {
 
 namespace {
+
+/// Access-injection tag + explicit-instantiation trick that lets us reach
+/// through \c GCNUserSGPRUsageInfo's private data members. The private
+/// booleans are set once, in the ctor, from function attributes and there is
+/// no public setter to flip them afterwards. We need them flipped from a
+/// mid-pipeline pass, so we form pointer-to-members inside an explicit
+/// instantiation of \c StealPrivate: forming a member pointer inside an
+/// explicit instantiation bypasses access checks (per
+/// [temp.spec]), and the friend declaration then hoists a namespace-scope
+/// \c get(Tag) that returns the member pointer for anyone to use.
+template <typename Tag, typename Tag::MemberT M> struct StealPrivate {
+  friend typename Tag::MemberT get(Tag) { return M; }
+};
+
+struct FlatScratchInitTag {
+  using MemberT = bool llvm::GCNUserSGPRUsageInfo::*;
+  friend MemberT get(FlatScratchInitTag);
+};
+template struct StealPrivate<FlatScratchInitTag,
+                             &llvm::GCNUserSGPRUsageInfo::FlatScratchInit>;
+
+struct PrivateSegmentBufferTag {
+  using MemberT = bool llvm::GCNUserSGPRUsageInfo::*;
+  friend MemberT get(PrivateSegmentBufferTag);
+};
+template struct StealPrivate<
+    PrivateSegmentBufferTag,
+    &llvm::GCNUserSGPRUsageInfo::PrivateSegmentBuffer>;
+
+struct NumUsedUserSGPRsTag {
+  using MemberT = unsigned llvm::GCNUserSGPRUsageInfo::*;
+  friend MemberT get(NumUsedUserSGPRsTag);
+};
+template struct StealPrivate<NumUsedUserSGPRsTag,
+                             &llvm::GCNUserSGPRUsageInfo::NumUsedUserSGPRs>;
+
+// The MFI's add{PrivateSegmentBuffer,FlatScratchInit} routines call
+// getNextUserSGPR, which asserts NumSystemSGPRs == 0. By the time we run
+// (post-codegen, pre-AsmPrinter), system SGPRs have already been added. We
+// temporarily zero NumSystemSGPRs across the add* call and restore afterward.
+struct NumSystemSGPRsTag {
+  using MemberT = unsigned llvm::SIMachineFunctionInfo::*;
+  friend MemberT get(NumSystemSGPRsTag);
+};
+template struct StealPrivate<NumSystemSGPRsTag,
+                             &llvm::SIMachineFunctionInfo::NumSystemSGPRs>;
+
+/// Force \c GCNUserSGPRUsageInfo::FlatScratchInit true. AMDGPUAsmPrinter
+/// reads that flag to decide the KD's
+/// \c KERNEL_CODE_PROPERTY_ENABLE_SGPR_FLAT_SCRATCH_INIT bit, so flipping it
+/// here is what makes hardware actually preload FS_INIT on the instrumented
+/// dispatch. \c NumUsedUserSGPRs is bumped to keep the two counters
+/// consistent with what the ctor would have set on first pass.
+void forceFlatScratchInit(llvm::GCNUserSGPRUsageInfo &Info) {
+  if (Info.hasFlatScratchInit())
+    return;
+  Info.*get(FlatScratchInitTag{}) = true;
+  Info.*get(NumUsedUserSGPRsTag{}) +=
+      llvm::GCNUserSGPRUsageInfo::getNumUserSGPRForField(
+          llvm::GCNUserSGPRUsageInfo::FlatScratchInitID);
+}
+
+/// Same as \c forceFlatScratchInit for PRIVATE_SEGMENT_BUFFER.
+void forcePrivateSegmentBuffer(llvm::GCNUserSGPRUsageInfo &Info) {
+  if (Info.hasPrivateSegmentBuffer())
+    return;
+  Info.*get(PrivateSegmentBufferTag{}) = true;
+  Info.*get(NumUsedUserSGPRsTag{}) +=
+      llvm::GCNUserSGPRUsageInfo::getNumUserSGPRForField(
+          llvm::GCNUserSGPRUsageInfo::PrivateSegmentBufferID);
+}
 
 /// Emits the per-wave scratch setup at the kernel entry: spills the
 /// kernarg-derived PSB.sub0/sub1 and FLAT_SCRATCH_INIT lo/hi into SVA
@@ -134,23 +205,72 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
   // (so calling \c getPreloadedReg on them returns the null register
   // and any \c getSubReg below would assert), and there is no
   // PSWO-style adjustment to apply.
+  // Preload classes whose position can shift when we force PSB and/or
+  // FS_INIT on post-hoc. Snapshotted BEFORE the addX calls and again after,
+  // so we can emit S_MOV_B32 shuffles at the tail of this function to move
+  // any shifted arg back to the SGPR the lifted kernel originally read it
+  // from.
+  static constexpr llvm::AMDGPUFunctionArgInfo::PreloadedValue
+      ShufflableClasses[] = {
+          llvm::AMDGPUFunctionArgInfo::DISPATCH_PTR,
+          llvm::AMDGPUFunctionArgInfo::QUEUE_PTR,
+          llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR,
+          llvm::AMDGPUFunctionArgInfo::DISPATCH_ID,
+          llvm::AMDGPUFunctionArgInfo::IMPLICIT_BUFFER_PTR,
+          llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_SIZE,
+      };
+  llvm::SmallVector<
+      std::pair<llvm::AMDGPUFunctionArgInfo::PreloadedValue, llvm::MCRegister>,
+      6>
+      OldArgPositions;
+  for (auto C : ShufflableClasses)
+    OldArgPositions.push_back({C, MFI.getPreloadedReg(C)});
+
   if (!ArchitectedFS) {
     // Both of these are only preloaded when the *original* kernel asked for
     // them. A kernel that never touched scratch has neither enabled in its
     // SIMachineFunctionInfo, so getPreloadedReg returns the null register and
     // the getSubReg calls below trip MCSubRegIterator's isPhysical() assertion.
-    // Instrumenting such a kernel means enabling those preloaded SGPRs and
-    // rewriting its kernel descriptor accordingly, which is not implemented.
+    // Enable them post-hoc: flip the UserSGPRInfo flags via the ADL-inject
+    // helpers above (so AMDGPUAsmPrinter emits the corresponding
+    // kernel_code_properties enable bits on the instrumented KD), then call
+    // the matching MFI add* to populate ArgInfo with the new preload physreg.
+    // This shifts every subsequent user-SGPR arg (KERNARG_SEGMENT_PTR etc.)
+    // to later physical registers; the tail of this function issues
+    // S_MOV_B32 shuffles that move each such arg back to its original SGPR
+    // so the lifted kernel body still finds it where its compiled code
+    // reads from.
     llvm::MCRegister PSB = MFI.getPreloadedReg(
         llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER);
     llvm::MCRegister FSInit =
         MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT);
+    // MFI.add{PrivateSegmentBuffer,FlatScratchInit} → getNextUserSGPR
+    // asserts NumSystemSGPRs == 0. Post-codegen that's already non-zero, so
+    // stash and zero it around each add, then restore.
+    unsigned &NumSystemSGPRs = MFI.*get(NumSystemSGPRsTag{});
+    if (!PSB) {
+      forcePrivateSegmentBuffer(MFI.getUserSGPRInfo());
+      unsigned Saved = NumSystemSGPRs;
+      NumSystemSGPRs = 0;
+      MFI.addPrivateSegmentBuffer(TRI);
+      NumSystemSGPRs = Saved;
+      PSB = MFI.getPreloadedReg(
+          llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER);
+    }
+    if (!FSInit) {
+      forceFlatScratchInit(MFI.getUserSGPRInfo());
+      unsigned Saved = NumSystemSGPRs;
+      NumSystemSGPRs = 0;
+      MFI.addFlatScratchInit(TRI);
+      NumSystemSGPRs = Saved;
+      FSInit = MFI.getPreloadedReg(
+          llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT);
+    }
     if (!PSB || !FSInit)
       return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-          "TargetModulePatcherPass: kernel '{0}' needs SVA scratch setup, but "
-          "it does not preload {1}. The original kernel never used scratch, so "
-          "instrumenting it requires enabling the preloaded SGPR(s) and "
-          "rewriting its kernel descriptor -- not implemented.",
+          "TargetModulePatcherPass: kernel '{0}' failed to enable {1} preload "
+          "even after forcing the UserSGPRInfo flags; MFI.add* did not "
+          "populate ArgInfo.",
           MF.getName(),
           !PSB ? (!FSInit ? "PRIVATE_SEGMENT_BUFFER or FLAT_SCRATCH_INIT"
                           : "PRIVATE_SEGMENT_BUFFER")
@@ -321,6 +441,42 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
         .addImm(*SGPRFlatScrHiSpillSlot);
   }
 
+  // Shuffle each shifted preload arg from its new (post-add*) SGPR back to
+  // the SGPR the lifted kernel body reads it from. If a class was not
+  // preloaded originally (OldReg is null), leave it alone — the lifted code
+  // never depended on it. If its position didn't change (equal), no move
+  // needed. Emitted last so any earlier writes to the destination (e.g.
+  // the SGPR0/1 restore above, which assumes SGPR0/1 was PSB) are the ones
+  // the shuffle overrides for kernels whose SGPR0/1 was actually kernarg.
+  for (const auto &[Class, OldReg] : OldArgPositions) {
+    if (!OldReg)
+      continue;
+    llvm::MCRegister NewReg = MFI.getPreloadedReg(Class);
+    if (!NewReg || NewReg == OldReg)
+      continue;
+    const llvm::TargetRegisterClass *RC = TRI.getPhysRegBaseClass(OldReg);
+    unsigned NumChannels = TRI.getRegSizeInBits(*RC) / 32;
+    LLVM_DEBUG(luthier::dbgs()
+               << "[TargetModulePatcherPass]     shuffle preload class "
+               << Class << ": " << llvm::printReg(NewReg, &TRI) << " -> "
+               << llvm::printReg(OldReg, &TRI) << " (" << NumChannels
+               << " x s32)\n");
+    for (unsigned I = 0; I < NumChannels; ++I) {
+      llvm::MCRegister OldSub, NewSub;
+      if (NumChannels == 1) {
+        OldSub = OldReg;
+        NewSub = NewReg;
+      } else {
+        unsigned SubIdx = llvm::SIRegisterInfo::getSubRegFromChannel(I);
+        OldSub = TRI.getSubReg(OldReg, SubIdx);
+        NewSub = TRI.getSubReg(NewReg, SubIdx);
+      }
+      llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                    TII.get(llvm::AMDGPU::S_MOV_B32), OldSub)
+          .addReg(NewSub);
+    }
+  }
+
   return llvm::Error::success();
 }
 
@@ -459,20 +615,85 @@ preloadedValueForSVA(ScalarValueArgument SA) {
   return std::nullopt;
 }
 
+/// Per-target-kernel preamble info computed inline from IPIP, SVLocations,
+/// and each payload MF's frame info. Replaces the fields of
+/// \c FunctionPreambleDescriptor::KernelPreambleSpecs that the patcher
+/// actually reads: the "any attached payload needs scratch" flag and the
+/// union of ScalarValueArguments the attached payloads request.
+struct KernelSVAInfo {
+  bool RequiresScratchAndStackSetup{false};
+  llvm::SmallDenseSet<ScalarValueArgument, 8> RequestedKernelArguments{};
+
+  [[nodiscard]] bool usesSVA() const {
+    return RequiresScratchAndStackSetup || !RequestedKernelArguments.empty();
+  }
+};
+
+/// Walk each injected-payload function in the IModule, look up the target
+/// MI it attaches to via IPIP, and fold the payload's own requirements
+/// into a per-target-kernel record. This is the inlined replacement for
+/// \c FunctionPreambleDescriptorAnalysis + \c InjectedPayloadPEIPass's
+/// side-write into the FPD. Kernels reached only through non-kernel
+/// (device-function) target MFs are skipped — the patcher's Phase A.2 only
+/// emits at kernel entries.
+llvm::DenseMap<const llvm::MachineFunction *, KernelSVAInfo>
+computeKernelSVAInfos(llvm::Module &IModule,
+                      llvm::FunctionAnalysisManager &IFAM,
+                      const InjectedPayloadAndInstPoint &IPIP,
+                      const SVStorageAndLoadLocations &SVLocations) {
+  llvm::DenseMap<const llvm::MachineFunction *, KernelSVAInfo> Out;
+  for (llvm::Function &PayloadFn : IModule) {
+    if (!PayloadFn.hasFnAttribute(InjectedPayloadAttribute))
+      continue;
+    if (!IPIP.contains(PayloadFn))
+      continue;
+    const llvm::MachineInstr *AppMI = IPIP.at(PayloadFn);
+    const llvm::MachineFunction *TargetMF = AppMI->getMF();
+    if (TargetMF->getFunction().getCallingConv() !=
+        llvm::CallingConv::AMDGPU_KERNEL)
+      continue;
+
+    KernelSVAInfo &Info = Out[TargetMF];
+
+    // Mirror InjectedPayloadPEIPass's RequiresScratchAndStackSetup rule:
+    //   * SVA storage for this IP is spilled (load VGPR unavailable), OR
+    //   * the payload MF itself has stack objects or calls.
+    if (const auto *LoadPlan =
+            SVLocations.getStateValueArrayLoadPlanForInstPoint(*AppMI))
+      if (!LoadPlan->StateValueArrayLoadVGPR)
+        Info.RequiresScratchAndStackSetup = true;
+    if (auto *MFRes =
+            IFAM.getCachedResult<llvm::MachineFunctionAnalysis>(PayloadFn)) {
+      const llvm::MachineFrameInfo &MFI = MFRes->getMF().getFrameInfo();
+      if (MFI.hasStackObjects() || MFI.hasCalls())
+        Info.RequiresScratchAndStackSetup = true;
+    }
+
+    // Mirror FunctionPreambleDescriptorAnalysis::run: union the payload's
+    // requested SVA scalar-value arguments into the kernel's entry set.
+    const InjectedPayloadSideEffects &SE =
+        IFAM.getResult<InjectedPayloadSideEffectsAnalysis>(PayloadFn);
+    for (ScalarValueArgument SA : SE.svas())
+      Info.RequestedKernelArguments.insert(SA);
+  }
+  return Out;
+}
+
 /// Emit, at every initial-entry kernel's first instruction, the SVA
 /// kernarg-preload setup: scratch/stack setup (when requested) plus an
 /// \c emitCodeToStoreSGPRKernelArg for each \c ScalarValueArgument in
 /// \c KernelInfo.RequestedKernelArguments. The SVA storage register for
 /// the entry MBB comes from \c SVLocations.
-llvm::Error
-emitInitialEntryKernelSetup(llvm::Module &TargetModule,
-                            const FunctionPreambleDescriptor &FPD,
-                            const SVStorageAndLoadLocations &SVLocations,
-                            const StateValueArraySpecs &Specs) {
+llvm::Error emitInitialEntryKernelSetup(
+    llvm::Module &TargetModule,
+    const llvm::DenseMap<const llvm::MachineFunction *, KernelSVAInfo>
+        &KernelSVAInfos,
+    const SVStorageAndLoadLocations &SVLocations,
+    const StateValueArraySpecs &Specs) {
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] "
                                 "emitInitialEntryKernelSetup over "
-                             << FPD.Kernels.size() << " kernel(s)\n");
-  for (const auto &[KernelMF, KernelInfo] : FPD.Kernels) {
+                             << KernelSVAInfos.size() << " kernel(s)\n");
+  for (const auto &[KernelMF, KernelInfo] : KernelSVAInfos) {
     if (!KernelInfo.usesSVA()) {
       LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   kernel '"
                                  << (KernelMF ? KernelMF->getName() : "<null>")
@@ -1185,8 +1406,10 @@ TargetModulePatcherPass::run(Prototype &IP,
   LLVM_DEBUG(luthier::dbgs()
              << "[TargetModulePatcherPass] SVASpecs resolved\n");
 
-  const FunctionPreambleDescriptor &FPD =
-      IPAM.getResult<FunctionPreambleDescriptorAnalysis>(IP);
+  const InjectedPayloadAndInstPoint &IPIP =
+      IPAM.getResult<InjectedPayloadAndInstPointAnalysis>(IP);
+  llvm::DenseMap<const llvm::MachineFunction *, KernelSVAInfo> KernelSVAInfos =
+      computeKernelSVAInfos(IModule, IFAM, IPIP, SVLocations);
 
   llvm::MachineFunctionAnalysisManager &TargetMFAM =
       IPAM.getResult<TargetMachineFunctionAnalysisManagerPrototypeProxy>(IP)
@@ -1213,11 +1436,12 @@ TargetModulePatcherPass::run(Prototype &IP,
 
   // Phase A.2: initial-entry-kernel SVA preload setup (scratch + kernarg
   // spills into SVA lanes) at every kernel entry that uses the SVA. The
-  // MachineFunctions come straight off FPD.Kernels, so no manager is needed.
+  // MachineFunctions come from KernelSVAInfos (computed above from IPIP,
+  // SVLocations and each payload MF's frame info).
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] === Phase A.2: "
                                 "emitInitialEntryKernelSetup ===\n");
-  if (auto Err = emitInitialEntryKernelSetup(TargetModule, FPD, SVLocations,
-                                             *SVASpecs)) {
+  if (auto Err = emitInitialEntryKernelSetup(TargetModule, KernelSVAInfos,
+                                             SVLocations, *SVASpecs)) {
     Ctx.emitError(llvm::toString(std::move(Err)));
     return llvm::PreservedAnalyses::none();
   }
@@ -1255,8 +1479,6 @@ TargetModulePatcherPass::run(Prototype &IP,
   LLVM_DEBUG(luthier::dbgs()
              << "[TargetModulePatcherPass] === Phase B.3: inline "
                 "injected payloads ===\n");
-  const InjectedPayloadAndInstPoint &IPIP =
-      IPAM.getResult<InjectedPayloadAndInstPointAnalysis>(IP);
 
   // `MachineBasicBlock::splitAt` (called by `inlineInjectedPayload` when
   // the payload entry isn't the first MI of its MBB) needs `TracksLiveness`
