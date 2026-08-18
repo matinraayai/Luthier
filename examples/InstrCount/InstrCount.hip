@@ -58,6 +58,7 @@
 #include <luthier/LLVM/streams.h>
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
 #include <luthier/ToolCodeGen/CodeDiscoveryPass.h>
+#include <luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h>
 #include <luthier/ToolCodeGen/EntryPoint.h>
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
 #include <luthier/ToolCodeGen/IPPredicatedCFG.h>
@@ -286,6 +287,10 @@ InstrCountTool::run(luthier::Prototype &P,
   PA.preserve<luthier::IModuleAnalysisManagerPrototypeProxy>();
   PA.preserve<luthier::IModuleFunctionAnalysisManagerPrototypeProxy>();
   PA.preserve<luthier::IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
+  // Abandon the IPIP and callgraph because we had to calcluate them in code
+  // discovery
+  PA.abandon<luthier::InjectedPayloadAndInstPointAnalysis>();
+  PA.abandon<luthier::PrototypeCallGraphAnalysis>();
   return PA;
 }
 
@@ -335,7 +340,6 @@ void InstrCountTool::onPackets(
             DispatchPacket->completion_signal);
 
     if (ActiveRegion) {
-      luthier::errs() << "Kernel is being instrumented.\n";
 
       // If the (kernel_object, preset) pair isn't already cached, run the
       // pipeline and load the resulting relocatable into the launcher.

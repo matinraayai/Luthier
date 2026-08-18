@@ -42,6 +42,7 @@
 #include <luthier/LLVM/streams.h>
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
 #include <luthier/ToolCodeGen/CodeDiscoveryPass.h>
+#include <luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h>
 #include <luthier/ToolCodeGen/EntryPoint.h>
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
 #include <luthier/ToolCodeGen/IPPredicatedCFG.h>
@@ -156,6 +157,8 @@ KernelArgumentIntrinsicTool::run(luthier::Prototype &P,
   PA.preserve<luthier::IModuleAnalysisManagerPrototypeProxy>();
   PA.preserve<luthier::IModuleFunctionAnalysisManagerPrototypeProxy>();
   PA.preserve<luthier::IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.abandon<luthier::InjectedPayloadAndInstPointAnalysis>();
+  PA.abandon<luthier::PrototypeCallGraphAnalysis>();
   return PA;
 }
 

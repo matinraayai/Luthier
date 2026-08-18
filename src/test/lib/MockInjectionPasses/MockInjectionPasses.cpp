@@ -17,7 +17,9 @@
 
 #include "GCNSubtarget.h"
 #include "SIInstrInfo.h"
+#include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/Prototype.h"
+#include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFunction.h>
@@ -103,6 +105,8 @@ llvm::PreservedAnalyses payloadsCreatedPA() {
   PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
   PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
   PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.abandon<InjectedPayloadAndInstPointAnalysis>();
+  PA.abandon<PrototypeCallGraphAnalysis>();
   return PA;
 }
 
