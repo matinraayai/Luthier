@@ -61,16 +61,7 @@ LUTHIER_INTRINSIC_ANNOTATE void writeReg(llvm::MCRegister Reg, T Val);
 
 LUTHIER_INTRINSIC_ANNOTATE void writeExec(uint64_t Val);
 
-/// \return the address of the implicit argument segment
-LUTHIER_INTRINSIC_ANNOTATE uint32_t *implicitArgPtr();
-
-LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdX();
-
-LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdY();
-
-LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdZ();
-
-template <typename T,
+    template <typename T,
           typename = std::enable_if_t<
               std::is_same_v<T, uint32_t> || std::is_same_v<T, uint64_t> ||
               std::is_same_v<T, int32_t> || std::is_same_v<T, int64_t>>>
