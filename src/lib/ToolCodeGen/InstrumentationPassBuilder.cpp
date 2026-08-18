@@ -24,7 +24,7 @@
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
 #include "luthier/ToolCodeGen/ForwardISAStateToCalleesPass.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
-#include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
+#include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadPEIPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadPreserveLiveRegsPass.h"
@@ -621,7 +621,7 @@ Error AMDGPUCodeGenPassBuilder::buildPipeline(PrototypePassManager &PPM) const {
   // MachineFunctions.
   PPM.addPass(IntrinsicMIRLoweringPass());
 
-  PPM.addPass(llvm::RequireAnalysisPass<IModuleIPPredicatedLivenessAnalysis,
+  PPM.addPass(llvm::RequireAnalysisPass<IPPredicatedLivenessAnalysis,
                                       Prototype, PrototypeAnalysisManager>());
   /// TODO: Add other required analysis here
   PPM.addPass(InjectedPayloadPreserveLiveRegsPass());

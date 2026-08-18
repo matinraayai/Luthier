@@ -40,7 +40,7 @@
 ///     emitted after the host function. Once all outlined payloads are
 ///     placed, walk the s_branches and relax any whose displacement
 ///     exceeds the s_branch limit to `s_setpc_b64`-via-scavenged-SGPRs,
-///     using IModuleIPPredicatedLivenessAnalysis::getPMBBLiveIns and,
+///     using IPPredicatedLivenessAnalysis::getPMBBLiveIns and,
 ///     as a last resort, two free SVA lanes from
 ///     `StateValueArraySpecs::findLowestFreeLanes`.
 ///

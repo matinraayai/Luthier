@@ -39,7 +39,7 @@ namespace luthier {
 ///       terminator; add \c implicit-use \c $R on the terminator so RA
 ///       treats it as live-out.
 ///
-/// Depends on \c IModuleIPPredicatedLivenessAnalysis (for Active) and
+/// Depends on \c IPPredicatedLivenessAnalysis (for Active) and
 /// \c InjectedPayloadSideEffectsAnalysis (for Reads/Writes).
 class InjectedPayloadPreserveLiveRegsPass
     : public llvm::PassInfoMixin<InjectedPayloadPreserveLiveRegsPass> {

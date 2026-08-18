@@ -11,7 +11,7 @@
 #
 #   ✓ The patcher's analysis chain (IModuleMAMWrapperPass +
 #     LRStateValueStorageAndLoadLocationsAnalysis +
-#     IModuleIPPredicatedLivenessAnalysis + MachineModuleInfoWrapperPass)
+#     IPPredicatedLivenessAnalysis + MachineModuleInfoWrapperPass)
 #     resolves and runs to completion without crashing.
 #   ✓ `--target-module-output` produces a readable dump of the post-patch
 #     target module IR + MFs.

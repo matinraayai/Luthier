@@ -1,4 +1,4 @@
-//===-- IPPredicatedLivenessIModulePass.h ----------------------*- C++ -*-===//
+//===-- IPPredicatedLivenessPass.h ----------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file IPPredicatedLivenessIModulePass.h
+/// \file IPPredicatedLivenessPass.h
 /// \c Prototype-level analysis that runs liveness analysis across
 /// the target module's inter-procedural predicated control-flow graph,
 /// tracking separate active-lane and inactive-lane live phys-reg sets at every
@@ -22,8 +22,8 @@
 /// \c InjectedPayloadPreserveLiveRegsPass can decide what physical
 /// registers the injected payload must preserve.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_LIVENESS_IMODULE_PASS_H
-#define LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_LIVENESS_IMODULE_PASS_H
+#ifndef LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_LIVENESS_PASS_H
+#define LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_LIVENESS_PASS_H
 #include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
@@ -69,9 +69,9 @@ struct PMBBLiveIns {
   llvm::SmallVector<llvm::MCPhysReg, 16> Inactive;
 };
 
-class IModuleIPPredicatedLivenessAnalysis;
+class IPPredicatedLivenessAnalysis;
 
-/// \brief Result of \c IModuleIPPredicatedLivenessAnalysis.
+/// \brief Result of \c IPPredicatedLivenessAnalysis.
 ///
 /// Walks the target module's \c IPPredicatedCFG backward to fixed point,
 /// tracking active/inactive lane liveness with the following per-PMBB
@@ -91,7 +91,7 @@ class IModuleIPPredicatedLivenessAnalysis;
 /// initialised to the function's allocatable GPR set (per the
 /// \c amdgpu-num-{sgpr,vgpr} attributes plus reserved-but-not-read-only
 /// registers from MRI) and dataflow is intra-procedural only.
-class IModuleIPPredicatedLiveness {
+class IPPredicatedLiveness {
 public:
   using PayloadLiveSetsMap =
       llvm::DenseMap<const llvm::Function *, PayloadLiveSets>;
@@ -99,7 +99,7 @@ public:
       llvm::DenseMap<const PredicatedMachineBasicBlock *, PMBBLiveIns>;
 
 private:
-  friend class IModuleIPPredicatedLivenessAnalysis;
+  friend class IPPredicatedLivenessAnalysis;
 
   PayloadLiveSetsMap LiveSetsByPayload;
   PMBBLiveInsMap LiveInsByPMBB;
@@ -108,7 +108,7 @@ private:
   bool ResultFullyDiscovered{false};
 
 public:
-  IModuleIPPredicatedLiveness() = default;
+  IPPredicatedLiveness() = default;
 
   /// \return per-payload live-set record at the program point just before
   /// \p Payload's effects apply, or \c nullptr if the payload has no
@@ -158,16 +158,16 @@ public:
 /// \brief \c Prototype-level analysis that computes, for the target
 /// module of an \c Prototype, the per-payload and per-PMBB live
 /// physical-register sets across active and inactive lane partitions.
-class IModuleIPPredicatedLivenessAnalysis
-    : public llvm::AnalysisInfoMixin<IModuleIPPredicatedLivenessAnalysis> {
-  friend llvm::AnalysisInfoMixin<IModuleIPPredicatedLivenessAnalysis>;
+class IPPredicatedLivenessAnalysis
+    : public llvm::AnalysisInfoMixin<IPPredicatedLivenessAnalysis> {
+  friend llvm::AnalysisInfoMixin<IPPredicatedLivenessAnalysis>;
 
   static llvm::AnalysisKey Key;
 
 public:
-  IModuleIPPredicatedLivenessAnalysis() = default;
+  IPPredicatedLivenessAnalysis() = default;
 
-  using Result = IModuleIPPredicatedLiveness;
+  using Result = IPPredicatedLiveness;
 
   Result run(Prototype &IP,
              PrototypeAnalysisManager &IPAM);

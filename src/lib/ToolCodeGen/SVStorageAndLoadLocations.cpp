@@ -22,7 +22,7 @@
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Common/LuthierError.h"
 #include "luthier/LLVM/streams.h"
-#include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
+#include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
 #include <AMDGPU.h>
@@ -115,7 +115,7 @@ bool isWithinDeclaredCap(llvm::ArrayRef<llvm::MachineFunction *> Functions,
 /// across every injected payload attached to \p AppMI. Each payload's
 /// per-lane sets already incorporate that payload's declared Reads/Writes
 /// via \c stepBackwardOverPayload inside
-/// \c IModuleIPPredicatedLivenessAnalysis.
+/// \c IPPredicatedLivenessAnalysis.
 llvm::DenseSet<llvm::MCPhysReg>
 liveAtAppMI(const llvm::MachineInstr &AppMI,
             const InjectedPayloadAndInstPoint &IPIP,
@@ -718,7 +718,7 @@ SVStorageAndLoadLocationsAnalysis::run(
       IPAM.getResult<FunctionPreambleDescriptorAnalysis>(IP);
 
   // TODO(NPM): source PayloadLiveSetsByFn from a migrated
-  // IP-level liveness analysis. IModuleIPPredicatedLivenessAnalysis is still
+  // IP-level liveness analysis. IPPredicatedLivenessAnalysis is still
   // a legacy ModulePass and cannot be pulled through IPAM; consumers of
   // this analysis are broken until that migration lands.
   llvm::DenseMap<const llvm::Function *, PayloadLiveSets> PayloadLiveSetsByFn;

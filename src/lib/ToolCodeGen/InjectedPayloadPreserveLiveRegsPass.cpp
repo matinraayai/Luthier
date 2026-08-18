@@ -19,7 +19,7 @@
 #include "luthier/ToolCodeGen/InjectedPayloadPreserveLiveRegsPass.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
-#include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
+#include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include <AMDGPU.h>
 #include <SIInstrInfo.h>
@@ -57,8 +57,8 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
       MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(IModule)
           .getManager();
 
-  const IModuleIPPredicatedLiveness &Liveness =
-      IPAM.getResult<IModuleIPPredicatedLivenessAnalysis>(IP);
+  const IPPredicatedLiveness &Liveness =
+      IPAM.getResult<IPPredicatedLivenessAnalysis>(IP);
 
   bool Changed = false;
 

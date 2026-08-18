@@ -3,7 +3,7 @@
 # Drives the FULL default pipeline (no --imodule-mir-passes override, so
 # InstrumentationPMDriver's default codegen chain fires:
 #   isel → IntrinsicMIRLoweringPass → InjectedPayloadAccessedRegsAnalysis
-#   → IModuleIPPredicatedLivenessAnalysis → InjectedPayloadPreserveLiveRegsPass
+#   → IPPredicatedLivenessAnalysis → InjectedPayloadPreserveLiveRegsPass
 #   → LRStateValueStorageAndLoadLocationsAnalysis → InjectedPayloadPEIPass
 #   → TargetModulePatcherPass)
 # and then chains Luthier's new-PM AsmPrinter

@@ -22,7 +22,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_SV_STORAGE_AND_LOAD_LOCATIONS_H
 #define LUTHIER_TOOL_CODE_GEN_SV_STORAGE_AND_LOAD_LOCATIONS_H
-#include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
+#include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"

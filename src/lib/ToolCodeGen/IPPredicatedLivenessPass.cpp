@@ -1,4 +1,4 @@
-//===-- IPPredicatedLivenessIModulePass.cpp --------------------------------===//
+//===-- IPPredicatedLivenessPass.cpp --------------------------------===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,10 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file IPPredicatedLivenessIModulePass.cpp
-/// Implements \c IModuleIPPredicatedLivenessAnalysis.
+/// \file IPPredicatedLivenessPass.cpp
+/// Implements \c IPPredicatedLivenessAnalysis.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
+#include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
@@ -44,7 +44,7 @@
 #include <llvm/Support/FormatVariadic.h>
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "luthier-imodule-ip-pred-liveness"
+#define DEBUG_TYPE "luthier-ip-pred-liveness"
 
 namespace luthier {
 
@@ -304,7 +304,7 @@ static void walkPMBBBackward(
     const InjectedPayloadAndInstPoint &IPIP,
     const PayloadSideEffectsMap &SideEffectsByPayload,
     const llvm::TargetRegisterInfo &TRI,
-    IModuleIPPredicatedLiveness::PayloadLiveSetsMap *CaptureMap) {
+    IPPredicatedLiveness::PayloadLiveSetsMap *CaptureMap) {
   const llvm::MachineBasicBlock &MBB = PMBB.getMBB();
   bool Vector = isVectorMBB(MBB);
 
@@ -356,18 +356,18 @@ static void walkPMBBBackward(
 
 } // namespace
 
-bool IModuleIPPredicatedLiveness::invalidate(
+bool IPPredicatedLiveness::invalidate(
     Prototype &, const llvm::PreservedAnalyses &PA,
     PrototypeAnalysisManager::Invalidator &) {
-  auto PAC = PA.getChecker<IModuleIPPredicatedLivenessAnalysis>();
+  auto PAC = PA.getChecker<IPPredicatedLivenessAnalysis>();
   return !PAC.preserved() &&
          !PAC.preservedSet<llvm::AllAnalysesOn<Prototype>>();
 }
 
-llvm::AnalysisKey IModuleIPPredicatedLivenessAnalysis::Key;
+llvm::AnalysisKey IPPredicatedLivenessAnalysis::Key;
 
-IModuleIPPredicatedLivenessAnalysis::Result
-IModuleIPPredicatedLivenessAnalysis::run(
+IPPredicatedLivenessAnalysis::Result
+IPPredicatedLivenessAnalysis::run(
     Prototype &IP, PrototypeAnalysisManager &IPAM) {
   LLVM_DEBUG(luthier::dbgs()
              << "=== Luthier IModule IP-Predicated Liveness Analysis ===\n");

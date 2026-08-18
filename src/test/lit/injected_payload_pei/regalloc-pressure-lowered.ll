@@ -73,7 +73,7 @@
 ; RUN:    -imodule-path=%s \
 ; RUN:    -imodule-output=%t.mir \
 ; RUN:    -imodule-ir-passes=luthier-process-intrinsics-at-ir-level \
-; RUN:    '-imodule-mir-passes=isel,mir-lowering,injected-payload-accessed-regs,imodule-ip-pred-liveness,payload-preserve-live-regs,lr-sv-storage-load-locs,print-mir-after=amdgpu-reserve-wwm-regs,machine-passes' \
+; RUN:    '-imodule-mir-passes=isel,mir-lowering,injected-payload-accessed-regs,ip-pred-liveness,payload-preserve-live-regs,lr-sv-storage-load-locs,print-mir-after=amdgpu-reserve-wwm-regs,machine-passes' \
 ; RUN:    -o /dev/null && \
 ; RUN: FileCheck %s < %t.mir
 

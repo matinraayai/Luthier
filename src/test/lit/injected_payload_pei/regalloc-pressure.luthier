@@ -7,14 +7,14 @@
 #                                       SGPR_32 readlane placeholders)
 #     -> InjectedPayloadAccessedRegs   (extracts payload's Reads/Writes from
 #                                       entry-COPY/return-COPY patterns)
-#     -> IModuleIPPredicatedLiveness   (computes per-payload Active/Inactive
+#     -> IPPredicatedLiveness   (computes per-payload Active/Inactive
 #                                       live sets at each AppMI, folding in
 #                                       Reads/Writes via stepBackwardOverPayload)
 #     -> InjectedPayloadPreserveLiveRegs (entry/return COPYs for regs live at
 #                                         IP but not read/written by payload)
 #     -> LRStateValueStorageAndLoadLocations
 #                                      (legacy ModulePass; consumes
-#                                       IModuleIPPredicatedLiveness via
+#                                       IPPredicatedLiveness via
 #                                       legacy getAnalysis<>; picks SVA storage
 #                                       scheme + load-VGPR at each IP using the
 #                                       per-IP live set as the do-not-clobber
@@ -32,7 +32,7 @@
 # What this test verifies:
 #
 #   ✓ The legacy ModulePass chain (LRStateValueStorageAndLoadLocationsAnalysis
-#     consumes IModuleIPPredicatedLivenessAnalysis via getAnalysis<>; PEI then
+#     consumes IPPredicatedLivenessAnalysis via getAnalysis<>; PEI then
 #     consumes the storage analysis the same way) links and runs to completion.
 #   ✓ IntrinsicMIRLoweringPass emits the new FI-based SI_SPILL_S32_RESTORE
 #     for each SA sub-lane; no V_READLANE_B32 placeholder remains pre-RA.

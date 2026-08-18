@@ -83,8 +83,8 @@ PROTOTYPE_PASS("luthier-print-ip-pred-cfg", IPPredCFGPrinter(llvm::outs()))
 #define PROTOTYPE_ANALYSIS(NAME, CREATE_PASS)
 #endif
 PROTOTYPE_ANALYSIS("luthier-ip-pred-cfg", IPPredCFGAnalysis())
-PROTOTYPE_ANALYSIS("luthier-imodule-ip-predicated-liveness",
-                   IModuleIPPredicatedLivenessAnalysis())
+PROTOTYPE_ANALYSIS("luthier-ip-predicated-liveness",
+                   IPPredicatedLivenessAnalysis())
 PROTOTYPE_ANALYSIS("luthier-injected-payload-and-inst-point",
                    InjectedPayloadAndInstPointAnalysis())
 PROTOTYPE_ANALYSIS("luthier-function-preamble-descriptor",
