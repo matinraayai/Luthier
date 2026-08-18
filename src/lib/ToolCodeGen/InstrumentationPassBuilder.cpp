@@ -22,7 +22,6 @@
 #include "luthier/ToolCodeGen/InstrumentationPassBuilder.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
-#include "luthier/ToolCodeGen/ForwardISAStateToCalleesPass.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"

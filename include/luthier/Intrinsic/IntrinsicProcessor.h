@@ -174,11 +174,6 @@ template <> struct ScalarValueArgumentInfo<IMPLICIT_ARG_OFFSET> {
 /// intrinsic's \c IRProcessor and serialized by
 /// \c ProcessIntrinsicsAtIRLevelPass into the
 /// \c !luthier.intrinsic.placeholders named-MD side channel
-///
-/// \c ForwardISAStateToCalleesPass uses this information to compute, per
-/// callee Function, the union of SVA scalar args read, phys-regs read, and
-/// phys-regs written transitively, and extends the callee's signature
-/// accordingly
 struct IntrinsicISAStateEffects {
   /// Scalar value arguments this intrinsic reads.
   llvm::SmallVector<ScalarValueArgument, 1> ReadSVAs;
@@ -233,8 +228,8 @@ private:
   /// Metadata values forwarded to the MIR lowering stage as a payload MDNode
   llvm::SmallVector<llvm::Metadata *> ExtraInfoValues{};
   /// ISA-state effects produced by this intrinsic. Populated by the IR
-  /// processor; consumed by \c ForwardISAStateToCalleesPass via the
-  /// serialized form in \c !luthier.intrinsic.placeholders .
+  /// processor; consumed by downstream passes via the serialized form in
+  /// \c !luthier.intrinsic.placeholders .
   IntrinsicISAStateEffects Effects{};
 
 public:
