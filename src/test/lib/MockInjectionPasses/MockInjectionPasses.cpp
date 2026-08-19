@@ -89,12 +89,13 @@ llvm::Function *getHook(Prototype &P) {
 /// \return the \c PreservedAnalyses a mock pass reports after it has created
 /// injected payloads.
 ///
-/// Creating a payload adds a function to the IModule and attaches
-/// \c !pcsections metadata to a target MI, so no prototype-level analysis
-/// survives. The inner analysis-manager proxies must still be preserved: their
-/// invalidation hooks clear the *entire* inner manager for both of the
-/// prototype's modules (see \c Prototype.cpp), which would throw away the
-/// cached \c MachineFunctionAnalysis results holding the target MIR that
+/// Creating a payload adds a function to the IModule, declares an extern for
+/// it in the target module, and emits a \c PATCHPOINT marker before the
+/// target MI, so no prototype-level analysis survives. The inner
+/// analysis-manager proxies must still be preserved: their invalidation
+/// hooks clear the *entire* inner manager for both of the prototype's
+/// modules (see \c Prototype.cpp), which would throw away the cached
+/// \c MachineFunctionAnalysis results holding the target MIR that
 /// \c CodeDiscoveryPass lifted, along with the IModule's
 /// \c MachineModuleInfo, both of which the downstream pipeline still needs.
 llvm::PreservedAnalyses payloadsCreatedPA() {
@@ -122,7 +123,13 @@ MockInjectAtFunctionEntryPass::run(Prototype &P,
     if (TargetMF.empty())
       return;
     for (llvm::MachineInstr &MI : TargetMF.front()) {
-      llvm::consumeError(createInjectedPayload(*Hook, MI, {}));
+      llvm::consumeError(
+          P.createInjectedPayload(
+               *Hook, MI,
+               PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
+                   .getManager(),
+               {})
+              .takeError());
       break;
     }
   });
@@ -138,7 +145,13 @@ MockInjectAtMBBEntryPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
     for (llvm::MachineBasicBlock &MBB : TargetMF) {
       if (MBB.empty())
         continue;
-      llvm::consumeError(createInjectedPayload(*Hook, MBB.front(), {}));
+      llvm::consumeError(
+          P.createInjectedPayload(
+               *Hook, MBB.front(),
+               PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
+                   .getManager(),
+               {})
+              .takeError());
     }
   });
   return payloadsCreatedPA();
@@ -155,7 +168,13 @@ MockInjectAtMBBTerminatorPass::run(Prototype &P,
       auto It = MBB.getFirstTerminator();
       if (It == MBB.end())
         continue;
-      llvm::consumeError(createInjectedPayload(*Hook, *It, {}));
+      llvm::consumeError(
+          P.createInjectedPayload(
+               *Hook, *It,
+               PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
+                   .getManager(),
+               {})
+              .takeError());
     }
   });
   return payloadsCreatedPA();
@@ -166,13 +185,17 @@ MockInjectAtAllVALUPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   llvm::Function *Hook = getHook(P);
   if (!Hook)
     return llvm::PreservedAnalyses::all();
+  llvm::FunctionAnalysisManager &IFAM =
+      PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
+          .getManager();
   P.forEachTargetMF(PAM, [&](llvm::MachineFunction &TargetMF) {
     const auto *TII =
         TargetMF.getSubtarget<llvm::GCNSubtarget>().getInstrInfo();
     for (llvm::MachineBasicBlock &MBB : TargetMF) {
       for (llvm::MachineInstr &MI : MBB) {
         if (TII->isVALU(MI))
-          llvm::consumeError(createInjectedPayload(*Hook, MI, {}));
+          llvm::consumeError(
+              P.createInjectedPayload(*Hook, MI, IFAM, {}).takeError());
       }
     }
   });
@@ -184,13 +207,17 @@ MockInjectAtAllScalarPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   llvm::Function *Hook = getHook(P);
   if (!Hook)
     return llvm::PreservedAnalyses::all();
+  llvm::FunctionAnalysisManager &IFAM =
+      PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
+          .getManager();
   P.forEachTargetMF(PAM, [&](llvm::MachineFunction &TargetMF) {
     const auto *TII =
         TargetMF.getSubtarget<llvm::GCNSubtarget>().getInstrInfo();
     for (llvm::MachineBasicBlock &MBB : TargetMF) {
       for (llvm::MachineInstr &MI : MBB) {
         if (TII->isSALU(MI))
-          llvm::consumeError(createInjectedPayload(*Hook, MI, {}));
+          llvm::consumeError(
+              P.createInjectedPayload(*Hook, MI, IFAM, {}).takeError());
       }
     }
   });
@@ -202,6 +229,9 @@ MockInjectAtOpcodePass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   llvm::Function *Hook = getHook(P);
   if (!Hook || MockOpcodeMnemonic.empty())
     return llvm::PreservedAnalyses::all();
+  llvm::FunctionAnalysisManager &IFAM =
+      PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
+          .getManager();
   P.forEachTargetMF(PAM, [&](llvm::MachineFunction &TargetMF) {
     const auto *TII =
         TargetMF.getSubtarget<llvm::GCNSubtarget>().getInstrInfo();
@@ -209,7 +239,8 @@ MockInjectAtOpcodePass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
       for (llvm::MachineInstr &MI : MBB) {
         llvm::StringRef Mnemonic = TII->getName(MI.getOpcode());
         if (Mnemonic.contains(MockOpcodeMnemonic.getValue()))
-          llvm::consumeError(createInjectedPayload(*Hook, MI, {}));
+          llvm::consumeError(
+              P.createInjectedPayload(*Hook, MI, IFAM, {}).takeError());
       }
     }
   });
@@ -224,6 +255,9 @@ MockInjectAtAllVGPRDefsWithRegArgPass::run(Prototype &P,
     return llvm::PreservedAnalyses::all();
   llvm::Type *I32 =
       llvm::Type::getInt32Ty(P.getInstrumentationModule().getContext());
+  llvm::FunctionAnalysisManager &IFAM =
+      PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
+          .getManager();
   P.forEachTargetMF(PAM, [&](llvm::MachineFunction &TargetMF) {
     const auto &MRI = TargetMF.getRegInfo();
     const auto &TRI = *static_cast<const llvm::SIRegisterInfo *>(
@@ -233,9 +267,9 @@ MockInjectAtAllVGPRDefsWithRegArgPass::run(Prototype &P,
         llvm::Register VGPR = firstVGPRDef(MI, MRI, TRI);
         if (!VGPR.isValid())
           continue;
-        llvm::SmallVector<PayloadArg, 1> Args;
-        Args.push_back(RegArg{VGPR.asMCReg(), I32});
-        llvm::consumeError(createInjectedPayload(*Hook, MI, Args));
+        PayloadArg Args[]{RegArg{VGPR.asMCReg(), I32}};
+        llvm::consumeError(
+            P.createInjectedPayload(*Hook, MI, IFAM, Args).takeError());
       }
     }
   });

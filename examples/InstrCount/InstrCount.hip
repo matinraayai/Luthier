@@ -259,7 +259,7 @@ InstrCountTool::run(luthier::Prototype &P,
           continue;
 
         const void *HostHandle = nullptr;
-        llvm::SmallVector<InjectedPayloadCreationPass::PayloadArg, 1> Args;
+        llvm::SmallVector<luthier::PayloadArg, 1> Args;
         if (luthier::isScalar(MI) || luthier::isLaneAccess(MI)) {
           HostHandle = reinterpret_cast<const void *>(
               &InstrCountTool::countInstructionsScalar);
@@ -269,7 +269,7 @@ InstrCountTool::run(luthier::Prototype &P,
           Args.push_back(CountWavefrontLevelConstVal);
         }
         LUTHIER_REPORT_FATAL_ON_ERROR(
-            this->createInjectedPayload(HostHandle, IModule, MI, Args));
+            this->createInjectedPayload(HostHandle, P, PAM, MI, Args));
       }
     }
     luthier::errs() << "[InstrCountTool] runInstrumentationPass for MF '"

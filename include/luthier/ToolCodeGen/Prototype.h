@@ -27,10 +27,14 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/PassManagerInternal.h>
+#include <llvm/MC/MCRegister.h>
+#include <variant>
 
 namespace llvm {
 class IRBuilderBase;
 class PassInstrumentationCallbacks;
+class Type;
+class Value;
 } // namespace llvm
 
 namespace luthier {
@@ -40,6 +44,22 @@ class Prototype;
 using PrototypeAnalysisManager = llvm::AnalysisManager<Prototype>;
 
 using PrototypePassManager = llvm::PassManager<Prototype>;
+
+/// A hook argument that names a physical register. The convenience
+/// \c createInjectedPayload overload lowers each such entry to a
+/// \c luthier::readReg intrinsic call whose result — of type \c Ty — is
+/// forwarded to the hook in the argument's position.
+struct RegArg {
+  llvm::MCRegister Reg;
+  llvm::Type *Ty;
+};
+
+/// Argument passed to the \c HookFn convenience overload of
+/// \c Prototype::createInjectedPayload: either an already-built
+/// \c llvm::Value* forwarded verbatim, or a \c RegArg that gets
+/// materialized via a \c luthier::readReg intrinsic call in the payload
+/// body before the hook is called.
+using PayloadArg = std::variant<llvm::Value *, RegArg>;
 
 class Prototype {
   /// Contains the code for the application being instrumented
@@ -89,11 +109,14 @@ public:
       llvm::function_ref<llvm::Error(llvm::IRBuilderBase &)> Build);
 
   /// Convenience overload: creates an injected-payload function for \p TargetMI
-  /// that calls \p HookFn with \p Args
+  /// that calls \p HookFn with \p Args. \c Value* entries in \p Args are
+  /// forwarded verbatim; \c RegArg entries are lowered to
+  /// \c luthier::readReg intrinsic calls inside the payload and their
+  /// results become the corresponding hook argument.
   llvm::Expected<llvm::Function *>
   createInjectedPayload(llvm::Function &HookFn, llvm::MachineInstr &TargetMI,
                         llvm::FunctionAnalysisManager &IFAM,
-                        llvm::ArrayRef<llvm::Value *> Args = {});
+                        llvm::ArrayRef<PayloadArg> Args = {});
 
   /// \brief Invokes \p Fn on every <tt>llvm::MachineFunction</tt> of the
   /// target module.

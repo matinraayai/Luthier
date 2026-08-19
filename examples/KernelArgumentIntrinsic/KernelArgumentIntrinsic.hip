@@ -143,8 +143,8 @@ KernelArgumentIntrinsicTool::run(luthier::Prototype &P,
     if (MF.empty())
       return;
     LUTHIER_REPORT_FATAL_ON_ERROR(this->createInjectedPayload(
-        &KernelArgumentIntrinsicTool::accessKernelArg, IModule,
-        MF.begin()->front(), {}));
+        &KernelArgumentIntrinsicTool::accessKernelArg, P, PAM,
+        MF.begin()->front()));
   });
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
   // Payload creation only adds functions to the instrumentation module and

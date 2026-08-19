@@ -174,7 +174,7 @@ OpcodeHistogramTool::run(luthier::Prototype &P,
             llvm::ConstantInt::get(llvm::Type::getInt32Ty(IModule.getContext()),
                                    MI.getOpcode(), false);
         const void *HostHandle = nullptr;
-        llvm::SmallVector<InjectedPayloadCreationPass::PayloadArg, 2> Args;
+        llvm::SmallVector<luthier::PayloadArg, 2> Args;
         if (luthier::isScalar(MI) || luthier::isLaneAccess(MI)) {
           HostHandle = reinterpret_cast<const void *>(
               &OpcodeHistogramTool::countOpcodeHistogramScalar);
@@ -187,7 +187,7 @@ OpcodeHistogramTool::run(luthier::Prototype &P,
           Args.push_back(OpcodeNumber);
         }
         LUTHIER_REPORT_FATAL_ON_ERROR(
-            this->createInjectedPayload(HostHandle, IModule, MI, Args));
+            this->createInjectedPayload(HostHandle, P, PAM, MI, Args));
       }
     }
   });

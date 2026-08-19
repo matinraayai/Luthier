@@ -19,6 +19,7 @@
 #include "luthier/ToolCodeGen/Prototype.h"
 
 #include "luthier/Common/GenericLuthierError.h"
+#include "luthier/Intrinsic/IntrinsicCalls.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
@@ -136,11 +137,27 @@ llvm::Expected<llvm::Function *> Prototype::createInjectedPayload(
 
 llvm::Expected<llvm::Function *> Prototype::createInjectedPayload(
     llvm::Function &HookFn, llvm::MachineInstr &TargetMI,
-    llvm::FunctionAnalysisManager &IFAM, llvm::ArrayRef<llvm::Value *> Args) {
+    llvm::FunctionAnalysisManager &IFAM, llvm::ArrayRef<PayloadArg> Args) {
 
   return createInjectedPayload(
       TargetMI, IFAM, [&](llvm::IRBuilderBase &Builder) -> llvm::Error {
-        llvm::CallInst *HookCall = Builder.CreateCall(&HookFn, Args);
+        // Materialize each PayloadArg into a Value* the hook can consume.
+        // RegArg entries emit a luthier::readReg intrinsic call whose result
+        // (of the requested type) becomes the argument; Value* entries are
+        // forwarded verbatim.
+        llvm::SmallVector<llvm::Value *, 4> HookArgs;
+        HookArgs.reserve(Args.size());
+        for (const PayloadArg &A : Args) {
+          if (auto *const *V = std::get_if<llvm::Value *>(&A)) {
+            HookArgs.push_back(*V);
+          } else {
+            const RegArg &R = std::get<RegArg>(A);
+            HookArgs.push_back(insertCallToIntrinsic(
+                *IModule, Builder, "luthier::readReg", *R.Ty,
+                static_cast<uint32_t>(R.Reg.id())));
+          }
+        }
+        llvm::CallInst *HookCall = Builder.CreateCall(&HookFn, HookArgs);
         // Force-inline the hook function for now
         // TODO: Add arg that prevent force inlining the hook function
         llvm::InlineFunctionInfo IFI;

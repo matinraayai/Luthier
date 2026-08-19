@@ -84,10 +84,8 @@ struct KernelInstrumentTool
                  llvm::ArrayRef<luthier::hsa::AqlPacket> Packets,
                  hsa_amd_queue_intercept_packet_writer PacketWriter);
 
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &IModule, llvm::ModuleAnalysisManager &,
-                         llvm::MachineFunction &MF,
-                         llvm::FunctionAnalysisManager &);
+  llvm::PreservedAnalyses run(luthier::Prototype &P,
+                              luthier::PrototypeAnalysisManager &PAM);
 };
 
 __attribute__((managed)) uint64_t KernelInstrumentTool::WaveID = 0;
@@ -171,33 +169,43 @@ runInstrumentationPipelineForDispatch(
       /*RequiresNullTerminator=*/false);
 }
 
-luthier::InstrumentationPreservedAnalyses
-KernelInstrumentTool::runInstrumentationPass(llvm::Module &IModule,
-                                             llvm::ModuleAnalysisManager &,
-                                             llvm::MachineFunction &MF,
-                                             llvm::FunctionAnalysisManager &) {
-  if (MF.empty() || MF.front().empty())
-    return luthier::InstrumentationPreservedAnalyses{};
-  // Replicate the original tool's "fourth instruction in the entry MBB"
-  // insertion point — chase ->getNextNode() three times from the first
-  // instruction.
-  auto *Begin = &*MF.front().begin();
-  auto *Tgt = Begin->getNextNode();
-  if (!Tgt)
-    return luthier::InstrumentationPreservedAnalyses{};
-  auto *T2 = Tgt->getNextNode();
-  if (!T2)
-    return luthier::InstrumentationPreservedAnalyses{};
-  auto *T3 = T2->getNextNode();
-  if (!T3)
-    return luthier::InstrumentationPreservedAnalyses{};
-
+llvm::PreservedAnalyses
+KernelInstrumentTool::run(luthier::Prototype &P,
+                          luthier::PrototypeAnalysisManager &PAM) {
+  llvm::Module &IModule = P.getInstrumentationModule();
   auto &Ctx = IModule.getContext();
-  LUTHIER_REPORT_FATAL_ON_ERROR(this->createInjectedPayload(
-      &KernelInstrumentTool::instrumentationHook, IModule, *T3,
-      {llvm::ConstantInt::get(llvm::Type::getInt32Ty(Ctx), llvm::AMDGPU::SCC),
-       llvm::ConstantInt::get(llvm::Type::getInt32Ty(Ctx), 1)}));
-  return luthier::InstrumentationPreservedAnalyses{};
+  P.forEachTargetMF(PAM, [&](llvm::MachineFunction &MF) {
+    if (MF.empty() || MF.front().empty())
+      return;
+    // Replicate the original tool's "fourth instruction in the entry MBB"
+    // insertion point — chase ->getNextNode() three times from the first
+    // instruction.
+    auto *Begin = &*MF.front().begin();
+    auto *Tgt = Begin->getNextNode();
+    if (!Tgt)
+      return;
+    auto *T2 = Tgt->getNextNode();
+    if (!T2)
+      return;
+    auto *T3 = T2->getNextNode();
+    if (!T3)
+      return;
+
+    LUTHIER_REPORT_FATAL_ON_ERROR(this->createInjectedPayload(
+        &KernelInstrumentTool::instrumentationHook, P, PAM, *T3,
+        {llvm::ConstantInt::get(llvm::Type::getInt32Ty(Ctx), llvm::AMDGPU::SCC),
+         llvm::ConstantInt::get(llvm::Type::getInt32Ty(Ctx), 1)}));
+  });
+  llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
+  PA.preserve<luthier::TargetModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::TargetFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.abandon<luthier::InjectedPayloadAndInstPointAnalysis>();
+  PA.abandon<luthier::PrototypeCallGraphAnalysis>();
+  return PA;
 }
 
 void KernelInstrumentTool::onPackets(

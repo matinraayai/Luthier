@@ -45,6 +45,7 @@
 #include <luthier/HSA/ExecutableSymbol.h>
 #include <luthier/HSA/HsaError.h>
 #include <luthier/HSATooling/HSATool.h>
+#include <luthier/Intrinsic/IntrinsicCalls.h>
 #include <luthier/HSATooling/HsaMemoryAllocationAccessor.h>
 #include <luthier/LLVM/streams.h>
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
@@ -302,14 +303,13 @@ LDSBankConflictTool::run(luthier::Prototype &P,
           auto *ShortArg = llvm::ConstantInt::get(
               llvm::Type::getInt16Ty(Ctx), MI.getOperand(OffsetOpIdx).getImm(),
               false);
+          llvm::Type *I32 = llvm::Type::getInt32Ty(Ctx);
+          luthier::PayloadArg Args[]{
+              luthier::RegArg{llvm::AMDGPU::M0, I32},
+              luthier::RegArg{AddrOpVGPR, I32}, ShortArg, BankSizeArg};
           LUTHIER_REPORT_FATAL_ON_ERROR(this->createInjectedPayload(
-              &LDSBankConflictTool::countUniqueBanksPerWarpSingleAddress,
-              IModule, MI,
-              {InjectedPayloadCreationPass::RegArg{llvm::AMDGPU::M0,
-                                                   llvm::Type::getInt32Ty(Ctx)},
-               InjectedPayloadCreationPass::RegArg{AddrOpVGPR,
-                                                   llvm::Type::getInt32Ty(Ctx)},
-               ShortArg, BankSizeArg}));
+              &LDSBankConflictTool::countUniqueBanksPerWarpSingleAddress, P,
+              PAM, MI, Args));
         }
 
         if (llvm::AMDGPU::hasNamedOperand(MI.getOpcode(),
@@ -349,13 +349,12 @@ LDSBankConflictTool::run(luthier::Prototype &P,
               OffsetTy, MI.getOperand(O0Idx).getImm(), false);
           auto *O1 = llvm::ConstantInt::get(
               OffsetTy, MI.getOperand(O1Idx).getImm(), false);
-          LUTHIER_REPORT_FATAL_ON_ERROR(this->createInjectedPayload(
-              HostHandle, IModule, MI,
-              {InjectedPayloadCreationPass::RegArg{llvm::AMDGPU::M0,
-                                                   llvm::Type::getInt32Ty(Ctx)},
-               InjectedPayloadCreationPass::RegArg{AddrOpVGPR,
-                                                   llvm::Type::getInt32Ty(Ctx)},
-               O0, O1, BankSizeArg}));
+          llvm::Type *I32 = llvm::Type::getInt32Ty(Ctx);
+          luthier::PayloadArg Args[]{luthier::RegArg{llvm::AMDGPU::M0, I32},
+                                     luthier::RegArg{AddrOpVGPR, I32}, O0, O1,
+                                     BankSizeArg};
+          LUTHIER_REPORT_FATAL_ON_ERROR(
+              this->createInjectedPayload(HostHandle, P, PAM, MI, Args));
         }
       }
     }

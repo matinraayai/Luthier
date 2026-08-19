@@ -28,7 +28,6 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TEST_MOCK_INJECTION_PASSES_H
 #define LUTHIER_TEST_MOCK_INJECTION_PASSES_H
-#include "luthier/ToolCodeGen/InjectedPayloadCreationPass.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/ADT/StringRef.h>
 #include <llvm/IR/PassManager.h>
@@ -43,8 +42,7 @@ llvm::StringRef getMockOpcodeMnemonicOpt();
 //===----------------------------------------------------------------------===//
 
 class MockInjectAtFunctionEntryPass
-    : public luthier::InjectedPayloadCreationPass<
-          MockInjectAtFunctionEntryPass> {
+    : public llvm::PassInfoMixin<MockInjectAtFunctionEntryPass> {
 public:
   static llvm::StringRef name() {
     return "luthier-mock-inject-at-function-entry";
@@ -58,7 +56,7 @@ public:
 //===----------------------------------------------------------------------===//
 
 class MockInjectAtMBBEntryPass
-    : public luthier::InjectedPayloadCreationPass<MockInjectAtMBBEntryPass> {
+    : public llvm::PassInfoMixin<MockInjectAtMBBEntryPass> {
 public:
   static llvm::StringRef name() { return "luthier-mock-inject-at-mbb-entry"; }
 
@@ -70,8 +68,7 @@ public:
 //===----------------------------------------------------------------------===//
 
 class MockInjectAtMBBTerminatorPass
-    : public luthier::InjectedPayloadCreationPass<
-          MockInjectAtMBBTerminatorPass> {
+    : public llvm::PassInfoMixin<MockInjectAtMBBTerminatorPass> {
 public:
   static llvm::StringRef name() {
     return "luthier-mock-inject-at-mbb-terminator";
@@ -85,7 +82,7 @@ public:
 //===----------------------------------------------------------------------===//
 
 class MockInjectAtAllVALUPass
-    : public luthier::InjectedPayloadCreationPass<MockInjectAtAllVALUPass> {
+    : public llvm::PassInfoMixin<MockInjectAtAllVALUPass> {
 public:
   static llvm::StringRef name() { return "luthier-mock-inject-at-all-valu"; }
 
@@ -97,7 +94,7 @@ public:
 //===----------------------------------------------------------------------===//
 
 class MockInjectAtAllScalarPass
-    : public luthier::InjectedPayloadCreationPass<MockInjectAtAllScalarPass> {
+    : public llvm::PassInfoMixin<MockInjectAtAllScalarPass> {
 public:
   static llvm::StringRef name() { return "luthier-mock-inject-at-all-scalar"; }
 
@@ -110,7 +107,7 @@ public:
 //===----------------------------------------------------------------------===//
 
 class MockInjectAtOpcodePass
-    : public luthier::InjectedPayloadCreationPass<MockInjectAtOpcodePass> {
+    : public llvm::PassInfoMixin<MockInjectAtOpcodePass> {
 public:
   static llvm::StringRef name() { return "luthier-mock-inject-at-opcode"; }
 
@@ -124,8 +121,7 @@ public:
 //===----------------------------------------------------------------------===//
 
 class MockInjectAtAllVGPRDefsWithRegArgPass
-    : public luthier::InjectedPayloadCreationPass<
-          MockInjectAtAllVGPRDefsWithRegArgPass> {
+    : public llvm::PassInfoMixin<MockInjectAtAllVGPRDefsWithRegArgPass> {
 public:
   static llvm::StringRef name() {
     return "luthier-mock-inject-at-all-vgpr-defs-with-regarg";
