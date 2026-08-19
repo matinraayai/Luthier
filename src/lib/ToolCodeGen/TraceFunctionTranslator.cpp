@@ -21,6 +21,7 @@
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
+#include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/MIInlineAsmEmitter.h"
 #include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/Metadata.h"
@@ -2141,6 +2142,75 @@ void TraceFunctionTranslator::raiseMachineInstr(const llvm::MachineInstr &MI,
   switch (MI.getOpcode()) {
 
 #include "SIInstrSemantics.inc"
+
+  case llvm::TargetOpcode::PATCHPOINT: {
+    // Raise the PATCHPOINT injection marker into a distinct call to a
+    // \c luthier.patchpoint function declaration. The call carries the
+    // payload's extern handle as its first argument, followed by the
+    // materialized values of the marker's implicit-use regs. Its return
+    // type encodes the implicit-def regs: void if none, the reg's value
+    // directly if there is exactly one, a literal struct of values if
+    // there are two or more. Each site gets its own function decl —
+    // LLVM auto-suffixes the shared "luthier.patchpoint" name — because
+    // the signature is site-specific.
+    llvm::Module *M = MF.getFunction().getParent();
+    llvm::LLVMContext &Ctx = M->getContext();
+
+    // PatchpointOpers::TargetPos = 2 holds the payload extern's
+    // MO_GlobalAddress. Prototype::assignToInject built it as a Function
+    // decl in the target module.
+    auto *PayloadHandle = llvm::cast<llvm::Function>(
+        const_cast<llvm::GlobalValue *>(MI.getOperand(2).getGlobal()));
+
+    // Split the marker's implicit operands into use and def phys-regs.
+    llvm::SmallVector<llvm::MCRegister, 4> UseRegs;
+    llvm::SmallVector<llvm::MCRegister, 4> DefRegs;
+    for (const llvm::MachineOperand &Op : MI.implicit_operands()) {
+      if (!Op.isReg())
+        continue;
+      if (Op.isDef())
+        DefRegs.push_back(Op.getReg().asMCReg());
+      else
+        UseRegs.push_back(Op.getReg().asMCReg());
+    }
+
+    // Argument list: {payload handle, use-reg values...}.
+    llvm::SmallVector<llvm::Value *, 4> CallArgs;
+    llvm::SmallVector<llvm::Type *, 4> ArgTypes;
+    CallArgs.push_back(PayloadHandle);
+    ArgTypes.push_back(PayloadHandle->getType());
+    for (llvm::MCRegister R : UseRegs) {
+      llvm::Value &V = getOperandAsValue(MI, R);
+      CallArgs.push_back(&V);
+      ArgTypes.push_back(V.getType());
+    }
+
+    // Return type: void / T / literal struct{T1, T2, ...}.
+    llvm::SmallVector<llvm::Type *, 4> DefTypes;
+    for (llvm::MCRegister R : DefRegs)
+      DefTypes.push_back(llvm::IntegerType::get(Ctx, getPhysRegisterSize(R)));
+    llvm::Type *RetTy = DefTypes.empty() ? llvm::Type::getVoidTy(Ctx)
+                        : DefTypes.size() == 1
+                            ? DefTypes.front()
+                            : llvm::StructType::get(Ctx, DefTypes);
+
+    auto *FnTy = llvm::FunctionType::get(RetTy, ArgTypes, /*isVarArg=*/false);
+    auto *PatchpointFn = llvm::Function::Create(
+        FnTy, llvm::GlobalValue::ExternalLinkage, "luthier.patchpoint", M);
+
+    llvm::CallInst *Call = Builder.CreateCall(PatchpointFn, CallArgs);
+
+    // Write back the implicit-def values into the register value map.
+    if (DefRegs.size() == 1) {
+      setRegOperandValue(MI, DefRegs.front(), Call);
+    } else {
+      for (unsigned I = 0, E = DefRegs.size(); I != E; ++I) {
+        llvm::Value *V = Builder.CreateExtractValue(Call, {I});
+        setRegOperandValue(MI, DefRegs[I], V);
+      }
+    }
+    break;
+  }
 
   default: {
     LLVM_DEBUG(luthier::dbgs()
