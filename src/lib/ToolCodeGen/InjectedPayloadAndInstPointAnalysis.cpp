@@ -19,9 +19,13 @@
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/Prototype.h"
+#include <llvm/ADT/StringRef.h>
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
+#include <llvm/CodeGen/MachineOperand.h>
+#include <llvm/CodeGen/TargetOpcodes.h>
+#include <llvm/IR/Function.h>
 #include <llvm/IR/Module.h>
 
 #undef DEBUG_TYPE
@@ -56,31 +60,34 @@ InjectedPayloadAndInstPointAnalysis::run(Prototype &P,
       PAM.getResult<TargetFunctionAnalysisManagerPrototypeProxy>(P)
           .getManager();
 
-  // Build a reverse map: pcsections MDNode* → MachineInstr* for all target MIs.
-  llvm::DenseMap<const llvm::MDNode *, llvm::MachineInstr *> PCSToMI;
-  for (llvm::Function &F : TargetModule) {
-
-    llvm::MachineFunctionAnalysis::Result *MFRes =
-        FAM.getCachedResult<llvm::MachineFunctionAnalysis>(F);
-    if (MFRes) {
-      for (llvm::MachineBasicBlock &MBB : MFRes->getMF()) {
-        for (llvm::MachineInstr &MI : MBB) {
-          if (llvm::MDNode *PCS = MI.getPCSections())
-            PCSToMI.insert({PCS, &MI});
-        }
-      }
-    }
+  // Index the instrumentation module's injected-payload definitions by name.
+  llvm::DenseMap<llvm::StringRef, llvm::Function *> PayloadDefsByName;
+  for (llvm::Function &F : IModule) {
+    if (F.hasFnAttribute(InjectedPayloadAttribute))
+      PayloadDefsByName[F.getName()] = &F;
   }
 
-  // Scan IModule functions for !luthier.target_instr_point metadata.
-  // Each such function is a collector (injected payload) whose metadata
-  // points to the pcsections MDNode of its target MI.
-  for (llvm::Function &F : IModule) {
-    llvm::MDNode *MD = F.getMetadata(TargetInstrPointAttr);
-    if (!MD)
+  // Walk the target module's MIR for PATCHPOINT markers
+  for (llvm::Function &F : TargetModule) {
+    llvm::MachineFunctionAnalysis::Result *MFRes =
+        FAM.getCachedResult<llvm::MachineFunctionAnalysis>(F);
+    if (!MFRes)
       continue;
-    if (auto It = PCSToMI.find(MD); It != PCSToMI.end())
-      Result.addEntry(*It->second, F);
+    for (llvm::MachineBasicBlock &MBB : MFRes->getMF()) {
+      for (llvm::MachineInstr &MI : MBB) {
+        if (MI.getOpcode() != llvm::TargetOpcode::PATCHPOINT)
+          continue;
+        const llvm::MachineOperand &TargetOp = MI.getOperand(2);
+        assert(TargetOp.isGlobal() &&
+               "Second operand must be the injected payload function name");
+        auto *ExternHandle = llvm::cast<llvm::Function>(
+            const_cast<llvm::GlobalValue *>(TargetOp.getGlobal()));
+        auto It = PayloadDefsByName.find(ExternHandle->getName());
+        assert(It != PayloadDefsByName.end() &&
+               "Payload extern decl doesn't have an associated definition");
+        Result.addEntry(MI, *It->second, *ExternHandle);
+      }
+    }
   }
 
   return Result;
