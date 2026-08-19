@@ -12,8 +12,9 @@
 
 # CHECK: define internal void @_Z11bumpCounterv
 # Multiple injected payloads expected — VectorAdd has many VALU
-# instructions on this arch.
-# CHECK-COUNT-3: define internal void @luthier.payload.vector_add.
+# instructions on this arch. Each payload shares the "luthier.payload"
+# base name, disambiguated by LLVM's numeric suffix.
+# CHECK-COUNT-3: define internal void @luthier.payload
 
 ---
 TargetModule:     |

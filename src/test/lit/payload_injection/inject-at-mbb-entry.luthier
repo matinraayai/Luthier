@@ -12,10 +12,13 @@
 
 # CHECK: define internal void @_Z11bumpCounterv
 # At least two distinct injected-payload functions should be created (one
-# per MBB in the target kernel).
-# CHECK-DAG: define internal void @luthier.payload.vector_add.0.0()
-# CHECK-DAG: define internal void @luthier.payload.vector_add.{{[1-9][0-9]*}}.0()
-# CHECK-DAG: call void @_Z11bumpCounterv()
+# per MBB in the target kernel). Each shares the "luthier.payload" base
+# name, disambiguated by LLVM's numeric suffix.
+# CHECK-DAG: define internal void @luthier.payload()
+# CHECK-DAG: define internal void @luthier.payload.{{[0-9]+}}()
+# The hook is force-inlined into each payload; its atomicrmw appears in the
+# payload body instead of a call to the hook symbol.
+# CHECK-DAG: atomicrmw add ptr addrspace(1) @TrivialCounter
 
 ---
 TargetModule:     |

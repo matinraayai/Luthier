@@ -14,8 +14,10 @@
 # RUN: FileCheck %s < %t.out.luthier
 
 # CHECK: define internal void @_Z11bumpCounterv
-# CHECK-COUNT-1: define internal void @luthier.payload.vector_add.
-# CHECK-NOT:    define internal void @luthier.payload.vector_add.{{.*}}
+# The single match produces one payload definition; the mock pass at this
+# opcode filter should not create any additional ones.
+# CHECK-COUNT-1: define internal void @luthier.payload{{(\.[0-9]+)?}}()
+# CHECK-NOT:    define internal void @luthier.payload{{(\.[0-9]+)?}}()
 
 ---
 TargetModule:     |

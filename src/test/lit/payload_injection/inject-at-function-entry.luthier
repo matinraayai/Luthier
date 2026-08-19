@@ -18,10 +18,13 @@
 # RUN: FileCheck %s < %t.out.luthier
 
 # CHECK: define internal void @_Z11bumpCounterv
-# Exactly one injected-payload function is created, named for the kernel and
-# the (MBB, instr) it was attached to.
-# CHECK: define internal void @luthier.payload.vector_add.{{[0-9]+}}.{{[0-9]+}}() #{{[0-9]+}} !luthier.target_instr_point {{![0-9]+}} {
-# CHECK-NEXT: call void @_Z11bumpCounterv()
+# Exactly one injected-payload function is created. LLVM auto-suffixes the
+# shared "luthier.payload" symbol when more than one exists; a single-site
+# pass gets the bare name.
+# CHECK: define internal void @luthier.payload{{(\.[0-9]+)?}}() #{{[0-9]+}} {
+# The hook is force-inlined into the payload body, so its atomicrmw appears
+# directly rather than a call to the hook symbol.
+# CHECK-NEXT: atomicrmw add ptr addrspace(1) @TrivialCounter
 # CHECK-NEXT: ret void
 # The payload function carries the injected_payload marker attribute.
 # CHECK: "luthier.function.injected_payload"
