@@ -77,24 +77,19 @@ readRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
 
   IntrinsicIRLoweringInfo Out;
   Out.setReturnValueInfo(User, Constraint);
-  // Forward the physical register enum value to the MIR lowering stage
-  Out.addExtraLoweringValue(*llvm::ConstantInt::get(
-      llvm::Type::getInt32Ty(Intrinsic.getContext()), Reg.id()));
-  Out.getEffects().ReadPhysRegs.push_back(Reg);
+  Out.addArgInfo(*Arg, "i");
 
   return Out;
 }
 
 llvm::Error readRegMIRProcessor(
     const llvm::MachineFunction &MF,
-    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
-    llvm::MDNode *Payload,
+    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::MachineOperand *>>
+        Args,
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
     const std::function<llvm::Register(const llvm::TargetRegisterClass *)>
         &VirtRegBuilder,
-    const llvm::DenseMap<ScalarValueArgument, llvm::Register> &,
-    const llvm::DenseMap<llvm::MCRegister, llvm::Register> &ReadPhysRegVRegs,
-    llvm::DenseMap<llvm::MCRegister, llvm::Register> &) {
+    const llvm::DenseMap<llvm::MCRegister, llvm::Register> &ReadPhysRegVRegs) {
   // There should be only a single virtual register involved in the operation
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args.size() == 1, llvm::formatv("Number of virtual register arguments "
@@ -104,19 +99,9 @@ llvm::Error readRegMIRProcessor(
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args[0].first.isRegDefKind(),
       "The register argument of luthier::readReg is not a definition."));
-  llvm::Register Output = Args[0].second;
+  llvm::Register Output = Args[0].second->getReg();
 
-  // Extract the source physical register from the forwarded payload MDNode
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      Payload && Payload->getNumOperands() == 1,
-      "luthier::readReg MIR payload must contain exactly one operand"));
-  auto *RegMeta =
-      llvm::dyn_cast<llvm::ConstantAsMetadata>(Payload->getOperand(0));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      RegMeta != nullptr,
-      "luthier::readReg payload operand is not a ConstantAsMetadata"));
-  llvm::MCRegister Src(
-      llvm::cast<llvm::ConstantInt>(RegMeta->getValue())->getZExtValue());
+  llvm::MCRegister Src(Args[1].second->getImm());
 
   auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
   auto *TRI = ST.getRegisterInfo();

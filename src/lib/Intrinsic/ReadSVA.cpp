@@ -61,12 +61,7 @@ readSVAIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
   // readSVA always returns its value into an SGPR — the SA lanes live in
   // the SVA VGPR and are read out via V_READLANE_B32 into SGPRs.
   Out.setReturnValueInfo(User, "s");
-  // Forward the SA enum to the MIR processor as an i32 payload constant.
-  Out.addExtraLoweringValue(*llvm::ConstantInt::get(
-      llvm::Type::getInt32Ty(Intrinsic.getContext()), SAVal));
-  // Declare the SA so StateValueArraySpecs::setModuleSVASpec picks it up
-  // when the lowering pass finalizes the SVA layout.
-  Out.getEffects().ReadSVAs.push_back(SA);
+  Out.addArgInfo(*Arg, "i");
 
   return Out;
 }

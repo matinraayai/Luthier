@@ -14,6 +14,7 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolIRCompilation/FinalizeIntrinsicsPass.h"
+#include "luthier/Common/GenericLuthierError.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include <cstdlib>
 #include <cstring>
@@ -73,11 +74,11 @@ FinalizeIntrinsicsPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &) {
   }
 
   for (llvm::Function *Intrinsic : Intrinsics) {
-    Intrinsic->deleteBody();
-    Intrinsic->setComdat(nullptr);
-    Intrinsic->setLinkage(llvm::GlobalValue::ExternalLinkage);
-    Intrinsic->setVisibility(llvm::GlobalValue::DefaultVisibility);
-    Intrinsic->setDSOLocal(false);
+    if (!Intrinsic->isDeclaration()) {
+      M.getContext().emitError(
+          llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+              "Intrinsic {0} is not a declaration.", Intrinsic->getName()))));
+    }
 
     llvm::StringRef MangledIntrinsicName = Intrinsic->getName();
     std::string DemangledIntrinsicName =

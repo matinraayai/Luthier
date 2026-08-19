@@ -45,11 +45,6 @@ implicitArgPtrIRProcessor(const llvm::Function &Intrinsic,
   luthier::IntrinsicIRLoweringInfo Out;
   // The kernarg hidden address will be returned in an SGPR
   Out.setReturnValueInfo(User, "s");
-  // We need access to the base of the kernel argument buffer, and the offset
-  // from where the hidden kernel argument starts. Declare them up front so
-  // the MIR-lowering driver pre-stages the SVA vregs.
-  Out.getEffects().ReadSVAs.push_back(KERNEL_ARG_PTR);
-  Out.getEffects().ReadSVAs.push_back(IMPLICIT_ARG_OFFSET);
 
   return Out;
 }

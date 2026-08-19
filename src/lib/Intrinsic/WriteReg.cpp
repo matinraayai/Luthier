@@ -45,7 +45,7 @@ writeRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
                     "luthier::writeReg intrinsic '{0}', got {1}.",
                     User, User.arg_size())));
 
-  luthier::IntrinsicIRLoweringInfo Out;
+  IntrinsicIRLoweringInfo Out;
   // The first argument specifies the destination MCRegister enum value.
   auto *DestRegEnum = llvm::dyn_cast<llvm::ConstantInt>(User.getArgOperand(0));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
@@ -71,63 +71,27 @@ writeRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
         "Unable to find a suitable register class for writing into {0}.",
         DestReg.id()));
   Out.setReturnValueInfo(User, Constraint);
-  // The second argument specifies the source register
-  auto *SrcReg = User.getArgOperand(1);
-  Out.addArgInfo(*SrcReg, Constraint);
-  // Forward the physical destination register enum to the MIR stage
-  Out.addExtraLoweringValue(*llvm::ConstantInt::get(
-      llvm::Type::getInt32Ty(Intrinsic.getContext()), DestReg.id()));
-  Out.getEffects().WrittenPhysRegs.push_back(DestReg);
-  // Sub-32-bit destinations are written via INSERT_SUBREG into the
-  // enclosing 32-bit super-register, which requires reading the
-  // super-register's current value. Declare that read so the driver
-  // pre-stages the channel value.
-  unsigned DestSizeBits = TRI->getRegSizeInBits(*PhysRegClass);
-  if (DestSizeBits < 32) {
-    const auto *SITRI = static_cast<const llvm::SIRegisterInfo *>(TRI);
-    llvm::MCRegister SuperReg = SITRI->get32BitRegister(DestReg);
-    Out.getEffects().ReadPhysRegs.push_back(SuperReg);
-  }
+  Out.addArgInfo(*DestRegEnum, "i");
+
 
   return Out;
 }
 
 llvm::Error writeRegMIRProcessor(
     const llvm::MachineFunction &MF,
-    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
-    llvm::MDNode *Payload,
+    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::MachineOperand *>>
+        Args,
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
     const std::function<llvm::Register(const llvm::TargetRegisterClass *)>
         &VirtRegBuilder,
-    const llvm::DenseMap<ScalarValueArgument, llvm::Register> &,
     const llvm::DenseMap<llvm::MCRegister, llvm::Register> &ReadPhysRegVRegs,
     llvm::DenseMap<llvm::MCRegister, llvm::Register> &WritePhysRegSlots) {
-  // The inline-asm placeholder for writeReg carries both a use (the input
-  // value) and a (dead) def produced by setReturnValueInfo on the IR side.
-  // We only care about the use here.
-  llvm::Register InputReg;
-  for (const auto &[Flag, Reg] : Args) {
-    if (Flag.isRegUseKind()) {
-      InputReg = Reg;
-      break;
-    }
-  }
+  llvm::Register InputReg(Args[0].second->getReg());
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       InputReg.isValid(),
       "luthier::writeReg: no register-use operand found among inline-asm "
       "args."));
-
-  // Extract the destination physical register from the payload
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      Payload && Payload->getNumOperands() == 1,
-      "luthier::writeReg MIR payload must contain exactly one operand"));
-  auto *RegMeta =
-      llvm::dyn_cast<llvm::ConstantAsMetadata>(Payload->getOperand(0));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      RegMeta != nullptr,
-      "luthier::writeReg payload operand is not a ConstantAsMetadata"));
-  llvm::MCRegister Dest(
-      llvm::cast<llvm::ConstantInt>(RegMeta->getValue())->getZExtValue());
+  llvm::MCRegister Dest(Args[1].second->getImm());
 
   auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
   auto *TRI = ST.getRegisterInfo();
@@ -147,7 +111,7 @@ llvm::Error writeRegMIRProcessor(
       auto SubIdx = llvm::SIRegisterInfo::getSubRegFromChannel(I);
       auto InputSubRegClass = TRI->getSubRegisterClass(InputRegClass, SubIdx);
       auto SubReg = VirtRegBuilder(InputSubRegClass);
-      MIBuilder(llvm::AMDGPU::COPY)
+      (void)MIBuilder(llvm::AMDGPU::COPY)
           .addReg(SubReg, llvm::RegState::Define)
           .addReg(InputReg, llvm::RegState::NoFlags, SubIdx);
       WritePhysRegSlots.insert({TRI->getSubReg(Dest, SubIdx), SubReg});
@@ -164,7 +128,7 @@ llvm::Error writeRegMIRProcessor(
         "missing from pre-staged read map (IR processor must declare it in "
         "Effects.ReadPhysRegs)"));
     auto SuperRegVirt = VirtRegBuilder(TRI->getPhysRegBaseClass(SuperRegDest));
-    MIBuilder(llvm::AMDGPU::INSERT_SUBREG)
+    (void)MIBuilder(llvm::AMDGPU::INSERT_SUBREG)
         .addReg(SuperRegVirt, llvm::RegState::Define)
         .addReg(SuperRegIt->second)
         .addReg(InputReg)
