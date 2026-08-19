@@ -383,58 +383,6 @@ static llvm::MCRegister getIndirectCallTargetReg(const llvm::MachineInstr &MI) {
 // Payload map + payload-side resolution helpers
 // ---------------------------------------------------------------------------
 
-namespace {
-
-/// Maps each target-module \c MachineInstr (identified via its pcsections
-/// \c MDNode) to the ordered list of injected-payload functions attached to
-/// it. Built from the IModule + the target module's cached MFs so
-/// \c PrototypeCallGraphAnalysis is self-contained (independent of
-/// \c InjectedPayloadAndInstPointAnalysis, which cannot be queried at
-/// \c CodeDiscoveryPass time).
-using AppMIToPayloadsMap =
-    llvm::DenseMap<llvm::MachineInstr *,
-                   llvm::SmallVector<llvm::Function *, 2>>;
-
-} // namespace
-
-/// Build the AppMI → payloads map by scanning \p IModule for functions
-/// tagged as injected payloads (\c luthier.function.injected_payload) and
-/// matching each payload's \c luthier.target_instr_point metadata (which is
-/// the pcsections \c MDNode of the target MI it attaches to) against the
-/// pcsections nodes of the target module's cached MIs.
-static AppMIToPayloadsMap
-buildAppMIToPayloadsMap(llvm::Module &TargetModule,
-                        llvm::FunctionAnalysisManager &TargetFAM,
-                        llvm::Module &IModule) {
-  llvm::DenseMap<const llvm::MDNode *, llvm::MachineInstr *> PCSToMI;
-  for (llvm::Function &F : TargetModule) {
-    if (F.isDeclaration())
-      continue;
-    auto *MFRes = TargetFAM.getCachedResult<llvm::MachineFunctionAnalysis>(F);
-    if (!MFRes)
-      continue;
-    for (llvm::MachineBasicBlock &MBB : MFRes->getMF()) {
-      for (llvm::MachineInstr &MI : MBB) {
-        if (llvm::MDNode *PCS = MI.getPCSections())
-          PCSToMI.insert({PCS, &MI});
-      }
-    }
-  }
-
-  AppMIToPayloadsMap Out;
-  for (llvm::Function &F : IModule) {
-    if (!F.hasFnAttribute(InjectedPayloadAttribute))
-      continue;
-    llvm::MDNode *MD = F.getMetadata(TargetInstrPointAttr);
-    if (!MD)
-      continue;
-    auto It = PCSToMI.find(MD);
-    if (It != PCSToMI.end())
-      Out[It->second].push_back(&F);
-  }
-  return Out;
-}
-
 // Forward declaration; defined below \c runTrace.
 static bool resolveViaPayloads(
     llvm::Module &TargetModule, llvm::Module &IModule,
