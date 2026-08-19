@@ -51,14 +51,11 @@ writeExecIRProcessor(const llvm::Function &Intrinsic,
 
 llvm::Error writeExecMIRProcessor(
     const llvm::MachineFunction &MF,
-    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
-    llvm::MDNode *Payload,
+    llvm::ArrayRef<
+        std::pair<llvm::InlineAsm::Flag, const llvm::MachineOperand *>>
+        Args,
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
-    const std::function<llvm::Register(const llvm::TargetRegisterClass *)>
-        &VirtRegBuilder,
-    const llvm::DenseMap<ScalarValueArgument, llvm::Register> &,
-    const llvm::DenseMap<llvm::MCRegister, llvm::Register> &,
-    llvm::DenseMap<llvm::MCRegister, llvm::Register> &) {
+    const std::function<llvm::Register(const llvm::TargetRegisterClass *)> &) {
   // There should be only a single virtual register involved in the operation
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args.size() == 1, llvm::formatv("Number of virtual register arguments "
@@ -69,7 +66,7 @@ llvm::Error writeExecMIRProcessor(
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args[0].first.isRegUseKind(),
       "The register argument of luthier::writeExec is not a definition."));
-  llvm::Register InputReg = Args[0].second;
+  llvm::Register InputReg = Args[0].second->getReg();
 
   (void)MIBuilder(llvm::AMDGPU::COPY)
       .addReg(llvm::AMDGPU::EXEC, llvm::RegState::Define)

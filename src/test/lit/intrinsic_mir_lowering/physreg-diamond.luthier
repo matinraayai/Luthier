@@ -184,30 +184,23 @@ InstrumentationModule:  |
     ; Function Attrs: noinline
     define void @luthier.payload.diamond() #0 {
     entry:
-      %0 = call i32 asm sideeffect "luthier.placeholder.0", "=s"()
+      %0 = call i32 asm sideeffect "luthier::readReg", "=s,i"(i32 328)
       %cond = icmp eq i32 %0, 0
       br i1 %cond, label %taken, label %join, !amdgpu.uniform !3
 
     taken:                                            ; preds = %entry
       %newval = add i32 %0, 7
-      %1 = call i32 asm sideeffect "luthier.placeholder.1", "=s,s"(i32 %newval)
+      call void asm sideeffect "luthier::writeReg", "s,i"(i32 %newval, i32 328)
       br label %join
 
     join:                                             ; preds = %taken, %entry
-      %2 = call i32 asm sideeffect "luthier.placeholder.0", "=s"()
+      %2 = call i32 asm sideeffect "luthier::readReg", "=s,i"(i32 328)
       ret void
     }
 
     attributes #0 = { noinline "luthier.function.injected_payload" "target-cpu"="gfx908" "target-features"="+wavefrontsize64" }
 
-    !luthier.intrinsic.placeholders = !{!0, !4}
-
-    !0 = !{!"luthier.placeholder.0", !"luthier::readReg", !1, !2}
-    !1 = !{i32 328}
-    !2 = !{!3, !1, !3}
     !3 = !{}
-    !4 = !{!"luthier.placeholder.1", !"luthier::writeReg", !1, !5}
-    !5 = !{!3, !3, !1}
   ...
   ---
   name:            luthier.payload.diamond
@@ -333,7 +326,7 @@ InstrumentationModule:  |
     bb.0.entry:
       successors: %bb.1(0x30000000), %bb.2(0x50000000)
 
-      INLINEASM &luthier.placeholder.0, sideeffect attdialect, regdef:SReg_32, def %9
+      INLINEASM &"luthier::readReg", sideeffect attdialect, regdef:SReg_32, def %9, imm, 328
       %0:sreg_32 = COPY %9
       %10:sreg_32 = S_MOV_B32 0
       S_CMP_LG_U32 %9, killed %10, implicit-def $scc
@@ -345,10 +338,10 @@ InstrumentationModule:  |
 
       %13:sreg_32 = S_MOV_B32 7
       %12:sreg_32 = S_ADD_I32 %0, killed %13, implicit-def dead $scc
-      INLINEASM &luthier.placeholder.1, sideeffect attdialect, regdef:SReg_32, def %11, reguse:SReg_32, %12
+      INLINEASM &"luthier::writeReg", sideeffect attdialect, reguse:SReg_32, %12, imm, 328
 
     bb.2.join:
-      INLINEASM &luthier.placeholder.0, sideeffect attdialect, regdef:SReg_32, def %14
+      INLINEASM &"luthier::readReg", sideeffect attdialect, regdef:SReg_32, def %14, imm, 328
       SI_RETURN
   ...
 InstrumentationModuleFormat: MIR

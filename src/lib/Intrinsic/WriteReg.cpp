@@ -71,26 +71,39 @@ writeRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
         "Unable to find a suitable register class for writing into {0}.",
         DestReg.id()));
   Out.setReturnValueInfo(User, Constraint);
+  // The value to write comes first as a register-use operand so the MIR
+  // processor can find it at Args[0]. The destination phys-reg enum follows
+  // as an immediate at Args[1].
+  Out.addArgInfo(*User.getArgOperand(1), Constraint);
   Out.addArgInfo(*DestRegEnum, "i");
-
 
   return Out;
 }
 
 llvm::Error writeRegMIRProcessor(
     const llvm::MachineFunction &MF,
-    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::MachineOperand *>>
+    llvm::ArrayRef<
+        std::pair<llvm::InlineAsm::Flag, const llvm::MachineOperand *>>
         Args,
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
     const std::function<llvm::Register(const llvm::TargetRegisterClass *)>
         &VirtRegBuilder,
     const llvm::DenseMap<llvm::MCRegister, llvm::Register> &ReadPhysRegVRegs,
     llvm::DenseMap<llvm::MCRegister, llvm::Register> &WritePhysRegSlots) {
-  llvm::Register InputReg(Args[0].second->getReg());
+  // Two inline-asm operands: the reg-use value at Args[0] and the
+  // destination phys-reg-enum immediate at Args[1].
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      InputReg.isValid(),
-      "luthier::writeReg: no register-use operand found among inline-asm "
-      "args."));
+      Args.size() == 2,
+      llvm::formatv("Number of arguments to the MIR lowering stage of "
+                    "luthier::writeReg is {0} instead of 2.",
+                    Args.size())));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      Args[0].first.isRegUseKind(),
+      "The first argument of luthier::writeReg is not a register use."));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      Args[1].first.isImmKind(),
+      "The second argument of luthier::writeReg is not an immediate."));
+  llvm::Register InputReg(Args[0].second->getReg());
   llvm::MCRegister Dest(Args[1].second->getImm());
 
   auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();

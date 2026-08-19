@@ -47,50 +47,6 @@ bool InjectedPayloadSideEffects::invalidate(
          !PAC.preservedSet<llvm::AllAnalysesOn<llvm::Function>>();
 }
 
-namespace {
-
-/// If \p CI's callee is a Luthier inline-asm placeholder (emitted by
-/// \c ProcessIntrinsicsAtIRLevelPass ), returns its opaque template-string
-/// key; otherwise returns an empty \c StringRef .
-llvm::StringRef getPlaceholderKey(const llvm::CallInst &CI) {
-  auto *IA = llvm::dyn_cast<llvm::InlineAsm>(CI.getCalledOperand());
-  if (!IA)
-    return {};
-  llvm::StringRef AsmStr = IA->getAsmString();
-  if (!AsmStr.starts_with(LuthierIntrinsicPlaceholderKeyPrefix))
-    return {};
-  return AsmStr;
-}
-
-using PlaceholderEffectsMap =
-    llvm::DenseMap<llvm::StringRef, IntrinsicISAStateEffects>;
-
-/// Build a map from placeholder key to decoded
-/// \c IntrinsicISAStateEffects by scanning the module's
-/// \c !luthier.intrinsic.placeholders named metadata. Returns an empty map
-/// when the named node is absent (i.e. \c ProcessIntrinsicsAtIRLevelPass
-/// has not run yet).
-PlaceholderEffectsMap buildPlaceholderEffectsMap(const llvm::Module &M) {
-  PlaceholderEffectsMap Out;
-  const llvm::NamedMDNode *NamedMD =
-      M.getNamedMetadata(LuthierIntrinsicNamedMDName);
-  if (!NamedMD)
-    return Out;
-  for (const llvm::MDNode *Entry : NamedMD->operands()) {
-    if (!Entry || Entry->getNumOperands() < 4)
-      continue;
-    auto *KeyMD = llvm::dyn_cast<llvm::MDString>(Entry->getOperand(0));
-    if (!KeyMD)
-      continue;
-    const auto *EffNode = llvm::dyn_cast<llvm::MDNode>(Entry->getOperand(3));
-    Out.try_emplace(KeyMD->getString(),
-                    decodeIntrinsicISAStateEffects(EffNode));
-  }
-  return Out;
-}
-
-} // namespace
-
 InjectedPayloadSideEffectsAnalysis::Result
 InjectedPayloadSideEffectsAnalysis::run(llvm::Function &F,
                                          llvm::FunctionAnalysisManager &FAM) {
@@ -98,107 +54,55 @@ InjectedPayloadSideEffectsAnalysis::run(llvm::Function &F,
   if (!F.hasFnAttribute(InjectedPayloadAttribute))
     return Out;
 
-  llvm::Module &IModule = *F.getParent();
-  llvm::LLVMContext &Ctx = F.getContext();
-
-  auto &MAMProxy = FAM.getResult<llvm::ModuleAnalysisManagerFunctionProxy>(F);
-
-  // Post-lowering path is driven by module-level metadata; populated lazily
-  // and left empty when the named MD is absent (pre-lowering).
-  PlaceholderEffectsMap Placeholders = buildPlaceholderEffectsMap(IModule);
-
-  // TM and the intrinsic-processor registry are only required for the
-  // pre-lowering path — resolve on first use so purely post-lowering runs
-  // don't fail if either happens to be uncached.
-  const llvm::GCNTargetMachine *TM = nullptr;
-  const IntrinsicsProcessorsAnalysis::Result *Processors = nullptr;
-  bool ProcessorsLookupFailed = false;
-  bool TMLookupFailed = false;
-
-  auto getProcessors = [&]() -> const IntrinsicsProcessorsAnalysis::Result * {
-    if (Processors || ProcessorsLookupFailed)
-      return Processors;
-    Processors =
-        MAMProxy.getCachedResult<IntrinsicsProcessorsAnalysis>(IModule);
-    if (!Processors) {
-      Ctx.emitError("InjectedPayloadSideEffectsAnalysis: "
-                    "IntrinsicsProcessorsAnalysis was not cached in the "
-                    "module analysis manager.");
-      ProcessorsLookupFailed = true;
-    }
-    return Processors;
-  };
-
-  auto getTM = [&]() -> const llvm::GCNTargetMachine * {
-    if (TM || TMLookupFailed)
-      return TM;
-    auto *MMA = MAMProxy.getCachedResult<llvm::MachineModuleAnalysis>(IModule);
-    if (!MMA) {
-      Ctx.emitError(
-          "InjectedPayloadSideEffectsAnalysis: "
-          "MachineModuleAnalysis is required but not cached in the module "
-          "analysis manager.");
-      TMLookupFailed = true;
-      return nullptr;
-    }
-    TM =
-        &static_cast<const llvm::GCNTargetMachine &>(MMA->getMMI().getTarget());
-    return TM;
-  };
-
-  auto unionEffects = [&](const IntrinsicISAStateEffects &Eff) {
-    for (llvm::MCRegister R : Eff.ReadPhysRegs)
-      Out.Reads.insert(R);
-    for (llvm::MCRegister R : Eff.WrittenPhysRegs)
-      Out.Writes.insert(R);
-    for (ScalarValueArgument SA : Eff.ReadSVAs)
-      Out.SVAs.insert(SA);
-  };
-
   for (llvm::Instruction &I : llvm::instructions(F)) {
     auto *CI = llvm::dyn_cast<llvm::CallInst>(&I);
     if (!CI)
       continue;
 
-    // Post-lowering path: the call is a Luthier inline-asm placeholder;
-    // read effects out of the module's placeholder named-MD side channel.
-    if (llvm::StringRef Key = getPlaceholderKey(*CI); !Key.empty()) {
-      auto It = Placeholders.find(Key);
-      if (It != Placeholders.end())
-        unionEffects(It->second);
+    llvm::StringRef IntrinsicName;
+    // The value carrying the phys-reg-enum / SVA-enum argument, in whichever
+    // operand position the current call form places it.
+    const llvm::Value *EnumArg = nullptr;
+
+    if (auto *IA = llvm::dyn_cast<llvm::InlineAsm>(CI->getCalledOperand())) {
+      // Post-IR-lowering form: the call is an inline-asm placeholder whose
+      // template string is the intrinsic name.
+      IntrinsicName = IA->getAsmString();
+      // readReg / readSVA: `"=s,i"(i32 enum)`         → arg 0
+      // writeReg:         `"s,i"(T val, i32 enum)`    → arg 1
+      if (IntrinsicName == "luthier::readReg" ||
+          IntrinsicName == "luthier::readSVA")
+        EnumArg = CI->getArgOperand(0);
+      else if (IntrinsicName == "luthier::writeReg")
+        EnumArg = CI->getArgOperand(1);
+      else
+        continue;
+    } else if (llvm::Function *Callee = CI->getCalledFunction();
+               Callee && Callee->hasFnAttribute(IntrinsicAttribute)) {
+      // Pre-IR-lowering form: the call targets the intrinsic Function decl.
+      // Both readReg/readSVA (Reg) and writeReg (Reg, Val) put the phys-reg
+      // enum in operand 0.
+      IntrinsicName =
+          Callee->getFnAttribute(IntrinsicAttribute).getValueAsString();
+      if (IntrinsicName != "luthier::readReg" &&
+          IntrinsicName != "luthier::writeReg" &&
+          IntrinsicName != "luthier::readSVA")
+        continue;
+      EnumArg = CI->getArgOperand(0);
+    } else {
       continue;
     }
 
-    // Pre-lowering path: the call targets a Function decl attributed as a
-    // Luthier intrinsic; invoke the IR processor to obtain its effects.
-    llvm::Function *Callee = CI->getCalledFunction();
-    if (!Callee || !Callee->hasFnAttribute(IntrinsicAttribute))
+    auto *CI32 = llvm::dyn_cast<llvm::ConstantInt>(EnumArg);
+    if (!CI32)
       continue;
-    llvm::StringRef IntrinsicName =
-        Callee->getFnAttribute(IntrinsicAttribute).getValueAsString();
-
-    const auto *P = getProcessors();
-    if (!P)
-      continue;
-    std::optional<IntrinsicProcessor> Processor =
-        P->getProcessorIfRegistered(IntrinsicName);
-    if (!Processor.has_value()) {
-      Ctx.emitError(
-          CI, llvm::formatv("Intrinsic {0} is not registered", IntrinsicName)
-                  .str());
-      continue;
-    }
-    const llvm::GCNTargetMachine *TargetM = getTM();
-    if (!TargetM)
-      continue;
-
-    llvm::Expected<IntrinsicIRLoweringInfo> InfoOrErr =
-        Processor->IRProcessor(*Callee, *CI, *TargetM);
-    if (auto Err = InfoOrErr.takeError()) {
-      Ctx.emitError(CI, llvm::toString(std::move(Err)));
-      continue;
-    }
-    unionEffects(InfoOrErr->getEffects());
+    uint64_t v = CI32->getZExtValue();
+    if (IntrinsicName == "luthier::readReg")
+      Out.Reads.insert(v);
+    else if (IntrinsicName == "luthier::writeReg")
+      Out.Writes.insert(v);
+    else // readSVA
+      Out.SVAs.insert(static_cast<ScalarValueArgument>(v));
   }
 
   return Out;

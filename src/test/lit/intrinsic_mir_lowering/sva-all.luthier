@@ -10,9 +10,6 @@
 # RUN:    %s -o %t.out.luthier && \
 # RUN: FileCheck %s < %t.out.luthier
 
-# Ten distinct placeholder keys, one per SA enum value 0..9.
-# CHECK-COUNT-10: !"luthier.placeholder.{{[0-9]+}}", !"luthier::readSVA"
-
 # Total SA sub-lane count: 4+2+2+2+1+1+2+1+2+1 = 18. Each becomes its own
 # SGPRSpill FI loaded via SI_SPILL_S32_RESTORE.
 # CHECK-COUNT-18: stack-id: sgpr-spill
@@ -164,54 +161,20 @@ InstrumentationModule:  |
 
     ; Function Attrs: noinline
     define void @luthier.payload.svaAll() #0 {
-      %1 = call i128 asm sideeffect "luthier.placeholder.9", "=s"()
-      %2 = call i64 asm sideeffect "luthier.placeholder.4", "=s"()
-      %3 = call i64 asm sideeffect "luthier.placeholder.5", "=s"()
-      %4 = call i64 asm sideeffect "luthier.placeholder.6", "=s"()
-      %5 = call i32 asm sideeffect "luthier.placeholder.0", "=s"()
-      %6 = call i32 asm sideeffect "luthier.placeholder.1", "=s"()
-      %7 = call i64 asm sideeffect "luthier.placeholder.7", "=s"()
-      %8 = call i32 asm sideeffect "luthier.placeholder.2", "=s"()
-      %9 = call i64 asm sideeffect "luthier.placeholder.8", "=s"()
-      %10 = call i32 asm sideeffect "luthier.placeholder.3", "=s"()
+      %1 = call i128 asm sideeffect "luthier::readSVA", "=s,i"(i32 0)
+      %2 = call i64 asm sideeffect "luthier::readSVA", "=s,i"(i32 1)
+      %3 = call i64 asm sideeffect "luthier::readSVA", "=s,i"(i32 2)
+      %4 = call i64 asm sideeffect "luthier::readSVA", "=s,i"(i32 3)
+      %5 = call i32 asm sideeffect "luthier::readSVA", "=s,i"(i32 4)
+      %6 = call i32 asm sideeffect "luthier::readSVA", "=s,i"(i32 5)
+      %7 = call i64 asm sideeffect "luthier::readSVA", "=s,i"(i32 6)
+      %8 = call i32 asm sideeffect "luthier::readSVA", "=s,i"(i32 7)
+      %9 = call i64 asm sideeffect "luthier::readSVA", "=s,i"(i32 8)
+      %10 = call i32 asm sideeffect "luthier::readSVA", "=s,i"(i32 9)
       ret void
     }
 
     attributes #0 = { noinline "luthier.function.injected_payload" "target-cpu"="gfx908" "target-features"="+wavefrontsize64" }
-
-    !luthier.intrinsic.placeholders = !{!0, !4, !7, !10, !13, !16, !19, !22, !25, !28}
-
-    !0 = !{!"luthier.placeholder.0", !"luthier::readSVA", !1, !2}
-    !1 = !{i32 4}
-    !2 = !{!1, !3, !3}
-    !3 = !{}
-    !4 = !{!"luthier.placeholder.1", !"luthier::readSVA", !5, !6}
-    !5 = !{i32 5}
-    !6 = !{!5, !3, !3}
-    !7 = !{!"luthier.placeholder.2", !"luthier::readSVA", !8, !9}
-    !8 = !{i32 7}
-    !9 = !{!8, !3, !3}
-    !10 = !{!"luthier.placeholder.3", !"luthier::readSVA", !11, !12}
-    !11 = !{i32 9}
-    !12 = !{!11, !3, !3}
-    !13 = !{!"luthier.placeholder.4", !"luthier::readSVA", !14, !15}
-    !14 = !{i32 1}
-    !15 = !{!14, !3, !3}
-    !16 = !{!"luthier.placeholder.5", !"luthier::readSVA", !17, !18}
-    !17 = !{i32 2}
-    !18 = !{!17, !3, !3}
-    !19 = !{!"luthier.placeholder.6", !"luthier::readSVA", !20, !21}
-    !20 = !{i32 3}
-    !21 = !{!20, !3, !3}
-    !22 = !{!"luthier.placeholder.7", !"luthier::readSVA", !23, !24}
-    !23 = !{i32 6}
-    !24 = !{!23, !3, !3}
-    !25 = !{!"luthier.placeholder.8", !"luthier::readSVA", !26, !27}
-    !26 = !{i32 8}
-    !27 = !{!26, !3, !3}
-    !28 = !{!"luthier.placeholder.9", !"luthier::readSVA", !29, !30}
-    !29 = !{i32 0}
-    !30 = !{!29, !3, !3}
   ...
   ---
   name:            luthier.payload.svaAll
@@ -338,16 +301,16 @@ InstrumentationModule:  |
     minNumAGPRs:     4294967295
   body:             |
     bb.0 (%ir-block.0):
-      INLINEASM &luthier.placeholder.9, sideeffect attdialect, regdef:SGPR_128, def %8
-      INLINEASM &luthier.placeholder.4, sideeffect attdialect, regdef:SGPR_64, def %9
-      INLINEASM &luthier.placeholder.5, sideeffect attdialect, regdef:SGPR_64, def %10
-      INLINEASM &luthier.placeholder.6, sideeffect attdialect, regdef:SGPR_64, def %11
-      INLINEASM &luthier.placeholder.0, sideeffect attdialect, regdef:SReg_32, def %12
-      INLINEASM &luthier.placeholder.1, sideeffect attdialect, regdef:SReg_32, def %13
-      INLINEASM &luthier.placeholder.7, sideeffect attdialect, regdef:SGPR_64, def %14
-      INLINEASM &luthier.placeholder.2, sideeffect attdialect, regdef:SReg_32, def %15
-      INLINEASM &luthier.placeholder.8, sideeffect attdialect, regdef:SGPR_64, def %16
-      INLINEASM &luthier.placeholder.3, sideeffect attdialect, regdef:SReg_32, def %17
+      INLINEASM &"luthier::readSVA", sideeffect attdialect, regdef:SGPR_128, def %8, imm, 0
+      INLINEASM &"luthier::readSVA", sideeffect attdialect, regdef:SGPR_64, def %9, imm, 1
+      INLINEASM &"luthier::readSVA", sideeffect attdialect, regdef:SGPR_64, def %10, imm, 2
+      INLINEASM &"luthier::readSVA", sideeffect attdialect, regdef:SGPR_64, def %11, imm, 3
+      INLINEASM &"luthier::readSVA", sideeffect attdialect, regdef:SReg_32, def %12, imm, 4
+      INLINEASM &"luthier::readSVA", sideeffect attdialect, regdef:SReg_32, def %13, imm, 5
+      INLINEASM &"luthier::readSVA", sideeffect attdialect, regdef:SGPR_64, def %14, imm, 6
+      INLINEASM &"luthier::readSVA", sideeffect attdialect, regdef:SReg_32, def %15, imm, 7
+      INLINEASM &"luthier::readSVA", sideeffect attdialect, regdef:SGPR_64, def %16, imm, 8
+      INLINEASM &"luthier::readSVA", sideeffect attdialect, regdef:SReg_32, def %17, imm, 9
       SI_RETURN
   ...
 InstrumentationModuleFormat: MIR

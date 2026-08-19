@@ -61,13 +61,10 @@ public:
   };
 
 private:
-  // Forward-declared opaque type — definition is local to the .cpp.
-  struct PlaceholderLookupTable;
 
   bool processMachineFunction(
       llvm::MachineFunction &MF, bool IsInjectedPayload,
       const IntrinsicsProcessorsAnalysis::Result &IntrinsicsProcessors,
-      const PlaceholderLookupTable &Placeholders,
       llvm::SmallDenseSet<ScalarValueArgument> &ScalarArgumentsUsed,
       PerFunctionSVAInfo &MFSVAInfo);
 

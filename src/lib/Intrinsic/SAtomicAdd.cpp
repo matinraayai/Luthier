@@ -57,14 +57,11 @@ sAtomicAddIRProcessor(const llvm::Function &Intrinsic,
 
 llvm::Error sAtomicAddMIRProcessor(
     const llvm::MachineFunction &MF,
-    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
-    llvm::MDNode *Payload,
+    llvm::ArrayRef<
+        std::pair<llvm::InlineAsm::Flag, const llvm::MachineOperand *>>
+        Args,
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
-    const std::function<llvm::Register(const llvm::TargetRegisterClass *)>
-        &VirtRegBuilder,
-    const llvm::DenseMap<ScalarValueArgument, llvm::Register> &,
-    const llvm::DenseMap<llvm::MCRegister, llvm::Register> &,
-    llvm::DenseMap<llvm::MCRegister, llvm::Register> &) {
+    const std::function<llvm::Register(const llvm::TargetRegisterClass *)> &) {
   // There should be three virtual register involved in the operation
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args.size() == 3,
@@ -84,9 +81,9 @@ llvm::Error sAtomicAddMIRProcessor(
       Args[2].first.isRegUseKind(), "The third virtual register argument for "
                                     "luthier::sAtomicAdd is not a use."));
   // Get all the involved registers
-  llvm::Register Output = Args[0].second;
-  llvm::Register SBaseAddress = Args[1].second;
-  llvm::Register SData = Args[2].second;
+  llvm::Register Output = Args[0].second->getReg();
+  llvm::Register SBaseAddress = Args[1].second->getReg();
+  llvm::Register SData = Args[2].second->getReg();
   auto &MRI = MF.getRegInfo();
   auto &TRI = *MF.getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
 

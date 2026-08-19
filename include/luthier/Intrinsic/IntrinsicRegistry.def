@@ -27,22 +27,9 @@
 #define REGISTER_INTRINSIC(NAME, IR_PROCESSOR, MIR_PROCESSOR)
 #endif
 
-
-REGISTER_INTRINSIC("luthier::readReg",
-                   readRegIRProcessor,
-                   readRegMIRProcessor)
-REGISTER_INTRINSIC("luthier::readSVA",
-                   readSVAIRProcessor,
-                   readSVAMIRProcessor)
-REGISTER_INTRINSIC("luthier::writeReg",
-                   writeRegIRProcessor,
-                   writeRegMIRProcessor)
 REGISTER_INTRINSIC("luthier::writeExec",
                    writeExecIRProcessor,
                    writeExecMIRProcessor)
-REGISTER_INTRINSIC("luthier::implicitArgPtr",
-                   implicitArgPtrIRProcessor,
-                   implicitArgPtrMIRProcessor)
 REGISTER_INTRINSIC("luthier::sAtomicAdd",
                    sAtomicAddIRProcessor,
                    sAtomicAddMIRProcessor)

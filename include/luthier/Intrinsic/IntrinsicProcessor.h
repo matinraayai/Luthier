@@ -37,6 +37,8 @@ class MachineFunction;
 
 class MachineInstr;
 
+class MachineOperand;
+
 class TargetRegisterClass;
 
 class Register;
@@ -271,12 +273,10 @@ typedef std::function<llvm::Expected<IntrinsicIRLoweringInfo>(
 ///    restore COPYs back the right value.
 typedef std::function<llvm::Error(
     const llvm::MachineFunction &,
-    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>>,
-    llvm::MDNode *, const std::function<llvm::MachineInstrBuilder(int)> &,
-    const std::function<llvm::Register(const llvm::TargetRegisterClass *)> &,
-    const llvm::DenseMap<ScalarValueArgument, llvm::Register> &,
-    const llvm::DenseMap<llvm::MCRegister, llvm::Register> &,
-    llvm::DenseMap<llvm::MCRegister, llvm::Register> &)>
+    llvm::ArrayRef<
+        std::pair<llvm::InlineAsm::Flag, const llvm::MachineOperand *>>,
+    const std::function<llvm::MachineInstrBuilder(int)> &,
+    const std::function<llvm::Register(const llvm::TargetRegisterClass *)> &)>
     IntrinsicMIRProcessorFunc;
 
 /// \brief Used internally to store the intrinsic processors

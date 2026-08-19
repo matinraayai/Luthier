@@ -10,11 +10,6 @@
 # RUN:    %s -o %t.out.luthier && \
 # RUN: FileCheck %s < %t.out.luthier
 
-# The placeholder gets an opaque key as the InlineAsm template string. The
-# named-MD lookup table is emitted alongside the lowered MIR.
-# CHECK:     !luthier.intrinsic.placeholders = !{[[ENTRY:![0-9]+]]}
-# CHECK-DAG: [[ENTRY]] = !{!"luthier.placeholder.0", !"luthier::readSVA", {{![0-9]+}}, {{![0-9]+}}}
-
 # Lowered MIR after mir-lowering: exactly one SI_SPILL_S32_RESTORE for the
 # 1-lane SA, loading from a TargetStackID::SGPRSpill stack slot. The
 # downstream pipeline (SILowerSGPRSpills, SIPreAllocateWWMRegs, the WWM
@@ -172,18 +167,11 @@ InstrumentationModule:  |
 
     ; Function Attrs: noinline
     define void @luthier.payload.sva1() #0 {
-      %1 = call i32 asm sideeffect "luthier.placeholder.0", "=s"()
+      %1 = call i32 asm sideeffect "luthier::readSVA", "=s,i"(i32 4)
       ret void
     }
 
     attributes #0 = { noinline "luthier.function.injected_payload" "target-cpu"="gfx908" "target-features"="+wavefrontsize64" }
-
-    !luthier.intrinsic.placeholders = !{!0}
-
-    !0 = !{!"luthier.placeholder.0", !"luthier::readSVA", !1, !2}
-    !1 = !{i32 4}
-    !2 = !{!1, !3, !3}
-    !3 = !{}
   ...
   ---
   name:            luthier.payload.sva1
@@ -301,7 +289,7 @@ InstrumentationModule:  |
     minNumAGPRs:     4294967295
   body:             |
     bb.0 (%ir-block.0):
-      INLINEASM &luthier.placeholder.0, sideeffect attdialect, regdef:SReg_32, def %8
+      INLINEASM &"luthier::readSVA", sideeffect attdialect, regdef:SReg_32, def %8, imm, 4
       SI_RETURN
   ...
 InstrumentationModuleFormat: MIR

@@ -68,31 +68,25 @@ readSVAIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
 
 llvm::Error readSVAMIRProcessor(
     const llvm::MachineFunction &MF,
-    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
-    llvm::MDNode *Payload,
+    llvm::ArrayRef<
+        std::pair<llvm::InlineAsm::Flag, const llvm::MachineOperand *>>
+        Args,
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
-    const std::function<llvm::Register(const llvm::TargetRegisterClass *)> &,
-    const llvm::DenseMap<ScalarValueArgument, llvm::Register> &SAAccessors,
-    const llvm::DenseMap<llvm::MCRegister, llvm::Register> &,
-    llvm::DenseMap<llvm::MCRegister, llvm::Register> &) {
+    const llvm::DenseMap<ScalarValueArgument, llvm::Register> &SAAccessors) {
+  // Two inline-asm operands: the regdef output and the SA-enum immediate.
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      Args.size() == 1,
-      llvm::formatv("luthier::readSVA: expected 1 vreg arg, got {0}.",
+      Args.size() == 2,
+      llvm::formatv("luthier::readSVA: expected 2 args, got {0}.",
                     Args.size())));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args[0].first.isRegDefKind(),
-      "luthier::readSVA: register argument is not a definition."));
-  llvm::Register Output = Args[0].second;
-
+      "luthier::readSVA: first argument is not a register definition."));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      Payload && Payload->getNumOperands() == 1,
-      "luthier::readSVA MIR payload must contain exactly one operand"));
-  auto *SAMeta = llvm::dyn_cast<llvm::ConstantAsMetadata>(Payload->getOperand(0));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      SAMeta != nullptr,
-      "luthier::readSVA payload operand is not a ConstantAsMetadata"));
-  ScalarValueArgument SA = static_cast<ScalarValueArgument>(
-      llvm::cast<llvm::ConstantInt>(SAMeta->getValue())->getZExtValue());
+      Args[1].first.isImmKind(),
+      "luthier::readSVA: second argument is not an immediate."));
+  llvm::Register Output = Args[0].second->getReg();
+  ScalarValueArgument SA =
+      static_cast<ScalarValueArgument>(Args[1].second->getImm());
 
   // The lowering pass pre-staged a vreg for this SA via
   // SVAScalarArgumentAccessor — find it and COPY into our return reg.

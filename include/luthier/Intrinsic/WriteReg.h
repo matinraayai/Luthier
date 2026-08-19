@@ -34,7 +34,8 @@ writeRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
 
 llvm::Error writeRegMIRProcessor(
     const llvm::MachineFunction &MF,
-    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::MachineOperand *>>
+    llvm::ArrayRef<
+        std::pair<llvm::InlineAsm::Flag, const llvm::MachineOperand *>>
         Args,
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
     const std::function<llvm::Register(const llvm::TargetRegisterClass *)>

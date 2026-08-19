@@ -198,9 +198,9 @@ InstrumentationModule:  |
 
     loop:                                             ; preds = %loop, %entry
       %iv = phi i32 [ 0, %entry ], [ %iv.next, %loop ]
-      %0 = call i32 asm sideeffect "luthier.placeholder.0", "=s"()
+      %0 = call i32 asm sideeffect "luthier::readReg", "=s,i"(i32 328)
       %newval = add i32 %0, 1
-      %1 = call i32 asm sideeffect "luthier.placeholder.1", "=s,s"(i32 %newval)
+      call void asm sideeffect "luthier::writeReg", "s,i"(i32 %newval, i32 328)
       %iv.next = add i32 %iv, 1
       %cond = icmp uge i32 %iv.next, 10
       br i1 %cond, label %exit, label %loop, !amdgpu.uniform !3
@@ -211,14 +211,7 @@ InstrumentationModule:  |
 
     attributes #0 = { noinline "luthier.function.injected_payload" "target-cpu"="gfx908" "target-features"="+wavefrontsize64" }
 
-    !luthier.intrinsic.placeholders = !{!0, !4}
-
-    !0 = !{!"luthier.placeholder.0", !"luthier::readReg", !1, !2}
-    !1 = !{i32 328}
-    !2 = !{!3, !1, !3}
     !3 = !{}
-    !4 = !{!"luthier.placeholder.1", !"luthier::writeReg", !1, !5}
-    !5 = !{!3, !3, !1}
   ...
   ---
   name:            luthier.payload.loop_test
@@ -351,10 +344,10 @@ InstrumentationModule:  |
       successors: %bb.2(0x04000000), %bb.1(0x7c000000)
 
       %0:sreg_32 = PHI %10, %bb.0, %1, %bb.1
-      INLINEASM &luthier.placeholder.0, sideeffect attdialect, regdef:SReg_32, def %11
+      INLINEASM &"luthier::readReg", sideeffect attdialect, regdef:SReg_32, def %11, imm, 328
       %14:sreg_32 = S_MOV_B32 1
       %13:sreg_32 = S_ADD_I32 %11, %14, implicit-def dead $scc
-      INLINEASM &luthier.placeholder.1, sideeffect attdialect, regdef:SReg_32, def %12, reguse:SReg_32, %13
+      INLINEASM &"luthier::writeReg", sideeffect attdialect, reguse:SReg_32, %13, imm, 328
       %1:sreg_32 = S_ADD_I32 %0, %14, implicit-def dead $scc
       %15:sreg_32 = S_MOV_B32 10
       S_CMP_LT_U32 %1, killed %15, implicit-def $scc

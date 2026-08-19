@@ -84,21 +84,25 @@ readRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
 
 llvm::Error readRegMIRProcessor(
     const llvm::MachineFunction &MF,
-    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::MachineOperand *>>
+    llvm::ArrayRef<
+        std::pair<llvm::InlineAsm::Flag, const llvm::MachineOperand *>>
         Args,
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
     const std::function<llvm::Register(const llvm::TargetRegisterClass *)>
         &VirtRegBuilder,
     const llvm::DenseMap<llvm::MCRegister, llvm::Register> &ReadPhysRegVRegs) {
-  // There should be only a single virtual register involved in the operation
+  // Two inline-asm operands: the regdef output and the phys-reg-enum immediate.
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      Args.size() == 1, llvm::formatv("Number of virtual register arguments "
-                                      "involved in the MIR lowering stage of "
-                                      "luthier::readReg is {0} instead of 1.",
+      Args.size() == 2, llvm::formatv("Number of arguments to the MIR lowering "
+                                      "stage of luthier::readReg is {0} "
+                                      "instead of 2.",
                                       Args.size())));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Args[0].first.isRegDefKind(),
-      "The register argument of luthier::readReg is not a definition."));
+      "The first argument of luthier::readReg is not a register definition."));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      Args[1].first.isImmKind(),
+      "The second argument of luthier::readReg is not an immediate."));
   llvm::Register Output = Args[0].second->getReg();
 
   llvm::MCRegister Src(Args[1].second->getImm());
