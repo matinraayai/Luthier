@@ -29,6 +29,7 @@
 #include <llvm/IR/PassManagerInternal.h>
 
 namespace llvm {
+class IRBuilderBase;
 class PassInstrumentationCallbacks;
 } // namespace llvm
 
@@ -76,15 +77,26 @@ public:
     return TargetModule->getName();
   }
 
-  /// \brief Invokes \p Fn on every <tt>llvm::MachineFunction</tt> of the target
-  /// module.
+  /// \brief Creates a new injected-payload function in the instrumentation
+  /// module for \p TargetMI.
   ///
-  /// \details A prototype does not own the target MIR directly: \c
-  /// CodeDiscoveryPass lifts it into \c llvm::MachineFunctionAnalysis results
-  /// cached on the target module's \c llvm::FunctionAnalysisManager, keyed by
-  /// the target module's <tt>llvm::Function</tt>s. Target functions without a
-  /// cached result have no MIR lifted for them and are skipped, so calling this
-  /// before code discovery has run is a no-op rather than an error.
+  /// \details A single entry \c BasicBlock is created and an \c IRBuilderBase
+  /// pointing into it is passed to \p Build.
+  ///
+  /// \returns the newly created function, or an error if the operation fails
+  llvm::Expected<llvm::Function *> createInjectedPayload(
+      llvm::MachineInstr &TargetMI, llvm::FunctionAnalysisManager &IFAM,
+      llvm::function_ref<llvm::Error(llvm::IRBuilderBase &)> Build);
+
+  /// Convenience overload: creates an injected-payload function for \p TargetMI
+  /// that calls \p HookFn with \p Args
+  llvm::Expected<llvm::Function *>
+  createInjectedPayload(llvm::Function &HookFn, llvm::MachineInstr &TargetMI,
+                        llvm::FunctionAnalysisManager &IFAM,
+                        llvm::ArrayRef<llvm::Value *> Args = {});
+
+  /// \brief Invokes \p Fn on every <tt>llvm::MachineFunction</tt> of the
+  /// target module.
   void forEachTargetMF(PrototypeAnalysisManager &PAM,
                        llvm::function_ref<void(llvm::MachineFunction &)> Fn);
 };

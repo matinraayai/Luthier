@@ -17,13 +17,84 @@
 /// Implements out-of-line definitions for \c Prototype.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/Prototype.h"
+
+#include "luthier/Common/GenericLuthierError.h"
+#include "luthier/ToolCodeGen/FunctionAnnotations.h"
+#include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
+#include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
+
 #include <cassert>
+#include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/SmallPtrSet.h>
+#include <llvm/CodeGen/MachineFrameInfo.h>
+#include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
+#include <llvm/CodeGen/MachineInstr.h>
+#include <llvm/CodeGen/MachineInstrBuilder.h>
+#include <llvm/CodeGen/TargetInstrInfo.h>
+#include <llvm/CodeGen/TargetOpcodes.h>
+#include <llvm/CodeGen/TargetSubtargetInfo.h>
+#include <llvm/IR/CallingConv.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/InlineAsm.h>
+#include <llvm/IR/InstIterator.h>
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/PassInstrumentation.h>
 #include <llvm/IR/PassManagerImpl.h>
+#include <llvm/MC/MCRegister.h>
+#include <llvm/Transforms/Utils/Cloning.h>
+#include <llvm/Transforms/Utils/ModuleUtils.h>
 
 namespace luthier {
+
+static llvm::Error assignToInject(llvm::Function &PayloadFn,
+                                  llvm::Module &TargetModule,
+                                  llvm::MachineInstr &TargetMI,
+                                  llvm::FunctionAnalysisManager &IFAM) {
+  if (!PayloadFn.getReturnType()->isVoidTy() || PayloadFn.arg_size() != 0)
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        "Injected payload function must be void() with no arguments: '" +
+        PayloadFn.getName().str() + "'");
+
+  PayloadFn.addFnAttr(InjectedPayloadAttribute);
+
+  PayloadFn.addFnAttr(llvm::Attribute::Naked);
+
+  llvm::appendToCompilerUsed(*PayloadFn.getParent(), {&PayloadFn});
+
+  llvm::Function *ExternHandle = llvm::cast<llvm::Function>(
+      TargetModule
+          .getOrInsertFunction(PayloadFn.getName(), PayloadFn.getFunctionType())
+          .getCallee());
+
+  auto &PayloadSideEffects =
+      IFAM.getResult<InjectedPayloadSideEffectsAnalysis>(PayloadFn);
+
+  // Emit the PATCHPOINT marker immediately before the target instruction.
+  // Operand layout (see llvm::PatchpointOpers): ID, NBytes, Target, NArgs,
+  // CC, then args, then implicit uses/defs. The marker is transient — the
+  // patcher rewrites it away before final code emission — so a zero ID and
+  // zero shadow are sufficient; the extern handle is what identifies the
+  // payload downstream.
+  llvm::MachineFunction &MF = *TargetMI.getMF();
+  const llvm::TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
+  auto MIB = llvm::BuildMI(*TargetMI.getParent(), TargetMI, llvm::DebugLoc(),
+                           TII.get(llvm::TargetOpcode::PATCHPOINT))
+                 .addImm(0)
+                 .addImm(0)
+                 .addGlobalAddress(ExternHandle)
+                 .addImm(0)
+                 .addImm(llvm::CallingConv::C);
+  for (llvm::MCRegister R : PayloadSideEffects.reads())
+    (void)MIB.addReg(R, llvm::RegState::Implicit);
+  for (llvm::MCRegister R : PayloadSideEffects.writes())
+    (void)MIB.addReg(R, llvm::RegState::ImplicitDefine);
+  LUTHIER_RETURN_ON_ERROR(
+      TargetMachineInstrMDNode::initializeMDNode(*MIB).takeError());
+  MF.getFrameInfo().setHasPatchPoint(true);
+
+  return llvm::Error::success();
+}
 
 Prototype::Prototype(
     std::unique_ptr<llvm::Module> Target,
@@ -33,6 +104,53 @@ Prototype::Prototype(
          "Prototype modules must be non-null");
   assert(&this->TargetModule->getContext() == &this->IModule->getContext() &&
          "Prototype modules must share an LLVMContext");
+}
+
+llvm::Expected<llvm::Function *> Prototype::createInjectedPayload(
+    llvm::MachineInstr &TargetMI, llvm::FunctionAnalysisManager &IFAM,
+    llvm::function_ref<llvm::Error(llvm::IRBuilderBase &)> Build) {
+  auto *FTy = llvm::FunctionType::get(
+      llvm::Type::getVoidTy(IModule->getContext()), /*isVarArg=*/false);
+
+  auto *F = llvm::Function::Create(FTy, llvm::GlobalValue::InternalLinkage,
+                                   "luthier.payload", *IModule);
+
+  if (!F->getReturnType()->isVoidTy() || F->arg_size() != 0)
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        "Injected payload function must be void() with no arguments: '" +
+        F->getName().str() + "'");
+
+  llvm::BasicBlock *BB = llvm::BasicBlock::Create(IModule->getContext(), "", F);
+  llvm::IRBuilder<> Builder(BB);
+
+  if (auto Err = Build(Builder))
+    return std::move(Err);
+
+  Builder.CreateRetVoid();
+
+  if (auto Err = assignToInject(*F, *TargetModule, TargetMI, IFAM))
+    return std::move(Err);
+
+  return F;
+}
+
+llvm::Expected<llvm::Function *> Prototype::createInjectedPayload(
+    llvm::Function &HookFn, llvm::MachineInstr &TargetMI,
+    llvm::FunctionAnalysisManager &IFAM, llvm::ArrayRef<llvm::Value *> Args) {
+
+  return createInjectedPayload(
+      TargetMI, IFAM, [&](llvm::IRBuilderBase &Builder) -> llvm::Error {
+        llvm::CallInst *HookCall = Builder.CreateCall(&HookFn, Args);
+        // Force-inline the hook function for now
+        // TODO: Add arg that prevent force inlining the hook function
+        llvm::InlineFunctionInfo IFI;
+        llvm::InlineResult IR = llvm::InlineFunction(*HookCall, IFI);
+        return !IR.isSuccess() ? LUTHIER_MAKE_GENERIC_ERROR(
+                                     "Failed to force-inline hook '" +
+                                     HookFn.getName().str() +
+                                     "' into payload: " + IR.getFailureReason())
+                               : llvm::Error::success();
+      });
 }
 
 void Prototype::forEachTargetMF(

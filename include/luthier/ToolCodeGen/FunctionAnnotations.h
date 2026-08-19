@@ -117,9 +117,6 @@ static constexpr llvm::StringLiteral HipSurfaceVarsAttr{
 static constexpr const char *InitialExecutionPointAttr =
     "luthier.function.initial_execution_point";
 
-static constexpr const char *TargetInstrPointAttr =
-    "luthier.target_instr_point";
-
 /// Annotation string attached to every \c __host__ function serving as a
 /// handle for its \c __device__ overload inside the host code.
 inline constexpr llvm::StringLiteral ExportFunctionHandleMarker =
