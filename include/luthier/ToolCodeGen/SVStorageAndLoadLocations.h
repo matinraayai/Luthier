@@ -22,15 +22,15 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_SV_STORAGE_AND_LOAD_LOCATIONS_H
 #define LUTHIER_TOOL_CODE_GEN_SV_STORAGE_AND_LOAD_LOCATIONS_H
+#include "luthier/ToolCodeGen/IPPredicatedCFG.h"
+#include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
-#include <llvm/ADT/DenseSet.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/CodeGen/SlotIndexes.h>
 #include <llvm/IR/PassManager.h>
-#include <llvm/MC/MCRegister.h>
 
 namespace luthier {
 
@@ -123,11 +123,12 @@ public:
 
   /// calculates the storage and load locations of the state value array.
   ///
-  /// \p PayloadLiveSetsByFn is the caller-provided "do not clobber" set:
-  /// the union of registers that any attached payload needs preserved
-  /// across the instrumentation point. \c IPPredicatedLivenessAnalysis
-  /// no longer precomputes this per payload — callers derive it from
-  /// PATCHPOINT MIs plus the per-PMBB liveness result.
+  /// Registers that must be preserved at each MI are derived from
+  /// \p IPLiveness — the per-PMBB live-in sets from
+  /// \c IPPredicatedLivenessAnalysis, propagated backward through each
+  /// block to obtain a per-MI live set. The relocation of the SVA storage
+  /// is triggered when the current storage register overlaps that live
+  /// set at some MI.
   ///
   /// Intended to be driven from \c SVStorageAndLoadLocationsAnalysis::run;
   /// external callers should consume the analysis result rather than
@@ -135,11 +136,12 @@ public:
   ///
   /// \return an \c llvm::Error indicating the success or failure of the
   /// operation
-  llvm::Error calculate(
-      const llvm::Module &TargetM, llvm::FunctionAnalysisManager &TargetFAM,
-      llvm::MachineFunctionAnalysisManager &TargetMFAM,
-      const InjectedPayloadAndInstPoint &IPIP,
-      const llvm::DenseSet<llvm::MCPhysReg> &PayloadLiveSetsByFn);
+  llvm::Error calculate(llvm::Module &TargetM,
+                        llvm::FunctionAnalysisManager &TargetFAM,
+                        llvm::MachineFunctionAnalysisManager &TargetMFAM,
+                        const InjectedPayloadAndInstPoint &IPIP,
+                        const IPPredicatedCFG &IPCFG,
+                        const IPPredicatedLiveness &IPLiveness);
 
   /// Given the \p MBB of the \c LiftedRepresentation being worked on by this
   /// analysis, returns the state value array storage of every instruction
