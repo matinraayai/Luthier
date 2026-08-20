@@ -416,12 +416,15 @@ runTrace(llvm::Module &TargetModule, llvm::FunctionAnalysisManager &TargetFAM,
   // Build addr → Function* map from functions that have entry-point
   // annotations (device functions only; kernels are excluded because they
   // are never called by other IR functions).
-  llvm::DenseMap<uint64_t, llvm::Function *> AddrToFunc;
+  llvm::DenseMap<uint64_t, llvm::Function *> EntryPointToDevFunc;
   for (llvm::Function &F : TargetModule) {
-    auto EP = getFunctionEntryPoint(F);
-    if (!EP || F.getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL)
+    if (F.getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL)
       continue;
-    AddrToFunc[EP->getRawAddress()] = &F;
+    if (F.isDeclaration())
+      continue;
+    auto EP = getFunctionEntryPoint(F);
+    assert(EP.has_value() && "Entry point does not have value");
+    EntryPointToDevFunc[EP->getRawAddress()] = &F;
   }
 
   // Known-callers map: Function* → list of (call_site, caller_function).
@@ -490,11 +493,11 @@ runTrace(llvm::Module &TargetModule, llvm::FunctionAnalysisManager &TargetFAM,
             uint64_t Addr = extractAddr(C);
             if (!Addr)
               continue;
-            // Always record the raw address so CodeDiscoveryPass can enqueue
+            // Record the raw address so CodeDiscoveryPass can enqueue
             // it as a new entry point even before the callee stub exists.
             Out.DiscoveredCallTargetAddresses.insert(Addr);
-            auto It = AddrToFunc.find(Addr);
-            if (It == AddrToFunc.end())
+            auto It = EntryPointToDevFunc.find(Addr);
+            if (It == EntryPointToDevFunc.end())
               continue;
             llvm::Function *Target = It->second;
             auto &Targets = Out.CallTargets[CI];
@@ -543,7 +546,7 @@ runTrace(llvm::Module &TargetModule, llvm::FunctionAnalysisManager &TargetFAM,
     // can feed inter-procedural argument propagation.
     if (!Changed &&
         resolveViaPayloads(TargetModule, IModule, IDL, IFAM, AppMIToPayloads,
-                           AddrToFunc, KnownCallers, Ctx, Out))
+                           EntryPointToDevFunc, KnownCallers, Ctx, Out))
       Changed = true;
   }
 
@@ -687,9 +690,6 @@ static bool resolveViaPayloads(
 
       auto PayloadsIt = AppMIToPayloads.at(*AppMI);
 
-      llvm::MCRegister CalleeReg = getIndirectCallTargetReg(*AppMI);
-      if (!CalleeReg)
-        continue;
       const llvm::TargetRegisterInfo *TRI =
           AppMI->getMF()->getSubtarget().getRegisterInfo();
 
@@ -697,8 +697,6 @@ static bool resolveViaPayloads(
         llvm::SmallVector<PayloadWrite, 4> Writes;
         collectPayloadWrites(*Payload, IDL, IFAM, Writes);
         for (PayloadWrite &W : Writes) {
-          if (!TRI || !TRI->regsOverlap(W.Dest, CalleeReg))
-            continue;
           for (llvm::Constant *C : W.Values) {
             llvm::Function *TgtFn = extractFunctionHandle(C);
             if (!TgtFn) {
@@ -722,7 +720,8 @@ static bool resolveViaPayloads(
                                 "functions cannot be called from the "
                                 "target module.",
                                 Payload->getName(), F.getName(),
-                                TRI->getName(CalleeReg), TgtFn->getName())
+                                TRI ? TRI->getName(W.Dest) : "?",
+                                TgtFn->getName())
                       .str());
               continue;
             }

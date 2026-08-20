@@ -1,0 +1,1035 @@
+# Intent: verify that an injected payload whose body branches on the
+# incoming indirect-callee pointer and writes back the address of a
+# corresponding "instrumented version" produces a PrototypeCallGraph edge to
+# EACH possible instrumented target. The payload here mirrors the classic
+# retargeting hook shape:
+#
+#     if      (callee == &orig_foo) writeReg(callee_reg, &foo_instr);
+#     else if (callee == &orig_goo) writeReg(callee_reg, &goo_instr);
+#
+# so from the analyzer's perspective the same instrumented indirect call
+# site can be steered to either `_Z8foo_instrvx0x0` or `_Z8goo_instrvx0x0`,
+# and both edges must show up on the resolved side of the callgraph -- with
+# no incomplete site left.
+#
+# The target module below is a kernel that (a) makes two direct calls, one
+# each to `_Z8foo_instrvx0x0` and `_Z8goo_instrvx0x0`, so both instrumented
+# device functions are lifted into the target module and therefore live in
+# PrototypeCallGraph's addr -> Function* map, and (b) makes a third,
+# genuinely opaque call: `s_load_dwordx2 s[0:1], s[4:5], 0x0` +
+# `s_swappc_b64 s[30:31], s[0:1]`. That third call site is what the payload
+# retargets. A `TargetOpcode::PATCHPOINT` marker installed before the swappc
+# carries the swappc's own trace-address (93945842150204) so
+# `InjectedPayloadAndInstPointAnalysis` + `buildTraceAddrToMIMap` link the
+# lifted target-IR CallInst back to the payload.
+#
+# RUN: luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx908 \
+# RUN:    '-passes=prototype-callgraph-printer' \
+# RUN:    %s -o /dev/null | %tee_out FileCheck %s
+
+# CHECK:      PrototypeCallGraph (fully_recovered=yes)
+# The kernel has three call sites: two direct calls that must each resolve
+# to their instrumented device function, and one opaque swappc whose two
+# possible payload-provided targets must both show up on the same line.
+# CHECK:      Resolved call sites (5):
+# CHECK-DAG:  _Z6kernelv -> [_Z8foo_instrvx0x0]
+# CHECK-DAG:  _Z6kernelvx0x18 -> [_Z8goo_instrvx0x0]
+# The two device functions each tail-call back through s[30:31], which the
+# analyzer's inter-procedural argument propagation ties to BOTH callers of
+# each function -- foo_instr is called from the kernel entry MBB and from
+# the retargeted opaque swappc, so its setpc lands on both continuations.
+# CHECK-DAG:  _Z8foo_instrvx0x0 -> [_Z6kernelvx0x18, _Z6kernelvx0x40]
+# CHECK-DAG:  _Z8goo_instrvx0x0 -> [_Z6kernelvx0x30, _Z6kernelvx0x40]
+# The retargeted opaque swappc lands on BOTH instrumented targets. The
+# printed target list order is DenseMap-dependent; one CHECK-DAG with an
+# order-agnostic regex is used rather than two separate CHECK-DAG lines
+# (FileCheck would consume the single line on the first match).
+# CHECK-DAG:  _Z6kernelvx0x30 -> [{{(_Z8foo_instrvx0x0, _Z8goo_instrvx0x0|_Z8goo_instrvx0x0, _Z8foo_instrvx0x0)}}]
+# CHECK:      Incomplete call sites (0):
+
+---
+TargetModule:     |
+  --- |
+    target datalayout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9"
+    target triple = "amdgcn-amd-amdhsa"
+    
+    define weak protected amdgpu_kernel void @_Z6kernelv(ptr addrspace(4) byref([8 x i8]) align 8 %0) #0 {
+      %2 = freeze i128 poison
+      %3 = call ptr addrspace(4) @llvm.amdgcn.kernarg.segment.ptr()
+      %4 = ptrtoint ptr addrspace(4) %3 to i64
+      %5 = call i32 @llvm.amdgcn.workgroup.id.x()
+      %6 = freeze i32 poison
+      %7 = call i32 @llvm.amdgcn.workitem.id.x()
+      %8 = call i64 @llvm.amdgcn.s.getpc(), !pcsections !102
+      %9 = bitcast i128 %2 to <2 x i64>
+      %10 = extractelement <2 x i64> %9, i64 1
+      %11 = bitcast i64 %8 to <2 x i32>
+      %12 = extractelement <2 x i32> %11, i64 0
+      %13 = zext i32 %12 to i64, !pcsections !108
+      %14 = add i64 %13, 4294967036, !pcsections !108
+      %15 = icmp uge i64 %14, 4294967296, !pcsections !108
+      %16 = zext i1 %15 to i32, !pcsections !108
+      %17 = trunc i64 %14 to i32, !pcsections !108
+      %18 = extractelement <2 x i32> %11, i64 1
+      %19 = zext i1 %15 to i64, !pcsections !115
+      %20 = zext i32 %18 to i64, !pcsections !115
+      %21 = add i64 %20, 4294967295, !pcsections !115
+      %22 = add i64 %21, %19, !pcsections !115
+      %23 = icmp uge i64 %22, 4294967296, !pcsections !115
+      %24 = zext i1 %23 to i32, !pcsections !115
+      %25 = trunc i64 %22 to i32, !pcsections !115
+      %26 = call i64 @llvm.amdgcn.s.getpc(), !pcsections !120
+      %27 = insertelement <2 x i32> poison, i32 %17, i64 0
+      %28 = insertelement <2 x i32> %27, i32 %25, i64 1
+      %29 = bitcast <2 x i32> %28 to i64
+      %30 = inttoptr i64 %29 to ptr, !pcsections !120
+      %31 = bitcast i64 %10 to <2 x i32>, !pcsections !120
+      %32 = extractelement <2 x i32> %31, i64 0, !pcsections !120
+      %33 = extractelement <2 x i32> %31, i64 1, !pcsections !120
+      %34 = bitcast i64 %4 to <2 x i32>, !pcsections !120
+      %35 = extractelement <2 x i32> %34, i64 0, !pcsections !120
+      %36 = extractelement <2 x i32> %34, i64 1, !pcsections !120
+      %37 = freeze i32 poison, !pcsections !120
+      %38 = freeze i32 poison, !pcsections !120
+      %39 = freeze i32 poison, !pcsections !120
+      %40 = freeze i32 poison, !pcsections !120
+      %41 = freeze i32 poison, !pcsections !120
+      %42 = freeze i32 poison, !pcsections !120
+      %43 = freeze i32 poison, !pcsections !120
+      %44 = freeze i32 poison, !pcsections !120
+      %45 = freeze i32 poison, !pcsections !120
+      %46 = freeze i32 poison, !pcsections !120
+      %47 = freeze i32 poison, !pcsections !120
+      %48 = freeze i32 poison, !pcsections !120
+      %49 = freeze i32 poison, !pcsections !120
+      %50 = freeze i32 poison, !pcsections !120
+      %51 = freeze i32 poison, !pcsections !120
+      %52 = freeze i32 poison, !pcsections !120
+      %53 = freeze i32 poison, !pcsections !120
+      %54 = freeze i32 poison, !pcsections !120
+      %55 = freeze i32 poison, !pcsections !120
+      %56 = freeze i32 poison, !pcsections !120
+      %57 = freeze i32 poison, !pcsections !120
+      %58 = freeze i32 poison, !pcsections !120
+      %59 = bitcast i64 %26 to <2 x i32>, !pcsections !120
+      %60 = extractelement <2 x i32> %59, i64 0, !pcsections !120
+      %61 = extractelement <2 x i32> %59, i64 1, !pcsections !120
+      %62 = freeze i32 poison, !pcsections !120
+      %63 = freeze i32 poison, !pcsections !120
+      %64 = freeze i32 poison, !pcsections !120
+      %65 = freeze i32 poison, !pcsections !120
+      %66 = freeze i32 poison, !pcsections !120
+      %67 = freeze i32 poison, !pcsections !120
+      %68 = freeze i32 poison, !pcsections !120
+      %69 = freeze i32 poison, !pcsections !120
+      %70 = freeze i32 poison, !pcsections !120
+      %71 = freeze i32 poison, !pcsections !120
+      %72 = freeze i32 poison, !pcsections !120
+      %73 = freeze i32 poison, !pcsections !120
+      %74 = freeze i32 poison, !pcsections !120
+      %75 = freeze i32 poison, !pcsections !120
+      %76 = freeze i32 poison, !pcsections !120
+      %77 = freeze i32 poison, !pcsections !120
+      %78 = freeze i32 poison, !pcsections !120
+      %79 = freeze i32 poison, !pcsections !120
+      %80 = freeze i32 poison, !pcsections !120
+      %81 = freeze i32 poison, !pcsections !120
+      %82 = freeze i32 poison, !pcsections !120
+      %83 = freeze i32 poison, !pcsections !120
+      %84 = freeze i32 poison, !pcsections !120
+      %85 = freeze i32 poison, !pcsections !120
+      %86 = freeze i32 poison, !pcsections !120
+      %87 = freeze i32 poison, !pcsections !120
+      %88 = freeze i32 poison, !pcsections !120
+      %89 = freeze i32 poison, !pcsections !120
+      %90 = freeze i32 poison, !pcsections !120
+      %91 = freeze i32 poison, !pcsections !120
+      %92 = freeze i32 poison, !pcsections !120
+      %93 = freeze i32 poison, !pcsections !120
+      %94 = freeze i32 poison, !pcsections !120
+      tail call void %30(i32 %17, i32 %25, i32 %32, i32 %33, i32 %35, i32 %36, i32 %5, i32 %6, i32 %37, i32 %38, i32 %39, i32 %40, i32 %41, i32 %42, i32 %43, i32 %44, i32 %45, i32 %46, i32 %47, i32 %48, i32 %49, i32 %50, i32 %51, i32 %52, i32 %53, i32 %54, i32 %55, i32 %56, i32 %57, i32 %58, i32 %60, i32 %61, i32 %62, i32 %63, i32 %64, i32 %65, i32 %66, i32 %67, i32 0, i32 0, i32 %68, i32 %69, i32 %70, i32 %71, i32 %72, i32 %73, i32 %74, i32 %75, i32 %76, i32 %77, i32 %78, i32 %79, i32 %80, i32 %81, i32 %82, i32 %83, i32 %84, i32 %85, i32 -1, i32 -1, i32 %86, i32 %87, i32 %24, i32 %7, i32 %88, i32 %89, i32 %90, i32 %91, i32 %92, i32 %93, i32 %94), !pcsections !120
+      unreachable, !pcsections !120
+    }
+    
+    ; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
+    declare noundef align 4 ptr addrspace(4) @llvm.amdgcn.kernarg.segment.ptr() #1
+    
+    ; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
+    declare noundef i32 @llvm.amdgcn.workgroup.id.x() #1
+    
+    ; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
+    declare noundef range(i32 0, 1024) i32 @llvm.amdgcn.workitem.id.x() #1
+    
+    ; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
+    declare noundef i64 @llvm.amdgcn.s.getpc() #1
+    
+    define private void @_Z6kernelvx0x18(i32 %0, i32 %1, i32 %2, i32 %3, i32 %4, i32 %5, i32 %6, i32 %7, i32 %8, i32 %9, i32 %10, i32 %11, i32 %12, i32 %13, i32 %14, i32 %15, i32 %16, i32 %17, i32 %18, i32 %19, i32 %20, i32 %21, i32 %22, i32 %23, i32 %24, i32 %25, i32 %26, i32 %27, i32 %28, i32 %29, i32 %30, i32 %31, i32 %32, i32 %33, i32 %34, i32 %35, i32 %36, i32 %37, i32 %38, i32 %39, i32 %40, i32 %41, i32 %42, i32 %43, i32 %44, i32 %45, i32 %46, i32 %47, i32 %48, i32 %49, i32 %50, i32 %51, i32 %52, i32 %53, i32 %54, i32 %55, i32 %56, i32 %57, i32 %58, i32 %59, i32 %60, i32 %61, i32 %62, i32 %63, i32 %64, i32 %65, i32 %66, i32 %67, i32 %68, i32 %69, i32 %70) #2 {
+      %72 = call i64 @llvm.amdgcn.s.getpc(), !pcsections !208
+      %73 = bitcast i64 %72 to <2 x i32>
+      %74 = extractelement <2 x i32> %73, i64 0
+      %75 = zext i32 %74 to i64, !pcsections !211
+      %76 = add i64 %75, 4294967020, !pcsections !211
+      %77 = icmp uge i64 %76, 4294967296, !pcsections !211
+      %78 = zext i1 %77 to i32, !pcsections !211
+      %79 = trunc i64 %76 to i32, !pcsections !211
+      %80 = extractelement <2 x i32> %73, i64 1
+      %81 = zext i1 %77 to i64, !pcsections !214
+      %82 = zext i32 %80 to i64, !pcsections !214
+      %83 = add i64 %82, 4294967295, !pcsections !214
+      %84 = add i64 %83, %81, !pcsections !214
+      %85 = icmp uge i64 %84, 4294967296, !pcsections !214
+      %86 = zext i1 %85 to i32, !pcsections !214
+      %87 = trunc i64 %84 to i32, !pcsections !214
+      %88 = call i64 @llvm.amdgcn.s.getpc(), !pcsections !217
+      %89 = insertelement <2 x i32> poison, i32 %79, i64 0
+      %90 = insertelement <2 x i32> %89, i32 %87, i64 1
+      %91 = bitcast <2 x i32> %90 to i64
+      %92 = inttoptr i64 %91 to ptr, !pcsections !217
+      %93 = bitcast i64 %88 to <2 x i32>, !pcsections !217
+      %94 = extractelement <2 x i32> %93, i64 0, !pcsections !217
+      %95 = extractelement <2 x i32> %93, i64 1, !pcsections !217
+      tail call void %92(i32 %79, i32 %87, i32 %2, i32 %3, i32 %4, i32 %5, i32 %6, i32 %7, i32 %8, i32 %9, i32 %10, i32 %11, i32 %12, i32 %13, i32 %14, i32 %15, i32 %16, i32 %17, i32 %18, i32 %19, i32 %20, i32 %21, i32 %22, i32 %23, i32 %24, i32 %25, i32 %26, i32 %27, i32 %28, i32 %29, i32 %94, i32 %95, i32 %32, i32 %33, i32 %34, i32 %35, i32 %36, i32 %37, i32 %38, i32 %39, i32 %40, i32 %41, i32 %42, i32 %43, i32 %44, i32 %45, i32 %46, i32 %47, i32 %48, i32 %49, i32 %50, i32 %51, i32 %52, i32 %53, i32 %54, i32 %55, i32 %56, i32 %57, i32 %58, i32 %59, i32 %60, i32 %61, i32 %86, i32 %63, i32 %64, i32 %65, i32 %66, i32 %67, i32 %68, i32 %69, i32 %70), !pcsections !217
+      unreachable, !pcsections !217
+    }
+    
+    define private void @_Z8foo_instrvx0x0(i32 %0, i32 %1, i32 %2, i32 %3, i32 %4, i32 %5, i32 %6, i32 %7, i32 %8, i32 %9, i32 %10, i32 %11, i32 %12, i32 %13, i32 %14, i32 %15, i32 %16, i32 %17, i32 %18, i32 %19, i32 %20, i32 %21, i32 %22, i32 %23, i32 %24, i32 %25, i32 %26, i32 %27, i32 %28, i32 %29, i32 %30, i32 %31, i32 %32, i32 %33, i32 %34, i32 %35, i32 %36, i32 %37, i32 %38, i32 %39, i32 %40, i32 %41, i32 %42, i32 %43, i32 %44, i32 %45, i32 %46, i32 %47, i32 %48, i32 %49, i32 %50, i32 %51, i32 %52, i32 %53, i32 %54, i32 %55, i32 %56, i32 %57, i32 %58, i32 %59, i32 %60, i32 %61, i32 %62, i32 %63, i32 %64, i32 %65, i32 %66, i32 %67, i32 %68, i32 %69, i32 %70) #3 {
+      call void @llvm.amdgcn.s.waitcnt(i32 0), !pcsections !296
+      %72 = insertelement <2 x i32> poison, i32 %31, i64 1
+      %73 = insertelement <2 x i32> %72, i32 %30, i64 0
+      %74 = bitcast <2 x i32> %73 to i64
+      %75 = inttoptr i64 %74 to ptr, !pcsections !299
+      tail call void %75(i32 %0, i32 %1, i32 %2, i32 %3, i32 %4, i32 %5, i32 %6, i32 %7, i32 %8, i32 %9, i32 %10, i32 %11, i32 %12, i32 %13, i32 %14, i32 %15, i32 %16, i32 %17, i32 %18, i32 %19, i32 %20, i32 %21, i32 %22, i32 %23, i32 %24, i32 %25, i32 %26, i32 %27, i32 %28, i32 %29, i32 %30, i32 %31, i32 %32, i32 %33, i32 %34, i32 %35, i32 %36, i32 %37, i32 %38, i32 %39, i32 %40, i32 %41, i32 %42, i32 %43, i32 %44, i32 %45, i32 %46, i32 %47, i32 %48, i32 %49, i32 %50, i32 %51, i32 %52, i32 %53, i32 %54, i32 %55, i32 %56, i32 %57, i32 %58, i32 %59, i32 %60, i32 %61, i32 %62, i32 %63, i32 %64, i32 %65, i32 %66, i32 %67, i32 %68, i32 %69, i32 %70), !pcsections !299
+      unreachable, !pcsections !299
+    }
+    
+    ; Function Attrs: nocallback nofree nounwind willreturn
+    declare void @llvm.amdgcn.s.waitcnt(i32 immarg) #4
+    
+    ; Extern handle for the retargeting payload. The `TargetOpcode::PATCHPOINT`
+    ; marker installed before the opaque `S_SWAPPC_B64` in _Z6kernelvx0x30 carries
+    ; this as its "Target" global-address operand;
+    ; InjectedPayloadAndInstPointAnalysis walks these markers and matches the
+    ; extern's name back to the payload definition in the IModule.
+    declare void @luthier.payload.retarget()
+    
+    define private void @_Z8goo_instrvx0x0(i32 %0, i32 %1, i32 %2, i32 %3, i32 %4, i32 %5, i32 %6, i32 %7, i32 %8, i32 %9, i32 %10, i32 %11, i32 %12, i32 %13, i32 %14, i32 %15, i32 %16, i32 %17, i32 %18, i32 %19, i32 %20, i32 %21, i32 %22, i32 %23, i32 %24, i32 %25, i32 %26, i32 %27, i32 %28, i32 %29, i32 %30, i32 %31, i32 %32, i32 %33, i32 %34, i32 %35, i32 %36, i32 %37, i32 %38, i32 %39, i32 %40, i32 %41, i32 %42, i32 %43, i32 %44, i32 %45, i32 %46, i32 %47, i32 %48, i32 %49, i32 %50, i32 %51, i32 %52, i32 %53, i32 %54, i32 %55, i32 %56, i32 %57, i32 %58, i32 %59, i32 %60, i32 %61, i32 %62, i32 %63, i32 %64, i32 %65, i32 %66, i32 %67, i32 %68, i32 %69, i32 %70) #5 {
+      call void @llvm.amdgcn.s.waitcnt(i32 0), !pcsections !378
+      %72 = insertelement <2 x i32> poison, i32 %31, i64 1
+      %73 = insertelement <2 x i32> %72, i32 %30, i64 0
+      %74 = bitcast <2 x i32> %73 to i64
+      %75 = inttoptr i64 %74 to ptr, !pcsections !381
+      tail call void %75(i32 %0, i32 %1, i32 %2, i32 %3, i32 %4, i32 %5, i32 %6, i32 %7, i32 %8, i32 %9, i32 %10, i32 %11, i32 %12, i32 %13, i32 %14, i32 %15, i32 %16, i32 %17, i32 %18, i32 %19, i32 %20, i32 %21, i32 %22, i32 %23, i32 %24, i32 %25, i32 %26, i32 %27, i32 %28, i32 %29, i32 %30, i32 %31, i32 %32, i32 %33, i32 %34, i32 %35, i32 %36, i32 %37, i32 %38, i32 %39, i32 %40, i32 %41, i32 %42, i32 %43, i32 %44, i32 %45, i32 %46, i32 %47, i32 %48, i32 %49, i32 %50, i32 %51, i32 %52, i32 %53, i32 %54, i32 %55, i32 %56, i32 %57, i32 %58, i32 %59, i32 %60, i32 %61, i32 %62, i32 %63, i32 %64, i32 %65, i32 %66, i32 %67, i32 %68, i32 %69, i32 %70), !pcsections !381
+      unreachable, !pcsections !381
+    }
+    
+    define private void @_Z6kernelvx0x30(i32 %0, i32 %1, i32 %2, i32 %3, i32 %4, i32 %5, i32 %6, i32 %7, i32 %8, i32 %9, i32 %10, i32 %11, i32 %12, i32 %13, i32 %14, i32 %15, i32 %16, i32 %17, i32 %18, i32 %19, i32 %20, i32 %21, i32 %22, i32 %23, i32 %24, i32 %25, i32 %26, i32 %27, i32 %28, i32 %29, i32 %30, i32 %31, i32 %32, i32 %33, i32 %34, i32 %35, i32 %36, i32 %37, i32 %38, i32 %39, i32 %40, i32 %41, i32 %42, i32 %43, i32 %44, i32 %45, i32 %46, i32 %47, i32 %48, i32 %49, i32 %50, i32 %51, i32 %52, i32 %53, i32 %54, i32 %55, i32 %56, i32 %57, i32 %58, i32 %59, i32 %60, i32 %61, i32 %62, i32 %63, i32 %64, i32 %65, i32 %66, i32 %67, i32 %68, i32 %69, i32 %70) #6 {
+      %72 = insertelement <2 x i32> poison, i32 %4, i64 0
+      %73 = insertelement <2 x i32> %72, i32 %5, i64 1
+      %74 = bitcast <2 x i32> %73 to i64
+      %75 = inttoptr i64 %74 to ptr addrspace(1), !pcsections !468
+      %76 = load <2 x i32>, ptr addrspace(1) %75, align 8, !pcsections !468
+      call void @llvm.amdgcn.s.waitcnt(i32 49279), !pcsections !471
+      %77 = call i64 @llvm.amdgcn.s.getpc(), !pcsections !474
+      %78 = bitcast <2 x i32> %76 to i64
+      %79 = inttoptr i64 %78 to ptr, !pcsections !474
+      %80 = extractelement <2 x i32> %76, i64 0, !pcsections !474
+      %81 = extractelement <2 x i32> %76, i64 1, !pcsections !474
+      %82 = bitcast i64 %77 to <2 x i32>, !pcsections !474
+      %83 = extractelement <2 x i32> %82, i64 0, !pcsections !474
+      %84 = extractelement <2 x i32> %82, i64 1, !pcsections !474
+      tail call void %79(i32 %80, i32 %81, i32 %2, i32 %3, i32 %4, i32 %5, i32 %6, i32 %7, i32 %8, i32 %9, i32 %10, i32 %11, i32 %12, i32 %13, i32 %14, i32 %15, i32 %16, i32 %17, i32 %18, i32 %19, i32 %20, i32 %21, i32 %22, i32 %23, i32 %24, i32 %25, i32 %26, i32 %27, i32 %28, i32 %29, i32 %83, i32 %84, i32 %32, i32 %33, i32 %34, i32 %35, i32 %36, i32 %37, i32 %38, i32 %39, i32 %40, i32 %41, i32 %42, i32 %43, i32 %44, i32 %45, i32 %46, i32 %47, i32 %48, i32 %49, i32 %50, i32 %51, i32 %52, i32 %53, i32 %54, i32 %55, i32 %56, i32 %57, i32 %58, i32 %59, i32 %60, i32 %61, i32 %62, i32 %63, i32 %64, i32 %65, i32 %66, i32 %67, i32 %68, i32 %69, i32 %70), !pcsections !474
+      unreachable, !pcsections !474
+    }
+    
+    define private void @_Z6kernelvx0x40(i32 %0, i32 %1, i32 %2, i32 %3, i32 %4, i32 %5, i32 %6, i32 %7, i32 %8, i32 %9, i32 %10, i32 %11, i32 %12, i32 %13, i32 %14, i32 %15, i32 %16, i32 %17, i32 %18, i32 %19, i32 %20, i32 %21, i32 %22, i32 %23, i32 %24, i32 %25, i32 %26, i32 %27, i32 %28, i32 %29, i32 %30, i32 %31, i32 %32, i32 %33, i32 %34, i32 %35, i32 %36, i32 %37, i32 %38, i32 %39, i32 %40, i32 %41, i32 %42, i32 %43, i32 %44, i32 %45, i32 %46, i32 %47, i32 %48, i32 %49, i32 %50, i32 %51, i32 %52, i32 %53, i32 %54, i32 %55, i32 %56, i32 %57, i32 %58, i32 %59, i32 %60, i32 %61, i32 %62, i32 %63, i32 %64, i32 %65, i32 %66, i32 %67, i32 %68, i32 %69, i32 %70) #7 {
+      call void @llvm.amdgcn.endpgm(), !pcsections !552
+      unreachable, !pcsections !552
+    }
+    
+    ; Function Attrs: cold convergent nocallback nofree noreturn nounwind
+    declare void @llvm.amdgcn.endpgm() #8
+    
+    attributes #0 = { "amdgpu-dx10-clamp"="true" "amdgpu-ieee"="true" "amdgpu-implicitarg-num-bytes"="0" "amdgpu-lds-size"="0" "amdgpu-no-cluster-id-y" "amdgpu-no-cluster-id-z" "amdgpu-no-dispatch-id" "amdgpu-no-dispatch-ptr" "amdgpu-no-flat-scratch-init" "amdgpu-no-queue-ptr" "amdgpu-no-workgroup-id-y" "amdgpu-no-workgroup-id-z" "amdgpu-no-workitem-id-y" "amdgpu-no-workitem-id-z" "amdgpu-num-sgpr"="40" "amdgpu-num-vgpr"="4" "amdgpu.kd.enable_exception_address_watch"="0" "amdgpu.kd.enable_exception_fp_denormal_source"="0" "amdgpu.kd.enable_exception_ieee_754_fp_division_by_zero"="0" "amdgpu.kd.enable_exception_ieee_754_fp_inexact"="0" "amdgpu.kd.enable_exception_ieee_754_fp_invalid_operation"="0" "amdgpu.kd.enable_exception_ieee_754_fp_overflow"="0" "amdgpu.kd.enable_exception_ieee_754_fp_underflow"="0" "amdgpu.kd.enable_exception_int_divide_by_zero"="0" "amdgpu.kd.enable_exception_memory"="0" "amdgpu.kd.enable_private_segment"="0" "amdgpu.kd.enable_sgpr_workgroup_info"="0" "amdgpu.kd.enable_trap_handler"="0" "amdgpu.kd.float_round_mode_16_64"="0" "amdgpu.kd.float_round_mode_32"="0" "amdgpu.kd.fp16_ovfl"="0" "amdgpu.kd.user_sgpr_count"="6" "denormal-fp-math"="ieee,ieee" "denormal-fp-math-f32"="ieee,ieee" "luthier.function.entrypoint.addr"="93945842145728" "luthier.function.initial_entrypoint" "luthier.function.initial_execution_point" }
+    attributes #1 = { nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+    attributes #2 = { "amdgpu-num-sgpr"="40" "amdgpu-num-vgpr"="4" "luthier.function.entrypoint.addr"="93945842150168" }
+    attributes #3 = { "amdgpu-num-sgpr"="40" "amdgpu-num-vgpr"="4" "luthier.function.entrypoint.addr"="93945842149888" }
+    attributes #4 = { nocallback nofree nounwind willreturn }
+    attributes #5 = { "amdgpu-num-sgpr"="40" "amdgpu-num-vgpr"="4" "luthier.function.entrypoint.addr"="93945842149896" }
+    attributes #6 = { "amdgpu-num-sgpr"="40" "amdgpu-num-vgpr"="4" "luthier.function.entrypoint.addr"="93945842150192" }
+    attributes #7 = { "amdgpu-num-sgpr"="40" "amdgpu-num-vgpr"="4" "luthier.function.entrypoint.addr"="93945842150208" }
+    attributes #8 = { cold convergent nocallback nofree noreturn nounwind }
+    
+    !luthier.initial_entry_point = !{!0}
+    !luthier.initial_execution_point = !{!1}
+    
+    !0 = !{i64 93945842145728, i1 true}
+    !1 = !{i64 93945842145728}
+    !102 = distinct !{!"luthier.machine_instr.tag", !103, !"luthier.machine_instr.trace_addr", !104}
+    !103 = distinct !{i64 undef, i64 2}
+    !104 = distinct !{i64 93945842150144}
+    !108 = distinct !{!"luthier.machine_instr.tag", !109, !"luthier.machine_instr.trace_addr", !110}
+    !109 = distinct !{i64 undef, i64 2}
+    !110 = distinct !{i64 93945842150148}
+    !115 = distinct !{!"luthier.machine_instr.tag", !116, !"luthier.machine_instr.trace_addr", !117}
+    !116 = distinct !{i64 undef, i64 2}
+    !117 = distinct !{i64 93945842150156}
+    !120 = distinct !{!"luthier.machine_instr.tag", !121, !"luthier.machine_instr.trace_addr", !122}
+    !121 = distinct !{i64 undef, i64 2}
+    !122 = distinct !{i64 93945842150164}
+    !208 = distinct !{!"luthier.machine_instr.tag", !209, !"luthier.machine_instr.trace_addr", !210}
+    !209 = distinct !{i64 undef, i64 2}
+    !210 = distinct !{i64 93945842150168}
+    !211 = distinct !{!"luthier.machine_instr.tag", !212, !"luthier.machine_instr.trace_addr", !213}
+    !212 = distinct !{i64 undef, i64 2}
+    !213 = distinct !{i64 93945842150172}
+    !214 = distinct !{!"luthier.machine_instr.tag", !215, !"luthier.machine_instr.trace_addr", !216}
+    !215 = distinct !{i64 undef, i64 2}
+    !216 = distinct !{i64 93945842150180}
+    !217 = distinct !{!"luthier.machine_instr.tag", !218, !"luthier.machine_instr.trace_addr", !219}
+    !218 = distinct !{i64 undef, i64 2}
+    !219 = distinct !{i64 93945842150188}
+    !296 = distinct !{!"luthier.machine_instr.tag", !297, !"luthier.machine_instr.trace_addr", !298}
+    !297 = distinct !{i64 undef, i64 2}
+    !298 = distinct !{i64 93945842149888}
+    !299 = distinct !{!"luthier.machine_instr.tag", !300, !"luthier.machine_instr.trace_addr", !301}
+    !300 = distinct !{i64 undef, i64 2}
+    !301 = distinct !{i64 93945842149892}
+    !378 = distinct !{!"luthier.machine_instr.tag", !379, !"luthier.machine_instr.trace_addr", !380}
+    !379 = distinct !{i64 undef, i64 2}
+    !380 = distinct !{i64 93945842149896}
+    !381 = distinct !{!"luthier.machine_instr.tag", !382, !"luthier.machine_instr.trace_addr", !383}
+    !382 = distinct !{i64 undef, i64 2}
+    !383 = distinct !{i64 93945842149900}
+    !468 = distinct !{!"luthier.machine_instr.tag", !469, !"luthier.machine_instr.trace_addr", !470}
+    !469 = distinct !{i64 undef, i64 2}
+    !470 = distinct !{i64 93945842150192}
+    !471 = distinct !{!"luthier.machine_instr.tag", !472, !"luthier.machine_instr.trace_addr", !473}
+    !472 = distinct !{i64 undef, i64 2}
+    !473 = distinct !{i64 93945842150200}
+    !474 = distinct !{!"luthier.machine_instr.tag", !475, !"luthier.machine_instr.trace_addr", !476}
+    !475 = distinct !{i64 undef, i64 2}
+    !476 = distinct !{i64 93945842150204}
+    !552 = distinct !{!"luthier.machine_instr.tag", !553, !"luthier.machine_instr.trace_addr", !554}
+    !553 = distinct !{i64 undef, i64 2}
+    !554 = distinct !{i64 93945842150208}
+    !700 = distinct !{!"luthier.machine_instr.tag", !701, !"luthier.machine_instr.trace_addr", !702}
+    !701 = distinct !{i64 undef, i64 2}
+    !702 = distinct !{i64 93945842150204}
+  ...
+  ---
+  name:            _Z6kernelv
+  alignment:       256
+  exposesReturnsTwice: false
+  legalized:       false
+  regBankSelected: false
+  selected:        true
+  failedISel:      false
+  tracksRegLiveness: false
+  hasWinCFI:       false
+  noPhis:          true
+  isSSA:           false
+  noVRegs:         true
+  hasFakeUses:     false
+  callsEHReturn:   false
+  callsUnwindInit: false
+  hasEHContTarget: false
+  hasEHScopes:     false
+  hasEHFunclets:   false
+  isOutlined:      false
+  debugInstrRef:   false
+  failsVerification: false
+  tracksDebugUserValues: false
+  registers:       []
+  liveins:         []
+  frameInfo:
+    isFrameAddressTaken: false
+    isReturnAddressTaken: false
+    hasStackMap:     false
+    hasPatchPoint:   true
+    stackSize:       0
+    offsetAdjustment: 0
+    maxAlignment:    1
+    adjustsStack:    false
+    hasCalls:        false
+    framePointerPolicy: none
+    stackProtector:  ''
+    functionContext: ''
+    maxCallFrameSize: 4294967295
+    cvBytesOfCalleeSavedRegisters: 0
+    hasOpaqueSPAdjustment: false
+    hasVAStart:      false
+    hasMustTailInVarArgFunc: false
+    hasTailCall:     false
+    isCalleeSavedInfoValid: false
+    localFrameSize:  0
+  fixedStack:      []
+  stack:           []
+  entry_values:    []
+  callSites:       []
+  debugValueSubstitutions: []
+  constants:       []
+  machineFunctionInfo:
+    explicitKernArgSize: 8
+    maxKernArgAlign: 8
+    ldsSize:         0
+    gdsSize:         0
+    dynLDSAlign:     1
+    isEntryFunction: true
+    isChainFunction: false
+    memoryBound:     false
+    waveLimiter:     false
+    hasSpilledSGPRs: false
+    hasSpilledVGPRs: false
+    numWaveDispatchSGPRs: 0
+    numWaveDispatchVGPRs: 0
+    scratchRSrcReg:  '$private_rsrc_reg'
+    frameOffsetReg:  '$fp_reg'
+    stackPtrOffsetReg: '$sp_reg'
+    bytesInStackArgArea: 0
+    returnsVoid:     true
+    argumentInfo:
+      privateSegmentBuffer: { reg: '$sgpr0_sgpr1_sgpr2_sgpr3' }
+      kernargSegmentPtr: { reg: '$sgpr4_sgpr5' }
+      workGroupIDX:    { reg: '$sgpr6' }
+      privateSegmentWaveByteOffset: { reg: '$sgpr7' }
+      workItemIDX:     { reg: '$vgpr0' }
+    psInputAddr:     0
+    psInputEnable:   0
+    maxMemoryClusterDWords: 8
+    mode:
+      ieee:            true
+      dx10-clamp:      true
+      fp32-input-denormals: true
+      fp32-output-denormals: true
+      fp64-fp16-input-denormals: true
+      fp64-fp16-output-denormals: true
+    highBitsOf32BitAddress: 0
+    occupancy:       10
+    vgprForAGPRCopy: '$vgpr3'
+    sgprForEXECCopy: ''
+    longBranchReservedReg: ''
+    hasInitWholeWave: false
+    dynamicVGPRBlockSize: 0
+    scratchReservedForDynamicVGPRs: 0
+    numKernargPreloadSGPRs: 0
+    isWholeWaveFunction: false
+    minNumAGPRs:     4294967295
+  body:             |
+    bb.0 (%ir-block.1):
+      $sgpr0_sgpr1 = S_GETPC_B64 pcsections !102
+      $sgpr0 = S_ADD_U32 $sgpr0, 4294967036, implicit-def $scc, pcsections !108
+      $sgpr1 = S_ADDC_U32 $sgpr1, 4294967295, implicit-def $scc, implicit $scc, pcsections !115
+      $sgpr30_sgpr31 = S_SWAPPC_B64 $sgpr0_sgpr1, pcsections !120
+  ...
+  ---
+  name:            _Z6kernelvx0x18
+  alignment:       4
+  exposesReturnsTwice: false
+  legalized:       false
+  regBankSelected: false
+  selected:        true
+  failedISel:      false
+  tracksRegLiveness: false
+  hasWinCFI:       false
+  noPhis:          true
+  isSSA:           false
+  noVRegs:         true
+  hasFakeUses:     false
+  callsEHReturn:   false
+  callsUnwindInit: false
+  hasEHContTarget: false
+  hasEHScopes:     false
+  hasEHFunclets:   false
+  isOutlined:      false
+  debugInstrRef:   false
+  failsVerification: false
+  tracksDebugUserValues: false
+  registers:       []
+  liveins:         []
+  frameInfo:
+    isFrameAddressTaken: false
+    isReturnAddressTaken: false
+    hasStackMap:     false
+    hasPatchPoint:   true
+    stackSize:       0
+    offsetAdjustment: 0
+    maxAlignment:    1
+    adjustsStack:    false
+    hasCalls:        false
+    framePointerPolicy: none
+    stackProtector:  ''
+    functionContext: ''
+    maxCallFrameSize: 4294967295
+    cvBytesOfCalleeSavedRegisters: 0
+    hasOpaqueSPAdjustment: false
+    hasVAStart:      false
+    hasMustTailInVarArgFunc: false
+    hasTailCall:     false
+    isCalleeSavedInfoValid: false
+    localFrameSize:  0
+  fixedStack:      []
+  stack:           []
+  entry_values:    []
+  callSites:       []
+  debugValueSubstitutions: []
+  constants:       []
+  machineFunctionInfo:
+    explicitKernArgSize: 0
+    maxKernArgAlign: 1
+    ldsSize:         0
+    gdsSize:         0
+    dynLDSAlign:     1
+    isEntryFunction: false
+    isChainFunction: false
+    memoryBound:     false
+    waveLimiter:     false
+    hasSpilledSGPRs: false
+    hasSpilledVGPRs: false
+    numWaveDispatchSGPRs: 0
+    numWaveDispatchVGPRs: 0
+    scratchRSrcReg:  '$sgpr0_sgpr1_sgpr2_sgpr3'
+    frameOffsetReg:  '$sgpr33'
+    stackPtrOffsetReg: '$sgpr32'
+    bytesInStackArgArea: 0
+    returnsVoid:     true
+    argumentInfo:
+      privateSegmentBuffer: { reg: '$sgpr0_sgpr1_sgpr2_sgpr3' }
+      dispatchPtr:     { reg: '$sgpr4_sgpr5' }
+      queuePtr:        { reg: '$sgpr6_sgpr7' }
+      dispatchID:      { reg: '$sgpr10_sgpr11' }
+      workGroupIDX:    { reg: '$sgpr12' }
+      workGroupIDY:    { reg: '$sgpr13' }
+      workGroupIDZ:    { reg: '$sgpr14' }
+      LDSKernelId:     { reg: '$sgpr15' }
+      implicitArgPtr:  { reg: '$sgpr8_sgpr9' }
+      workItemIDX:     { reg: '$vgpr31', mask: 1023 }
+      workItemIDY:     { reg: '$vgpr31', mask: 1047552 }
+      workItemIDZ:     { reg: '$vgpr31', mask: 1072693248 }
+    psInputAddr:     0
+    psInputEnable:   0
+    maxMemoryClusterDWords: 8
+    mode:
+      ieee:            true
+      dx10-clamp:      true
+      fp32-input-denormals: true
+      fp32-output-denormals: true
+      fp64-fp16-input-denormals: true
+      fp64-fp16-output-denormals: true
+    highBitsOf32BitAddress: 0
+    occupancy:       10
+    vgprForAGPRCopy: '$vgpr3'
+    sgprForEXECCopy: ''
+    longBranchReservedReg: ''
+    hasInitWholeWave: false
+    dynamicVGPRBlockSize: 0
+    scratchReservedForDynamicVGPRs: 0
+    numKernargPreloadSGPRs: 0
+    isWholeWaveFunction: false
+    minNumAGPRs:     4294967295
+  body:             |
+    bb.0 (%ir-block.71):
+      $sgpr0_sgpr1 = S_GETPC_B64 pcsections !208
+      $sgpr0 = S_ADD_U32 $sgpr0, 4294967020, implicit-def $scc, pcsections !211
+      $sgpr1 = S_ADDC_U32 $sgpr1, 4294967295, implicit-def $scc, implicit $scc, pcsections !214
+      $sgpr30_sgpr31 = S_SWAPPC_B64 $sgpr0_sgpr1, pcsections !217
+  ...
+  ---
+  name:            _Z8foo_instrvx0x0
+  alignment:       4
+  exposesReturnsTwice: false
+  legalized:       false
+  regBankSelected: false
+  selected:        true
+  failedISel:      false
+  tracksRegLiveness: false
+  hasWinCFI:       false
+  noPhis:          true
+  isSSA:           false
+  noVRegs:         true
+  hasFakeUses:     false
+  callsEHReturn:   false
+  callsUnwindInit: false
+  hasEHContTarget: false
+  hasEHScopes:     false
+  hasEHFunclets:   false
+  isOutlined:      false
+  debugInstrRef:   false
+  failsVerification: false
+  tracksDebugUserValues: false
+  registers:       []
+  liveins:         []
+  frameInfo:
+    isFrameAddressTaken: false
+    isReturnAddressTaken: false
+    hasStackMap:     false
+    hasPatchPoint:   true
+    stackSize:       0
+    offsetAdjustment: 0
+    maxAlignment:    1
+    adjustsStack:    false
+    hasCalls:        false
+    framePointerPolicy: none
+    stackProtector:  ''
+    functionContext: ''
+    maxCallFrameSize: 4294967295
+    cvBytesOfCalleeSavedRegisters: 0
+    hasOpaqueSPAdjustment: false
+    hasVAStart:      false
+    hasMustTailInVarArgFunc: false
+    hasTailCall:     false
+    isCalleeSavedInfoValid: false
+    localFrameSize:  0
+  fixedStack:      []
+  stack:           []
+  entry_values:    []
+  callSites:       []
+  debugValueSubstitutions: []
+  constants:       []
+  machineFunctionInfo:
+    explicitKernArgSize: 0
+    maxKernArgAlign: 1
+    ldsSize:         0
+    gdsSize:         0
+    dynLDSAlign:     1
+    isEntryFunction: false
+    isChainFunction: false
+    memoryBound:     false
+    waveLimiter:     false
+    hasSpilledSGPRs: false
+    hasSpilledVGPRs: false
+    numWaveDispatchSGPRs: 0
+    numWaveDispatchVGPRs: 0
+    scratchRSrcReg:  '$sgpr0_sgpr1_sgpr2_sgpr3'
+    frameOffsetReg:  '$sgpr33'
+    stackPtrOffsetReg: '$sgpr32'
+    bytesInStackArgArea: 0
+    returnsVoid:     true
+    argumentInfo:
+      privateSegmentBuffer: { reg: '$sgpr0_sgpr1_sgpr2_sgpr3' }
+      dispatchPtr:     { reg: '$sgpr4_sgpr5' }
+      queuePtr:        { reg: '$sgpr6_sgpr7' }
+      dispatchID:      { reg: '$sgpr10_sgpr11' }
+      workGroupIDX:    { reg: '$sgpr12' }
+      workGroupIDY:    { reg: '$sgpr13' }
+      workGroupIDZ:    { reg: '$sgpr14' }
+      LDSKernelId:     { reg: '$sgpr15' }
+      implicitArgPtr:  { reg: '$sgpr8_sgpr9' }
+      workItemIDX:     { reg: '$vgpr31', mask: 1023 }
+      workItemIDY:     { reg: '$vgpr31', mask: 1047552 }
+      workItemIDZ:     { reg: '$vgpr31', mask: 1072693248 }
+    psInputAddr:     0
+    psInputEnable:   0
+    maxMemoryClusterDWords: 8
+    mode:
+      ieee:            true
+      dx10-clamp:      true
+      fp32-input-denormals: true
+      fp32-output-denormals: true
+      fp64-fp16-input-denormals: true
+      fp64-fp16-output-denormals: true
+    highBitsOf32BitAddress: 0
+    occupancy:       10
+    vgprForAGPRCopy: '$vgpr3'
+    sgprForEXECCopy: ''
+    longBranchReservedReg: ''
+    hasInitWholeWave: false
+    dynamicVGPRBlockSize: 0
+    scratchReservedForDynamicVGPRs: 0
+    numKernargPreloadSGPRs: 0
+    isWholeWaveFunction: false
+    minNumAGPRs:     4294967295
+  body:             |
+    bb.0 (%ir-block.71):
+      S_WAITCNT .Vmcnt_0_Expcnt_0_Lgkmcnt_0, pcsections !296
+      S_SETPC_B64 $sgpr30_sgpr31, pcsections !299
+  ...
+  ---
+  name:            _Z8goo_instrvx0x0
+  alignment:       4
+  exposesReturnsTwice: false
+  legalized:       false
+  regBankSelected: false
+  selected:        true
+  failedISel:      false
+  tracksRegLiveness: false
+  hasWinCFI:       false
+  noPhis:          true
+  isSSA:           false
+  noVRegs:         true
+  hasFakeUses:     false
+  callsEHReturn:   false
+  callsUnwindInit: false
+  hasEHContTarget: false
+  hasEHScopes:     false
+  hasEHFunclets:   false
+  isOutlined:      false
+  debugInstrRef:   false
+  failsVerification: false
+  tracksDebugUserValues: false
+  registers:       []
+  liveins:         []
+  frameInfo:
+    isFrameAddressTaken: false
+    isReturnAddressTaken: false
+    hasStackMap:     false
+    hasPatchPoint:   true
+    stackSize:       0
+    offsetAdjustment: 0
+    maxAlignment:    1
+    adjustsStack:    false
+    hasCalls:        false
+    framePointerPolicy: none
+    stackProtector:  ''
+    functionContext: ''
+    maxCallFrameSize: 4294967295
+    cvBytesOfCalleeSavedRegisters: 0
+    hasOpaqueSPAdjustment: false
+    hasVAStart:      false
+    hasMustTailInVarArgFunc: false
+    hasTailCall:     false
+    isCalleeSavedInfoValid: false
+    localFrameSize:  0
+  fixedStack:      []
+  stack:           []
+  entry_values:    []
+  callSites:       []
+  debugValueSubstitutions: []
+  constants:       []
+  machineFunctionInfo:
+    explicitKernArgSize: 0
+    maxKernArgAlign: 1
+    ldsSize:         0
+    gdsSize:         0
+    dynLDSAlign:     1
+    isEntryFunction: false
+    isChainFunction: false
+    memoryBound:     false
+    waveLimiter:     false
+    hasSpilledSGPRs: false
+    hasSpilledVGPRs: false
+    numWaveDispatchSGPRs: 0
+    numWaveDispatchVGPRs: 0
+    scratchRSrcReg:  '$sgpr0_sgpr1_sgpr2_sgpr3'
+    frameOffsetReg:  '$sgpr33'
+    stackPtrOffsetReg: '$sgpr32'
+    bytesInStackArgArea: 0
+    returnsVoid:     true
+    argumentInfo:
+      privateSegmentBuffer: { reg: '$sgpr0_sgpr1_sgpr2_sgpr3' }
+      dispatchPtr:     { reg: '$sgpr4_sgpr5' }
+      queuePtr:        { reg: '$sgpr6_sgpr7' }
+      dispatchID:      { reg: '$sgpr10_sgpr11' }
+      workGroupIDX:    { reg: '$sgpr12' }
+      workGroupIDY:    { reg: '$sgpr13' }
+      workGroupIDZ:    { reg: '$sgpr14' }
+      LDSKernelId:     { reg: '$sgpr15' }
+      implicitArgPtr:  { reg: '$sgpr8_sgpr9' }
+      workItemIDX:     { reg: '$vgpr31', mask: 1023 }
+      workItemIDY:     { reg: '$vgpr31', mask: 1047552 }
+      workItemIDZ:     { reg: '$vgpr31', mask: 1072693248 }
+    psInputAddr:     0
+    psInputEnable:   0
+    maxMemoryClusterDWords: 8
+    mode:
+      ieee:            true
+      dx10-clamp:      true
+      fp32-input-denormals: true
+      fp32-output-denormals: true
+      fp64-fp16-input-denormals: true
+      fp64-fp16-output-denormals: true
+    highBitsOf32BitAddress: 0
+    occupancy:       10
+    vgprForAGPRCopy: '$vgpr3'
+    sgprForEXECCopy: ''
+    longBranchReservedReg: ''
+    hasInitWholeWave: false
+    dynamicVGPRBlockSize: 0
+    scratchReservedForDynamicVGPRs: 0
+    numKernargPreloadSGPRs: 0
+    isWholeWaveFunction: false
+    minNumAGPRs:     4294967295
+  body:             |
+    bb.0 (%ir-block.71):
+      S_WAITCNT .Vmcnt_0_Expcnt_0_Lgkmcnt_0, pcsections !378
+      S_SETPC_B64 $sgpr30_sgpr31, pcsections !381
+  ...
+  ---
+  name:            _Z6kernelvx0x30
+  alignment:       4
+  exposesReturnsTwice: false
+  legalized:       false
+  regBankSelected: false
+  selected:        true
+  failedISel:      false
+  tracksRegLiveness: false
+  hasWinCFI:       false
+  noPhis:          true
+  isSSA:           false
+  noVRegs:         true
+  hasFakeUses:     false
+  callsEHReturn:   false
+  callsUnwindInit: false
+  hasEHContTarget: false
+  hasEHScopes:     false
+  hasEHFunclets:   false
+  isOutlined:      false
+  debugInstrRef:   false
+  failsVerification: false
+  tracksDebugUserValues: false
+  registers:       []
+  liveins:         []
+  frameInfo:
+    isFrameAddressTaken: false
+    isReturnAddressTaken: false
+    hasStackMap:     false
+    hasPatchPoint:   true
+    stackSize:       0
+    offsetAdjustment: 0
+    maxAlignment:    1
+    adjustsStack:    false
+    hasCalls:        false
+    framePointerPolicy: none
+    stackProtector:  ''
+    functionContext: ''
+    maxCallFrameSize: 4294967295
+    cvBytesOfCalleeSavedRegisters: 0
+    hasOpaqueSPAdjustment: false
+    hasVAStart:      false
+    hasMustTailInVarArgFunc: false
+    hasTailCall:     false
+    isCalleeSavedInfoValid: false
+    localFrameSize:  0
+  fixedStack:      []
+  stack:           []
+  entry_values:    []
+  callSites:       []
+  debugValueSubstitutions: []
+  constants:       []
+  machineFunctionInfo:
+    explicitKernArgSize: 0
+    maxKernArgAlign: 1
+    ldsSize:         0
+    gdsSize:         0
+    dynLDSAlign:     1
+    isEntryFunction: false
+    isChainFunction: false
+    memoryBound:     false
+    waveLimiter:     false
+    hasSpilledSGPRs: false
+    hasSpilledVGPRs: false
+    numWaveDispatchSGPRs: 0
+    numWaveDispatchVGPRs: 0
+    scratchRSrcReg:  '$sgpr0_sgpr1_sgpr2_sgpr3'
+    frameOffsetReg:  '$sgpr33'
+    stackPtrOffsetReg: '$sgpr32'
+    bytesInStackArgArea: 0
+    returnsVoid:     true
+    argumentInfo:
+      privateSegmentBuffer: { reg: '$sgpr0_sgpr1_sgpr2_sgpr3' }
+      dispatchPtr:     { reg: '$sgpr4_sgpr5' }
+      queuePtr:        { reg: '$sgpr6_sgpr7' }
+      dispatchID:      { reg: '$sgpr10_sgpr11' }
+      workGroupIDX:    { reg: '$sgpr12' }
+      workGroupIDY:    { reg: '$sgpr13' }
+      workGroupIDZ:    { reg: '$sgpr14' }
+      LDSKernelId:     { reg: '$sgpr15' }
+      implicitArgPtr:  { reg: '$sgpr8_sgpr9' }
+      workItemIDX:     { reg: '$vgpr31', mask: 1023 }
+      workItemIDY:     { reg: '$vgpr31', mask: 1047552 }
+      workItemIDZ:     { reg: '$vgpr31', mask: 1072693248 }
+    psInputAddr:     0
+    psInputEnable:   0
+    maxMemoryClusterDWords: 8
+    mode:
+      ieee:            true
+      dx10-clamp:      true
+      fp32-input-denormals: true
+      fp32-output-denormals: true
+      fp64-fp16-input-denormals: true
+      fp64-fp16-output-denormals: true
+    highBitsOf32BitAddress: 0
+    occupancy:       10
+    vgprForAGPRCopy: '$vgpr3'
+    sgprForEXECCopy: ''
+    longBranchReservedReg: ''
+    hasInitWholeWave: false
+    dynamicVGPRBlockSize: 0
+    scratchReservedForDynamicVGPRs: 0
+    numKernargPreloadSGPRs: 0
+    isWholeWaveFunction: false
+    minNumAGPRs:     4294967295
+  body:             |
+    bb.0 (%ir-block.71):
+      $sgpr0_sgpr1 = S_LOAD_DWORDX2_IMM $sgpr4_sgpr5, 0, 0, pcsections !468
+      S_WAITCNT .Lgkmcnt_0, pcsections !471
+      PATCHPOINT 0, 0, target-flags(amdgpu-gotprel) @luthier.payload.retarget, 0, 0, implicit-def $sgpr0_sgpr1, pcsections !700
+      $sgpr30_sgpr31 = S_SWAPPC_B64 $sgpr0_sgpr1, pcsections !474
+  ...
+  ---
+  name:            _Z6kernelvx0x40
+  alignment:       4
+  exposesReturnsTwice: false
+  legalized:       false
+  regBankSelected: false
+  selected:        true
+  failedISel:      false
+  tracksRegLiveness: false
+  hasWinCFI:       false
+  noPhis:          true
+  isSSA:           false
+  noVRegs:         true
+  hasFakeUses:     false
+  callsEHReturn:   false
+  callsUnwindInit: false
+  hasEHContTarget: false
+  hasEHScopes:     false
+  hasEHFunclets:   false
+  isOutlined:      false
+  debugInstrRef:   false
+  failsVerification: false
+  tracksDebugUserValues: false
+  registers:       []
+  liveins:         []
+  frameInfo:
+    isFrameAddressTaken: false
+    isReturnAddressTaken: false
+    hasStackMap:     false
+    hasPatchPoint:   true
+    stackSize:       0
+    offsetAdjustment: 0
+    maxAlignment:    1
+    adjustsStack:    false
+    hasCalls:        false
+    framePointerPolicy: none
+    stackProtector:  ''
+    functionContext: ''
+    maxCallFrameSize: 4294967295
+    cvBytesOfCalleeSavedRegisters: 0
+    hasOpaqueSPAdjustment: false
+    hasVAStart:      false
+    hasMustTailInVarArgFunc: false
+    hasTailCall:     false
+    isCalleeSavedInfoValid: false
+    localFrameSize:  0
+  fixedStack:      []
+  stack:           []
+  entry_values:    []
+  callSites:       []
+  debugValueSubstitutions: []
+  constants:       []
+  machineFunctionInfo:
+    explicitKernArgSize: 0
+    maxKernArgAlign: 1
+    ldsSize:         0
+    gdsSize:         0
+    dynLDSAlign:     1
+    isEntryFunction: false
+    isChainFunction: false
+    memoryBound:     false
+    waveLimiter:     false
+    hasSpilledSGPRs: false
+    hasSpilledVGPRs: false
+    numWaveDispatchSGPRs: 0
+    numWaveDispatchVGPRs: 0
+    scratchRSrcReg:  '$sgpr0_sgpr1_sgpr2_sgpr3'
+    frameOffsetReg:  '$sgpr33'
+    stackPtrOffsetReg: '$sgpr32'
+    bytesInStackArgArea: 0
+    returnsVoid:     true
+    argumentInfo:
+      privateSegmentBuffer: { reg: '$sgpr0_sgpr1_sgpr2_sgpr3' }
+      dispatchPtr:     { reg: '$sgpr4_sgpr5' }
+      queuePtr:        { reg: '$sgpr6_sgpr7' }
+      dispatchID:      { reg: '$sgpr10_sgpr11' }
+      workGroupIDX:    { reg: '$sgpr12' }
+      workGroupIDY:    { reg: '$sgpr13' }
+      workGroupIDZ:    { reg: '$sgpr14' }
+      LDSKernelId:     { reg: '$sgpr15' }
+      implicitArgPtr:  { reg: '$sgpr8_sgpr9' }
+      workItemIDX:     { reg: '$vgpr31', mask: 1023 }
+      workItemIDY:     { reg: '$vgpr31', mask: 1047552 }
+      workItemIDZ:     { reg: '$vgpr31', mask: 1072693248 }
+    psInputAddr:     0
+    psInputEnable:   0
+    maxMemoryClusterDWords: 8
+    mode:
+      ieee:            true
+      dx10-clamp:      true
+      fp32-input-denormals: true
+      fp32-output-denormals: true
+      fp64-fp16-input-denormals: true
+      fp64-fp16-output-denormals: true
+    highBitsOf32BitAddress: 0
+    occupancy:       10
+    vgprForAGPRCopy: '$vgpr3'
+    sgprForEXECCopy: ''
+    longBranchReservedReg: ''
+    hasInitWholeWave: false
+    dynamicVGPRBlockSize: 0
+    scratchReservedForDynamicVGPRs: 0
+    numKernargPreloadSGPRs: 0
+    isWholeWaveFunction: false
+    minNumAGPRs:     4294967295
+  body:             |
+    bb.0 (%ir-block.71):
+      S_ENDPGM 0, pcsections !552
+  ...
+InstrumentationModule:  |
+  ; ModuleID = 'callgraph-payload-if-else-retarget.instrumentation_module'
+  source_filename = "callgraph-payload-if-else-retarget.instrumentation_module"
+  target datalayout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9"
+  target triple = "amdgcn-amd-amdhsa"
+
+  ; `luthier::readReg` / `luthier::writeReg` intrinsic decls. `7683` in the
+  ; callers is `AMDGPU::SGPR0_SGPR1` -- the pair the target's
+  ; `S_SWAPPC_B64 s[30:31], s[0:1]` reads as its indirect callee.
+  declare i64 @"luthier::readReg.i64.i32"(i32) #1
+  declare void @"luthier::writeReg.void.i32.i64"(i32, i64) #2
+
+  ; The retarget hook.
+  ;
+  ; Reads the incoming callee pointer, compares against the two known
+  ; "original" callees this instrumentor recognises (their addresses stand in
+  ; here as literals 4096 / 8192 -- the analysis does not model runtime
+  ; equality, so the specific values are only illustrative). For each match,
+  ; writes back the corresponding instrumented version's entry-point address:
+  ;   * 93945842149888 == `_Z8foo_instrvx0x0.entrypoint_addr`
+  ;   * 93945842149896 == `_Z8goo_instrvx0x0.entrypoint_addr`
+  ; so PrototypeCallGraph's addr -> Function* map (built from the target
+  ; module's device-function entry-point attributes) resolves each writeReg
+  ; value to the corresponding target-module Function.
+  ;
+  ; The if/else structure is what forces PrototypeCallGraph's payload-side
+  ; resolver to keep *both* possible target functions -- neither dominates
+  ; the other on any path, so `collectPayloadWrites` returns two independent
+  ; PayloadWrite entries whose Values folds resolve to two different
+  ; addresses, both attached to the same indirect call site.
+  define internal void @luthier.payload.retarget() #0 {
+  entry:
+    %callee = call i64 @"luthier::readReg.i64.i32"(i32 7683)
+    %is_foo = icmp eq i64 %callee, 4096
+    br i1 %is_foo, label %write_foo, label %check_goo
+
+  write_foo:
+    call void @"luthier::writeReg.void.i32.i64"(i32 7683, i64 93945842149888)
+    br label %end
+
+  check_goo:
+    %is_goo = icmp eq i64 %callee, 8192
+    br i1 %is_goo, label %write_goo, label %end
+
+  write_goo:
+    call void @"luthier::writeReg.void.i32.i64"(i32 7683, i64 93945842149896)
+    br label %end
+
+  end:
+    ret void
+  }
+
+  ; `naked` matches the shape `Prototype::createInjectedPayload` produces for
+  ; a real injection: register discipline is entirely up to the writeReg
+  ; intrinsics inside the payload.
+  attributes #0 = { naked noinline "luthier.function.injected_payload" "target-cpu"="gfx908" "target-features"="+wavefrontsize64" }
+  attributes #1 = { "luthier.intrinsic"="luthier::readReg" "target-cpu"="gfx908" }
+  attributes #2 = { "luthier.intrinsic"="luthier::writeReg" "target-cpu"="gfx908" }
+...
