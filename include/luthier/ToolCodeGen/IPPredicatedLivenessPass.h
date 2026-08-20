@@ -1,4 +1,4 @@
-//===-- IPPredicatedLivenessPass.h ----------------------*- C++ -*-===//
+//===-- IPPredicatedLivenessPass.h ------------------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,24 +13,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file IPPredicatedLivenessPass.h
+/// \file
 /// \c Prototype-level analysis that runs liveness analysis across
 /// the target module's inter-procedural predicated control-flow graph,
-/// tracking separate active-lane and inactive-lane live phys-reg sets at every
-/// program point of interest. Computed per-AppMI and surfaced per-injected-
-/// payload so the downstream
-/// \c InjectedPayloadPreserveLiveRegsPass can decide what physical
-/// registers the injected payload must preserve.
+/// tracking a single live phys-reg set at every predicated basic block.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_LIVENESS_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_LIVENESS_PASS_H
 #include "luthier/ToolCodeGen/Prototype.h"
-#include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
-#include <llvm/ADT/DenseSet.h>
-#include <llvm/ADT/SmallVector.h>
+#include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/IR/PassManager.h>
-#include <llvm/MC/MCRegister.h>
+#include <memory>
 
 namespace llvm {
 class Function;
@@ -41,67 +35,26 @@ namespace luthier {
 
 class PredicatedMachineBasicBlock;
 
-/// \brief Per-payload live-register record captured at the program point
-/// just before the payload runs (within a chain of payloads at the same
-/// AppMI, each payload's record is captured "after later payloads have
-/// already been stepped over and before this payload's own effects are
-/// applied").
-///
-/// \c Active is the live set across active lanes (lanes where EXEC=1 at
-/// this point); \c Inactive is the live set across inactive lanes
-/// (lanes where EXEC=0). For ordinary instrumentation under the C calling
-/// convention, only \c Active is needed for preservation — see
-/// \c project_sva_vgpr_wwm_preload memory note for the WWM-payload
-/// considerations.
-struct PayloadLiveSets {
-  llvm::DenseSet<llvm::MCPhysReg> Active;
-  llvm::DenseSet<llvm::MCPhysReg> Inactive;
-};
-
-/// \brief Per-PredicatedMachineBasicBlock live-in record.
-///
-/// Captures the same Active/Inactive lane partition as
-/// \c PayloadLiveSets, but keyed by basic block rather than by payload.
-/// Stored as \c SmallVector so consumers can borrow via \c ArrayRef
-/// without copying.
-struct PMBBLiveIns {
-  llvm::SmallVector<llvm::MCPhysReg, 16> Active;
-  llvm::SmallVector<llvm::MCPhysReg, 16> Inactive;
-};
-
 class IPPredicatedLivenessAnalysis;
 
 /// \brief Result of \c IPPredicatedLivenessAnalysis.
 ///
 /// Walks the target module's \c IPPredicatedCFG backward to fixed point,
-/// tracking active/inactive lane liveness with the following per-PMBB
-/// rules:
-///   - Vector PMBB → step backward updates only the active set.
-///   - Scalar PMBB → step backward updates both active and inactive sets.
-///   - EXEC-modifying MI → "complete flip" (e.g. \c S_NOT_B64 exec,exec)
-///     swaps active and inactive; any other EXEC write conservatively
-///     unions both sets into both.
-///   - Insertion-point AppMI → for each attached payload in reverse
-///     execution order, snapshot the current sets (cached per-payload)
-///     before stepping backward over the payload's declared
-///     Reads/Writes from \c InjectedPayloadSideEffectsAnalysis.
-///
+/// tracking a single physical-register live set.
 /// If any PMBB has unresolved inter-procedural edges, the analysis falls
 /// back to per-function local mode: every return-block live-out is
 /// initialised to the function's allocatable GPR set (per the
-/// \c amdgpu-num-{sgpr,vgpr} attributes plus reserved-but-not-read-only
-/// registers from MRI) and dataflow is intra-procedural only.
+/// \c amdgpu-num-{sgpr,vgpr} attributes plus reserved registers from
+/// MRI) and dataflow is intra-procedural only.
 class IPPredicatedLiveness {
 public:
-  using PayloadLiveSetsMap =
-      llvm::DenseMap<const llvm::Function *, PayloadLiveSets>;
+  /// Per-PMBB converged live-in set.
   using PMBBLiveInsMap =
-      llvm::DenseMap<const PredicatedMachineBasicBlock *, PMBBLiveIns>;
+      llvm::DenseMap<const PredicatedMachineBasicBlock *,
+                     std::unique_ptr<llvm::LivePhysRegs>>;
 
 private:
   friend class IPPredicatedLivenessAnalysis;
-
-  PayloadLiveSetsMap LiveSetsByPayload;
   PMBBLiveInsMap LiveInsByPMBB;
   /// True iff the dataflow ran in fully-discovered (inter-procedural) mode.
   /// False means it fell back to per-function local mode.
@@ -110,41 +63,16 @@ private:
 public:
   IPPredicatedLiveness() = default;
 
-  /// \return per-payload live-set record at the program point just before
-  /// \p Payload's effects apply, or \c nullptr if the payload has no
-  /// recorded entry.
-  [[nodiscard]] const PayloadLiveSets *
-  getLiveSetsForPayload(const llvm::Function &Payload) const {
-    auto It = LiveSetsByPayload.find(&Payload);
-    return It == LiveSetsByPayload.end() ? nullptr : &It->second;
-  }
-
   /// \return true iff the IPPredCFG was fully discovered at analysis time.
   /// When false, results are produced by a per-function local fallback.
   [[nodiscard]] bool isFullyDiscovered() const { return ResultFullyDiscovered; }
 
-  [[nodiscard]] const PayloadLiveSetsMap &getMap() const {
-    return LiveSetsByPayload;
-  }
-
-  /// \return ArrayRef into the converged per-PMBB Active-lane live-in set,
-  /// or an empty ArrayRef if no entry was recorded for \p PMBB.
-  [[nodiscard]] llvm::ArrayRef<llvm::MCPhysReg>
-  getPMBBLiveInsActive(const PredicatedMachineBasicBlock &PMBB) const {
+  /// \return pointer to the converged per-PMBB live-in set, or \c nullptr
+  /// if no entry was recorded for \p PMBB.
+  [[nodiscard]] const llvm::LivePhysRegs *
+  getPMBBLiveIns(const PredicatedMachineBasicBlock &PMBB) const {
     auto It = LiveInsByPMBB.find(&PMBB);
-    return It == LiveInsByPMBB.end() ? llvm::ArrayRef<llvm::MCPhysReg>{}
-                                     : llvm::ArrayRef<llvm::MCPhysReg>(
-                                           It->second.Active);
-  }
-
-  /// \return ArrayRef into the converged per-PMBB Inactive-lane live-in set,
-  /// or an empty ArrayRef if no entry was recorded for \p PMBB.
-  [[nodiscard]] llvm::ArrayRef<llvm::MCPhysReg>
-  getPMBBLiveInsInactive(const PredicatedMachineBasicBlock &PMBB) const {
-    auto It = LiveInsByPMBB.find(&PMBB);
-    return It == LiveInsByPMBB.end() ? llvm::ArrayRef<llvm::MCPhysReg>{}
-                                     : llvm::ArrayRef<llvm::MCPhysReg>(
-                                           It->second.Inactive);
+    return It == LiveInsByPMBB.end() ? nullptr : It->second.get();
   }
 
   [[nodiscard]] const PMBBLiveInsMap &getPMBBLiveInsMap() const {
@@ -157,7 +85,7 @@ public:
 
 /// \brief \c Prototype-level analysis that computes, for the target
 /// module of an \c Prototype, the per-payload and per-PMBB live
-/// physical-register sets across active and inactive lane partitions.
+/// physical-register sets.
 class IPPredicatedLivenessAnalysis
     : public llvm::AnalysisInfoMixin<IPPredicatedLivenessAnalysis> {
   friend llvm::AnalysisInfoMixin<IPPredicatedLivenessAnalysis>;

@@ -22,14 +22,15 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_SV_STORAGE_AND_LOAD_LOCATIONS_H
 #define LUTHIER_TOOL_CODE_GEN_SV_STORAGE_AND_LOAD_LOCATIONS_H
-#include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
+#include <llvm/ADT/DenseSet.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/CodeGen/SlotIndexes.h>
 #include <llvm/IR/PassManager.h>
+#include <llvm/MC/MCRegister.h>
 
 namespace luthier {
 
@@ -122,12 +123,11 @@ public:
 
   /// calculates the storage and load locations of the state value array.
   ///
-  /// The "do not clobber" set at each instrumentation point is derived from
-  /// \p PayloadLiveSetsByFn — the union of \c Active and \c Inactive lane
-  /// live sets across every injected payload attached to that AppMI. The
-  /// upstream liveness analysis folds in each payload's declared
-  /// Reads/Writes via \c stepBackwardOverPayload, so no separate
-  /// accessed-regs input is needed.
+  /// \p PayloadLiveSetsByFn is the caller-provided "do not clobber" set:
+  /// the union of registers that any attached payload needs preserved
+  /// across the instrumentation point. \c IPPredicatedLivenessAnalysis
+  /// no longer precomputes this per payload — callers derive it from
+  /// PATCHPOINT MIs plus the per-PMBB liveness result.
   ///
   /// Intended to be driven from \c SVStorageAndLoadLocationsAnalysis::run;
   /// external callers should consume the analysis result rather than
@@ -139,8 +139,7 @@ public:
       const llvm::Module &TargetM, llvm::FunctionAnalysisManager &TargetFAM,
       llvm::MachineFunctionAnalysisManager &TargetMFAM,
       const InjectedPayloadAndInstPoint &IPIP,
-      const llvm::DenseMap<const llvm::Function *, PayloadLiveSets>
-          &PayloadLiveSetsByFn);
+      const llvm::DenseSet<llvm::MCPhysReg> &PayloadLiveSetsByFn);
 
   /// Given the \p MBB of the \c LiftedRepresentation being worked on by this
   /// analysis, returns the state value array storage of every instruction

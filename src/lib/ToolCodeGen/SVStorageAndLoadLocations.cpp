@@ -110,47 +110,23 @@ bool isWithinDeclaredCap(llvm::ArrayRef<llvm::MachineFunction *> Functions,
 
 
 
-/// Build a non-owning set of phys-regs that must NOT be clobbered at the
-/// given AppMI: the union of \c Active and \c Inactive lane live sets
-/// across every injected payload attached to \p AppMI. Each payload's
-/// per-lane sets already incorporate that payload's declared Reads/Writes
-/// via \c stepBackwardOverPayload inside
-/// \c IPPredicatedLivenessAnalysis.
+/// Return \p DoNotClobber unchanged. Kept as a thin wrapper so call
+/// sites still read "regs to preserve at this AppMI". Per-payload
+/// liveness is no longer precomputed by \c IPPredicatedLivenessAnalysis;
+/// the caller passes in whatever it derived from PATCHPOINT MIs.
 llvm::DenseSet<llvm::MCPhysReg>
 liveAtAppMI(const llvm::MachineInstr &AppMI,
             const InjectedPayloadAndInstPoint &IPIP,
-            const llvm::DenseMap<const llvm::Function *, PayloadLiveSets>
-                &PayloadLiveSetsByFn) {
-  llvm::DenseSet<llvm::MCPhysReg> Out;
-  if (!IPIP.contains(AppMI))
-    return Out;
-  for (const llvm::Function *Payload : IPIP.at(AppMI)) {
-    auto It = PayloadLiveSetsByFn.find(Payload);
-    if (It == PayloadLiveSetsByFn.end())
-      continue;
-    for (llvm::MCPhysReg R : It->second.Active)
-      Out.insert(R);
-    for (llvm::MCPhysReg R : It->second.Inactive)
-      Out.insert(R);
-  }
-  return Out;
+            const llvm::DenseSet<llvm::MCPhysReg> &DoNotClobber) {
+  (void)AppMI;
+  (void)IPIP;
+  return DoNotClobber;
 }
 
-/// Build the conservative union across every payload's live set in
-/// \p PayloadLiveSetsByFn. Used by the function-start scavenger paths
-/// that don't have an AppMI in hand.
+/// Identity for the caller-provided \p DoNotClobber set.
 llvm::DenseSet<llvm::MCPhysReg>
-liveAcrossAllPayloads(const llvm::DenseMap<const llvm::Function *,
-                                           PayloadLiveSets>
-                          &PayloadLiveSetsByFn) {
-  llvm::DenseSet<llvm::MCPhysReg> Out;
-  for (const auto &[F, LS] : PayloadLiveSetsByFn) {
-    for (llvm::MCPhysReg R : LS.Active)
-      Out.insert(R);
-    for (llvm::MCPhysReg R : LS.Inactive)
-      Out.insert(R);
-  }
-  return Out;
+liveAcrossAllPayloads(const llvm::DenseSet<llvm::MCPhysReg> &DoNotClobber) {
+  return DoNotClobber;
 }
 
 } // namespace
@@ -477,8 +453,7 @@ llvm::Error SVStorageAndLoadLocations::calculate(
     const llvm::Module &TargetM, llvm::FunctionAnalysisManager &TargetFAM,
     llvm::MachineFunctionAnalysisManager &TargetMFAM,
     const InjectedPayloadAndInstPoint &IPIP,
-    const llvm::DenseMap<const llvm::Function *, PayloadLiveSets>
-        &PayloadLiveSetsByFn) {
+    const llvm::DenseSet<llvm::MCPhysReg> &PayloadLiveSetsByFn) {
   // Module-wide "do not clobber" set: every register that's live in any
   // payload's Active or Inactive lane set, anywhere in the module. Used by
   // the fixed-storage scavenger and as a starting point for per-IP queries.
@@ -705,11 +680,11 @@ SVStorageAndLoadLocationsAnalysis::run(
   const InjectedPayloadAndInstPoint &IPIP =
       IPAM.getResult<InjectedPayloadAndInstPointAnalysis>(IP);
 
-  // TODO(NPM): source PayloadLiveSetsByFn from a migrated
-  // IP-level liveness analysis. IPPredicatedLivenessAnalysis is still
-  // a legacy ModulePass and cannot be pulled through IPAM; consumers of
-  // this analysis are broken until that migration lands.
-  llvm::DenseMap<const llvm::Function *, PayloadLiveSets> PayloadLiveSetsByFn;
+  // TODO: derive PayloadLiveSetsByFn from PATCHPOINT MIs + the
+  // per-PMBB liveness result exposed by \c IPPredicatedLivenessAnalysis.
+  // Currently passed empty — the do-not-clobber set is effectively no
+  // constraint, matching the prior TODO-stub behaviour.
+  llvm::DenseSet<llvm::MCPhysReg> PayloadLiveSetsByFn;
 
   if (auto Err = Out.calculate(TargetModule, TargetFAM, TargetMFAM, IPIP,
                                PayloadLiveSetsByFn))
