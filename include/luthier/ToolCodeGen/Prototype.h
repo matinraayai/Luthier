@@ -122,6 +122,23 @@ public:
   /// target module.
   void forEachTargetMF(PrototypeAnalysisManager &PAM,
                        llvm::function_ref<void(llvm::MachineFunction &)> Fn);
+
+  /// \brief Serialize both half-modules to \p OS as MIR (IR only — no cached
+  /// \c MachineFunctionAnalysis results are consulted).
+  void print(llvm::raw_ostream &OS) const;
+
+  /// \brief Serialize both half-modules to \p OS as MIR. Each cached
+  /// \c MachineFunctionAnalysis result in \p TargetFAM (for the target module)
+  /// and \p IFAM (for the instrumentation module) is dumped alongside its IR.
+  /// The pass instrumentation on \c PrototypePIC uses this to render
+  /// \c --print-before-all / \c --print-after-all output for Prototype-level
+  /// passes; \c StandardInstrumentations cannot name a Prototype so the
+  /// built-in \c PrintIRInstrumentation never fires against it.
+  void print(llvm::raw_ostream &OS, llvm::FunctionAnalysisManager &TargetFAM,
+             llvm::FunctionAnalysisManager &IFAM) const;
+
+  /// \brief Debug-only convenience: <tt>print(dbgs())</tt>.
+  void dump() const;
 };
 
 //===----------------------------------------------------------------------===//

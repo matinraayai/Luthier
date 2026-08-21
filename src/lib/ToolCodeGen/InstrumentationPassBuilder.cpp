@@ -96,6 +96,7 @@
 #include <llvm/IR/PassInstrumentation.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/PassManagerInternal.h>
+#include <llvm/IR/PrintPasses.h>
 #include <llvm/Passes/CodeGenPassBuilder.h>
 #include <llvm/Passes/OptimizationLevel.h>
 #include <llvm/Passes/PassBuilder.h>
@@ -1168,6 +1169,33 @@ void InstrumentationPassBuilder::crossRegisterProxies(
   // real callbacks.
   PAM.registerPass(
       [this] { return llvm::PassInstrumentationAnalysis(&PrototypePIC); });
+
+  // Route Prototype-level passes into `--print-before-all` / `--print-after-all`
+  // / `--print-{before,after}=<pass>`. LLVM's StandardInstrumentations can't
+  // name a Prototype IR unit (see PrototypePIC's declaration), so its
+  // PrintIRInstrumentation never registers callbacks against PrototypePIC.
+  auto DumpPrototype = [&Target, &Instrumentation](llvm::StringRef Header,
+                                                   llvm::StringRef PassID,
+                                                   llvm::Any IR) {
+    const auto *const *PPtr = llvm::any_cast<const Prototype *>(&IR);
+    if (!PPtr)
+      return;
+    const Prototype &P = **PPtr;
+    llvm::dbgs() << Header << " " << PassID << " on prototype '"
+                 << P.getName() << "' ***\n";
+    P.print(llvm::dbgs(), Target.FAM, Instrumentation.FAM);
+  };
+  PrototypePIC.registerBeforeNonSkippedPassCallback(
+      [DumpPrototype](llvm::StringRef PassID, llvm::Any IR) {
+        if (llvm::shouldPrintBeforePass(PassID))
+          DumpPrototype("*** IR Dump Before", PassID, IR);
+      });
+  PrototypePIC.registerAfterPassCallback(
+      [DumpPrototype](llvm::StringRef PassID, llvm::Any IR,
+                      const llvm::PreservedAnalyses &) {
+        if (llvm::shouldPrintAfterPass(PassID))
+          DumpPrototype("*** IR Dump After", PassID, IR);
+      });
 
   // One inner proxy per IR level per module, so that a Prototype-level pass can
   // name exactly the managers it disturbed.

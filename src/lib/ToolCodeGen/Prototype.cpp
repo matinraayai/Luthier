@@ -27,6 +27,7 @@
 #include <cassert>
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/SmallPtrSet.h>
+#include <llvm/CodeGen/MIRPrinter.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
@@ -43,6 +44,7 @@
 #include <llvm/IR/PassInstrumentation.h>
 #include <llvm/IR/PassManagerImpl.h>
 #include <llvm/MC/MCRegister.h>
+#include <llvm/Support/Debug.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <llvm/Transforms/Utils/ModuleUtils.h>
 
@@ -184,6 +186,33 @@ void Prototype::forEachTargetMF(
       Fn(MFRes->getMF());
   }
 }
+
+void Prototype::print(llvm::raw_ostream &OS) const {
+  OS << "; ---- target module: '" << TargetModule->getName() << "' ----\n";
+  llvm::printMIR(OS, *TargetModule);
+  OS << "; ---- instrumentation module: '" << IModule->getName() << "' ----\n";
+  llvm::printMIR(OS, *IModule);
+}
+
+void Prototype::print(llvm::raw_ostream &OS,
+                      llvm::FunctionAnalysisManager &TargetFAM,
+                      llvm::FunctionAnalysisManager &IFAM) const {
+  auto DumpModule = [&](llvm::StringRef Label, const llvm::Module &M,
+                        llvm::FunctionAnalysisManager &FAM) {
+    OS << "; ---- " << Label << " module: '" << M.getName() << "' ----\n";
+    llvm::printMIR(OS, M);
+    for (const llvm::Function &F : M) {
+      // getCachedResult only reads the cache; casting away const is safe.
+      if (auto *MFRes = FAM.getCachedResult<llvm::MachineFunctionAnalysis>(
+              const_cast<llvm::Function &>(F)))
+        llvm::printMIR(OS, FAM, MFRes->getMF());
+    }
+  };
+  DumpModule("target", *TargetModule, TargetFAM);
+  DumpModule("instrumentation", *IModule, IFAM);
+}
+
+LLVM_DUMP_METHOD void Prototype::dump() const { print(llvm::dbgs()); }
 
 /// Runs \p Pass over \p M, which is the module of \p IP selected by the caller,
 /// against \p MAM, that module's own \c llvm::ModuleAnalysisManager. Mirrors
