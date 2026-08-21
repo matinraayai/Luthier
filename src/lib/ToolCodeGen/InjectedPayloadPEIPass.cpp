@@ -146,8 +146,6 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   }
   const llvm::MachineInstr *TargetMI = IPIP->at(F);
 
-  auto &TargetModule = P->getTargetModule();
-
   // SVStorageAndLoadLocationsAnalysis is a Prototype-level analysis, so a
   // MachineFunction pass cannot compute one; it is read out of the cache
   // through the outer proxy, keyed by the prototype ParentPrototypeAnalysis
@@ -266,7 +264,6 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   }
   if (MFI.hasStackObjects() || MFI.hasCalls())
     RequiresAccessToStack = true;
-  (void)TargetModule;
 
   // ---- Emit the prologue ------------------------------------------------
   llvm::MachineBasicBlock &EntryMBB = MF.front();

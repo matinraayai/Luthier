@@ -122,12 +122,15 @@ llvm::Expected<llvm::Function *> Prototype::createInjectedPayload(
         F->getName().str() + "'");
 
   llvm::BasicBlock *BB = llvm::BasicBlock::Create(IModule->getContext(), "", F);
-  llvm::IRBuilder<> Builder(BB);
+  // Terminate the block up front so callbacks that transform the block
+  // (e.g. llvm::InlineFunction) see a well-formed block. The builder inserts
+  // before the return.
+  llvm::ReturnInst *Ret =
+      llvm::ReturnInst::Create(IModule->getContext(), nullptr, BB);
+  llvm::IRBuilder<> Builder(Ret);
 
   if (auto Err = Build(Builder))
     return std::move(Err);
-
-  Builder.CreateRetVoid();
 
   if (auto Err = assignToInject(*F, *TargetModule, TargetMI, IFAM))
     return std::move(Err);
