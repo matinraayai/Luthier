@@ -50,6 +50,23 @@ public:
     uint8_t LaneWithinSA;
   };
 
+  /// Describes one pending V_READLANE_B32 that reads the target application's
+  /// stack-pointer / frame-pointer value out of a fixed SVA lane. The
+  /// injected-payload prologue (\c InjectedPayloadPEIPass) has spilled
+  /// SGPR32 / SGPR33 into these lanes before payload body execution and
+  /// then overwritten the physical regs with the instrumentation's own
+  /// frame values — so a plain \c COPY $sgpr32 in the payload would capture
+  /// the instrumentation SP, not the app SP the intrinsic was intended
+  /// to expose. This resolution instead loads the pre-spill value from
+  /// the SVA at the specified lane.
+  struct PendingFrameRegReadlane {
+    /// The IMPLICIT_DEF SGPR_32 virtual register to be replaced
+    llvm::Register SGPRPlaceholder;
+    /// SVA lane index the app-frame value sits at (matches the lane
+    /// InjectedPayloadPEIPass wrote it to during payload prologue)
+    uint8_t SVALane;
+  };
+
   /// SVA placeholder state collected per MachineFunction during
   /// \c lowerIntrinsics, consumed by phase 2 in \c run.
   struct PerFunctionSVAInfo {
@@ -58,6 +75,9 @@ public:
     llvm::Register SVAVGPRPlaceholder{0};
     /// SGPR_32 placeholders waiting to be replaced by V_READLANE_B32
     llvm::SmallVector<PendingSVAReadlane> Readlanes;
+    /// SGPR_32 placeholders for readReg(SP)/readReg(FP) accesses waiting
+    /// to be replaced by V_READLANE_B32
+    llvm::SmallVector<PendingFrameRegReadlane> FrameRegReadlanes;
   };
 
 private:
@@ -65,7 +85,7 @@ private:
   bool processMachineFunction(
       llvm::MachineFunction &MF, bool IsInjectedPayload,
       const IntrinsicsProcessorsAnalysis::Result &IntrinsicsProcessors,
-      PerFunctionSVAInfo &MFSVAInfo);
+      const StateValueArraySpecs &SVASpecs, PerFunctionSVAInfo &MFSVAInfo);
 
   void materializeReadlanes(
       llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> &SVAInfoByMF,
@@ -74,6 +94,7 @@ private:
   bool
   lowerIntrinsics(Prototype &IP,
                   PrototypeAnalysisManager &IPAM,
+                  const StateValueArraySpecs &SVASpecs,
                   llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo>
                       &SVAInfoByMF);
 
