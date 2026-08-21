@@ -94,6 +94,8 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
   const llvm::TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
   const llvm::TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
   llvm::MachineRegisterInfo &MRI = MF.getRegInfo();
+  llvm::MachineFrameInfo &MFI = MF.getFrameInfo();
+  auto *SIMFI = MF.getInfo<llvm::SIMachineFunctionInfo>();
 
   /// Per-MF cache: SA -> wide vreg holding the SA's value. Returned vreg may
   /// be a single SGPR_32 (1-lane SAs) or a REG_SEQUENCE'd wide SGPR (multi
@@ -162,6 +164,57 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     SVAImplDef->setPCSections(MF, MarkerNode);
     MFSVAInfo.SVAVGPRPlaceholder = SVAPlaceholder;
     return MFSVAInfo.SVAVGPRPlaceholder;
+  };
+
+  /// Lazily allocate the two SGPRSpill FIs used to route readReg / writeReg
+  /// of SGPR32 / SGPR33 through the SVA. Both slots are allocated together
+  /// on first frame-reg access so that MFInfo->allocateSGPRSpillToVGPRLane's
+  /// monotonic NumVirtualVGPRSpillLanes counter deterministically lines them
+  /// up with SVA lanes 0 (StackPointerRegSpillLane) and 1
+  /// (FramePointerRegSSpillLane)
+  auto getOrAllocFrameLaneFI = [&](uint8_t Lane) -> int {
+    if (MFSVAInfo.FrameLaneFI.empty()) {
+      MFSVAInfo.FrameLaneFI.assign(2, /*sentinel=*/-1);
+      (void)getOrCreateSVAVGPRPlaceholder();
+      for (uint8_t L = 0; L < 2; ++L) {
+        int FI = MFI.CreateStackObject(/*Size=*/4, llvm::Align(4),
+                                       /*isSpillSlot=*/true);
+        MFI.setStackID(FI, llvm::TargetStackID::SGPRSpill);
+        if (!SIMFI->allocateSGPRSpillToVGPRLane(
+                MF, FI, /*SpillToPhysVGPRLane=*/false)) {
+          Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+              "Failed to allocate SGPR-to-VGPR-lane spill for frame-reg "
+              "SVA lane {0} in MF {1}",
+              L, MF.getName()))));
+          MFSVAInfo.FrameLaneFI.clear();
+          return -1;
+        }
+        MFSVAInfo.FrameLaneFI[L] = FI;
+      }
+    }
+    return MFSVAInfo.FrameLaneFI[Lane];
+  };
+
+  /// Returns the SVA lane for a frame reg read/written by an injected
+  /// payload, matching \c InjectedPayloadPEIPass /
+  /// \c SVAFrameLanes::getPayloadAppFrameSpillSlots convention: SGPR32
+  /// (the app's SP) is spilled to \c StackPointerRegSpillLane. \c PEI at
+  /// head does not spill SGPR33 (it uses \c FLAT_SCR_LO for the FP-analogue
+  /// on non-architected-FS targets), but readReg / writeReg on the frame
+  /// offset reg is still useful for symmetry; route it to
+  /// \c FramePointerRegSpillLane so the two frame lanes stay contiguous
+  /// and the SVA layout on that lane index is meaningful. Returns
+  /// \c std::nullopt if \p PhysReg is neither, or if this isn't an
+  /// injected payload.
+  auto getFrameSVALaneForPhysReg =
+      [&](llvm::MCRegister PhysReg) -> std::optional<uint8_t> {
+    if (!IsInjectedPayload)
+      return std::nullopt;
+    if (PhysReg == SIMFI->getStackPtrOffsetReg())
+      return SVASpecs.getStackPointerRegSpillLane();
+    if (PhysReg == SIMFI->getFrameOffsetReg())
+      return SVASpecs.getFramePointerRegSpillLane();
+    return std::nullopt;
   };
 
   /// SVA scalar argument accessor: returns a virtual register holding the
@@ -438,25 +491,34 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
         llvm::MCRegister PhysReg(ArgVec[1].second->getImm());
         unsigned RegSizeBits = TRI->getRegSizeInBits(PhysReg, MRI);
         unsigned NumChannels = std::max(1u, (RegSizeBits + 31) / 32);
-        // Frame-reg fast path: readReg(SP)/readReg(FP) inside an injected
-        // payload must come from SVA fixed lanes
-        std::optional<uint8_t> FrameSVALane;
-        if (isReadReg && IsInjectedPayload) {
-          const auto *MFISI = MF.getInfo<llvm::SIMachineFunctionInfo>();
-          if (PhysReg == MFISI->getStackPtrOffsetReg())
-            FrameSVALane = SVASpecs.getFramePointerRegSpillLane();
-          else if (PhysReg == MFISI->getFrameOffsetReg())
-            FrameSVALane = SVASpecs.getStackPointerRegSpillLane();
-        }
+        // Frame-reg fast path: readReg / writeReg of SP or FP inside an
+        // injected payload must go through the SVA fixed frame lanes
+        std::optional<uint8_t> FrameSVALane = getFrameSVALaneForPhysReg(PhysReg);
+        // Reads route through the SVA on the read side: allocate the FI
+        // lazily, materialize an SGPR_32 vreg via loadRegFromStackSlot at
+        // the entry-block insertion point, and hand it to the read processor
+        // in place of the usual COPY-from-physreg vreg. Writes are handled
+        // AFTER the write processor runs (below) so it can populate
+        // WritePhysRegSlots normally first — for writes, the fallthrough
+        // branches (getReadChannelVReg) are also skipped so we don't emit
+        // a stale COPY-from-physreg for the SSA-updater plumbing that only
+        // exists for the phys-reg preserve/restore contract, which does
+        // not apply to SP/FP (their epilogue restore is PEI's V_READLANE).
         if (FrameSVALane) {
-          (void)getOrCreateSVAVGPRPlaceholder();
-          llvm::Register Placeholder =
-              MRI.createVirtualRegister(&llvm::AMDGPU::SGPR_32RegClass);
-          (void)llvm::BuildMI(MF.front(), SVAInsertPt, llvm::MIMetadata(),
-                              TII->get(llvm::AMDGPU::IMPLICIT_DEF),
-                              Placeholder);
-          MFSVAInfo.FrameRegReadlanes.push_back({Placeholder, *FrameSVALane});
-          ReadPhysRegVRegs[PhysReg] = Placeholder;
+          if (isReadReg) {
+            int FI = getOrAllocFrameLaneFI(*FrameSVALane);
+            if (FI < 0)
+              return Changed;
+            llvm::Register FrameVReg =
+                MRI.createVirtualRegister(&llvm::AMDGPU::SGPR_32RegClass);
+            TII->loadRegFromStackSlot(MF.front(), SVAInsertPt, FrameVReg, FI,
+                                      &llvm::AMDGPU::SReg_32RegClass,
+                                      /*VReg=*/{});
+            ReadPhysRegVRegs[PhysReg] = FrameVReg;
+          }
+          // For writes: leave ReadPhysRegVRegs empty for this channel —
+          // writeRegMIRProcessor's single-channel path doesn't consult it,
+          // and the frame-write side below emits SI_SPILL_S32_SAVE directly.
         } else if (RegSizeBits < 32) {
           // Sub-32 reads are folded into the 32-bit super-register channel.
           const auto *SITRI = static_cast<const llvm::SIRegisterInfo *>(TRI);
@@ -491,6 +553,23 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
                                        ReadPhysRegVRegs, WritePhysRegSlots)) {
             Ctx.emitError(llvm::toString(std::move(Err)));
             return Changed;
+          }
+          // Frame-reg fast path for writes: spill the new value into the
+          // SVA lane the payload epilogue reads on the way out, so the app
+          // observes the write after payload returns. All other channels
+          // go through the normal COPY-back-to-physreg SSAUpdater plumbing.
+          if (FrameSVALane) {
+            auto WSIt = WritePhysRegSlots.find(PhysReg);
+            if (WSIt != WritePhysRegSlots.end()) {
+              int FI = getOrAllocFrameLaneFI(*FrameSVALane);
+              if (FI < 0)
+                return Changed;
+              TII->storeRegToStackSlot(*MBB, MI, WSIt->second,
+                                       /*isKill=*/false, FI,
+                                       &llvm::AMDGPU::SReg_32RegClass,
+                                       /*VReg=*/{});
+              WritePhysRegSlots.erase(WSIt);
+            }
           }
           recordOverwrittenRegs(WritePhysRegSlots, MBB, MIBuilder);
         }
@@ -635,64 +714,17 @@ void IntrinsicMIRLoweringPass::materializeReadlanes(
     llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> &SVAInfoByMF,
     const StateValueArraySpecs &SVASpecs, bool &Changed) {
   for (auto &[MF, SVAInfo] : SVAInfoByMF) {
-    if (SVAInfo.Readlanes.empty() && SVAInfo.FrameRegReadlanes.empty())
-      continue;
-
-    llvm::LLVMContext &Ctx = MF->getFunction().getContext();
-    const llvm::TargetInstrInfo *TII = MF->getSubtarget().getInstrInfo();
-    llvm::MachineRegisterInfo &MRI = MF->getRegInfo();
-    llvm::MachineFrameInfo &MFI = MF->getFrameInfo();
-    auto *MFInfo = MF->getInfo<llvm::SIMachineFunctionInfo>();
-
-    // Frame-reg readlanes must be resolved BEFORE the SA readlanes because
-    // MFInfo->allocateSGPRSpillToVGPRLane's monotonic NumVirtualVGPRSpillLanes
-    // counter starts at 0 and only increments.
-    bool FrameAllocFailed = false;
-    llvm::SmallVector<int, 2> FrameLaneToFI;
-    if (!SVAInfo.FrameRegReadlanes.empty()) {
-      uint8_t MaxFrameLane = 0;
-      for (const auto &FR : SVAInfo.FrameRegReadlanes)
-        MaxFrameLane = std::max(MaxFrameLane, FR.SVALane);
-      FrameLaneToFI.assign(MaxFrameLane + 1, /*sentinel=*/-1);
-      for (uint8_t Lane = 0; Lane <= MaxFrameLane; ++Lane) {
-        int FI = MFI.CreateStackObject(/*Size=*/4, llvm::Align(4),
-                                       /*isSpillSlot=*/true);
-        MFI.setStackID(FI, llvm::TargetStackID::SGPRSpill);
-        if (!MFInfo->allocateSGPRSpillToVGPRLane(
-                *MF, FI, /*SpillToPhysVGPRLane=*/false)) {
-          Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-              "Failed to allocate SGPR-to-VGPR-lane spill for frame-reg "
-              "SVA lane {0} in MF {1}",
-              Lane, MF->getName()))));
-          FrameAllocFailed = true;
-          break;
-        }
-        FrameLaneToFI[Lane] = FI;
-      }
-    }
-    if (FrameAllocFailed)
-      continue;
-
-    for (const PendingFrameRegReadlane &FR : SVAInfo.FrameRegReadlanes) {
-      assert(FR.SVALane < FrameLaneToFI.size() &&
-             FrameLaneToFI[FR.SVALane] != -1 &&
-             "Frame-reg lane FI must have been allocated above");
-      llvm::MachineInstr *ImplDef = MRI.getUniqueVRegDef(FR.SGPRPlaceholder);
-      assert(ImplDef && ImplDef->isImplicitDef() &&
-             "Frame-reg placeholder must be defined by an IMPLICIT_DEF");
-      llvm::MachineBasicBlock *DefMBB = ImplDef->getParent();
-      llvm::MachineBasicBlock::iterator InsertPt = ImplDef->getIterator();
-
-      TII->loadRegFromStackSlot(*DefMBB, InsertPt, FR.SGPRPlaceholder,
-                                FrameLaneToFI[FR.SVALane],
-                                &llvm::AMDGPU::SReg_32RegClass,
-                                /*VReg=*/{});
-      ImplDef->eraseFromParent();
-      Changed = true;
-    }
-
+    // Frame-reg reads/writes are emitted eagerly in Phase 1
+    // (processMachineFunction) — their FI allocations already advanced
+    // MFInfo->NumVirtualVGPRSpillLanes past lanes 0 and 1, so the SA
+    // allocations below correctly land on lanes 2+.
     if (SVAInfo.Readlanes.empty()) {
+      // If the payload only touched frame regs (no SAs), the SVA VGPR
+      // placeholder created by the frame-reg accessor is no longer
+      // load-bearing — the LaneVGPR is owned by MFInfo->SpillVGPRs[] and
+      // downstream (PEI) discovers the SVA physreg via SVStorageAndLoadLocations.
       if (SVAInfo.SVAVGPRPlaceholder.isValid()) {
+        llvm::MachineRegisterInfo &MRI = MF->getRegInfo();
         llvm::MachineInstr *PlaceholderDef =
             MRI.getUniqueVRegDef(SVAInfo.SVAVGPRPlaceholder);
         if (PlaceholderDef && PlaceholderDef->isImplicitDef())
@@ -702,6 +734,12 @@ void IntrinsicMIRLoweringPass::materializeReadlanes(
       }
       continue;
     }
+
+    llvm::LLVMContext &Ctx = MF->getFunction().getContext();
+    const llvm::TargetInstrInfo *TII = MF->getSubtarget().getInstrInfo();
+    llvm::MachineRegisterInfo &MRI = MF->getRegInfo();
+    llvm::MachineFrameInfo &MFI = MF->getFrameInfo();
+    auto *MFInfo = MF->getInfo<llvm::SIMachineFunctionInfo>();
 
     // The high-level emission contract for SGPR-from-VGPR-lane reads:
     //

@@ -1,36 +1,44 @@
-# Verifies that luthier::readReg targeting the stack-pointer register
-# (SGPR32, MCRegister enum 356) or the frame-pointer register (SGPR33,
-# MCRegister enum 357) inside an injected payload is NOT lowered to the
-# usual entry-block `COPY %vreg = $sgpr32/$sgpr33`
-# Instead the pass emits an SI_SPILL_S32_RESTORE from a
-# TargetStackID::SGPRSpill frame index whose lane matches
-# InjectedPayloadPEIPass's spill-side convention:
-#   * SP (SGPR32) → FramePointerRegSpillLane
-#   * FP (SGPR33) → StackPointerRegSpillLane
-# SILowerSGPRSpills later lowers the pseudo to
-# SI_RESTORE_S32_FROM_VGPR $sgpr, $sva_vgpr, <lane>, and the WWM regalloc
-# assigns the LaneVGPR to the SVA physreg via SVAPhysVGPRPinPass.
+# Verifies that luthier::readReg / luthier::writeReg targeting the
+# stack-pointer register (SGPR32, MCRegister enum 356) or the
+# frame-pointer register (SGPR33, MCRegister enum 357) inside an injected
+# payload go through the SVA fixed frame lanes — NOT through the usual
+# entry-block `COPY %vreg = $sgpr32/$sgpr33` / return-block
+# `COPY $sgpr32/$sgpr33 = %vreg` pair.
+#
+# The pass emits:
+#   * readReg  → SI_SPILL_S32_RESTORE from a TargetStackID::SGPRSpill FI
+#   * writeReg → SI_SPILL_S32_SAVE into the SAME SGPRSpill FI
+# with the lane pairing matching SVAFrameLanes::getPayloadAppFrameSpillSlots
+# (which InjectedPayloadPEIPass consumes):
+#   * SP (SGPR32) ↔ StackPointerRegSpillLane (framework lane 0)
+#   * FP (SGPR33) ↔ FramePointerRegSpillLane (framework lane 1)
+# SILowerSGPRSpills later lowers these to
+# SI_RESTORE_S32_FROM_VGPR / SI_SPILL_S32_TO_VGPR against the SVA VGPR
+# that SVAPhysVGPRPinPass pins the LaneVGPR to.
 
 # RUN: luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx908 \
 # RUN:    '-passes=luthier-intrinsic-mir-lowering' \
 # RUN:    %s -o %t.out.luthier && \
 # RUN: FileCheck %s < %t.out.luthier
 
-# Expect two SI_SPILL_S32_RESTORE (one per frame reg), both loading from
-# TargetStackID::SGPRSpill slots. SGPR32 (SP, enum 356) must restore from
-# %stack.1 (framework lane 1 = FramePointerRegSSpillLane, the lane
-# InjectedPayloadPEIPass spills SP into). SGPR33 (FP, enum 357) must
-# restore from %stack.0 (framework lane 0 = StackPointerRegSpillLane).
-# The SP/FP allocations must precede any SA allocations so the framework's
-# monotonic NumVirtualVGPRSpillLanes counter lines the FIs up with lanes 0
-# and 1. Nothing should COPY from $sgpr32 / $sgpr33 directly — that would
-# defeat the whole point.
+# Both frame-reg lanes must be reserved on the SGPRSpill stack: the FIs
+# are allocated together (even if only one is used) so the framework's
+# monotonic NumVirtualVGPRSpillLanes counter deterministically lines
+# %stack.0 up with SVA lane 0 and %stack.1 with SVA lane 1. Nothing
+# should COPY from/to $sgpr32 / $sgpr33 directly — that would defeat
+# the whole point.
 # CHECK:      stack-id: sgpr-spill
 # CHECK:      stack-id: sgpr-spill
-# CHECK:      %[[SPVREG:[0-9]+]]:sgpr_32 = SI_SPILL_S32_RESTORE %stack.1
-# CHECK:      %[[FPVREG:[0-9]+]]:sgpr_32 = SI_SPILL_S32_RESTORE %stack.0
+# CHECK:      %[[SPVREG:[0-9]+]]:{{.*}} = COPY %[[SPRESTORE:[0-9]+]]
+# CHECK:      %[[FPVREG:[0-9]+]]:{{.*}} = COPY %[[FPRESTORE:[0-9]+]]
+# CHECK:      SI_SPILL_S32_SAVE %[[SPVREG]], %stack.0
+# CHECK:      SI_SPILL_S32_SAVE %[[FPVREG]], %stack.1
+# CHECK:      %[[SPRESTORE]]:sgpr_32 = SI_SPILL_S32_RESTORE %stack.0
+# CHECK:      %[[FPRESTORE]]:sgpr_32 = SI_SPILL_S32_RESTORE %stack.1
 # CHECK-NOT:  COPY $sgpr32
 # CHECK-NOT:  COPY $sgpr33
+# CHECK-NOT:  $sgpr32 = COPY
+# CHECK-NOT:  $sgpr33 = COPY
 ---
 TargetModule:     |
   --- |
@@ -180,6 +188,8 @@ InstrumentationModule:  |
     define void @luthier.payload.physreg_read_sp_fp() #0 {
       %1 = call i32 asm sideeffect "luthier::readReg", "=s,i"(i32 356)
       %2 = call i32 asm sideeffect "luthier::readReg", "=s,i"(i32 357)
+      call void asm sideeffect "luthier::writeReg", "s,i"(i32 %1, i32 356)
+      call void asm sideeffect "luthier::writeReg", "s,i"(i32 %2, i32 357)
       ret void
     }
 
@@ -304,6 +314,8 @@ InstrumentationModule:  |
     bb.0 (%ir-block.0):
       INLINEASM &"luthier::readReg", sideeffect attdialect, regdef:SReg_32, def %8, imm, 356
       INLINEASM &"luthier::readReg", sideeffect attdialect, regdef:SReg_32, def %9, imm, 357
+      INLINEASM &"luthier::writeReg", sideeffect attdialect, reguse:SReg_32, %8, imm, 356
+      INLINEASM &"luthier::writeReg", sideeffect attdialect, reguse:SReg_32, %9, imm, 357
       SI_RETURN
   ...
 InstrumentationModuleFormat: MIR
