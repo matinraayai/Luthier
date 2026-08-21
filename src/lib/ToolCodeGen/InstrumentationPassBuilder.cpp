@@ -36,6 +36,7 @@
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "luthier/ToolCodeGen/SVAPhysVGPRPinPass.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
+#include "luthier/ToolCodeGen/StateValueArraySpecs.h"
 #include "luthier/ToolCodeGen/TargetModulePatcherPass.h"
 #include "luthier/ToolCodeGen/TraceFunctionTranslationAnalysis.h"
 
@@ -631,6 +632,8 @@ Error AMDGPUCodeGenPassBuilder::buildPipeline(PrototypePassManager &PPM) const {
   // Prototype-level result computed before it.
   PPM.addPass(llvm::RequireAnalysisPass<SVStorageAndLoadLocationsAnalysis,
                                         Prototype, PrototypeAnalysisManager>());
+  PPM.addPass(llvm::RequireAnalysisPass<StateValueArraySpecsAnalysis, Prototype,
+                                        PrototypeAnalysisManager>());
 
   // ---- Stage 3: machine-passes half of the AMDGPU codegen pipeline. --------
   //

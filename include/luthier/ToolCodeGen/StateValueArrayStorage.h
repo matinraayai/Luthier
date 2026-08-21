@@ -29,6 +29,8 @@ class GCNSubtarget;
 
 namespace luthier {
 
+class StateValueArraySpecs;
+
 /// \brief Contains information on the scheme used for storing with a way to
 /// load the state value array into its destination VGPR
 struct StateValueArrayStorage
@@ -124,7 +126,8 @@ public:
   /// the \p TargetSVS
   virtual void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
-                      const StateValueArrayStorage &TargetSVS) const = 0;
+                      const StateValueArrayStorage &TargetSVS,
+                      const StateValueArraySpecs &Specs) const = 0;
 
   virtual bool operator==(const StateValueArrayStorage &LHS) const = 0;
 
@@ -190,7 +193,8 @@ public:
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
-                      const StateValueArrayStorage &TargetSVS) const override;
+                      const StateValueArrayStorage &TargetSVS,
+                      const StateValueArraySpecs &Specs) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -234,7 +238,8 @@ public:
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
-                      const StateValueArrayStorage &TargetSVS) const override;
+                      const StateValueArrayStorage &TargetSVS,
+                      const StateValueArraySpecs &Specs) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -291,7 +296,8 @@ public:
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
-                      const StateValueArrayStorage &TargetSVS) const override;
+                      const StateValueArrayStorage &TargetSVS,
+                      const StateValueArraySpecs &Specs) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -344,7 +350,8 @@ public:
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
-                      const StateValueArrayStorage &TargetSVS) const override;
+                      const StateValueArrayStorage &TargetSVS,
+                      const StateValueArraySpecs &Specs) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -389,7 +396,8 @@ public:
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
-                      const StateValueArrayStorage &TargetSVS) const override;
+                      const StateValueArrayStorage &TargetSVS,
+                      const StateValueArraySpecs &Specs) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {

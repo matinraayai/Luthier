@@ -32,19 +32,6 @@
 
 namespace luthier {
 
-namespace {
-/// Build a \c StateValueArraySpecs from the module owning \p MI. Each emit
-/// path needs this to resolve the per-physreg lane mapping; the layout was
-/// finalized via named MD by \c IntrinsicMIRLoweringPass and is cheap to
-/// re-derive on demand.
-std::unique_ptr<StateValueArraySpecs>
-getSpecsForMI(llvm::MachineBasicBlock::iterator MI) {
-  const llvm::MachineFunction &MF = *MI->getMF();
-  const llvm::Module &M = *MF.getFunction().getParent();
-  return StateValueArraySpecs::getSVASpecs(M, MF.getTarget());
-}
-} // namespace
-
 static const llvm::DenseMap<StateValueArrayStorage::StorageKind, int>
     NumVGPRsUsedBySVS{
         {StateValueArrayStorage::SVS_SINGLE_VGPR, 1},
@@ -157,7 +144,8 @@ StateValueArrayStorage::createSVAStorage(
 
 static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                                 const VGPRStateValueArrayStorage &SrcSVS,
-                                const VGPRStateValueArrayStorage &TargetSVS) {
+                                const VGPRStateValueArrayStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   (void)createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -176,7 +164,8 @@ static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 
 static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                                 const VGPRStateValueArrayStorage &SrcSVS,
-                                const TwoAGPRValueStorage &TargetSVS) {
+                                const TwoAGPRValueStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   (void)createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -196,7 +185,8 @@ static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const VGPRStateValueArrayStorage &SrcSVS,
-                    const AGPRWithThreeSGPRSValueStorage &TargetSVS) {
+                    const AGPRWithThreeSGPRSValueStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   (void)createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -216,14 +206,14 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const VGPRStateValueArrayStorage &SrcSVS,
-                    const SpilledWithThreeSGPRsValueStorage &TargetSVS) {
-  auto Specs = getSpecsForMI(MI);
+                    const SpilledWithThreeSGPRsValueStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   // Read FS_lo, FS_hi and SGPR32 into their storage SGPRs
   for (const auto &[PhysReg, SVSSaveSGPR] :
        {std::pair{llvm::AMDGPU::FLAT_SCR_HI, TargetSVS.FlatScratchSGPRHigh},
         {llvm::AMDGPU::FLAT_SCR_LO, TargetSVS.FlatScratchSGPRLow},
-        {llvm::AMDGPU::SGPR32, TargetSVS.EmergencyVGPRSpillSlotOffset}}) {
-    auto StoreSlot = getInstrumentationFrameStoreLane(PhysReg, *Specs);
+        {llvm::AMDGPU::SP_REG, TargetSVS.EmergencyVGPRSpillSlotOffset}}) {
+    auto StoreSlot = getInstrumentationFrameStoreLane(PhysReg, Specs);
     assert(StoreSlot && "expected SVA lane for FS_HI/FS_LO/SGPR32");
     emitMoveFromVGPRLaneToSGPR(MI, SrcSVS.StorageVGPR, SVSSaveSGPR, *StoreSlot,
                                false);
@@ -263,11 +253,11 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const VGPRStateValueArrayStorage &SrcSVS,
-                    const SpilledWithOneSGPRsValueStorage &TargetSVS) {
-  auto Specs = getSpecsForMI(MI);
+                    const SpilledWithOneSGPRsValueStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   // Store the instrumentation stack pointer
   auto StoreSlot =
-      getInstrumentationFrameStoreLane(llvm::AMDGPU::SGPR32, *Specs);
+      getInstrumentationFrameStoreLane(llvm::AMDGPU::SGPR32, Specs);
   assert(StoreSlot && "expected SVA lane for SGPR32");
   emitMoveFromVGPRLaneToSGPR(MI, SrcSVS.StorageVGPR,
                              TargetSVS.EmergencyVGPRSpillSlotOffset, *StoreSlot,
@@ -298,7 +288,8 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 
 static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                                 const TwoAGPRValueStorage &SrcSVS,
-                                const VGPRStateValueArrayStorage &TargetSVS) {
+                                const VGPRStateValueArrayStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   (void)createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -317,7 +308,8 @@ static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 
 static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                                 const TwoAGPRValueStorage &SrcSVS,
-                                const TwoAGPRValueStorage &TargetSVS) {
+                                const TwoAGPRValueStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   (void)createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -350,7 +342,8 @@ static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const TwoAGPRValueStorage &SrcSVS,
-                    const AGPRWithThreeSGPRSValueStorage &TargetSVS) {
+                    const AGPRWithThreeSGPRSValueStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   (void)createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -383,7 +376,8 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const TwoAGPRValueStorage &SrcSVS,
-                    const SpilledWithThreeSGPRsValueStorage &TargetSVS) {
+                    const SpilledWithThreeSGPRsValueStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -407,12 +401,11 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
       });
 
   const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
-  auto Specs = getSpecsForMI(MI);
   for (const auto &[PhysReg, SVSSaveSGPR] :
        {std::pair{llvm::AMDGPU::FLAT_SCR_HI, TargetSVS.FlatScratchSGPRHigh},
         {llvm::AMDGPU::FLAT_SCR_LO, TargetSVS.FlatScratchSGPRLow},
         {llvm::AMDGPU::SGPR32, TargetSVS.EmergencyVGPRSpillSlotOffset}}) {
-    auto StoreSlot = getInstrumentationFrameStoreLane(PhysReg, *Specs);
+    auto StoreSlot = getInstrumentationFrameStoreLane(PhysReg, Specs);
     assert(StoreSlot && "expected SVA lane for FS_HI/FS_LO/SGPR32");
     emitMoveFromVGPRLaneToSGPR(NextIPoint, llvm::AMDGPU::VGPR0, SVSSaveSGPR,
                                *StoreSlot, false);
@@ -472,7 +465,8 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 
 static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                                 const AGPRWithThreeSGPRSValueStorage &SrcSVS,
-                                const VGPRStateValueArrayStorage &TargetSVS) {
+                                const VGPRStateValueArrayStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   (void)createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -491,7 +485,8 @@ static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 
 static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                                 const AGPRWithThreeSGPRSValueStorage &SrcSVS,
-                                const TwoAGPRValueStorage &TargetSVS) {
+                                const TwoAGPRValueStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   (void)createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -530,7 +525,8 @@ static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const AGPRWithThreeSGPRSValueStorage &SrcSVS,
-                    const AGPRWithThreeSGPRSValueStorage &TargetSVS) {
+                    const AGPRWithThreeSGPRSValueStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   // Move the SGPRs first
   emitMoveFromSGPRToSGPR(MI, SrcSVS.FlatScratchSGPRHigh,
                          TargetSVS.FlatScratchSGPRHigh, true);
@@ -592,7 +588,8 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const AGPRWithThreeSGPRSValueStorage &SrcSVS,
-                    const SpilledWithThreeSGPRsValueStorage &TargetSVS) {
+                    const SpilledWithThreeSGPRsValueStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   // Move the SGPRs first
   emitMoveFromSGPRToSGPR(MI, SrcSVS.FlatScratchSGPRHigh,
                          TargetSVS.FlatScratchSGPRHigh, true);
@@ -665,7 +662,8 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 
 static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                                 const SpilledWithThreeSGPRsValueStorage &SrcSVS,
-                                const VGPRStateValueArrayStorage &TargetSVS) {
+                                const VGPRStateValueArrayStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
 
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
@@ -705,7 +703,8 @@ static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 
 static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                                 const SpilledWithThreeSGPRsValueStorage &SrcSVS,
-                                const TwoAGPRValueStorage &TargetSVS) {
+                                const TwoAGPRValueStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -763,7 +762,8 @@ static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const SpilledWithThreeSGPRsValueStorage &SrcSVS,
-                    const AGPRWithThreeSGPRSValueStorage &TargetSVS) {
+                    const AGPRWithThreeSGPRSValueStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -826,7 +826,8 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const SpilledWithThreeSGPRsValueStorage &SrcSVS,
-                    const SpilledWithThreeSGPRsValueStorage &TargetSVS) {
+                    const SpilledWithThreeSGPRsValueStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   emitMoveFromSGPRToSGPR(MI, SrcSVS.FlatScratchSGPRHigh,
                          TargetSVS.FlatScratchSGPRHigh, true);
   emitMoveFromSGPRToSGPR(MI, SrcSVS.FlatScratchSGPRLow,
@@ -841,7 +842,8 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 
 static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                                 const SpilledWithOneSGPRsValueStorage &SrcSVS,
-                                const VGPRStateValueArrayStorage &TargetSVS) {
+                                const VGPRStateValueArrayStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -864,24 +866,26 @@ static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
 static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const SpilledWithOneSGPRsValueStorage &SrcSVS,
-                    const SpilledWithOneSGPRsValueStorage &TargetSVS) {
+                    const SpilledWithOneSGPRsValueStorage &TargetSVS,
+                                const StateValueArraySpecs &Specs) {
   emitMoveFromSGPRToSGPR(MI, SrcSVS.EmergencyVGPRSpillSlotOffset,
                          TargetSVS.EmergencyVGPRSpillSlotOffset, true);
 }
 
 void VGPRStateValueArrayStorage::emitCodeToSwitchSVS(
     llvm::MachineBasicBlock::iterator MI,
-    const StateValueArrayStorage &TargetSVS) const {
+    const StateValueArrayStorage &TargetSVS,
+    const StateValueArraySpecs &Specs) const {
   if (auto *Tgt = llvm::dyn_cast<VGPRStateValueArrayStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   if (auto *Tgt = llvm::dyn_cast<TwoAGPRValueStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   if (auto *Tgt = llvm::dyn_cast<AGPRWithThreeSGPRSValueStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   if (auto *Tgt = llvm::dyn_cast<SpilledWithThreeSGPRsValueStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   if (auto *Tgt = llvm::dyn_cast<SpilledWithOneSGPRsValueStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   llvm_unreachable("Invalid SVS passed.");
 }
 
@@ -938,15 +942,16 @@ void TwoAGPRValueStorage::emitCodeToStoreSVA(llvm::MachineInstr &MI,
 
 void TwoAGPRValueStorage::emitCodeToSwitchSVS(
     llvm::MachineBasicBlock::iterator MI,
-    const StateValueArrayStorage &TargetSVS) const {
+    const StateValueArrayStorage &TargetSVS,
+    const StateValueArraySpecs &Specs) const {
   if (auto *Tgt = llvm::dyn_cast<VGPRStateValueArrayStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   if (auto *Tgt = llvm::dyn_cast<TwoAGPRValueStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   if (auto *Tgt = llvm::dyn_cast<AGPRWithThreeSGPRSValueStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   if (auto *Tgt = llvm::dyn_cast<SpilledWithThreeSGPRsValueStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   llvm_unreachable("Invalid SVS passed.");
 }
 
@@ -1042,15 +1047,16 @@ void AGPRWithThreeSGPRSValueStorage::emitCodeToStoreSVA(
 }
 void AGPRWithThreeSGPRSValueStorage::emitCodeToSwitchSVS(
     llvm::MachineBasicBlock::iterator MI,
-    const StateValueArrayStorage &TargetSVS) const {
+    const StateValueArrayStorage &TargetSVS,
+    const StateValueArraySpecs &Specs) const {
   if (auto *Tgt = llvm::dyn_cast<VGPRStateValueArrayStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   if (auto *Tgt = llvm::dyn_cast<TwoAGPRValueStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   if (auto *Tgt = llvm::dyn_cast<AGPRWithThreeSGPRSValueStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   if (auto *Tgt = llvm::dyn_cast<SpilledWithThreeSGPRsValueStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   llvm_unreachable("Invalid SVS passed.");
 }
 
@@ -1152,15 +1158,16 @@ void SpilledWithThreeSGPRsValueStorage::emitCodeToStoreSVA(
 }
 void SpilledWithThreeSGPRsValueStorage::emitCodeToSwitchSVS(
     llvm::MachineBasicBlock::iterator MI,
-    const StateValueArrayStorage &TargetSVS) const {
+    const StateValueArrayStorage &TargetSVS,
+    const StateValueArraySpecs &Specs) const {
   if (auto *Tgt = llvm::dyn_cast<VGPRStateValueArrayStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   if (auto *Tgt = llvm::dyn_cast<TwoAGPRValueStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   if (auto *Tgt = llvm::dyn_cast<AGPRWithThreeSGPRSValueStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   if (auto *Tgt = llvm::dyn_cast<SpilledWithThreeSGPRsValueStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   llvm_unreachable("Invalid SVS passed.");
 }
 
@@ -1233,11 +1240,12 @@ void SpilledWithOneSGPRsValueStorage::emitCodeToStoreSVA(
 }
 void SpilledWithOneSGPRsValueStorage::emitCodeToSwitchSVS(
     llvm::MachineBasicBlock::iterator MI,
-    const StateValueArrayStorage &TargetSVS) const {
+    const StateValueArrayStorage &TargetSVS,
+    const StateValueArraySpecs &Specs) const {
   if (auto *Tgt = llvm::dyn_cast<VGPRStateValueArrayStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   if (auto *Tgt = llvm::dyn_cast<SpilledWithOneSGPRsValueStorage>(&TargetSVS))
-    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt);
+    return luthier::emitCodeToSwitchSVS(MI, *this, *Tgt, Specs);
   llvm_unreachable("Invalid SVS passed.");
 }
 bool SpilledWithOneSGPRsValueStorage::operator==(

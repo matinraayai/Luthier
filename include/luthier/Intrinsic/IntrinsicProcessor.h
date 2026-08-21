@@ -109,65 +109,52 @@ enum ScalarValueArgument : uint8_t {
   WORK_ITEM_PRIVATE_SEGMENT_SIZE = 7,
   /// 64-bit address of the instrumentation routine's argument buffer
   USER_ARG_PTR = 8,
-  /// 32-bit offset of the instrumentation implicit argument buffer from the
-  /// \c USER_ARG_PTR
-  IMPLICIT_ARG_OFFSET = 9,
+  /// 64-bit address of the instrumentation implicit argument buffer
+  IMPLICIT_ARG_BUFFER = 9,
   /// Marks the last defined scalar value argument
-  SCALAR_VALUE_ARGUMENT_LAST = IMPLICIT_ARG_OFFSET
+  SCALAR_VALUE_ARGUMENT_LAST = IMPLICIT_ARG_BUFFER
 };
 
 template <ScalarValueArgument SA> struct ScalarValueArgumentInfo;
 
 template <> struct ScalarValueArgumentInfo<WAVEFRONT_PRIVATE_SEGMENT_BUFFER> {
   static constexpr uint8_t NumLanes = 4;
-  static constexpr auto NamedMD =
-      "luthier.sva.wavefront_private_segment_buffer";
 };
 
 template <> struct ScalarValueArgumentInfo<KERNEL_ARG_PTR> {
   static constexpr uint8_t NumLanes = 2;
-  static constexpr auto NamedMD = "luthier.sva.kernel_arg_ptr";
 };
 
 template <> struct ScalarValueArgumentInfo<DISPATCH_ID> {
   static constexpr uint8_t NumLanes = 2;
-  static constexpr auto NamedMD = "luthier.sva.dispatch_id";
 };
 
 template <> struct ScalarValueArgumentInfo<FLAT_SCRATCH> {
   static constexpr uint8_t NumLanes = 2;
-  static constexpr auto NamedMD = "luthier.sva.flat_scratch";
 };
 
 template <> struct ScalarValueArgumentInfo<PRIVATE_SEGMENT_WAVE_BYTE_OFFSET> {
   static constexpr uint8_t NumLanes = 1;
-  static constexpr auto NamedMD =
-      "luthier.sva.private_segment_wave_byte_offset";
 };
 
 template <> struct ScalarValueArgumentInfo<QUEUE_PTR> {
   static constexpr uint8_t NumLanes = 2;
-  static constexpr auto NamedMD = "luthier.sva.queue_ptr";
 };
 
 template <> struct ScalarValueArgumentInfo<DISPATCH_PTR> {
   static constexpr uint8_t NumLanes = 1;
-  static constexpr auto NamedMD = "luthier.sva.dispatch_ptr";
 };
 
 template <> struct ScalarValueArgumentInfo<WORK_ITEM_PRIVATE_SEGMENT_SIZE> {
   static constexpr uint8_t NumLanes = 1;
-  static constexpr auto NamedMD = "luthier.sva.workitem_private_segment_size";
 };
 
 template <> struct ScalarValueArgumentInfo<USER_ARG_PTR> {
   static constexpr uint8_t NumLanes = 2;
-  static constexpr auto NamedMD = "luthier.sva.user_arg_ptr";
 };
 
-template <> struct ScalarValueArgumentInfo<IMPLICIT_ARG_OFFSET> {
-  static constexpr uint8_t NumLanes = 1;
-  static constexpr auto NamedMD = "luthier.sva.implicit_arg_offset";
+template <> struct ScalarValueArgumentInfo<IMPLICIT_ARG_BUFFER> {
+  static constexpr uint8_t NumLanes = 2;
 };
 
 /// \brief Holds the result of the IR processing stage of an intrinsic IR call

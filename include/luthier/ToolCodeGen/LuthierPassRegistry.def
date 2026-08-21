@@ -88,5 +88,7 @@ PROTOTYPE_ANALYSIS("luthier-injected-payload-and-inst-point",
                    InjectedPayloadAndInstPointAnalysis())
 PROTOTYPE_ANALYSIS("luthier-sv-storage-and-load-locations",
                    SVStorageAndLoadLocationsAnalysis())
+PROTOTYPE_ANALYSIS("luthier-state-value-array-specs",
+                   StateValueArraySpecsAnalysis())
 PROTOTYPE_ANALYSIS("luthier-prototype-call-graph", PrototypeCallGraphAnalysis())
 #undef PROTOTYPE_ANALYSIS

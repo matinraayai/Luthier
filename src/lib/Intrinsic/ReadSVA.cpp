@@ -16,10 +16,10 @@
 ///
 /// \file
 /// Minimal implementation of the luthier::readSVA intrinsic. The IR
-/// processor stamps the requested \c ScalarValueArgument into the
-/// effects so \c StateValueArraySpecs::setModuleSVASpec sees it; the MIR
-/// processor copies the lowering pass's \c SVAScalarArgumentAccessor vreg
-/// for that SA into the intrinsic's return register.
+/// processor emits an inline-asm placeholder whose SA-enum arg is later
+/// aggregated by \c StateValueArraySpecsAnalysis into the SVA layout;
+/// the MIR processor copies the lowering pass's \c SVAScalarArgumentAccessor
+/// vreg for that SA into the intrinsic's return register.
 //===----------------------------------------------------------------------===//
 #include "luthier/Intrinsic/ReadSVA.h"
 #include "AMDGPUTargetMachine.h"

@@ -183,11 +183,12 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   }
   auto &StateValueStorage = LoadPlan->StateValueStorageLocation;
 
-  // Pull the finalized SVA specs (set in IntrinsicMIRLoweringPass).
-  auto SpecsPtr = StateValueArraySpecs::getSVASpecs(IModule, MF.getTarget());
+  // Pull the finalized SVA specs from the Prototype-level analysis
+  const StateValueArraySpecs *SpecsPtr =
+      IPAMProxy.getCachedResult<StateValueArraySpecsAnalysis>(*P);
   if (!SpecsPtr) {
     Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
-        "Failed to read StateValueArraySpecs from IModule metadata")));
+        "StateValueArraySpecsAnalysis result has not been cached")));
     return llvm::PreservedAnalyses::all();
   }
   const StateValueArraySpecs &Specs = *SpecsPtr;

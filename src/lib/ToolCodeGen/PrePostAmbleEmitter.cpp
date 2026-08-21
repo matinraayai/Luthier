@@ -132,7 +132,8 @@ static void emitCodeToReturnSGPRArgsToOriginalPlace(
 static void emitCodeToMoveSVA(llvm::ModuleAnalysisManager &TargetMAM,
                               llvm::Module &TargetModule,
                               llvm::MachineFunction *MF,
-                              luthier::SVStorageAndLoadLocations &SVLocations) {
+                              luthier::SVStorageAndLoadLocations &SVLocations,
+                              const luthier::StateValueArraySpecs &Specs) {
   auto &TargetMFAM =
       TargetMAM
           .getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(
@@ -151,8 +152,8 @@ static void emitCodeToMoveSVA(llvm::ModuleAnalysisManager &TargetMAM,
       if (CurMBBInterval.getSVS() != NextMBBInterval.getSVS()) {
         auto InsertionMI =
             SlotIndexes.getInstructionFromIndex(NextMBBInterval.begin());
-        CurMBBInterval.getSVS().emitCodeToSwitchSVS(*InsertionMI,
-                                                    NextMBBInterval.getSVS());
+        CurMBBInterval.getSVS().emitCodeToSwitchSVS(
+            *InsertionMI, NextMBBInterval.getSVS(), Specs);
       }
     }
     // Analyze the branch at the end of this block (if exists)
@@ -182,7 +183,7 @@ static void emitCodeToMoveSVA(llvm::ModuleAnalysisManager &TargetMAM,
           NewTBB->addSuccessor(TBB);
           // Emit the SVS switch code before the branch
           MBBIntervals.back().getSVS().emitCodeToSwitchSVS(
-              NewTBB->front(), SuccessorIntervalBegin.getSVS());
+              NewTBB->front(), SuccessorIntervalBegin.getSVS(), Specs);
           OldToNewSuccessorsList.emplace_back(TBB, NewTBB);
         } else if (FBB == SuccessorMBB) {
           // Create a new basic block and insert it at the end
@@ -193,7 +194,7 @@ static void emitCodeToMoveSVA(llvm::ModuleAnalysisManager &TargetMAM,
           NewFBB->addSuccessor(FBB);
           // Emit the SVS switch code before the branch
           MBBIntervals.back().getSVS().emitCodeToSwitchSVS(
-              NewFBB->front(), SuccessorIntervalBegin.getSVS());
+              NewFBB->front(), SuccessorIntervalBegin.getSVS(), Specs);
           OldToNewSuccessorsList.emplace_back(TBB, NewTBB);
         } else {
           // This is a fallthrough block; We insert the SVS code inside
