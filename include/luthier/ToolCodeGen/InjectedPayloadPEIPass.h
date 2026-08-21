@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Describes Luthier's Injected Payload Prologue and Epilogue insertion pass.
+/// Describes the Injected Payload Prologue and Epilogue insertion pass.
 /// Runs *after* LLVM's stock PrologEpilogInserter. Payload functions carry
 /// Attribute::Naked (set by InjectedPayloadCreationPass::assignToInject), so
 /// the stock PEI is a no-op for them — this pass emits the actual SVA load,

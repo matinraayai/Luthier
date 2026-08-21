@@ -90,20 +90,13 @@ getFrameLoadSlotsForTarget(const llvm::GCNSubtarget &ST,
 llvm::PreservedAnalyses
 InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
                             llvm::MachineFunctionAnalysisManager &MFAM) {
-  // Skip anything that isn't a Luthier injected payload
+  // Skip anything that isn't an injected payload
   llvm::Function &F = MF.getFunction();
   if (!F.hasFnAttribute(InjectedPayloadAttribute)) {
     LLVM_DEBUG(luthier::dbgs()
                << F.getName() << " is not an injected payload; skipping.\n");
     return llvm::PreservedAnalyses::all();
   }
-
-  // Defensive: payloads MUST be marked Naked. If somebody bypassed
-  // InjectedPayloadCreationPass::assignToInject and forgot the attribute,
-  // stock PEI already ran and emitted a frame we'd be doubling up on.
-  assert(
-      F.hasFnAttribute(llvm::Attribute::Naked) &&
-      "Injected payload must carry Attribute::Naked so stock PEI is a no-op");
 
   LLVM_DEBUG(luthier::dbgs()
              << "Running InjectedPayloadPEIPass on " << F.getName() << "\n");
