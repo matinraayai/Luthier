@@ -65,7 +65,6 @@ private:
   bool processMachineFunction(
       llvm::MachineFunction &MF, bool IsInjectedPayload,
       const IntrinsicsProcessorsAnalysis::Result &IntrinsicsProcessors,
-      llvm::SmallDenseSet<ScalarValueArgument> &ScalarArgumentsUsed,
       PerFunctionSVAInfo &MFSVAInfo);
 
   void materializeReadlanes(
@@ -76,8 +75,7 @@ private:
   lowerIntrinsics(Prototype &IP,
                   PrototypeAnalysisManager &IPAM,
                   llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo>
-                      &SVAInfoByMF,
-                  std::unique_ptr<StateValueArraySpecs> &SVASpecs);
+                      &SVAInfoByMF);
 
 public:
   IntrinsicMIRLoweringPass() = default;

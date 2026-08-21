@@ -89,7 +89,6 @@ const llvm::TargetRegisterClass *getSGPRRegClassForLanes(unsigned NumLanes) {
 bool IntrinsicMIRLoweringPass::processMachineFunction(
     llvm::MachineFunction &MF, bool IsInjectedPayload,
     const IntrinsicsProcessorsAnalysis::Result &IntrinsicsProcessors,
-    llvm::SmallDenseSet<ScalarValueArgument> &ScalarArgumentsUsed,
     PerFunctionSVAInfo &MFSVAInfo) {
   llvm::LLVMContext &Ctx = MF.getFunction().getContext();
   const llvm::TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
@@ -179,7 +178,6 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     if (CacheIt != SAResultCache.end())
       return CacheIt->second;
 
-    ScalarArgumentsUsed.insert(SA);
     (void)getOrCreateSVAVGPRPlaceholder();
 
     unsigned NumLanes = StateValueArraySpecs::getArgumentLaneSize(SA);
@@ -574,47 +572,16 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
 
 bool IntrinsicMIRLoweringPass::lowerIntrinsics(
     Prototype &IP, PrototypeAnalysisManager &IPAM,
-    llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> &SVAInfoByMF,
-    std::unique_ptr<StateValueArraySpecs> &SVASpecs) {
+    llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> &SVAInfoByMF) {
   bool Changed = false;
 
   llvm::Module &IModule = IP.getInstrumentationModule();
-  llvm::Module &TargetModule = IP.getTargetModule();
 
-  // Each module of the prototype has its own ModuleAnalysisManager; a module
-  // analysis is resolved out of the manager belonging to the module it is
-  // asked about.
-  llvm::ModuleAnalysisManager &TargetMAM =
-      IPAM.getResult<TargetModuleAnalysisManagerPrototypeProxy>(IP)
-          .getManager();
   llvm::ModuleAnalysisManager &MAM =
       IPAM.getResult<IModuleAnalysisManagerPrototypeProxy>(IP).getManager();
 
-  llvm::MachineModuleInfo &MMI =
-      MAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI();
-
   const auto &IntrinsicsProcessors =
       MAM.getResult<IntrinsicsProcessorsAnalysis>(IModule);
-
-  bool IsInitialEntryPointKernel =
-      TargetMAM.getResult<InitialEntryPointAnalysis>(TargetModule)
-          .getInitialEntryPoint()
-          .isKernel();
-
-  // Set of all scalar arguments used across the entire module.
-  llvm::SmallDenseSet<ScalarValueArgument> ScalarArgumentsUsed{};
-
-  // If the initial entry point is not a kernel, then we are instrumenting
-  // newly discovered code from an already-running instrumented kernel. In
-  // that situation the SVA has already been initialized to save all possible
-  // scalar arguments just to be safe.
-  if (!IsInitialEntryPointKernel) {
-    for (std::underlying_type_t<ScalarValueArgument> I =
-             SCALAR_VALUE_ARGUMENT_FIRST;
-         I <= SCALAR_VALUE_ARGUMENT_LAST; I++) {
-      ScalarArgumentsUsed.insert(static_cast<ScalarValueArgument>(I));
-    }
-  }
 
   // The IModule's MFs are reached through the function analysis manager's
   // MachineFunctionAnalysis rather than the MMI: that is where the .luthier MIR
@@ -636,14 +603,10 @@ bool IntrinsicMIRLoweringPass::lowerIntrinsics(
       MF = &MFRes->getMF();
     else
       continue;
-    Changed |=
-        processMachineFunction(*MF, IsInjectedPayload, IntrinsicsProcessors,
-                               ScalarArgumentsUsed, SVAInfoByMF[MF]);
+    Changed |= processMachineFunction(*MF, IsInjectedPayload,
+                                      IntrinsicsProcessors, SVAInfoByMF[MF]);
   }
 
-  // Finalize the SVA layout now that we know which SAs were requested.
-  SVASpecs = StateValueArraySpecs::setModuleSVASpec(IModule, MMI.getTarget(),
-                                                    ScalarArgumentsUsed);
   return Changed;
 }
 
@@ -784,12 +747,12 @@ void IntrinsicMIRLoweringPass::materializeReadlanes(
 llvm::PreservedAnalyses
 IntrinsicMIRLoweringPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> SVAInfoByMF;
-  std::unique_ptr<StateValueArraySpecs> SVASpecs{nullptr};
 
-  bool Changed = lowerIntrinsics(IP, IPAM, SVAInfoByMF, SVASpecs);
+  bool Changed = lowerIntrinsics(IP, IPAM, SVAInfoByMF);
 
-  if (SVASpecs)
-    materializeReadlanes(SVAInfoByMF, *SVASpecs, Changed);
+  const StateValueArraySpecs &SVASpecs =
+      IPAM.getResult<StateValueArraySpecsAnalysis>(IP);
+  materializeReadlanes(SVAInfoByMF, SVASpecs, Changed);
 
   if (!Changed)
     return llvm::PreservedAnalyses::all();
@@ -799,17 +762,21 @@ IntrinsicMIRLoweringPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   // downstream passes still need the cached MachineFunctionAnalysis results
   // for the instrumentation module we just mutated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  // This pass rewrites MIR inside the instrumentation module and attaches SVA
-  // spec metadata to it. It does not touch the target module at all, and it
-  // handles its own module's MIR in place rather than through an analysis, so
-  // every inner analysis-manager proxy stays valid; only Prototype-level
-  // analyses derived from the instrumentation module's MIR are dropped.
+  // This pass rewrites MIR inside the instrumentation module. It does not
+  // touch the target module at all, and it handles its own module's MIR in
+  // place rather than through an analysis, so every inner analysis-manager
+  // proxy stays valid; only Prototype-level analyses derived from the
+  // instrumentation module's MIR are dropped.
   PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
   PA.preserve<TargetFunctionAnalysisManagerPrototypeProxy>();
   PA.preserve<TargetMachineFunctionAnalysisManagerPrototypeProxy>();
   PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
   PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
   PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
+  // The SVA specs derived by StateValueArraySpecsAnalysis depend only on
+  // the IModule's IR call sites and target-module entry-point metadata,
+  // neither of which this pass modifies. Preserve it explicitly.
+  PA.preserve<StateValueArraySpecsAnalysis>();
   return PA;
 }
 
