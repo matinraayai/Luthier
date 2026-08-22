@@ -1421,8 +1421,13 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
         bool IsFormerMIVector = shouldImplicitReadExec(*PrevMI);
         bool CurrentMIWritesExecMask =
             Builder->modifiesRegister(llvm::AMDGPU::EXEC, TRI);
-        bool ShouldSplitCurrentMBB =
-            CurrentMIWritesExecMask || IsCurrentMIVector ^ IsFormerMIVector;
+        bool FormerMIWritesExecMask =
+            PrevMI->modifiesRegister(llvm::AMDGPU::EXEC, TRI);
+        // Split not only BEFORE an EXEC-writing MI but also AFTER one, so
+        // MIs following an EXEC write don't share an MBB with it
+        bool ShouldSplitCurrentMBB = CurrentMIWritesExecMask ||
+                                     FormerMIWritesExecMask ||
+                                     IsCurrentMIVector ^ IsFormerMIVector;
         if (ShouldSplitCurrentMBB) {
           LLVM_DEBUG(luthier::dbgs() << "[CodeDiscoveryPass] Splitting MBB for "
                                         "vector/scalar transition\n");
