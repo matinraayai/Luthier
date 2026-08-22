@@ -22,6 +22,7 @@
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
+#include <llvm/CodeGen/MachineBasicBlock.h>
 #include <AMDGPU.h>
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
@@ -255,6 +256,35 @@ IPPredicatedLivenessAnalysis::run(
   }
 
   return Out;
+}
+
+llvm::PreservedAnalyses
+IPPredicatedLivenessPrinter::run(Prototype &IP,
+                                 PrototypeAnalysisManager &IPAM) {
+  const IPPredicatedLiveness &Liveness =
+      IPAM.getResult<IPPredicatedLivenessAnalysis>(IP);
+  const IPPredicatedCFG &CFG =
+      IPAM.getResult<IPPredCFGAnalysis>(IP).getVecCFG();
+
+  OS << "IPPredicatedLiveness for prototype '" << IP.getName() << "':\n";
+  OS << "  fully-discovered: "
+     << (Liveness.isFullyDiscovered() ? "true" : "false") << "\n";
+  for (const PredicatedMachineBasicBlock &PMBB : CFG) {
+    const llvm::MachineBasicBlock &MBB = PMBB.getMBB();
+    const llvm::MachineFunction &MF = *MBB.getParent();
+    const llvm::TargetRegisterInfo &TRI =
+        *MF.getSubtarget().getRegisterInfo();
+    OS << "  " << MF.getName() << ':' << llvm::printMBBReference(MBB)
+       << "  live-ins: {";
+    if (const llvm::LivePhysRegs *Live = Liveness.getPMBBLiveIns(PMBB)) {
+      llvm::SmallVector<llvm::MCPhysReg, 32> Sorted(Live->begin(), Live->end());
+      llvm::sort(Sorted);
+      for (llvm::MCPhysReg R : Sorted)
+        OS << ' ' << llvm::printReg(R, &TRI);
+    }
+    OS << " }\n";
+  }
+  return llvm::PreservedAnalyses::all();
 }
 
 } // namespace luthier
