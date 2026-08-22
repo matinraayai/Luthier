@@ -1413,8 +1413,23 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
           MFTrace.getInitialEntryPoint().getEntryPointAddress()) {
         EntryInst = Builder.getInstr();
       }
-      // Basic Block resolving; We also split blocks further down to "vector"
-      // and scalar block to make it easier to deal with predication calculation
+      // Basic Block resolving. First check for a scalar<->vector transition
+      // or EXEC-write between the previous MI and the current one; if
+      // there is, split BEFORE the current MI.
+      if (llvm::MachineInstr *PrevMI = Builder->getPrevNode()) {
+        bool IsCurrentMIVector = shouldImplicitReadExec(*Builder);
+        bool IsFormerMIVector = shouldImplicitReadExec(*PrevMI);
+        bool CurrentMIWritesExecMask =
+            Builder->modifiesRegister(llvm::AMDGPU::EXEC, TRI);
+        bool ShouldSplitCurrentMBB =
+            CurrentMIWritesExecMask || IsCurrentMIVector ^ IsFormerMIVector;
+        if (ShouldSplitCurrentMBB) {
+          LLVM_DEBUG(luthier::dbgs() << "[CodeDiscoveryPass] Splitting MBB for "
+                                        "vector/scalar transition\n");
+          llvm::MachineBasicBlock *OldMBB = CurrentMBB;
+          CurrentMBB = OldMBB->splitAt(*PrevMI, false);
+        }
+      }
       if (MCID.isTerminator()) {
         LLVM_DEBUG(luthier::dbgs()
                    << "[CodeDiscoveryPass] Instruction is a terminator\n");
@@ -1451,19 +1466,6 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
           LLVM_DEBUG(luthier::dbgs() << llvm::formatv(
                          "[CodeDiscoveryPass] New MBB idx {0} created\n",
                          CurrentMBB->getNumber()));
-        }
-      } else if (llvm::MachineInstr *PrevMI = Builder->getPrevNode()) {
-        bool IsCurrentMIVector = shouldImplicitReadExec(*Builder);
-        bool IsFormerMIVector = shouldImplicitReadExec(*PrevMI);
-        bool CurrentMIWritesExecMask =
-            Builder->modifiesRegister(llvm::AMDGPU::EXEC, TRI);
-        bool ShouldSplitCurrentMBB =
-            CurrentMIWritesExecMask || IsCurrentMIVector ^ IsFormerMIVector;
-        if (ShouldSplitCurrentMBB) {
-          LLVM_DEBUG(luthier::dbgs() << "[CodeDiscoveryPass] Splitting MBB for "
-                                        "vector/scalar transition\n");
-          llvm::MachineBasicBlock *OldMBB = CurrentMBB;
-          CurrentMBB = OldMBB->splitAt(*PrevMI, false);
         }
       }
       /// Indirect branch and all call targets require further processing so
