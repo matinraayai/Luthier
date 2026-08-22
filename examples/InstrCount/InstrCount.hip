@@ -217,7 +217,7 @@ InstrCountTool::countInstructionsVector(bool CountWaveFrontLevel) {
 }
 
 __attribute__((device, used)) void InstrCountTool::countInstructionsScalar() {
-  (void)luthier::sAtomicAdd(&InstrCountTool::Counter, 1UL);
+  atomicAdd(&InstrCountTool::Counter, 1ULL);
 }
 
 //===----------------------------------------------------------------------===//

@@ -9,36 +9,43 @@
 
 // EXEC-mask flipping through a compile-time constant. The kernel writes
 // EXEC = 0x3 (only two lanes active) before entering a vector MBB.
-// CodeDiscoveryPass splits the MF on every EXEC write, so the write ends
-// up in a dedicated scalar MBB between the entry and the vector tail:
+// CodeDiscoveryPass splits the MF on every EXEC write and also *after*
+// every EXEC write (so subsequent MIs see a consistent EXEC state at
+// MBB entry, not a mid-MBB EXEC transition). That gives four MBBs
+// here:
 //
-//   MBB0 (scalar): kernel-entry preamble (nothing yet) — but the FIRST MI
-//                  is the EXEC write, so MBB0 starts with it.
-//   MBB1 (vector): v_mov + s_endpgm
+//   .0 (scalar entry): the S_MOV that writes EXEC.
+//   .1 (scalar): S_BRANCH to the vector tail.
+//   .2 (vector): v_mov.
+//   .3 (scalar): s_endpgm.
 //
-// Actually CodeDiscoveryPass only splits when there is a PrevMI, so the
-// EXEC-writing S_MOV_B64 stays in MBB0 alongside the S_BRANCH. That gives
-// two MBBs total, with the split between them being the S_BRANCH (an
-// unconditional terminator), not the EXEC write. The IR translator still
-// wraps MBB1 in a Check/Skip scaffold whose ExecVal is a PHI collapsing
-// to the (constant, non-all-ones) 3, and Phase 2 threads the walk through
-// whatever scaffold survives to produce a single scaffold-transparent
-// edge MBB0 → MBB1.
+// The IR translator wraps .2 in a Check/Skip scaffold whose ExecVal is
+// a PHI collapsing to the (constant, non-all-ones) 3; Phase 2 threads
+// the walk through whatever scaffold survives to produce scaffold-
+// transparent edges, so scaffold BBs never surface as PredMBBs.
 
-// Exactly two MBBs; scaffold blocks must not appear as CFG nodes.
+// .0: entry MBB, EXEC-writing S_MOV alone.
 // CHECK: Predecessors: []
 // CHECK: $exec = S_MOV_B64 3
-// CHECK: S_BRANCH
-// The entry MBB has exactly one successor — the vector tail MBB.
-// CHECK: Successors: [static_exec_kern:{{[a-zA-Z0-9._]+}}]
+// CHECK: Successors: [static_exec_kern:.1]
 
-// Tail: vector MBB with entry as sole predecessor and no successors.
+// .1: scalar MBB with just the unconditional branch.
 // CHECK: Predecessors: [static_exec_kern:.0]
+// CHECK: S_BRANCH
+// CHECK: Successors: [static_exec_kern:{{[^]]*}}]
+
+// .2: vector tail — v_mov under the narrow EXEC.
+// CHECK: Predecessors: [static_exec_kern:.1]
 // CHECK: V_MOV_B32
+// CHECK: Successors: [static_exec_kern:.3]
+
+// .3: s_endpgm tail; Phase 2 threads the diamond skip edge through so
+// this block ends up with an over-approximated predecessor list.
+// CHECK: Predecessors: [static_exec_kern:{{[^]]*}}]
 // CHECK: S_ENDPGM
 // CHECK: Successors: []
 
-// No third block: scaffold BBs never surface as PredMBBs.
+// No fifth block: scaffold BBs still never surface as PredMBBs.
 // CHECK-NOT: Predecessors:
 // CHECK-NOT: Successors:
 

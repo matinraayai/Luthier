@@ -8,38 +8,44 @@
 // RUN:   -o - 2>/dev/null | %tee_out FileCheck %s
 
 // EXEC written to a statically non-deterministic value (loaded from
-// memory). CodeDiscoveryPass splits on the EXEC write, so we end up with:
+// memory). CodeDiscoveryPass splits both *before* and *after* every EXEC
+// write, so we end up with:
 //
-//   MBB0 (scalar):  s_load_dwordx2 + s_waitcnt
-//   MBB1 (scalar):  s_mov_b64 exec, s[0:1]; s_branch
-//   MBB2 (vector):  v_mov + s_endpgm
+//   .0 (scalar):  s_load_dwordx2 + s_waitcnt
+//   .1 (scalar):  $exec = S_MOV_B64 $sgpr0_sgpr1  (EXEC-writing MBB, alone)
+//   .2 (scalar):  s_branch
+//   .3 (vector):  v_mov
+//   .4 (scalar):  s_endpgm
 //
 // The vector MBB's translated IR must carry a Check/Skip scaffold whose
 // ExecVal is the loaded 64-bit value: with no compile-time proof of
 // all-ones, foldTriviallyActiveExecChecks must not collapse the check.
-// Phase 2's walk still resolves MBB1 → MBB2 as a single scaffold-
-// transparent edge in the PredCFG.
+// Phase 2's walk still resolves the scaffold-transparent edges.
 
-// PredCFG output comes first on stdout. Verify exactly three MBBs and the
-// scaffold-transparent edges MBB0 → MBB1 → MBB2, with no scaffold BB
-// leaking out as its own PredMBB.
+// .0: entry, S_LOAD + S_WAITCNT.
 // CHECK: Predecessors: []
 // CHECK: S_LOAD_DWORDX2_IMM
 // CHECK: S_WAITCNT
-// CHECK: Successors: [dyn_exec_kern:{{[a-zA-Z0-9._]+}}]
+// CHECK: Successors: [dyn_exec_kern:.1]
 
-// MBB1: the EXEC-writing MBB, sandwiched between the loader and the
-// vector body. Its sole predecessor is MBB0 (globalidx 0); it flows into
-// the vector tail.
+// .1: the EXEC-writing MBB, alone (split before AND after the EXEC write).
 // CHECK: Predecessors: [dyn_exec_kern:.0]
 // CHECK: $exec = S_MOV_B64 $sgpr0_sgpr1
-// CHECK: S_BRANCH
-// CHECK: Successors: [dyn_exec_kern:{{[a-zA-Z0-9._]+}}]
+// CHECK: Successors: [dyn_exec_kern:.2]
 
-// MBB2: vector tail, one predecessor (the EXEC-writing MBB, globalidx 1),
-// no successors. The scaffold-transparent walk lands here directly.
+// .2: scalar branch alone.
 // CHECK: Predecessors: [dyn_exec_kern:.1]
+// CHECK: S_BRANCH
+// CHECK: Successors: [dyn_exec_kern:{{[^]]*}}]
+
+// .3: vector tail — v_mov under the runtime-loaded EXEC.
+// CHECK: Predecessors: [dyn_exec_kern:.2]
 // CHECK: V_MOV_B32
+// CHECK: Successors: [dyn_exec_kern:.4]
+
+// .4: s_endpgm; Phase 2's scaffold-transparent walk gives over-
+// approximated predecessors here.
+// CHECK: Predecessors: [dyn_exec_kern:{{[^]]*}}]
 // CHECK: S_ENDPGM
 // CHECK: Successors: []
 

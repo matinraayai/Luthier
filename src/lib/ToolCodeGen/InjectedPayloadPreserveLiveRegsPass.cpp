@@ -30,7 +30,6 @@
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
-#include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachineOperand.h>
 #include <llvm/CodeGen/MachineRegisterInfo.h>
 #include <llvm/CodeGen/TargetOpcodes.h>
@@ -59,8 +58,6 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
   llvm::ModuleAnalysisManager &MAM =
       IPAM.getResult<IModuleAnalysisManagerPrototypeProxy>(IP).getManager();
 
-  llvm::MachineModuleInfo &MMI =
-      MAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI();
   llvm::FunctionAnalysisManager &FAM =
       MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(IModule)
           .getManager();
@@ -127,11 +124,13 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
           Live.stepBackward(MI);
           continue;
         }
-        llvm::MachineFunction *MF = MMI.getMachineFunction(*PayloadDef);
-        if (!MF) {
+        auto *PayloadMFRes =
+            FAM.getCachedResult<llvm::MachineFunctionAnalysis>(*PayloadDef);
+        if (!PayloadMFRes) {
           Live.stepBackward(MI);
           continue;
         }
+        llvm::MachineFunction *MF = &PayloadMFRes->getMF();
 
         LLVM_DEBUG({
           luthier::dbgs() << "  payload " << PayloadDef->getName()
@@ -141,12 +140,29 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
           luthier::dbgs() << " }\n";
         });
 
-        // Compute Preserve = LiveOut(PATCHPOINT) \ (Reads U Writes).
+        // Compute Preserve = LiveOut(PATCHPOINT) \ (Reads U Writes),
+        // restricted to the widest live reg at each unit. \c LivePhysRegs
+        // stores subregs_inclusive, so a live 64-bit pair like
+        // \c $sgpr12_sgpr13 also carries $sgpr12, $sgpr13, and their 16-bit
+        // halves. Preserving all of them is redundant, and preserving the
+        // 16-bit halves in particular produces ill-formed SDWA-style COPYs
+        // (SGPR_LO16/HI16 have an allocatable cross-copy class but no valid
+        // whole-lane COPY expansion). Emitting one save/restore for the
+        // widest live reg containing the unit covers the entire live range.
         const InjectedPayloadSideEffects &Acc =
             FAM.getResult<InjectedPayloadSideEffectsAnalysis>(*PayloadDef);
         llvm::SmallVector<llvm::MCPhysReg, 16> Preserve;
         for (llvm::MCPhysReg R : Live) {
           if (Acc.reads_contains(R) || Acc.writes_contains(R))
+            continue;
+          bool HasSuperLive = false;
+          for (llvm::MCPhysReg Super : TargetTRI.superregs(R)) {
+            if (Live.contains(Super)) {
+              HasSuperLive = true;
+              break;
+            }
+          }
+          if (HasSuperLive)
             continue;
           Preserve.push_back(R);
         }
@@ -180,27 +196,28 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
                    << ": no reg class\n");
         continue;
       }
-      // TODO: Fix this
-      // Skip architectural registers and their sub-halves (VCC/EXEC/FLAT_SCR/
-      // XNACK_MASK). The full 64-bit registers are caught by the
-      // non-allocatable cross-copy check below, but their 32-bit halves
-      // ($vcc_hi, $exec_lo, ...) report an allocatable sreg_32 cross-copy class
-      // and would otherwise slip through and get an ill-formed save/restore:
-      // the payload uses these as scratch (e.g. the bank-conflict hook clobbers
-      // $vcc for its compares), so the half's regunit live range is not jointly
-      // dominated and regalloc aborts with "Use not jointly dominated by defs".
-      // Per this pass's design these are application-level architectural state
-      // the lifted code doesn't expect to survive the instrumentation boundary.
-      bool IsArchReg = false;
-      for (llvm::MCPhysReg ArchReg :
-           {llvm::AMDGPU::VCC, llvm::AMDGPU::EXEC, llvm::AMDGPU::FLAT_SCR,
-            llvm::AMDGPU::XNACK_MASK}) {
+      // EXEC / FLAT_SCR / XNACK_MASK are wave/context registers the payload's
+      // own PEI (InjectedPayloadPEIPass) and the atomic-optimizer-emitted
+      // wave-scan handle by construction — the app doesn't expect them to
+      // survive the instrumentation boundary. Everything else — including VCC
+      // and SCC — is genuine app state and has to be saved/restored: AMDGPU
+      // ISel routinely picks vcc as the carry of v_add_co_u32/v_addc_u32_e64
+      // and scc as the flag of every scalar arithmetic op, so an app-uniform
+      // atomicAdd payload that lands v_cmp/vcc_lo across a live carry (very
+      // common for 64-bit pointer arithmetic) will corrupt the following
+      // address computation and page-fault the wave. SIRegisterInfo lowers
+      // COPY $vcc via s_mov_b32/s_mov_b64 and COPY $scc via the
+      // S_CSELECT_B32 / S_CMP_LG_U32 pair (see SIRegisterInfo::copyPhysReg).
+      bool IsUnpreservableArchReg = false;
+      for (llvm::MCPhysReg ArchReg : {llvm::AMDGPU::EXEC,
+                                       llvm::AMDGPU::FLAT_SCR,
+                                       llvm::AMDGPU::XNACK_MASK}) {
         if (TRI->regsOverlap(PhysReg, ArchReg)) {
-          IsArchReg = true;
+          IsUnpreservableArchReg = true;
           break;
         }
       }
-      if (IsArchReg) {
+      if (IsUnpreservableArchReg) {
         LLVM_DEBUG(luthier::dbgs()
                    << "  skipping " << llvm::printReg(PhysReg, TRI)
                    << ": architectural register (not preserved)\n");
@@ -214,12 +231,10 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
                    << ": no cross-copy class\n");
         continue;
       }
-      // Architectural regs like $exec, $vcc, $scc, $flat_scr report a
-      // cross-copy class that's not allocatable. createVirtualRegister
-      // asserts on those. The inlined payload's effects on them are
-      // either handled separately (frame regs by InjectedPayloadPEIPass)
-      // or are application-level architectural state that the lifted
-      // code doesn't expect to survive an instrumentation boundary.
+      // A non-allocatable cross-copy class means the target has no way to
+      // materialize this reg into a vreg. VCC / SCC do NOT hit this branch on
+      // AMDGPU: SIRegisterInfo::getCrossCopyRegClass returns SReg_32 for SCC
+      // and passes VCC through as SReg_64, both of which are allocatable.
       if (!CrossCopyRC->isAllocatable()) {
         LLVM_DEBUG(luthier::dbgs()
                    << "  skipping " << llvm::printReg(PhysReg, TRI)

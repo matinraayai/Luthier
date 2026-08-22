@@ -16,17 +16,25 @@
 // value, so the Trace function translator must leave the per-lane
 // predicate check intact.
 
-// PredCFG: three MBBs, scaffold-transparent walk.
+// PredCFG: CodeDiscoveryPass splits both before AND after every EXEC
+// write, so the EXEC-writing MBB lands alone between the loader and the
+// scalar branch. Layout: .0 loader / .1 EXEC-write / .2 branch / .3
+// vector v_mov / .4 s_endpgm. Phase 2 threads the scaffold-transparent
+// diamond edges through to over-approximate the s_endpgm predecessors.
 // CHECK: Predecessors: []
 // CHECK: S_LOAD_DWORD
 // CHECK: S_WAITCNT
-// CHECK: Successors: [dyn_exec_kern_gfx1030:{{[a-zA-Z0-9._]+}}]
+// CHECK: Successors: [dyn_exec_kern_gfx1030:.1]
 // CHECK: Predecessors: [dyn_exec_kern_gfx1030:.0]
 // CHECK: $exec_lo = S_MOV_B32 $sgpr0
-// CHECK: S_BRANCH
-// CHECK: Successors: [dyn_exec_kern_gfx1030:{{[a-zA-Z0-9._]+}}]
+// CHECK: Successors: [dyn_exec_kern_gfx1030:.2]
 // CHECK: Predecessors: [dyn_exec_kern_gfx1030:.1]
+// CHECK: S_BRANCH
+// CHECK: Successors: [dyn_exec_kern_gfx1030:{{[^]]*}}]
+// CHECK: Predecessors: [dyn_exec_kern_gfx1030:.2]
 // CHECK: V_MOV_B32
+// CHECK: Successors: [dyn_exec_kern_gfx1030:.4]
+// CHECK: Predecessors: [dyn_exec_kern_gfx1030:{{[^]]*}}]
 // CHECK: S_ENDPGM
 // CHECK: Successors: []
 

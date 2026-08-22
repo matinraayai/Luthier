@@ -47,6 +47,7 @@
 #include <llvm/IR/CFG.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/IRBuilderFolder.h>
+#include <llvm/IR/CFG.h>
 #include <llvm/IR/IntrinsicsAMDGPU.h>
 #include <llvm/IR/PatternMatch.h>
 #include <llvm/IR/ValueHandle.h>
@@ -630,7 +631,7 @@ llvm::Value *TraceFunctionTranslator::extractChunkFromSource(
 }
 
 llvm::Value *TraceFunctionTranslator::materializeFromOverlapping(
-    RegValueMap &State, const llvm::MachineBasicBlock &MBB,
+    RegValueMap &State, const llvm::BasicBlock &BB,
     const RegFileKey &ReadKeyReg, llvm::IRBuilderBase &Builder,
     llvm::Type &RegType) {
   LLVM_DEBUG(luthier::dbgs()
@@ -666,10 +667,14 @@ llvm::Value *TraceFunctionTranslator::materializeFromOverlapping(
 
   // Step 2: Handle no overlaps case
   if (Overlaps.empty()) {
-    if (!MBB.pred_empty()) {
-      // Create PHI for entire register
-      llvm::PHINode *Phi = Builder.CreatePHI(&RegType, MBB.pred_size());
-      ToBeFixedPhis.emplace_back(&MBB, ReadKeyReg, Phi);
+    const unsigned NumIRPreds = llvm::pred_size(&BB);
+    if (NumIRPreds != 0) {
+      // Create PHI for entire register. Anchor at top of BB regardless of
+      // where Builder's insertion point is.
+      llvm::PHINode *Phi = llvm::PHINode::Create(
+          &RegType, NumIRPreds, "",
+          const_cast<llvm::BasicBlock &>(BB).begin());
+      ToBeFixedPhis.emplace_back(&BB, ReadKeyReg, Phi);
       State[ReadKeyReg][&RegType] = Phi;
       return Phi;
     }
@@ -737,13 +742,15 @@ llvm::Value *TraceFunctionTranslator::materializeFromOverlapping(
     llvm::Value *DefaultVal = nullptr;
     RegFileKey NonOverlappingSubKey =
         std::make_tuple(BaseReg, RangeStart, RangeNumHalves);
-    if (MBB.pred_empty()) {
+    const unsigned NumIRPreds = llvm::pred_size(&BB);
+    if (NumIRPreds == 0) {
       // Entry block - freeze(poison) for the missing value
       DefaultVal = Builder.CreateFreeze(llvm::PoisonValue::get(ValTy));
     } else {
-      // Has predecessors - create PHI for the missing value
-      llvm::PHINode *Phi = Builder.CreatePHI(ValTy, MBB.pred_size());
-      ToBeFixedPhis.emplace_back(&MBB, NonOverlappingSubKey, Phi);
+      // Has predecessors - create PHI for the missing value at top of BB.
+      llvm::PHINode *Phi = llvm::PHINode::Create(
+          ValTy, NumIRPreds, "", const_cast<llvm::BasicBlock &>(BB).begin());
+      ToBeFixedPhis.emplace_back(&BB, NonOverlappingSubKey, Phi);
       DefaultVal = Phi;
     }
     State[NonOverlappingSubKey][ValTy] = DefaultVal;
@@ -837,7 +844,7 @@ llvm::Value *TraceFunctionTranslator::materializeFromOverlapping(
 }
 
 llvm::Value &
-TraceFunctionTranslator::getOperandAsValue(const llvm::MachineBasicBlock &MBB,
+TraceFunctionTranslator::getOperandAsValue(const llvm::BasicBlock &BB,
                                            llvm::MCRegister Reg,
                                            llvm::Type *OutRegType) {
   llvm::StringRef RegName = TRI.getName(Reg);
@@ -845,18 +852,16 @@ TraceFunctionTranslator::getOperandAsValue(const llvm::MachineBasicBlock &MBB,
 
   LLVM_DEBUG(luthier::dbgs() << llvm::formatv(
                  "[TraceFunctionTranslator] Materializing register {0} "
-                 "in MBB {1}\n",
-                 RegName, MBB.getNumber()));
+                 "in BB '{1}'\n",
+                 RegName, BB.getName()));
   (void)RegName;
 
-  auto *BB = const_cast<llvm::BasicBlock *>(MBB.getBasicBlock());
-  assert(BB && "MBB does not have an IR basic block");
-
-  llvm::Instruction *TermInst = BB->getTerminatorOrNull();
+  auto *MutableBB = const_cast<llvm::BasicBlock *>(&BB);
+  llvm::Instruction *TermInst = MutableBB->getTerminatorOrNull();
 
   llvm::IRBuilder<llvm::InstSimplifyFolder, llvm::IRBuilderCallbackInserter>
       Builder(
-          BB->getContext(), llvm::InstSimplifyFolder{MF.getDataLayout()},
+          MutableBB->getContext(), llvm::InstSimplifyFolder{MF.getDataLayout()},
           llvm::IRBuilderCallbackInserter{[&](llvm::Instruction *I) {
             annotateUniformIfNeeded(I, TRI, Reg);
             LLVM_DEBUG(
@@ -864,20 +869,21 @@ TraceFunctionTranslator::getOperandAsValue(const llvm::MachineBasicBlock &MBB,
                 << "[TraceFunctionTranslator] Inserting reg read instruction "
                 << *I << "\n");
           }});
-  TermInst ? Builder.SetInsertPoint(TermInst) : Builder.SetInsertPoint(BB);
+  TermInst ? Builder.SetInsertPoint(TermInst)
+           : Builder.SetInsertPoint(MutableBB);
 
-  return getOperandAsValue(MBB, getRegFileKey(Reg), Builder, OutRegType);
+  return getOperandAsValue(BB, getRegFileKey(Reg), Builder, OutRegType);
 }
 
 llvm::Value &TraceFunctionTranslator::getOperandAsValue(
-    const llvm::MachineBasicBlock &MBB, const RegFileKey &Key,
+    const llvm::BasicBlock &BB, const RegFileKey &Key,
     llvm::IRBuilderBase &Builder, llvm::Type *OutRegType) {
   LLVM_DEBUG(luthier::dbgs()
-             << "[TraceFunctionTranslator] getOperandAsValue: MBB "
-             << MBB.getNumber() << " base=" << TRI.getName(std::get<0>(Key))
+             << "[TraceFunctionTranslator] getOperandAsValue: BB '"
+             << BB.getName() << "' base=" << TRI.getName(std::get<0>(Key))
              << " offset=" << std::get<1>(Key) << " halves=" << std::get<2>(Key)
              << "\n");
-  RegValueMap &State = VM[MBB];
+  RegValueMap &State = VM[&BB];
   /// ---- Bounds check -------------------------------------------------
   /// Out-of-range access returns the file's base register value (s0/v0/
   /// a0). Hardware semantics: each 32-bit slot of an OOR multi-slot read
@@ -910,7 +916,7 @@ llvm::Value &TraceFunctionTranslator::getOperandAsValue(
 
   // Materialize from overlapping registers
   llvm::Value *V =
-      materializeFromOverlapping(State, MBB, Key, Builder, *OutRegType);
+      materializeFromOverlapping(State, BB, Key, Builder, *OutRegType);
   State[Key][OutRegType] = V;
   return *V;
 }
@@ -997,7 +1003,9 @@ void TraceFunctionTranslator::initKernelEntryRegs(
 
   auto seedRegValue = [&](const llvm::MachineBasicBlock &MBB,
                           llvm::MCRegister Reg, llvm::Value *Val) {
-    RegValueMap &State = VM[MBB];
+    const llvm::BasicBlock *BB = MBB.getBasicBlock();
+    assert(BB && "MBB has no IR basic block");
+    RegValueMap &State = VM[BB];
     RegFileKey Key = getRegFileKey(Reg);
     State[Key][Val->getType()] = Val;
     RegValueDesc Desc{std::get<0>(Key), std::get<1>(Key), std::get<2>(Key)};
@@ -1070,7 +1078,9 @@ void TraceFunctionTranslator::initKernelEntryRegs(
       /// bitfields of the SAME VGPR. Each dimension is seeded separately.
       /// OR the repositioned field into whatever has already been seeded for
       /// this register.
-      RegValueMap &State = VM[MF.front()];
+      const llvm::BasicBlock *EntryIRBB = MF.front().getBasicBlock();
+      assert(EntryIRBB && "Entry MBB has no IR basic block");
+      RegValueMap &State = VM[EntryIRBB];
       RegFileKey Key = getRegFileKey(Reg);
       if (auto It = State.find(Key); It != State.end())
         if (auto VIt = It->second.find(Val->getType()); VIt != It->second.end())
@@ -1246,8 +1256,6 @@ TraceFunctionTranslator::TraceFunctionTranslator(llvm::MachineFunction &MF,
              << "[TraceFunctionTranslator] Creating translator for '"
              << MF.getName() << "' with " << MF.size() << " MBBs\n");
   llvm::ErrorAsOutParameter EAO(Err);
-  for (const llvm::MachineBasicBlock &MBB : MF)
-    VM.try_emplace(std::ref(MBB));
 
   Err = initRegFileLayouts();
   if (Err)
@@ -1456,11 +1464,11 @@ TraceFunctionTranslator::getRegfileValueName(llvm::MCRegister BaseReg) {
 }
 
 llvm::Value *TraceFunctionTranslator::getRegisterFile(
-    const llvm::MachineBasicBlock &MBB, llvm::MCRegister Reg,
+    const llvm::BasicBlock &BB, llvm::MCRegister Reg,
     llvm::IRBuilderBase &Builder, llvm::Type *LaneTy) {
   LLVM_DEBUG(luthier::dbgs()
-             << "[TraceFunctionTranslator] getRegisterFile: MBB "
-             << MBB.getNumber() << " reg=" << TRI.getName(Reg) << "\n");
+             << "[TraceFunctionTranslator] getRegisterFile: BB '"
+             << BB.getName() << "' reg=" << TRI.getName(Reg) << "\n");
   /// Always materialize the FULL register file (offset=0..total) under a
   /// single canonical key, then return a shufflevector of just the
   /// requested slice. Earlier versions materialized each slice under its
@@ -1491,7 +1499,7 @@ llvm::Value *TraceFunctionTranslator::getRegisterFile(
   unsigned FullNumLanes = TotalHalves * RegGranule / LaneSize;
   auto *FullVecTy = llvm::FixedVectorType::get(LaneTy, FullNumLanes);
   RegFileKey FullKey = std::make_tuple(RegFileBaseReg, 0u, TotalHalves);
-  llvm::Value *FullVec = &getOperandAsValue(MBB, FullKey, Builder, FullVecTy);
+  llvm::Value *FullVec = &getOperandAsValue(BB, FullKey, Builder, FullVecTy);
 
   unsigned StartLane = StartHalves * RegGranule / LaneSize;
   unsigned SliceNumLanes = FullNumLanes - StartLane;
@@ -1530,7 +1538,7 @@ TraceFunctionTranslator::getRegisterFile(const llvm::MachineInstr &MI,
           }});
   TermInst ? Builder.SetInsertPoint(TermInst) : Builder.SetInsertPoint(BB);
 
-  return getRegisterFile(*MBB, Register, Builder, LaneTy);
+  return getRegisterFile(*BB, Register, Builder, LaneTy);
 }
 
 void TraceFunctionTranslator::setRegisterFile(const llvm::MachineInstr &MI,
@@ -1557,7 +1565,7 @@ void TraceFunctionTranslator::setRegisterFile(const llvm::MachineInstr &MI,
           }});
   TermInst ? Builder.SetInsertPoint(TermInst) : Builder.SetInsertPoint(BB);
 
-  setRegisterFile(*MBB, Reg, Builder, NewVec);
+  setRegisterFile(*BB, Reg, Builder, NewVec);
 }
 
 llvm::Value *
@@ -1580,7 +1588,7 @@ void TraceFunctionTranslator::setRegisterFile(const llvm::MachineInstr &MI,
 }
 
 void TraceFunctionTranslator::setRegisterFile(
-    const llvm::MachineBasicBlock &MBB, llvm::MCRegister Reg,
+    const llvm::BasicBlock &BB, llvm::MCRegister Reg,
     llvm::IRBuilderBase &Builder, llvm::Value *Val) {
   /// Symmetric with `getRegisterFile`: write the FULL file under the
   /// canonical (BaseReg, 0, TotalHalves) key. `Val` is a vector covering
@@ -1609,7 +1617,7 @@ void TraceFunctionTranslator::setRegisterFile(
     /// Read the current full file, then insertelement each slice lane
     /// at its absolute position. Adjacent insertelements collapse
     /// cleanly under InstCombine when many lanes are unchanged.
-    llvm::Value *OldFull = &getOperandAsValue(MBB, FullKey, Builder, FullVecTy);
+    llvm::Value *OldFull = &getOperandAsValue(BB, FullKey, Builder, FullVecTy);
     NewFull = OldFull;
     unsigned SliceLanes = SliceVecTy->getNumElements();
     for (unsigned I = 0; I < SliceLanes; ++I) {
@@ -1618,7 +1626,7 @@ void TraceFunctionTranslator::setRegisterFile(
     }
   }
 
-  setRegOperandValue(MBB, FullKey, Builder, NewFull);
+  setRegOperandValue(BB, FullKey, Builder, NewFull);
 }
 
 llvm::FunctionType *
@@ -1682,7 +1690,9 @@ void TraceFunctionTranslator::initDeviceFunctionEntryRegs(
   llvm::Function &F = const_cast<llvm::Function &>(MF.getFunction());
 
   const llvm::MachineBasicBlock &EntryMBB = MF.front();
-  RegValueMap &State = VM[EntryMBB];
+  const llvm::BasicBlock *EntryIRBB = EntryMBB.getBasicBlock();
+  assert(EntryIRBB && "Entry MBB has no IR basic block");
+  RegValueMap &State = VM[EntryIRBB];
 
   unsigned CurrentArgPos = 0;
   llvm::Type *I32 = Builder.getInt32Ty();
@@ -1739,6 +1749,8 @@ void TraceFunctionTranslator::emitIndirectTailCall(const llvm::MachineInstr &MI,
              << MI.getParent()->getNumber() << " target=" << *Target << "\n");
   const llvm::MachineBasicBlock *MBB = MI.getParent();
   assert(MBB && "MI has no parent MBB");
+  const llvm::BasicBlock *BB = MBB->getBasicBlock();
+  assert(BB && "MBB has no IR basic block");
 
   llvm::Value *FuncPtr =
       Builder.CreateBitOrPointerCast(Target, Builder.getPtrTy());
@@ -1752,7 +1764,7 @@ void TraceFunctionTranslator::emitIndirectTailCall(const llvm::MachineInstr &MI,
     for (unsigned PI = 0; PI < NumLanes32; ++PI) {
       // Each 32-bit GPR spans 2 halves, so SGPR_N lives at offset 2*N.
       CallArgs.push_back(&getOperandAsValue(
-          *MBB, std::make_tuple(RegFileBase, PI * 2, 2), Builder));
+          *BB, std::make_tuple(RegFileBase, PI * 2, 2), Builder));
     }
   }
 
@@ -1776,7 +1788,9 @@ llvm::Value &TraceFunctionTranslator::getOperandAsValue(
   assert(MBB && "MI does not have a machine basic block");
   if (shouldEmitGPRIndexAccess(MI, Reg))
     return emitIndexedVGPRSrc(MI, Reg, RegType);
-  return getOperandAsValue(*MBB, Reg, RegType);
+  const llvm::BasicBlock *BB = MBB->getBasicBlock();
+  assert(BB && "MBB does not have an IR basic block");
+  return getOperandAsValue(*BB, Reg, RegType);
 }
 
 llvm::Value &
@@ -1937,7 +1951,7 @@ void TraceFunctionTranslator::setRegOperandValue(const llvm::MachineInstr &MI,
           TRI.getName(Reg), MBB->getNumber(), *Val->getType()->getScalarType(),
           *Val));
 
-  setRegOperandValue(*MBB, getRegFileKey(Reg), Builder, Val);
+  setRegOperandValue(*BB, getRegFileKey(Reg), Builder, Val);
 }
 
 void TraceFunctionTranslator::setRegOperandValue(const llvm::MachineOperand &Op,
@@ -1951,14 +1965,14 @@ void TraceFunctionTranslator::setRegOperandValue(const llvm::MachineOperand &Op,
 }
 
 void TraceFunctionTranslator::setRegOperandValue(
-    const llvm::MachineBasicBlock &MBB, const RegFileKey &Key,
+    const llvm::BasicBlock &BB, const RegFileKey &Key,
     llvm::IRBuilderBase &Builder, llvm::Value *Val) {
   LLVM_DEBUG(luthier::dbgs()
-             << "[TraceFunctionTranslator] setRegOperandValue: MBB "
-             << MBB.getNumber() << " base=" << TRI.getName(std::get<0>(Key))
+             << "[TraceFunctionTranslator] setRegOperandValue: BB '"
+             << BB.getName() << "' base=" << TRI.getName(std::get<0>(Key))
              << " offset=" << std::get<1>(Key) << " halves=" << std::get<2>(Key)
              << " val=" << *Val << " (type=" << *Val->getType() << ")\n");
-  RegValueMap &State = VM[MBB];
+  RegValueMap &State = VM[&BB];
   llvm::MCRegister BaseReg = std::get<0>(Key);
   unsigned Offset = std::get<1>(Key);
   unsigned Size = std::get<2>(Key);
@@ -2087,32 +2101,39 @@ void TraceFunctionTranslator::fixupPhis() {
     // it. Draining from the back is O(1) per pop (order is irrelevant — the
     // loop runs until the worklist is empty).
     ToBeFixedRegValuePhiInfo Cur = ToBeFixedPhis.pop_back_val();
-    for (const llvm::MachineBasicBlock *PredMBB : Cur.MBB->predecessors()) {
-      auto *PredBB = const_cast<llvm::BasicBlock *>(PredMBB->getBasicBlock());
-      if (!llvm::is_contained(Cur.Phi->blocks(), PredBB)) {
-        llvm::IRBuilder<llvm::InstSimplifyFolder,
-                        llvm::IRBuilderCallbackInserter>
-            Builder(
-                Cur.Phi->getContext(),
-                llvm::InstSimplifyFolder{MF.getDataLayout()},
-                llvm::IRBuilderCallbackInserter{[&](llvm::Instruction *I) {
-                  if (Cur.Phi->hasMetadata("amdgpu.uniform"))
-                    I->setMetadata("amdgpu.uniform",
-                                   llvm::MDNode::get(I->getContext(), {}));
-                  LLVM_DEBUG(
-                      luthier::dbgs()
-                      << "[TraceFunctionTranslator] Inserting instruction to "
-                         "resolve phi: "
-                      << *I << "\n");
-                }});
-        // Insert just before the predecessor's terminator so all value-defining
-        // instructions (asm calls, loads, etc.) already appear above this
-        // point
-        Builder.SetInsertPoint(PredBB->getTerminator());
-        Cur.Phi->addIncoming(&getOperandAsValue(*PredMBB, Cur.RegKey, Builder,
-                                                Cur.Phi->getType()),
-                             PredBB);
-      }
+    // Walk the IR CFG for predecessors. Under the
+    // diamond scaffold, a vector MBB's IR entry is CheckBB with two
+    // IR successors (BodyBB, SkipBB) — both of which may be
+    // predecessors of a downstream vector MBB's CheckBB. Iterating IR
+    // predecessors naturally covers both edges; the recursive
+    // \c getOperandAsValue resolves each predecessor's exit-state
+    // materialization on demand.
+    for (llvm::BasicBlock *PredBB :
+         llvm::predecessors(const_cast<llvm::BasicBlock *>(Cur.BB))) {
+      if (llvm::is_contained(Cur.Phi->blocks(), PredBB))
+        continue;
+      llvm::IRBuilder<llvm::InstSimplifyFolder,
+                      llvm::IRBuilderCallbackInserter>
+          Builder(Cur.Phi->getContext(),
+                  llvm::InstSimplifyFolder{MF.getDataLayout()},
+                  llvm::IRBuilderCallbackInserter{[&](llvm::Instruction *I) {
+                    if (Cur.Phi->hasMetadata("amdgpu.uniform"))
+                      I->setMetadata("amdgpu.uniform",
+                                     llvm::MDNode::get(I->getContext(), {}));
+                    LLVM_DEBUG(
+                        luthier::dbgs()
+                        << "[TraceFunctionTranslator] Inserting instruction to "
+                           "resolve phi: "
+                        << *I << "\n");
+                  }});
+      // Insert just before the predecessor's terminator so all value-
+      // defining instructions (asm calls, loads, etc.) already appear
+      // above this point.
+      Builder.SetInsertPoint(PredBB->getTerminator());
+      Cur.Phi->addIncoming(
+          &getOperandAsValue(*PredBB, Cur.RegKey, Builder,
+                             Cur.Phi->getType()),
+          PredBB);
     }
     if (Cur.Phi->getNumIncomingValues() == 1)
       SingleValuePhis.push_back(Cur.Phi);
@@ -2288,7 +2309,7 @@ llvm::Expected<bool> TraceFunctionTranslator::retranslateMBB(
   /// Snapshot the old boundary register-value state: every value the old
   /// body exported to other blocks is reachable from here by RegFileKey
   RegValueMap OldState;
-  if (auto It = VM.find(MBB); It != VM.end()) {
+  if (auto It = VM.find(BodyBB); It != VM.end()) {
     OldState = std::move(It->second);
     VM.erase(It);
   }
@@ -2339,7 +2360,7 @@ llvm::Expected<bool> TraceFunctionTranslator::retranslateMBB(
       llvm::IRBuilder<llvm::InstSimplifyFolder> Builder(
           BodyBB->getContext(), llvm::InstSimplifyFolder{MF.getDataLayout()});
       Builder.SetInsertPoint(BodyBB->getTerminator());
-      llvm::Value &NewV = getOperandAsValue(MBB, Key, Builder, Ty);
+      llvm::Value &NewV = getOperandAsValue(*BodyBB, Key, Builder, Ty);
       OldInst->replaceAllUsesWith(&NewV);
       Replacements[OldInst] = &NewV;
     }
@@ -2350,8 +2371,8 @@ llvm::Expected<bool> TraceFunctionTranslator::retranslateMBB(
   /// Other blocks' register caches may still point at old body values;
   /// remap repaired entries and drop unrepaired ones so later reads
   /// re-materialize them
-  for (auto &[OtherMBB, State] : VM) {
-    if (&OtherMBB.get() == &MBB)
+  for (auto &[OtherBB, State] : VM) {
+    if (OtherBB == BodyBB)
       continue;
     for (auto &[Key, VTM] : State)
       for (auto It = VTM.begin(); It != VTM.end();)
@@ -2470,40 +2491,78 @@ void TraceFunctionTranslator::translate() {
     if (!luthier::isVectorMBB(MBB))
       continue;
     auto *BodyBB = const_cast<llvm::BasicBlock *>(MBB.getBasicBlock());
+
+    /// True CFG diamond for VALU MBBs:
+    ///
+    ///                       ┌── BodyBB (raised body + terminator to
+    ///                       │           next MBB)
+    ///   pred ─→ CheckBB ────┤        │
+    ///                       └── SkipBB (br → same single-successor
+    ///                                    target as BodyBB's terminator;
+    ///                                    carries pre-body values around
+    ///                                    the body via VM[SkipBB])
+    ///                                │
+    ///                                ▼
+    ///                             (next MBB — two IR predecessors per
+    ///                              one MIR pred; fixupPhis walks IR
+    ///                              predecessors and materializes
+    ///                              incomings via VM[SkipBB] /
+    ///                              VM[BodyBB])
+    ///
+    /// The diamond expresses EXEC-inactive lane preservation as CFG
+    /// structure: values consumed downstream that were written by the
+    /// vector MBB come from BodyBB's exit state, while values that
+    /// pre-existed the vector MBB are carried through SkipBB. Only the
+    /// single-successor case is diamonded — multi-successor bodies fall
+    /// back to SkipBB → BodyBB pass-through so we don't have to
+    /// duplicate the branch condition.
     auto *CheckBB = llvm::BasicBlock::Create(
         Ctx, BodyBB->hasName() ? BodyBB->getName() + ".check" : "check", &F,
         BodyBB);
     auto *SkipBB = llvm::BasicBlock::Create(
         Ctx, BodyBB->hasName() ? BodyBB->getName() + ".skip" : "skip", &F,
         BodyBB);
+
     VectorCheckBBs[&MBB] = CheckBB;
     ExecScaffoldBBs.insert(CheckBB);
     ExecScaffoldBBs.insert(SkipBB);
 
     /// Redirect every external predecessor edge from BodyBB to CheckBB.
-    /// CheckBB and SkipBB are empty at this point, so any user of BodyBB
-    /// outside CheckBB qualifies as "external" — the condBr/br we add
-    /// below will recreate the CheckBB→BodyBB and SkipBB→BodyBB edges
+    /// The condBr in CheckBB and the br in SkipBB below will recreate
+    /// the CheckBB→BodyBB and SkipBB→BodyBB (or SkipBB→next) edges.
     BodyBB->replaceUsesWithIf(CheckBB, [&](llvm::Use &U) {
       auto *I = llvm::dyn_cast<llvm::Instruction>(U.getUser());
       return I && I->getParent() != CheckBB && I->getParent() != SkipBB;
     });
 
     /// Hoist any placeholder PHI nodes from BodyBB to CheckBB. After the
-    /// redirect, CheckBB's IR predecessors are exactly the MIR predecessor
-    /// IR BBs, which is what the placeholder PHIs (anchored on the vector
-    /// MBB in ToBeFixedPhis) expect during fixup
-    while (auto *Phi = llvm::dyn_cast<llvm::PHINode>(&BodyBB->front()))
+    /// redirect, CheckBB's IR predecessors are exactly the vector MBB's
+    /// MIR predecessor IR BBs
+    while (auto *Phi = llvm::dyn_cast<llvm::PHINode>(&BodyBB->front())) {
       Phi->moveBefore(*CheckBB, CheckBB->begin());
+      for (auto &TBF : ToBeFixedPhis)
+        if (TBF.Phi == Phi)
+          TBF.BB = CheckBB;
+    }
 
-    emitExecPredicateCheck(MBB, CheckBB, BodyBB, SkipBB);
+    /// Initialize the CheckBB and SkipBB's VMs
+    (void)VM.try_emplace(CheckBB);
+    (void)VM.try_emplace(SkipBB);
 
-    /// SkipBB is a degenerate pass-through to BodyBB: even for inactive
-    /// lanes the body still executes (matching the hardware semantics that
-    /// VALU instructions are no-ops when EXEC is zero for that lane). The
-    /// IR shape exposes the per-lane predicate so downstream analyses can
-    /// reason about it
-    llvm::IRBuilder<>{SkipBB}.CreateBr(BodyBB);
+    emitExecPredicateCheck(CheckBB, BodyBB, SkipBB);
+
+    /// SkipBB's target: the block BodyBB's raised terminator goes to.
+    /// For a single-successor body we point SkipBB straight at that
+    /// successor, giving the downstream MBB two IR predecessors
+    /// (BodyBB and SkipBB) — fixupPhis handles the phi merge naturally
+    /// via IR-CFG traversal.
+    llvm::IRBuilder<> SkipBuilder(SkipBB);
+    llvm::Instruction *BodyTerm = BodyBB->getTerminator();
+    if (BodyTerm && BodyTerm->getNumSuccessors() == 1) {
+      SkipBuilder.CreateBr(BodyTerm->getSuccessor(0));
+    } else {
+      SkipBuilder.CreateBr(BodyBB);
+    }
   }
 
   /// Snapshot the per-BB register-file state into a \c WeakTrackingVH
@@ -2555,9 +2614,9 @@ void TraceFunctionTranslator::translate() {
              << F.getName() << "': " << F.size() << " basic blocks\n");
 }
 
-void TraceFunctionTranslator::emitExecPredicateCheck(
-    const llvm::MachineBasicBlock &VectorMBB, llvm::BasicBlock *CheckBB,
-    llvm::BasicBlock *BodyBB, llvm::BasicBlock *SkipBB) {
+void TraceFunctionTranslator::emitExecPredicateCheck(llvm::BasicBlock *CheckBB,
+                                                     llvm::BasicBlock *BodyBB,
+                                                     llvm::BasicBlock *SkipBB) {
   llvm::IRBuilder<LuthierAMDGPUFolder, llvm::IRBuilderCallbackInserter>
       Builder(CheckBB->getContext(),
               LuthierAMDGPUFolder{MF.getDataLayout()},
@@ -2570,28 +2629,48 @@ void TraceFunctionTranslator::emitExecPredicateCheck(
               }});
   Builder.SetInsertPoint(CheckBB);
 
-  /// EXEC value at the entry of the CheckBB. If the vector MBB has MIR
-  /// predecessors, place a placeholder PHI that fixupPhis will resolve from
-  /// each predecessor's EXEC state. If it has none, the vector MBB is the
-  /// function's entry block: use the EXEC value seeded at function entry —
-  /// all-ones for a kernel (every lane active), or the incoming EXEC for a
-  /// device function (passed in via the register-file arguments). A vector
-  /// MBB never modifies EXEC (CodeDiscoveryPass splits on EXEC writes), so
-  /// the entry value map still holds the entry EXEC, and the materialized
-  /// value (a constant or an argument-derived value) dominates CheckBB.
+  /// EXEC value at the entry of CheckBB. If \c CheckBB has IR
+  /// predecessors, \c getOperandAsValue materializes an entry PHI at
+  /// \c CheckBB.begin whose incomings \c fixupPhis resolves from each
+  /// predecessor's exit state. If \c CheckBB has no IR predecessors it
+  /// is the function's entry block (MBB has no MIR preds); the entry
+  /// EXEC is set by \c initKernelEntryRegs to all-ones for kernels, or
+  /// to a preload argument value for device functions. That seed was
+  /// written into \c VM[BodyBB] before body translation ran (BodyBB is
+  /// the raised body of MBB.front(), which under this diamond code
+  /// path is the MBB whose scaffold we are emitting). We materialize
+  /// the seed directly into CheckBB here rather than going through the
+  /// placeholder-PHI path, since a PHI with zero incomings would
+  /// collapse to \c freeze(poison) and mask the entry EXEC.
   llvm::MCRegister ExecReg = TRI.getExec();
   unsigned ExecWidth = TRI.getRegSizeInBits(ExecReg, MF.getRegInfo());
   llvm::Type *ExecTy = Builder.getIntNTy(ExecWidth);
-  unsigned NumMIRPreds = VectorMBB.pred_size();
   llvm::Value *ExecVal;
-  if (NumMIRPreds == 0) {
-    ExecVal =
-        &getOperandAsValue(VectorMBB, getRegFileKey(ExecReg), Builder, ExecTy);
+  if (llvm::pred_empty(CheckBB)) {
+    // Kernel entry: EXEC is all-ones. Device-function entry: the entry
+    // EXEC comes via the calling convention and \c initKernelEntryRegs /
+    // \c initDeviceFunctionEntryRegs already wrote it into \c
+    // VM[BodyBB]. Reuse that value from \c BodyBB's tracker if it's a
+    // constant (kernel entry always) or a function-argument value
+    // (device function entry); those are safe to reference from
+    // CheckBB, which dominates BodyBB.
+    if (auto It = VM.find(BodyBB); It != VM.end()) {
+      auto SubIt = It->second.find(getRegFileKey(ExecReg));
+      if (SubIt != It->second.end()) {
+        if (auto TIt = SubIt->second.find(ExecTy);
+            TIt != SubIt->second.end())
+          ExecVal = TIt->second;
+        else
+          ExecVal = Builder.getInt(llvm::APInt::getAllOnes(ExecWidth));
+      } else {
+        ExecVal = Builder.getInt(llvm::APInt::getAllOnes(ExecWidth));
+      }
+    } else {
+      ExecVal = Builder.getInt(llvm::APInt::getAllOnes(ExecWidth));
+    }
   } else {
-    llvm::PHINode *ExecPhi =
-        Builder.CreatePHI(ExecTy, NumMIRPreds, "exec.check");
-    ToBeFixedPhis.push_back({&VectorMBB, getRegFileKey(ExecReg), ExecPhi});
-    ExecVal = ExecPhi;
+    ExecVal =
+        &getOperandAsValue(*CheckBB, getRegFileKey(ExecReg), Builder, ExecTy);
   }
 
   /// laneId = mbcnt.hi(-1, mbcnt.lo(-1, 0)) on wave64; on wave32 only
@@ -2613,15 +2692,16 @@ void TraceFunctionTranslator::emitExecPredicateCheck(
       Builder.CreateTrunc(Bit, Builder.getInt1Ty(), "exec.is.active");
   Builder.CreateCondBr(IsActive, BodyBB, SkipBB);
 
-  /// Populate this CheckBB's slot in \c ExitStateShadow directly from the
-  /// placeholder PHIs assigned to the vector MBB. Every such PHI now lives
-  /// in \c CheckBB — either hoisted from BodyBB or created above
-  /// for EXEC — and represents both the entry- and exit-state of \c CheckBB
-  /// for its register slice, since CheckBB does not mutate any tracked
-  /// physical register. \c SkipBB is intentionally never populated.
+  /// Populate this CheckBB's slot in \c ExitStateShadow directly from
+  /// the placeholder PHIs we anchored on this CheckBB. Every such PHI
+  /// lives in \c CheckBB (either hoisted from BodyBB before this call
+  /// or just created above for EXEC) and represents both the entry-
+  /// and exit-state of CheckBB for its register slice, since CheckBB
+  /// does not mutate any tracked physical register. \c SkipBB is
+  /// intentionally never populated in the shadow.
   auto &CheckShadow = ExitStateShadow[CheckBB];
   for (const auto &TBF : ToBeFixedPhis) {
-    if (TBF.MBB != &VectorMBB || !TBF.Phi)
+    if (!TBF.Phi || TBF.Phi->getParent() != CheckBB)
       continue;
     CheckShadow[TBF.RegKey].emplace_back(TBF.Phi->getType(),
                                          llvm::WeakTrackingVH(TBF.Phi));
@@ -2700,6 +2780,7 @@ void TraceFunctionTranslator::foldTriviallyActiveExecChecks() {
     if (SkipBB->use_empty()) {
       SkipBB->dropAllReferences();
       ExecScaffoldBBs.erase(SkipBB);
+      VM.erase(SkipBB);
       SkipBB->eraseFromParent();
     }
 
@@ -2711,6 +2792,7 @@ void TraceFunctionTranslator::foldTriviallyActiveExecChecks() {
       ExecScaffoldBBs.erase(CheckBB);
       ExitStateShadow.erase(CheckBB);
       VectorCheckBBs.erase(KV.first);
+      VM.erase(CheckBB);
       llvm::TryToSimplifyUncondBranchFromEmptyBlock(CheckBB);
     }
   }
@@ -2751,13 +2833,13 @@ llvm::Value &TraceFunctionTranslator::emitIndexedVGPRSrc(
     OutType = I32;
 
   /// MODE.GPR_IDX_EN is bit 27. M0[7:0] is the index.
-  llvm::Value *Mode = &getOperandAsValue(*MBB, llvm::AMDGPU::MODE, I32);
+  llvm::Value *Mode = &getOperandAsValue(*BB, llvm::AMDGPU::MODE, I32);
   llvm::Value *EnBit = Builder.CreateAnd(
       Builder.CreateLShr(Mode, llvm::ConstantInt::get(I32, 27)),
       llvm::ConstantInt::get(I32, 1));
   llvm::Value *En = Builder.CreateTrunc(EnBit, Builder.getInt1Ty());
 
-  llvm::Value *M0 = &getOperandAsValue(*MBB, llvm::AMDGPU::M0, I32);
+  llvm::Value *M0 = &getOperandAsValue(*BB, llvm::AMDGPU::M0, I32);
   llvm::Value *Idx = Builder.CreateAnd(M0, llvm::ConstantInt::get(I32, 0xFF));
 
   /// Per-slot select chain across the VGPR file from Reg to end-of-file:
@@ -2775,7 +2857,7 @@ llvm::Value &TraceFunctionTranslator::emitIndexedVGPRSrc(
   assert(BaseHalves <= TotalHalves && "Base offset exceeds file allocation");
 
   /// Direct read at base register — first slot of the chain.
-  llvm::Value *Acc = &getOperandAsValue(*MBB, Reg, OutType);
+  llvm::Value *Acc = &getOperandAsValue(*BB, Reg, OutType);
   llvm::Value *AccI32 = Acc;
   if (AccI32->getType() != I32)
     AccI32 = Builder.CreateBitOrPointerCast(AccI32, I32);
@@ -2783,7 +2865,7 @@ llvm::Value &TraceFunctionTranslator::emitIndexedVGPRSrc(
   unsigned NumSlots = (TotalHalves - BaseHalves) / 2;
   for (unsigned k = 1; k < NumSlots; ++k) {
     RegFileKey SlotKey = std::make_tuple(BaseReg, BaseHalves + 2 * k, 2u);
-    llvm::Value *Slot = &getOperandAsValue(*MBB, SlotKey, Builder, I32);
+    llvm::Value *Slot = &getOperandAsValue(*BB, SlotKey, Builder, I32);
     llvm::Value *KEq =
         Builder.CreateICmpEQ(Idx, llvm::ConstantInt::get(I32, k));
     llvm::Value *Pick = Builder.CreateAnd(En, KEq);
@@ -2811,13 +2893,13 @@ void TraceFunctionTranslator::emitIndexedVGPRDst(const llvm::MachineInstr &MI,
   TermInst ? Builder.SetInsertPoint(TermInst) : Builder.SetInsertPoint(BB);
 
   llvm::Type *I32 = Builder.getInt32Ty();
-  llvm::Value *Mode = &getOperandAsValue(*MBB, llvm::AMDGPU::MODE, I32);
+  llvm::Value *Mode = &getOperandAsValue(*BB, llvm::AMDGPU::MODE, I32);
   llvm::Value *EnBit = Builder.CreateAnd(
       Builder.CreateLShr(Mode, llvm::ConstantInt::get(I32, 27)),
       llvm::ConstantInt::get(I32, 1));
   llvm::Value *En = Builder.CreateTrunc(EnBit, Builder.getInt1Ty());
 
-  llvm::Value *M0 = &getOperandAsValue(*MBB, llvm::AMDGPU::M0, I32);
+  llvm::Value *M0 = &getOperandAsValue(*BB, llvm::AMDGPU::M0, I32);
   llvm::Value *Idx = Builder.CreateAnd(M0, llvm::ConstantInt::get(I32, 0xFF));
   /// final_idx = en ? Idx : 0
   llvm::Value *FinalIdx =
@@ -2862,11 +2944,11 @@ void TraceFunctionTranslator::emitIndexedVGPRDst(const llvm::MachineInstr &MI,
   unsigned NumSlots = (TotalHalves - BaseHalves) / 2;
   for (unsigned k = 0; k < NumSlots; ++k) {
     RegFileKey SlotKey = std::make_tuple(BaseReg, BaseHalves + 2 * k, 2u);
-    llvm::Value *OldVal = &getOperandAsValue(*MBB, SlotKey, Builder, I32);
+    llvm::Value *OldVal = &getOperandAsValue(*BB, SlotKey, Builder, I32);
     llvm::Value *Cond =
         Builder.CreateICmpEQ(FinalIdx, llvm::ConstantInt::get(I32, k));
     llvm::Value *NewVal = Builder.CreateSelect(Cond, ValI32, OldVal);
-    setRegOperandValue(*MBB, SlotKey, Builder, NewVal);
+    setRegOperandValue(*BB, SlotKey, Builder, NewVal);
   }
 }
 
@@ -2906,14 +2988,6 @@ static DecodedHwreg decodeHwregEncoding(uint64_t Enc) {
 void TraceFunctionTranslator::foldHwregIntrinsics() {
   auto &F = const_cast<llvm::Function &>(MF.getFunction());
 
-  /// MBB lookup: each translated BB is tagged with its source MBB via
-  /// `MBB.getBasicBlock()`. Build the reverse map once.
-  llvm::DenseMap<const llvm::BasicBlock *, const llvm::MachineBasicBlock *>
-      BBToMBB;
-  for (const llvm::MachineBasicBlock &MBB : MF)
-    if (const auto *BB = MBB.getBasicBlock())
-      BBToMBB[BB] = &MBB;
-
   llvm::SmallVector<llvm::CallInst *, 16> Worklist;
   for (llvm::BasicBlock &BB : F) {
     for (llvm::Instruction &I : BB) {
@@ -2939,10 +3013,6 @@ void TraceFunctionTranslator::foldHwregIntrinsics() {
     llvm::MCRegister HwReg = *RegOpt;
 
     const llvm::BasicBlock *BB = Call->getParent();
-    auto It = BBToMBB.find(BB);
-    if (It == BBToMBB.end())
-      continue;
-    const llvm::MachineBasicBlock &MBB = *It->second;
 
     llvm::MDNode *PCS = Call->getMetadata(llvm::LLVMContext::MD_pcsections);
     llvm::IRBuilder<llvm::InstSimplifyFolder, llvm::IRBuilderCallbackInserter>
@@ -2958,7 +3028,7 @@ void TraceFunctionTranslator::foldHwregIntrinsics() {
     /// emit PHIs to plumb the value from predecessors.
     auto Key = getRegFileKey(HwReg);
     llvm::Value *RegVal = &getOperandAsValue(
-        MBB, Key, Builder, llvm::Type::getInt32Ty(F.getContext()));
+        *BB, Key, Builder, llvm::Type::getInt32Ty(F.getContext()));
 
     llvm::Intrinsic::ID IID = Call->getIntrinsicID();
 
@@ -2984,7 +3054,7 @@ void TraceFunctionTranslator::foldHwregIntrinsics() {
       llvm::Value *Shifted = Builder.CreateShl(
           Field, llvm::ConstantInt::get(Builder.getInt32Ty(), D.Offset));
       llvm::Value *NewReg = Builder.CreateOr(Cleared, Shifted);
-      setRegOperandValue(MBB, Key, Builder, NewReg);
+      setRegOperandValue(*BB, Key, Builder, NewReg);
       Call->eraseFromParent();
     }
   }
@@ -3078,15 +3148,15 @@ void TraceFunctionTranslator::optimizeNonTraceInsts() {
 }
 
 void TraceFunctionTranslator::snapshotBBExitStates() {
-  /// Populate only the primary body BB entries; CheckBB entries were
-  /// already populated inline by \c emitExecPredicateCheck during Pass 3.
-  for (const auto &BBEntry : VM) {
-    const llvm::MachineBasicBlock &MBB = BBEntry.first.get();
-    const llvm::BasicBlock *PrimaryBB = MBB.*get(TagBB());
-    if (!PrimaryBB)
+  /// Snapshot every BB's VM (post-diamond BodyBB, CheckBB, SkipBB). The
+  /// CheckBB entries under the new per-BB VM are populated on demand by
+  /// \c emitExecPredicateCheck and subsequent \c getOperandAsValue
+  /// calls; SkipBB entries stay empty (SkipBB never mutates state).
+  for (const auto &[BB, State] : VM) {
+    if (!BB)
       continue;
-    auto &Dst = ExitStateShadow[PrimaryBB];
-    for (const auto &KV : BBEntry.second) {
+    auto &Dst = ExitStateShadow[BB];
+    for (const auto &KV : State) {
       auto &Slot = Dst[KV.first];
       Slot.reserve(KV.second.size());
       for (const auto &TV : KV.second) {

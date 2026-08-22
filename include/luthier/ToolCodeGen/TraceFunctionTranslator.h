@@ -246,9 +246,7 @@ class TraceFunctionTranslator {
   /// Cache for registers in a basic block
   using RegValueMap = llvm::DenseMap<RegFileKey, ValueTypeMap>;
 
-  using BBStateMap =
-      llvm::DenseMap<std::reference_wrapper<const llvm::MachineBasicBlock>,
-                     RegValueMap>;
+  using BBStateMap = llvm::DenseMap<const llvm::BasicBlock *, RegValueMap>;
 
   /// Total 16-bit-lane footprint of each register file.
   llvm::SmallDenseMap<llvm::MCRegister, unsigned> RegFileSize{};
@@ -287,7 +285,7 @@ class TraceFunctionTranslator {
   unsigned SGPRStatusRegHWordOffsetStart = 0;
 
   struct ToBeFixedRegValuePhiInfo {
-    const llvm::MachineBasicBlock *MBB;
+    const llvm::BasicBlock *BB;
     RegFileKey RegKey;
     llvm::PHINode *Phi;
   };
@@ -343,8 +341,7 @@ class TraceFunctionTranslator {
   /// conditional branch to either \p BodyBB (active lane) or \p SkipBB
   /// (inactive lane). The CheckBB receives a placeholder EXEC PHI that is
   /// resolved by \c fixupPhis from \p VectorMBB's MIR predecessors
-  void emitExecPredicateCheck(const llvm::MachineBasicBlock &VectorMBB,
-                              llvm::BasicBlock *CheckBB,
+  void emitExecPredicateCheck(llvm::BasicBlock *CheckBB,
                               llvm::BasicBlock *BodyBB,
                               llvm::BasicBlock *SkipBB);
 
@@ -536,7 +533,7 @@ class TraceFunctionTranslator {
                                  llvm::MCRegister Reg,
                                  llvm::Type *RegType = nullptr);
 
-  /// Materialize the value of \p Reg in <tt>MBB</tt>'s register value map;
+  /// Materialize the value of \p Reg in <tt>BB</tt>'s register value map;
   /// The value will be materialized at the end of the IR basic block, before
   /// the first terminator instruction
   /// If \p OutRegType is given, appropriately converts the returned
@@ -546,15 +543,15 @@ class TraceFunctionTranslator {
   /// or pointer
   /// \note the scalar type of \p OutRegType must either be an int, float,
   /// or a pointer
-  llvm::Value &getOperandAsValue(const llvm::MachineBasicBlock &MBB,
+  llvm::Value &getOperandAsValue(const llvm::BasicBlock &BB,
                                  llvm::MCRegister Reg,
                                  llvm::Type *OutRegType = nullptr);
 
   /// Materializes the value of the register identified by \p Key in the
-  /// <tt>MBB</tt>'s register value map. The value will be materialized using
+  /// <tt>BB</tt>'s register value map. The value will be materialized using
   /// the \p Builder
   /// \see getOperandAsValue
-  llvm::Value &getOperandAsValue(const llvm::MachineBasicBlock &MBB,
+  llvm::Value &getOperandAsValue(const llvm::BasicBlock &BB,
                                  const RegFileKey &Key,
                                  llvm::IRBuilderBase &Builder,
                                  llvm::Type *OutRegType = nullptr);
@@ -562,10 +559,10 @@ class TraceFunctionTranslator {
   /// Materializes the value identified by \p KeyReg by looking at all
   /// overlapping entries in \p State and optimally composing the value from
   /// available defined registers. If a sub-value is not defined, emits a PHI
-  /// \p MBB has predecessors otherwise emits a \c freeze(poison) instruction
-  /// in its place
+  /// when \p BB has IR predecessors, otherwise emits a \c freeze(poison)
+  /// instruction in its place
   llvm::Value *materializeFromOverlapping(RegValueMap &State,
-                                          const llvm::MachineBasicBlock &MBB,
+                                          const llvm::BasicBlock &BB,
                                           const RegFileKey &ReadKeyReg,
                                           llvm::IRBuilderBase &Builder,
                                           llvm::Type &RegType);
@@ -603,10 +600,10 @@ class TraceFunctionTranslator {
   void setRegOperandValue(const llvm::MachineOperand &Op, llvm::Value *Val);
 
   /// Sets the value associated with the \p Key in the register value map
-  /// associated with \p MBB to \p Val
+  /// associated with \p BB to \p Val
   /// \p Builder is used for invalidating stale values overlapping with
   /// the \p Key
-  void setRegOperandValue(const llvm::MachineBasicBlock &MBB,
+  void setRegOperandValue(const llvm::BasicBlock &BB,
                           const RegFileKey &Key, llvm::IRBuilderBase &Builder,
                           llvm::Value *Val);
 
@@ -636,11 +633,11 @@ class TraceFunctionTranslator {
   void fixupPhis();
 
   /// Materializes the value associated with the register file of \p Reg
-  /// in the value register map of \p MBB
+  /// in the value register map of \p BB
   /// \p Builder is used to materialize needed instructions
   /// \p LaneTy specifies the scalar type used to divide the register file  ///
   /// value in the returned vector type
-  llvm::Value *getRegisterFile(const llvm::MachineBasicBlock &MBB,
+  llvm::Value *getRegisterFile(const llvm::BasicBlock &BB,
                                llvm::MCRegister Reg,
                                llvm::IRBuilderBase &Builder,
                                llvm::Type *LaneTy = nullptr);
@@ -670,11 +667,11 @@ class TraceFunctionTranslator {
   void setRegisterFile(const llvm::MachineInstr &MI,
                        llvm::AMDGPU::OpName OpName, llvm::Value *NewVec);
 
-  /// Sets the entire register file associated with \p Reg in \p MBB's
+  /// Sets the entire register file associated with \p Reg in \p BB's
   /// register value map to \p Val
   /// \p Builder is used to create any intermediate instructions
   /// needed for the write
-  void setRegisterFile(const llvm::MachineBasicBlock &MBB, llvm::MCRegister Reg,
+  void setRegisterFile(const llvm::BasicBlock &BB, llvm::MCRegister Reg,
                        llvm::IRBuilderBase &Builder, llvm::Value *Val);
 
   /// Emits a direct tail call. \p InstAddr is the instruction's PC-value
