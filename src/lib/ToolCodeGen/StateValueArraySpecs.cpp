@@ -94,9 +94,22 @@ unsigned StateValueArraySpecs::getArgumentLaneSize(ScalarValueArgument SA) {
     return ScalarValueArgumentInfo<USER_ARG_PTR>::NumLanes;
   case IMPLICIT_ARG_BUFFER:
     return ScalarValueArgumentInfo<IMPLICIT_ARG_BUFFER>::NumLanes;
-  default:
-    llvm_unreachable("Invalid scalar value argument");
+  case WORKGROUP_ID_X:
+    return ScalarValueArgumentInfo<WORKGROUP_ID_X>::NumLanes;
+  case WORKGROUP_ID_Y:
+    return ScalarValueArgumentInfo<WORKGROUP_ID_Y>::NumLanes;
+  case WORKGROUP_ID_Z:
+    return ScalarValueArgumentInfo<WORKGROUP_ID_Z>::NumLanes;
+  case WORKITEM_ID_X:
+    return ScalarValueArgumentInfo<WORKITEM_ID_X>::NumLanes;
+  case WORKITEM_ID_Y:
+    return ScalarValueArgumentInfo<WORKITEM_ID_Y>::NumLanes;
+  case WORKITEM_ID_Z:
+    return ScalarValueArgumentInfo<WORKITEM_ID_Z>::NumLanes;
   }
+  static_assert(SCALAR_VALUE_ARGUMENT_LAST == WORKITEM_ID_Z,
+                "extend getArgumentLaneSize for new ScalarValueArgument");
+  llvm_unreachable("Invalid scalar value argument");
 }
 
 bool StateValueArraySpecs::invalidate(Prototype &,

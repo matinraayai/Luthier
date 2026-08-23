@@ -111,8 +111,20 @@ enum ScalarValueArgument : uint8_t {
   USER_ARG_PTR = 8,
   /// 64-bit address of the instrumentation implicit argument buffer
   IMPLICIT_ARG_BUFFER = 9,
+  /// 32-bit X component of the workgroup ID (preloaded system SGPR)
+  WORKGROUP_ID_X = 10,
+  /// 32-bit Y component of the workgroup ID (preloaded system SGPR)
+  WORKGROUP_ID_Y = 11,
+  /// 32-bit Z component of the workgroup ID (preloaded system SGPR)
+  WORKGROUP_ID_Z = 12,
+  /// 32-bit X component of lane 0's workitem ID at kernel entry
+  WORKITEM_ID_X = 13,
+  /// 32-bit Y component of lane 0's workitem ID at kernel entry
+  WORKITEM_ID_Y = 14,
+  /// 32-bit Z component of lane 0's workitem ID at kernel entry
+  WORKITEM_ID_Z = 15,
   /// Marks the last defined scalar value argument
-  SCALAR_VALUE_ARGUMENT_LAST = IMPLICIT_ARG_BUFFER
+  SCALAR_VALUE_ARGUMENT_LAST = WORKITEM_ID_Z
 };
 
 template <ScalarValueArgument SA> struct ScalarValueArgumentInfo;
@@ -142,7 +154,7 @@ template <> struct ScalarValueArgumentInfo<QUEUE_PTR> {
 };
 
 template <> struct ScalarValueArgumentInfo<DISPATCH_PTR> {
-  static constexpr uint8_t NumLanes = 1;
+  static constexpr uint8_t NumLanes = 2;
 };
 
 template <> struct ScalarValueArgumentInfo<WORK_ITEM_PRIVATE_SEGMENT_SIZE> {
@@ -155,6 +167,30 @@ template <> struct ScalarValueArgumentInfo<USER_ARG_PTR> {
 
 template <> struct ScalarValueArgumentInfo<IMPLICIT_ARG_BUFFER> {
   static constexpr uint8_t NumLanes = 2;
+};
+
+template <> struct ScalarValueArgumentInfo<WORKGROUP_ID_X> {
+  static constexpr uint8_t NumLanes = 1;
+};
+
+template <> struct ScalarValueArgumentInfo<WORKGROUP_ID_Y> {
+  static constexpr uint8_t NumLanes = 1;
+};
+
+template <> struct ScalarValueArgumentInfo<WORKGROUP_ID_Z> {
+  static constexpr uint8_t NumLanes = 1;
+};
+
+template <> struct ScalarValueArgumentInfo<WORKITEM_ID_X> {
+  static constexpr uint8_t NumLanes = 1;
+};
+
+template <> struct ScalarValueArgumentInfo<WORKITEM_ID_Y> {
+  static constexpr uint8_t NumLanes = 1;
+};
+
+template <> struct ScalarValueArgumentInfo<WORKITEM_ID_Z> {
+  static constexpr uint8_t NumLanes = 1;
 };
 
 /// \brief Holds the result of the IR processing stage of an intrinsic IR call
