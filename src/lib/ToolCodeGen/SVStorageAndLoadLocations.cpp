@@ -451,8 +451,14 @@ llvm::Error SVStorageAndLoadLocations::calculate(
   if (MFs.empty())
     return llvm::Error::success();
   // Get all the possible state value array storage for the sub-target being
-  // used and check if we have at least only one method for storage
+  // used and check if we have at least only one method for storage.
   const auto &ST = MFs[0]->getSubtarget<llvm::GCNSubtarget>();
+#ifndef NDEBUG
+  for (const llvm::MachineFunction *MF : MFs)
+    assert(&MF->getSubtarget<llvm::GCNSubtarget>() == &ST &&
+           "target module MFs must share one subtarget; heterogeneous "
+           "target/instrumentation-module subtargets are not supported");
+#endif
   llvm::SmallVector<StateValueArrayStorage::StorageKind, 6> SupportedStorage;
   getSupportedSVAStorageList(ST, SupportedStorage);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(

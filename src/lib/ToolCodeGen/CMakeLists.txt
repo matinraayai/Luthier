@@ -29,8 +29,8 @@ add_library(LuthierToolCodeGen OBJECT
         SVStorageAndLoadLocations.cpp
         SVAPhysVGPRPinPass.cpp
         TargetModulePatcherPass.cpp
-        LuthierRegScavenger.cpp
-        LuthierBranchRelaxation.cpp
+        TargetModuleScavenger.cpp
+        TargetModuleBranchRelaxation.cpp
         IntrinsicMIRLoweringPass.cpp
         InjectedPayloadPEIPass.cpp
         PrePostAmbleEmitter.cpp

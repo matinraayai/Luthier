@@ -1,4 +1,4 @@
-//===-- LuthierBranchRelaxation.cpp ------------------------------*- C++-*-===//
+//===-- TargetModuleBranchRelaxation.cpp ----------------------------------===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,24 +13,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file LuthierBranchRelaxation.cpp
-/// Fork of \c llvm/lib/CodeGen/BranchRelaxation.cpp. Top-level
+/// \file
+/// Target-module branch relaxer — fork of
+/// \c llvm/lib/CodeGen/BranchRelaxation.cpp. Top-level
 /// \c run + the offset-tracking machinery (\c scanFunction,
 /// \c computeBlockSize, \c adjustBlockOffsets, \c isBlockInRange,
 /// \c splitBlockBeforeInstr, \c fixupConditionalBranch,
-/// \c relaxBranchInstructions) are transposed verbatim into the
-/// \c luthier namespace; the sole substantive change is in
-/// \c fixupUnconditionalBranch, which calls
-/// \c emitLuthierLongBranch instead of \c TII->insertIndirectBranch.
+/// \c relaxBranchInstructions) are transposed verbatim; the sole substantive
+/// change is in \c fixupUnconditionalBranch, which calls
+/// \c emitLongBranch instead of \c TII->insertIndirectBranch.
 /// That helper mirrors \c SIInstrInfo::insertIndirectBranch's body but
-/// scavenges via \c LuthierRegScavenger (which sees \p ReservedRegs and
-/// the SVA-lane \c SpillSink the caller installed).
-///
-/// What was dropped: the legacy + new-PM pass wrappers
-/// (\c BranchRelaxationLegacy, \c BranchRelaxationPass::run) — Luthier
-/// instantiates the worker directly from \c TargetModulePatcherPass.
+/// scavenges via \c TargetModuleScavenger (which sees the \c ReservedRegs
+/// set and the SVA-lane \c SpillSink the caller installed).
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGen/LuthierBranchRelaxation.h"
+#include "luthier/ToolCodeGen/TargetModuleBranchRelaxation.h"
+
+#include "luthier/ToolCodeGen/IPPredicatedCFG.h"
+#include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
+#include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
 
 #include <AMDGPU.h>
 #include <GCNSubtarget.h>
@@ -67,15 +67,15 @@ namespace {
 /// \c SIInstrInfo::insertIndirectBranch (the pre-gfx12 path, which is
 /// the only path Luthier currently needs — gfx12+ would use
 /// \c S_ADD_PC_I64 and not require scavenging at all). Sole change vs.
-/// stock: scavenges via \p RS (our \c LuthierRegScavenger) instead of
+/// stock: scavenges via \p RS (\c TargetModuleScavenger) instead of
 /// the AMDGPU TII-supplied stock \c RegScavenger, so the SVA storage
 /// reg is excluded and the SVA-lane spill sink fires when no free
 /// SReg_64 is available.
-void emitLuthierLongBranch(llvm::MachineBasicBlock &MBB,
-                           llvm::MachineBasicBlock &DestBB,
-                           llvm::MachineBasicBlock &RestoreBB,
-                           const llvm::DebugLoc &DL, int64_t BrOffset,
-                           LuthierRegScavenger &RS) {
+void emitLongBranch(llvm::MachineBasicBlock &MBB,
+                    llvm::MachineBasicBlock &DestBB,
+                    llvm::MachineBasicBlock &RestoreBB,
+                    const llvm::DebugLoc &DL, int64_t BrOffset,
+                    TargetModuleScavenger &RS) {
   assert(MBB.empty() && "trampoline MBB must start empty");
   assert(MBB.pred_size() == 1 && "trampoline MBB must have exactly one pred");
   assert(RestoreBB.empty() && "restore MBB must start empty");
@@ -126,7 +126,8 @@ void emitLuthierLongBranch(llvm::MachineBasicBlock &MBB,
       .addSym(OffsetHi, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
   ApplyHazardWorkarounds();
 
-  llvm::BuildMI(&MBB, DL, TII->get(llvm::AMDGPU::S_SETPC_B64)).addReg(PCReg);
+  (void)llvm::BuildMI(&MBB, DL, TII->get(llvm::AMDGPU::S_SETPC_B64))
+      .addReg(PCReg);
 
   // Scavenge an SReg_64 to replace PCReg.
   llvm::Register LongBranchReservedReg = MFI->getLongBranchReservedReg();
@@ -152,7 +153,7 @@ void emitLuthierLongBranch(llvm::MachineBasicBlock &MBB,
                                  RestoreBB.begin(), Scav,
                                  llvm::AMDGPU::SReg_64RegClass)) {
         llvm::report_fatal_error(
-            "LuthierBranchRelaxation: no free SReg_64 found and SVA-lane "
+            "TargetModuleBranchRelaxation: no free SReg_64 found and SVA-lane "
             "spill sink unavailable; cannot relax long branch",
             /*GenCrashDiag=*/false);
       }
@@ -179,9 +180,9 @@ void emitLuthierLongBranch(llvm::MachineBasicBlock &MBB,
 
 /// Worker class — fork of \c llvm::BranchRelaxation (anonymous namespace
 /// class) with one substantive change: \c fixupUnconditionalBranch's
-/// long-branch emission calls \c emitLuthierLongBranch with our
-/// scavenger.
-class LuthierBranchRelaxationWorker {
+/// long-branch emission calls \c emitLongBranch with the target
+/// module reg scavenger.
+class TargetModuleBranchRelaxationWorker {
   struct BasicBlockInfo {
     unsigned Offset = 0;
     unsigned Size = 0;
@@ -202,7 +203,7 @@ class LuthierBranchRelaxationWorker {
   llvm::SmallDenseSet<
       std::pair<llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>>
       RelaxedUnconditionals;
-  LuthierRegScavenger RS;
+  TargetModuleScavenger RS;
   llvm::LivePhysRegs LiveRegs;
 
   llvm::MachineFunction *MF = nullptr;
@@ -229,10 +230,15 @@ class LuthierBranchRelaxationWorker {
   uint64_t computeBlockSize(const llvm::MachineBasicBlock &MBB) const;
   unsigned getInstrOffset(const llvm::MachineInstr &MI) const;
 
+  const IPPredicatedCFG &IPCFG;
+  const IPPredicatedLiveness &IPLiveness;
+
 public:
-  LuthierBranchRelaxationWorker(
+  TargetModuleBranchRelaxationWorker(
+      const IPPredicatedCFG &IPCFG, const IPPredicatedLiveness &IPLiveness,
       const llvm::DenseSet<llvm::MCPhysReg> &ReservedRegs,
-      LuthierRegScavenger::SVASpillCallback SpillSink) {
+      TargetModuleScavenger::SVASpillCallback SpillSink)
+      : IPCFG(IPCFG), IPLiveness(IPLiveness) {
     RS.setReservedRegs(ReservedRegs);
     if (SpillSink)
       RS.setSVASpillCallback(std::move(SpillSink));
@@ -241,7 +247,7 @@ public:
   bool run(llvm::MachineFunction &MF);
 };
 
-void LuthierBranchRelaxationWorker::scanFunction() {
+void TargetModuleBranchRelaxationWorker::scanFunction() {
   BlockInfo.clear();
   BlockInfo.resize(MF->getNumBlockIDs());
   TrampolineInsertionPoint = nullptr;
@@ -254,7 +260,7 @@ void LuthierBranchRelaxationWorker::scanFunction() {
   adjustBlockOffsets(*MF->begin());
 }
 
-uint64_t LuthierBranchRelaxationWorker::computeBlockSize(
+uint64_t TargetModuleBranchRelaxationWorker::computeBlockSize(
     const llvm::MachineBasicBlock &MBB) const {
   uint64_t Size = 0;
   for (const auto &MI : MBB)
@@ -262,7 +268,7 @@ uint64_t LuthierBranchRelaxationWorker::computeBlockSize(
   return Size;
 }
 
-unsigned LuthierBranchRelaxationWorker::getInstrOffset(
+unsigned TargetModuleBranchRelaxationWorker::getInstrOffset(
     const llvm::MachineInstr &MI) const {
   const auto *MBB = MI.getParent();
   unsigned Offset = BlockInfo[MBB->getNumber()].Offset;
@@ -271,12 +277,12 @@ unsigned LuthierBranchRelaxationWorker::getInstrOffset(
   return Offset;
 }
 
-void LuthierBranchRelaxationWorker::adjustBlockOffsets(
+void TargetModuleBranchRelaxationWorker::adjustBlockOffsets(
     llvm::MachineBasicBlock &Start) {
   adjustBlockOffsets(Start, MF->end());
 }
 
-void LuthierBranchRelaxationWorker::adjustBlockOffsets(
+void TargetModuleBranchRelaxationWorker::adjustBlockOffsets(
     llvm::MachineBasicBlock &Start, llvm::MachineFunction::iterator End) {
   unsigned PrevNum = Start.getNumber();
   for (auto &MBB : llvm::make_range(
@@ -287,12 +293,12 @@ void LuthierBranchRelaxationWorker::adjustBlockOffsets(
   }
 }
 
-llvm::MachineBasicBlock *LuthierBranchRelaxationWorker::createNewBlockAfter(
+llvm::MachineBasicBlock *TargetModuleBranchRelaxationWorker::createNewBlockAfter(
     llvm::MachineBasicBlock &OrigBB) {
   return createNewBlockAfter(OrigBB, OrigBB.getBasicBlock());
 }
 
-llvm::MachineBasicBlock *LuthierBranchRelaxationWorker::createNewBlockAfter(
+llvm::MachineBasicBlock *TargetModuleBranchRelaxationWorker::createNewBlockAfter(
     llvm::MachineBasicBlock &OrigMBB, const llvm::BasicBlock *BB) {
   auto *NewBB = MF->CreateMachineBasicBlock(BB);
   MF->insert(++OrigMBB.getIterator(), NewBB);
@@ -303,7 +309,7 @@ llvm::MachineBasicBlock *LuthierBranchRelaxationWorker::createNewBlockAfter(
   return NewBB;
 }
 
-llvm::MachineBasicBlock *LuthierBranchRelaxationWorker::splitBlockBeforeInstr(
+llvm::MachineBasicBlock *TargetModuleBranchRelaxationWorker::splitBlockBeforeInstr(
     llvm::MachineInstr &MI, llvm::MachineBasicBlock *DestBB) {
   auto *OrigBB = MI.getParent();
   auto *NewBB = MF->CreateMachineBasicBlock(OrigBB->getBasicBlock());
@@ -326,7 +332,7 @@ llvm::MachineBasicBlock *LuthierBranchRelaxationWorker::splitBlockBeforeInstr(
   return NewBB;
 }
 
-bool LuthierBranchRelaxationWorker::isBlockInRange(
+bool TargetModuleBranchRelaxationWorker::isBlockInRange(
     const llvm::MachineInstr &MI, const llvm::MachineBasicBlock &DestBB) const {
   int64_t BrOffset = getInstrOffset(MI);
   int64_t DestOffset = BlockInfo[DestBB.getNumber()].Offset;
@@ -337,7 +343,7 @@ bool LuthierBranchRelaxationWorker::isBlockInRange(
                           : DestOffset - BrOffset);
 }
 
-bool LuthierBranchRelaxationWorker::fixupConditionalBranch(
+bool TargetModuleBranchRelaxationWorker::fixupConditionalBranch(
     llvm::MachineInstr &MI) {
   // Verbatim port from stock BranchRelaxation::fixupConditionalBranch.
   llvm::DebugLoc DL = MI.getDebugLoc();
@@ -439,12 +445,8 @@ bool LuthierBranchRelaxationWorker::fixupConditionalBranch(
   return true;
 }
 
-bool LuthierBranchRelaxationWorker::fixupUnconditionalBranch(
+bool TargetModuleBranchRelaxationWorker::fixupUnconditionalBranch(
     llvm::MachineInstr &MI) {
-  // Forked from stock BranchRelaxation::fixupUnconditionalBranch. The
-  // only substantive change is the TII->insertIndirectBranch call near
-  // the end, replaced by emitLuthierLongBranch which routes scavenging
-  // through our LuthierRegScavenger.
   auto *MBB = MI.getParent();
   unsigned OldBrSize = TII->getInstSizeInBytes(MI);
   auto *DestBB = TII->getBranchDestBlock(MI);
@@ -478,7 +480,7 @@ bool LuthierBranchRelaxationWorker::fixupUnconditionalBranch(
       ->setIsEndSection(RestoreBB->isEndSection());
   RestoreBB->setIsEndSection(false);
 
-  emitLuthierLongBranch(*BranchBB, *DestBB, *RestoreBB, DL,
+  emitLongBranch(*BranchBB, *DestBB, *RestoreBB, DL,
                         BranchBB->getSectionID() != DestBB->getSectionID()
                             ? TM->getMaxCodeSize()
                             : DestOffset - SrcOffset,
@@ -526,7 +528,7 @@ bool LuthierBranchRelaxationWorker::fixupUnconditionalBranch(
   return true;
 }
 
-bool LuthierBranchRelaxationWorker::relaxBranchInstructions() {
+bool TargetModuleBranchRelaxationWorker::relaxBranchInstructions() {
   bool Changed = false;
   for (auto &MBB : *MF) {
     auto Last = MBB.getLastNonDebugInstr();
@@ -565,7 +567,7 @@ bool LuthierBranchRelaxationWorker::relaxBranchInstructions() {
   return Changed;
 }
 
-bool LuthierBranchRelaxationWorker::run(llvm::MachineFunction &mf) {
+bool TargetModuleBranchRelaxationWorker::run(llvm::MachineFunction &mf) {
   MF = &mf;
   const auto &ST = MF->getSubtarget();
   TII = ST.getInstrInfo();
@@ -573,31 +575,38 @@ bool LuthierBranchRelaxationWorker::run(llvm::MachineFunction &mf) {
   TRI = ST.getRegisterInfo();
   MF->RenumberBlocks();
 
-  // Stock BranchRelaxationPass runs late in the codegen pipeline, after
-  // LiveIntervals / regalloc have populated per-MBB live-in sets and
-  // set MachineFunctionProperties::TracksLiveness. We run immediately
-  // after CodeDiscoveryPass on lifted MIR, where neither has happened.
-  // Without TracksLiveness, MBB::livein_begin asserts; without computed
-  // live-ins, fixupUnconditionalBranch's live-in propagation from
-  // successors copies an empty set and the long-jump trampoline ends
-  // up with no live-ins — fine for correctness on AMDGPU but the
-  // scavenger inside emitLuthierLongBranch consults LiveOut (initialized
-  // from successor live-ins via enterBasicBlockEnd → LiveUnits.addLiveOuts),
-  // so missing live-ins make every register look free and the scavenger
-  // happily picks ones the app uses. Recompute here to fix both.
+  // Seed per-MBB live-ins from the cached prototype-level predicated
+  // liveness (per-PMBB live-in sets from `IPPredicatedLivenessAnalysis`,
+  // indexed via `IPPredicatedCFG`) — one source of truth for liveness
+  // across the whole target module, no second full backward dataflow.
+  // `TracksLiveness` must be set before seeding: `MBB::livein_begin`
+  // asserts on it, and the scavenger reads it downstream via
+  // `enterBasicBlockEnd` → `LiveUnits.addLiveOuts`.
   MF->getProperties().setTracksLiveness();
-  llvm::SmallVector<llvm::MachineBasicBlock *, 16> MBBs;
-  for (llvm::MachineBasicBlock &MBB : *MF)
-    MBBs.push_back(&MBB);
-  llvm::fullyRecomputeLiveIns(MBBs);
+  for (llvm::MachineBasicBlock &MBB : *MF) {
+    if (MBB.empty())
+      continue;
+    const PredicatedMachineBasicBlock &PMBB =
+        const_cast<IPPredicatedCFG &>(IPCFG).getPredMBB(MBB.front());
+    const llvm::LivePhysRegs *LI = IPLiveness.getPMBBLiveIns(PMBB);
+    if (!LI)
+      continue;
+    // Clear any stale live-ins from prior runs, then seed from the
+    // PMBB live-in set. LiveInVector uses per-lane masks — we can't
+    // recover finer information from LivePhysRegs, so grant every
+    // seeded reg the full lane mask (MBB::addLiveIn's default).
+    MBB.clearLiveIns();
+    for (llvm::MCPhysReg R : *LI)
+      MBB.addLiveIn(R);
+    MBB.sortUniqueLiveIns();
+  }
 
   scanFunction();
   bool MadeChange = false;
   // Bound the relaxer's outer fixed-point loop. Stock LLVM converges
   // naturally because each fixup tightens distance; under tight
   // `--amdgpu-s-branch-bits` and our SVA-aware scavenger insertions
-  // we can fail to converge (see task #30 followup). Bail safely
-  // rather than spin.
+  // we can fail to converge. Bail safely rather than spin.
   constexpr int kRelaxIterLimit = 64;
   for (int I = 0; I < kRelaxIterLimit; ++I) {
     if (!relaxBranchInstructions())
@@ -611,8 +620,9 @@ bool LuthierBranchRelaxationWorker::run(llvm::MachineFunction &mf) {
 
 } // namespace
 
-bool LuthierBranchRelaxation::run(llvm::MachineFunction &MF) {
-  LuthierBranchRelaxationWorker Worker(ReservedRegs, SpillSink);
+bool TargetModuleBranchRelaxation::run(llvm::MachineFunction &MF) {
+  TargetModuleBranchRelaxationWorker Worker(IPCFG, IPLiveness, ReservedRegs,
+                                       SpillSink);
   return Worker.run(MF);
 }
 

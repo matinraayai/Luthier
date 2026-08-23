@@ -1,4 +1,4 @@
-//===-- LuthierRegScavenger.cpp ----------------------------------*- C++-*-===//
+//===-- TargetModuleScavenger.cpp ---------------------------------*- C++-*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,22 +13,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file LuthierRegScavenger.cpp
+/// \file TargetModuleScavenger.cpp
 /// Sibling-class fork of \c llvm::RegScavenger. See the header for
 /// rationale. Code transposed from
 /// \c llvm/lib/CodeGen/RegisterScavenging.cpp with these specific changes:
-///   * \c findSurvivorBackwards consults \c LuthierReservedRegs in
+///   * \c findSurvivorBackwards consults the extra \c ReservedRegs in
 ///     addition to \c MRI.isReserved at every candidate check.
 ///   * \c isReserved returns true for both \c MRI.isReserved and
-///     \c LuthierReservedRegs members.
+///     \c ReservedRegs members.
 ///   * \c spill consults \c SpillSink first; on a successful sink callback
 ///     the FrameIndex spill is skipped entirely.
-///   * Dropped: the \c scavengeFrameVirtualRegs entry point and the
-///     \c ScavengerTest legacy MachineFunctionPass — Luthier doesn't
-///     drive vreg scavenging from outside; \c LuthierBranchRelaxation is
-///     the only client.
 //===----------------------------------------------------------------------===//
-#include "luthier/ToolCodeGen/LuthierRegScavenger.h"
+#include "luthier/ToolCodeGen/TargetModuleScavenger.h"
 
 #include "luthier/LLVM/streams.h"
 #include <llvm/ADT/ArrayRef.h>
@@ -53,7 +49,7 @@
 
 namespace luthier {
 
-void LuthierRegScavenger::assignRegToScavengingIndex(
+void TargetModuleScavenger::assignRegToScavengingIndex(
     int FI, llvm::Register Reg, llvm::MachineInstr *Restore) {
   for (ScavengedInfo &Slot : Scavenged) {
     if (Slot.FrameIndex == FI) {
@@ -66,12 +62,12 @@ void LuthierRegScavenger::assignRegToScavengingIndex(
   llvm_unreachable("did not find scavenging index");
 }
 
-void LuthierRegScavenger::setRegUsed(llvm::Register Reg,
+void TargetModuleScavenger::setRegUsed(llvm::Register Reg,
                                      llvm::LaneBitmask LaneMask) {
   LiveUnits.addRegMasked(Reg, LaneMask);
 }
 
-void LuthierRegScavenger::init(llvm::MachineBasicBlock &MBBIn) {
+void TargetModuleScavenger::init(llvm::MachineBasicBlock &MBBIn) {
   llvm::MachineFunction &MF = *MBBIn.getParent();
   TII = MF.getSubtarget().getInstrInfo();
   TRI = MF.getSubtarget().getRegisterInfo();
@@ -84,19 +80,19 @@ void LuthierRegScavenger::init(llvm::MachineBasicBlock &MBBIn) {
   }
 }
 
-void LuthierRegScavenger::enterBasicBlock(llvm::MachineBasicBlock &MBBIn) {
+void TargetModuleScavenger::enterBasicBlock(llvm::MachineBasicBlock &MBBIn) {
   init(MBBIn);
   LiveUnits.addLiveIns(MBBIn);
   MBBI = MBBIn.begin();
 }
 
-void LuthierRegScavenger::enterBasicBlockEnd(llvm::MachineBasicBlock &MBBIn) {
+void TargetModuleScavenger::enterBasicBlockEnd(llvm::MachineBasicBlock &MBBIn) {
   init(MBBIn);
   LiveUnits.addLiveOuts(MBBIn);
   MBBI = MBBIn.end();
 }
 
-void LuthierRegScavenger::backward() {
+void TargetModuleScavenger::backward() {
   const llvm::MachineInstr &MI = *--MBBI;
   LiveUnits.stepBackward(MI);
   for (ScavengedInfo &I : Scavenged) {
@@ -107,13 +103,13 @@ void LuthierRegScavenger::backward() {
   }
 }
 
-bool LuthierRegScavenger::isReserved(llvm::Register Reg) const {
-  if (LuthierReservedRegs.contains(Reg.id()))
+bool TargetModuleScavenger::isReserved(llvm::Register Reg) const {
+  if (ReservedRegs.contains(Reg.id()))
     return true;
   return MRI->isReserved(Reg);
 }
 
-bool LuthierRegScavenger::isRegUsed(llvm::Register Reg,
+bool TargetModuleScavenger::isRegUsed(llvm::Register Reg,
                                     bool IncludeReserved) const {
   if (isReserved(Reg))
     return IncludeReserved;
@@ -121,7 +117,7 @@ bool LuthierRegScavenger::isRegUsed(llvm::Register Reg,
 }
 
 llvm::Register
-LuthierRegScavenger::FindUnusedReg(const llvm::TargetRegisterClass *RC) const {
+TargetModuleScavenger::FindUnusedReg(const llvm::TargetRegisterClass *RC) const {
   for (llvm::Register Reg : *RC) {
     if (!isRegUsed(Reg)) {
       LLVM_DEBUG(luthier::dbgs() << "LuthierScavenger found unused reg: "
@@ -133,7 +129,7 @@ LuthierRegScavenger::FindUnusedReg(const llvm::TargetRegisterClass *RC) const {
 }
 
 llvm::BitVector
-LuthierRegScavenger::getRegsAvailable(const llvm::TargetRegisterClass *RC) {
+TargetModuleScavenger::getRegsAvailable(const llvm::TargetRegisterClass *RC) {
   llvm::BitVector Mask(TRI->getNumRegs());
   for (llvm::Register Reg : *RC)
     if (!isRegUsed(Reg))
@@ -143,11 +139,11 @@ LuthierRegScavenger::getRegsAvailable(const llvm::TargetRegisterClass *RC) {
 
 /// See the stock \c findSurvivorBackwards. Sole modification: the
 /// \c MRI.isReserved guard is replaced by a Luthier-aware predicate
-/// that also rejects \p LuthierReservedRegs members.
+/// that also rejects \p ReservedRegs members.
 static std::pair<llvm::MCPhysReg, llvm::MachineBasicBlock::iterator>
 findSurvivorBackwards(
     const llvm::MachineRegisterInfo &MRI,
-    const llvm::DenseSet<llvm::MCPhysReg> &LuthierReservedRegs,
+    const llvm::DenseSet<llvm::MCPhysReg> &ReservedRegs,
     llvm::MachineBasicBlock::iterator From,
     llvm::MachineBasicBlock::iterator To, const llvm::LiveRegUnits &LiveOut,
     llvm::ArrayRef<llvm::MCPhysReg> AllocationOrder, bool RestoreAfter) {
@@ -161,7 +157,7 @@ findSurvivorBackwards(
   llvm::LiveRegUnits Used(TRI);
 
   auto Forbidden = [&](llvm::MCPhysReg Reg) {
-    return MRI.isReserved(Reg) || LuthierReservedRegs.contains(Reg);
+    return MRI.isReserved(Reg) || ReservedRegs.contains(Reg);
   };
 
   assert(From->getParent() == To->getParent() &&
@@ -231,8 +227,8 @@ static unsigned getFrameIndexOperandNum(llvm::MachineInstr &MI) {
   return i;
 }
 
-LuthierRegScavenger::ScavengedInfo &
-LuthierRegScavenger::spill(llvm::Register Reg,
+TargetModuleScavenger::ScavengedInfo &
+TargetModuleScavenger::spill(llvm::Register Reg,
                            const llvm::TargetRegisterClass &RC, int SPAdj,
                            llvm::MachineBasicBlock::iterator Before,
                            llvm::MachineBasicBlock::iterator &UseMI) {
@@ -310,7 +306,7 @@ LuthierRegScavenger::spill(llvm::Register Reg,
   return Scavenged[SI];
 }
 
-bool LuthierRegScavenger::invokeSVASpillSink(
+bool TargetModuleScavenger::invokeSVASpillSink(
     llvm::MachineBasicBlock &SpillMBB,
     llvm::MachineBasicBlock::iterator SpillBefore,
     llvm::MachineBasicBlock &ReloadMBB,
@@ -321,7 +317,7 @@ bool LuthierRegScavenger::invokeSVASpillSink(
   return SpillSink(SpillMBB, SpillBefore, ReloadMBB, ReloadBefore, Reg, RC);
 }
 
-llvm::Register LuthierRegScavenger::scavengeRegisterBackwards(
+llvm::Register TargetModuleScavenger::scavengeRegisterBackwards(
     const llvm::TargetRegisterClass &RC, llvm::MachineBasicBlock::iterator To,
     bool RestoreAfter, int SPAdj, bool AllowSpill) {
   const llvm::MachineBasicBlock &MBBR = *To->getParent();
@@ -329,7 +325,7 @@ llvm::Register LuthierRegScavenger::scavengeRegisterBackwards(
   llvm::ArrayRef<llvm::MCPhysReg> AllocationOrder =
       RC.getRawAllocationOrder(MF);
   std::pair<llvm::MCPhysReg, llvm::MachineBasicBlock::iterator> P =
-      findSurvivorBackwards(*MRI, LuthierReservedRegs, std::prev(MBBI), To,
+      findSurvivorBackwards(*MRI, ReservedRegs, std::prev(MBBI), To,
                             LiveUnits, AllocationOrder, RestoreAfter);
   llvm::MCPhysReg Reg = P.first;
   llvm::MachineBasicBlock::iterator SpillBefore = P.second;

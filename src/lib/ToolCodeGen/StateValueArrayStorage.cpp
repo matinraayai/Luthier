@@ -182,10 +182,9 @@ static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
       });
 }
 
-static void
-emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
-                    const VGPRStateValueArrayStorage &SrcSVS,
-                    const AGPRWithThreeSGPRSValueStorage &TargetSVS,
+static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
+                                const VGPRStateValueArrayStorage &SrcSVS,
+                                const AGPRWithThreeSGPRSValueStorage &TargetSVS,
                                 const StateValueArraySpecs &Specs) {
   (void)createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
@@ -207,14 +206,17 @@ static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const VGPRStateValueArrayStorage &SrcSVS,
                     const SpilledWithThreeSGPRsValueStorage &TargetSVS,
-                                const StateValueArraySpecs &Specs) {
+                    const StateValueArraySpecs &Specs) {
   // Read FS_lo, FS_hi and SGPR32 into their storage SGPRs
   for (const auto &[PhysReg, SVSSaveSGPR] :
        {std::pair{llvm::AMDGPU::FLAT_SCR_HI, TargetSVS.FlatScratchSGPRHigh},
         {llvm::AMDGPU::FLAT_SCR_LO, TargetSVS.FlatScratchSGPRLow},
         {llvm::AMDGPU::SP_REG, TargetSVS.EmergencyVGPRSpillSlotOffset}}) {
     auto StoreSlot = getInstrumentationFrameStoreLane(PhysReg, Specs);
-    assert(StoreSlot && "expected SVA lane for FS_HI/FS_LO/SGPR32");
+    if (!StoreSlot)
+      llvm::report_fatal_error(
+          "StateValueArrayStorage: missing SVA store lane for "
+          "FS_HI/FS_LO/SGPR32 while switching SVS schemes.");
     emitMoveFromVGPRLaneToSGPR(MI, SrcSVS.StorageVGPR, SVSSaveSGPR, *StoreSlot,
                                false);
   }
@@ -254,11 +256,14 @@ static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const VGPRStateValueArrayStorage &SrcSVS,
                     const SpilledWithOneSGPRsValueStorage &TargetSVS,
-                                const StateValueArraySpecs &Specs) {
+                    const StateValueArraySpecs &Specs) {
   // Store the instrumentation stack pointer
   auto StoreSlot =
       getInstrumentationFrameStoreLane(llvm::AMDGPU::SGPR32, Specs);
-  assert(StoreSlot && "expected SVA lane for SGPR32");
+  if (!StoreSlot)
+    llvm::report_fatal_error(
+        "StateValueArrayStorage: missing SVA store lane for SGPR32 while "
+        "switching SVS schemes.");
   emitMoveFromVGPRLaneToSGPR(MI, SrcSVS.StorageVGPR,
                              TargetSVS.EmergencyVGPRSpillSlotOffset, *StoreSlot,
                              false);
@@ -339,10 +344,9 @@ static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
       });
 };
 
-static void
-emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
-                    const TwoAGPRValueStorage &SrcSVS,
-                    const AGPRWithThreeSGPRSValueStorage &TargetSVS,
+static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
+                                const TwoAGPRValueStorage &SrcSVS,
+                                const AGPRWithThreeSGPRSValueStorage &TargetSVS,
                                 const StateValueArraySpecs &Specs) {
   (void)createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
@@ -377,7 +381,7 @@ static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const TwoAGPRValueStorage &SrcSVS,
                     const SpilledWithThreeSGPRsValueStorage &TargetSVS,
-                                const StateValueArraySpecs &Specs) {
+                    const StateValueArraySpecs &Specs) {
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -406,7 +410,10 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
         {llvm::AMDGPU::FLAT_SCR_LO, TargetSVS.FlatScratchSGPRLow},
         {llvm::AMDGPU::SGPR32, TargetSVS.EmergencyVGPRSpillSlotOffset}}) {
     auto StoreSlot = getInstrumentationFrameStoreLane(PhysReg, Specs);
-    assert(StoreSlot && "expected SVA lane for FS_HI/FS_LO/SGPR32");
+    if (!StoreSlot)
+      llvm::report_fatal_error(
+          "StateValueArrayStorage: missing SVA store lane for "
+          "FS_HI/FS_LO/SGPR32 while switching SVS schemes.");
     emitMoveFromVGPRLaneToSGPR(NextIPoint, llvm::AMDGPU::VGPR0, SVSSaveSGPR,
                                *StoreSlot, false);
   }
@@ -522,10 +529,9 @@ static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
       });
 }
 
-static void
-emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
-                    const AGPRWithThreeSGPRSValueStorage &SrcSVS,
-                    const AGPRWithThreeSGPRSValueStorage &TargetSVS,
+static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
+                                const AGPRWithThreeSGPRSValueStorage &SrcSVS,
+                                const AGPRWithThreeSGPRSValueStorage &TargetSVS,
                                 const StateValueArraySpecs &Specs) {
   // Move the SGPRs first
   emitMoveFromSGPRToSGPR(MI, SrcSVS.FlatScratchSGPRHigh,
@@ -589,7 +595,7 @@ static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const AGPRWithThreeSGPRSValueStorage &SrcSVS,
                     const SpilledWithThreeSGPRsValueStorage &TargetSVS,
-                                const StateValueArraySpecs &Specs) {
+                    const StateValueArraySpecs &Specs) {
   // Move the SGPRs first
   emitMoveFromSGPRToSGPR(MI, SrcSVS.FlatScratchSGPRHigh,
                          TargetSVS.FlatScratchSGPRHigh, true);
@@ -759,10 +765,9 @@ static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
   emitWaitCnt(NextIPoint);
 }
 
-static void
-emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
-                    const SpilledWithThreeSGPRsValueStorage &SrcSVS,
-                    const AGPRWithThreeSGPRSValueStorage &TargetSVS,
+static void emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
+                                const SpilledWithThreeSGPRsValueStorage &SrcSVS,
+                                const AGPRWithThreeSGPRSValueStorage &TargetSVS,
                                 const StateValueArraySpecs &Specs) {
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
@@ -827,7 +832,7 @@ static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const SpilledWithThreeSGPRsValueStorage &SrcSVS,
                     const SpilledWithThreeSGPRsValueStorage &TargetSVS,
-                                const StateValueArraySpecs &Specs) {
+                    const StateValueArraySpecs &Specs) {
   emitMoveFromSGPRToSGPR(MI, SrcSVS.FlatScratchSGPRHigh,
                          TargetSVS.FlatScratchSGPRHigh, true);
   emitMoveFromSGPRToSGPR(MI, SrcSVS.FlatScratchSGPRLow,
@@ -867,7 +872,7 @@ static void
 emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const SpilledWithOneSGPRsValueStorage &SrcSVS,
                     const SpilledWithOneSGPRsValueStorage &TargetSVS,
-                                const StateValueArraySpecs &Specs) {
+                    const StateValueArraySpecs &Specs) {
   emitMoveFromSGPRToSGPR(MI, SrcSVS.EmergencyVGPRSpillSlotOffset,
                          TargetSVS.EmergencyVGPRSpillSlotOffset, true);
 }
