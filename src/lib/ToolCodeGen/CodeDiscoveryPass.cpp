@@ -1356,7 +1356,12 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
             "Trace has no instruction at address {0:x}.", CurrentInstrAddr));
       const TraceInstr &Inst = InstIt->second;
       auto MCInst = Inst.getMCInst();
-      const unsigned Opcode = getPseudoOpcodeFromReal(MCInst.getOpcode());
+      unsigned Opcode = getPseudoOpcodeFromReal(MCInst.getOpcode());
+
+      /// Change the S_SETPC_B64 to its return variant so that its MBB counts
+      /// as a terminator
+      if (Opcode == llvm::AMDGPU::S_SETPC_B64)
+        Opcode = llvm::AMDGPU::S_SETPC_B64_return;
       const llvm::MCInstrDesc &MCID = MCInstInfo.get(Opcode);
       bool IsIndirectBranch = MCID.isIndirectBranch();
       bool IsDirectBranch = MCID.isBranch() && !IsIndirectBranch;
@@ -1481,6 +1486,40 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
 
       CurrentInstrAddr += Inst.getSize();
     }
+  }
+
+  /// For each call MI, isolate the call to its own MBB and
+  /// place a synthetic \c S_ENDPGM in a SEPARATE MBB right after the call
+  /// MBB in the MF layout.
+  for (llvm::MachineInstr *RetMI : UnresolvedReturnInsts) {
+    llvm::MachineBasicBlock *CallMBB = RetMI->getParent();
+
+    llvm::MachineBasicBlock *AfterCallMBB = CallMBB->getNextNode();
+    auto InsertionPoint = AfterCallMBB ? AfterCallMBB->getIterator() : MF.end();
+
+    assert(std::next(RetMI->getIterator()) == CallMBB->end() &&
+           "call MI is expected to be the last MI in its trace-lifted MBB");
+
+    llvm::MachineBasicBlock *EndpgmMBB = MF.CreateMachineBasicBlock();
+
+    MF.insert(InsertionPoint, EndpgmMBB);
+    llvm::MachineInstrBuilder SyntheticEndpgm =
+        llvm::BuildMI(*EndpgmMBB, EndpgmMBB->end(), llvm::DebugLoc(),
+                      MCInstInfo.get(llvm::AMDGPU::S_ENDPGM))
+            .addImm(0);
+    auto SyntheticMDOrErr =
+        TargetMachineInstrMDNode::initializeMDNode(*SyntheticEndpgm);
+    LUTHIER_RETURN_ON_ERROR(SyntheticMDOrErr.takeError());
+    LLVM_DEBUG(luthier::dbgs() << llvm::formatv(
+                   "[CodeDiscoveryPass] Isolated synthetic S_ENDPGM MBB "
+                   "idx {0} appended for call in MBB idx {1}\n",
+                   EndpgmMBB->getNumber(), CallMBB->getNumber()));
+
+    /// Remove all other successors of the call block that was added earlier
+    while (!CallMBB->succ_empty())
+      CallMBB->removeSuccessor(CallMBB->succ_begin());
+
+    CallMBB->addSuccessor(EndpgmMBB);
   }
   // Resolve the direct branch and target MIs/MBBs
   LLVM_DEBUG(luthier::dbgs()

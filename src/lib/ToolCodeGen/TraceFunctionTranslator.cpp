@@ -1771,8 +1771,6 @@ void TraceFunctionTranslator::emitIndirectTailCall(const llvm::MachineInstr &MI,
   llvm::CallInst *Call = Builder.CreateCall(FTy, FuncPtr, CallArgs);
   Call->setTailCallKind(llvm::CallInst::TCK_Tail);
 
-  /// Create an unreachable instruction to end the control flow graph
-  Builder.CreateUnreachable();
 }
 
 llvm::Value &

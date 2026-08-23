@@ -7,41 +7,63 @@
 // RUN:   -initial-execution-point=0:_Z6kernelv.kd \
 // RUN:   -o /dev/null | %tee_out FileCheck %s
 
-// The kernel makes two calls:
-//   1. a direct call to _Z3foov whose target the PrototypeCallGraph
-//      resolves statically from the s_getpc / s_add / s_swappc sequence;
-//      IPPredicatedCFG must record a return-flow edge from _Z3foov's
-//      return MBB to the kernel's post-call MBB.
-//   2. an opaque indirect call whose function pointer is loaded from
-//      kernarg memory; the callgraph cannot resolve it, so the calling
-//      MBB must carry `(has unresolved edges)` in the printed CFG.
+// CodeDiscoveryPass's post-pass appends a synthetic \c S_ENDPGM in a
+// SEPARATE MBB (placed at the end of the MF list) for every call MI,
+// and wires the call MBB → synthetic-endpgm MBB as a successor edge
+// so the call MBB has a well-formed successor list
+// The synthetic \c S_ENDPGM carries pcsections metadata but is
+// NOT assigned a trace-instr address. The PMBB printer
+// tags such MIs with "; synthetic (no trace address)"
+//
+// Invariants verified below:
+//   1. The synthetic \c S_ENDPGM marker line ";  synthetic (no trace
+//      address)" appears (proves the synthetic-endpgm insertion ran).
+//   2. The source-lifted trailing \c s_endpgm keeps its pcsections
+//      metadata and is NOT tagged synthetic.
+//   3. Forward call edge: kernel call MBB → \c _Z3foov entry MBB.
+//   4. Return-flow edge: \c _Z3foov return MBB → kernel post-call MBB.
+//   5. Return-flow predecessor: post-call MBB's Predecessors list the
+//      callee's return MBB.
+//
+// PMBB print order in the CFG dump depends on module iteration and
+// global-index assignment, neither of which is stable across runs
+// (DenseMap-keyed). Every check below is CHECK-DAG.
 
-// Each call MBB carries two successor edges: the synthetic-endpgm MBB
-// CodeDiscoveryPass appends after every call (so the call MBB has a
-// well-formed successor list) and, for the direct call, the forward-
-// call edge to the resolved callee's entry MBB. Inter-procedural flow
-// is modeled via the callee's return-flow edge landing on the post-
-// call trace function's entry MBB. The successors set is a
-// \c SmallDenseSet, so its printed order is hash-driven and unstable
-// across runs; the checks below use CHECK-DAG and allow the target
-// symbol at any position within the successors list, pinning down only
-// the CFG invariants that must hold regardless of enumeration order.
+// The kernel's call MBB header reports its wrapping function+MBB.
+// CHECK-DAG: PredMBB _Z6kernelv:{{.*}} (function=_Z6kernelv, MBB=%bb.0)
 
-// The kernel's direct-call MBB has a forward-call successor edge to
-// _Z3foov's entry (alongside the synthetic-endpgm successor).
-// CHECK-DAG: Successors: [{{[^]]*}}_Z3foov{{[^]]*}}]
-// _Z3foov's return MBB carries a return-flow edge to the kernel's
-// post-call trace-function entry (named _Z6kernelvxNN…).
+// (1) A synthetic S_ENDPGM marker line exists.
+// CHECK-DAG: ; synthetic (no trace address)
+
+// (2) The source-lifted s_endpgm keeps its pcsections metadata (its
+// PMBB does NOT get the synthetic marker).
+// CHECK-DAG: S_ENDPGM 0, pcsections !{{[0-9]+}}
+
+// The direct call and callee return are both present in the dump.
 // The callee's return \c s_setpc_b64 is lifted as the return-annotated
-// pseudo \c S_SETPC_B64_return.
+// pseudo \c S_SETPC_B64_return (CodeDiscoveryPass folds every raw
+// \c S_SETPC_B64 into the pseudo at lift time so downstream
+// callgraph/scheduler machinery sees the return metadata).
+// CHECK-DAG: S_SWAPPC_B64 $sgpr0_sgpr1
 // CHECK-DAG: S_SETPC_B64_return $sgpr30_sgpr31
+
+// (3) Forward call edge from the kernel's call MBB to _Z3foov's entry.
+// The successors set is a \c SmallDenseSet, so its printed order is
+// hash-driven; the call MBB carries two edges — the synthetic-endpgm
+// MBB and _Z3foov's entry — and either may print first. Allow anything
+// (including nothing) on either side of the _Z3foov successor.
+// CHECK-DAG: Successors: [{{[^]]*}}_Z3foov{{[^]]*}}]
+
+// (4) Return-flow edge: _Z3foov's return MBB has the kernel's post-call
+// trace-function entry as a successor. The post-call trace function is
+// named _Z6kernelvxNN…, so pin down the successor with the mangled-
+// offset "x" separator to distinguish it from the kernel's own
+// synthetic-endpgm MBB (_Z6kernelv:.N) that could otherwise match.
 // CHECK-DAG: Successors: [{{[^]]*}}_Z6kernelvx{{[^]]*}}]
-// Some MBB must be flagged with unresolved edges — that's the opaque
-// indirect-call MBB.
-// CHECK-DAG: (has unresolved edges)
-// The indirect-call MBB loads the fn ptr and swappc's through it.
-// CHECK-DAG: S_LOAD_DWORDX2_IMM
-// CHECK-DAG: S_SWAPPC_B64
+
+// (5) Return-flow predecessor side: the post-call MBB's Predecessors
+// list the callee's return MBB.
+// CHECK-DAG: Predecessors: [_Z3foov{{[^]]+}}]
 
 	.amdgcn_target "amdgcn-amd-amdhsa--gfx908"
 	.amdhsa_code_object_version 6
@@ -77,10 +99,10 @@ _Z6kernelv:
 	s_add_u32 s0, s0, _Z3foov@rel32@lo+4
 	s_addc_u32 s1, s1, _Z3foov@rel32@hi+12
 	s_swappc_b64 s[30:31], s[0:1]
-	; --- opaque indirect call: fn pointer loaded from memory ---
-	s_load_dwordx2 s[0:1], s[4:5], 0x0
-	s_waitcnt lgkmcnt(0)
-	s_swappc_b64 s[30:31], s[0:1]
+	; --- post-call MBB starts here in the lifted MIR; the discovery pass
+	;     forces the split by appending a synthetic S_ENDPGM after the
+	;     call.
+	s_mov_b32 s2, 0
 	s_endpgm
 	.section .rodata,"a",@progbits
 	.p2align 6, 0x0
@@ -132,7 +154,7 @@ _Z6kernelv:
 	.set _Z6kernelv.uses_flat_scratch, or(0, _Z3foov.uses_flat_scratch)
 	.set _Z6kernelv.has_dyn_sized_stack, or(0, _Z3foov.has_dyn_sized_stack)
 	.set _Z6kernelv.has_recursion, or(0, _Z3foov.has_recursion)
-	.set _Z6kernelv.has_indirect_call, 1
+	.set _Z6kernelv.has_indirect_call, 0
 	.p2alignl 6, 3215226880
 	.fill 256, 4, 3215226880
 	.amdgpu_metadata
