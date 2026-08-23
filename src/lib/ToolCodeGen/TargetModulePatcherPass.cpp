@@ -55,6 +55,9 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Linker/Linker.h>
+#include <llvm/MC/MCContext.h>
+#include <llvm/MC/MCExpr.h>
+#include <llvm/MC/MCSymbol.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Transforms/Utils/Cloning.h>
@@ -111,6 +114,47 @@ struct NumSystemSGPRsTag {
 };
 template struct StealPrivate<NumSystemSGPRsTag,
                              &llvm::SIMachineFunctionInfo::NumSystemSGPRs>;
+
+// Reach into \c llvm::AnalysisManager<Function>'s private results storage
+// so we can splice a cached \c MachineFunctionAnalysis::Result from the
+// IModule's FAM into the target module's FAM without deep-cloning the
+// underlying \c MachineFunction. See \c movePayloadMFIntoTarget below.
+//
+// The two private members we need (declared at
+// \c llvm/IR/PassManager.h:571,575):
+//   * \c AnalysisResultLists — \c DenseMap<Function*, ResultListT>, where
+//     \c ResultListT is a \c std::list of
+//     \c pair<AnalysisKey*, unique_ptr<ResultConceptT>>.
+//   * \c AnalysisResults — \c DenseMap<pair<AnalysisKey*, Function*>,
+//     ResultListT::iterator>, indexing into the above list.
+//
+// The \c ResultConceptT template argument set (Function + FAM's public
+// nested \c Invalidator class) is spelled out here because both the
+// \c AnalysisResultListT / \c AnalysisResultListMapT / \c AnalysisResultMapT
+// typedefs are private inside \c AnalysisManager. Keeping these local
+// aliases in sync with LLVM's PassManager.h is a maintenance edge — if
+// the upstream layout ever changes, this whole helper needs revisiting.
+using FAM = llvm::FunctionAnalysisManager;
+using FAMResultListT = std::list<std::pair<
+    llvm::AnalysisKey *,
+    std::unique_ptr<llvm::detail::AnalysisResultConcept<
+        llvm::Function, FAM::Invalidator>>>>;
+using FAMResultListMapT = llvm::DenseMap<llvm::Function *, FAMResultListT>;
+using FAMResultMapT =
+    llvm::DenseMap<std::pair<llvm::AnalysisKey *, llvm::Function *>,
+                   FAMResultListT::iterator>;
+
+struct FAMResultListsTag {
+  using MemberT = FAMResultListMapT FAM::*;
+  friend MemberT get(FAMResultListsTag);
+};
+template struct StealPrivate<FAMResultListsTag, &FAM::AnalysisResultLists>;
+
+struct FAMResultsTag {
+  using MemberT = FAMResultMapT FAM::*;
+  friend MemberT get(FAMResultsTag);
+};
+template struct StealPrivate<FAMResultsTag, &FAM::AnalysisResults>;
 
 /// Force \c GCNUserSGPRUsageInfo::FlatScratchInit true. AMDGPUAsmPrinter
 /// reads that flag to decide the KD's
@@ -584,6 +628,327 @@ void emitSVSSwitchesForMF(llvm::MachineFunction &MF,
              << " SVS switch(es) for MF '" << MF.getName() << "'\n");
 }
 
+/// Pick an \c SReg_64 pair at \p MI that we can hand to the site's
+/// \c S_SWAPPC_B64 as both the return-address destination and the
+/// call-target source. The pair must satisfy three constraints:
+///   1. Dead at \p MI — otherwise the swap clobbers a live app value.
+///      We seed \c LivePhysRegs from the enclosing MBB's stock live-outs
+///      (populated upstream via \c IPPredicatedLiveness / \c IPPredCFG)
+///      and step backward to \p MI.
+///   2. Not overlapping any SVA-storage register at \p MI's segment —
+///      resolved by walking \c SVLocations.getStorageIntervals for the
+///      containing MBB and finding the segment that covers \p MI's slot,
+///      then unioning that SVS's \c getAllStorageRegisters. Overlap
+///      is tested via \c TRI.regsOverlap so paired candidates whose sub-
+///      regs alias individually-reserved SGPRs are rejected.
+///   3. Not reserved by \c MRI — the \c LivePhysRegs::available check
+///      subsumes this.
+///
+/// Returns the picked \c MCRegister on success, or an error
+static llvm::Expected<llvm::MCRegister> scavengeSGPRPairAtSite(
+    const llvm::MachineInstr &MI,
+    const SVStorageAndLoadLocations &SVLocations,
+    const llvm::SlotIndexes &SI) {
+  const llvm::MachineFunction &MF = *MI.getMF();
+  const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
+  const auto &TRI = *ST.getRegisterInfo();
+  const llvm::MachineRegisterInfo &MRI = MF.getRegInfo();
+  const llvm::MachineBasicBlock &MBB = *MI.getParent();
+
+  // Collect the SVA-owned regs active at this MI's segment. A spilled
+  // SVS scheme returns up to three SGPRs (FS_hi, FS_lo, instrumentation-
+  // stack-pointer); a VGPR-backed scheme returns one VGPR. We disallow
+  // paired candidates that overlap any of them.
+  llvm::SmallVector<llvm::MCRegister, 4> SVAReserved;
+  {
+    const llvm::SlotIndex MISlot = SI.getInstructionIndex(MI);
+    for (const StateValueStorageSegment &Seg :
+         SVLocations.getStorageIntervals(MBB)) {
+      if (Seg.begin() <= MISlot && MISlot < Seg.end()) {
+        Seg.getSVS().getAllStorageRegisters(SVAReserved);
+        break;
+      }
+    }
+  }
+
+  // Live-at-MI: start from MBB live-outs and walk backward to \p MI.
+  llvm::LivePhysRegs Live(TRI);
+  Live.addLiveOuts(MBB);
+  for (auto It = MBB.rbegin(); It != MBB.rend() && &*It != &MI; ++It)
+    Live.stepBackward(*It);
+
+  auto OverlapsSVA = [&](llvm::MCPhysReg R) {
+    for (llvm::MCRegister SVAR : SVAReserved)
+      if (TRI.regsOverlap(R, SVAR))
+        return true;
+    return false;
+  };
+
+  for (llvm::MCPhysReg Reg : llvm::AMDGPU::SReg_64RegClass) {
+    if (OverlapsSVA(Reg))
+      continue;
+    if (!Live.available(MRI, Reg))
+      continue;
+    return llvm::MCRegister(Reg);
+  }
+  return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+      "TargetModulePatcherPass: could not scavenge SReg_64 for SI_CALL at "
+      "PATCHPOINT in MF '{0}' MBB {1}: no pair is simultaneously dead at "
+      "the site and free of SVA-storage overlap.",
+      MF.getName(), MBB.getNumber()));
+}
+
+/// Replace \p PatchpointMI with an outlined-payload call sequence:
+///   S_GETPC_B64 $pair
+///   S_ADD_U32  $pair.sub0, $pair.sub0, @callee@rel32@lo
+///   S_ADDC_U32 $pair.sub1, $pair.sub1, @callee@rel32@hi
+///   SI_CALL    $pair, $pair, @callee
+/// This mirrors the direct-call sequence stock \c SITargetLowering emits.
+///
+/// The pair MUST already be verified dead at \p PatchpointMI and non-
+/// overlapping with any SVA-storage reg (see \c scavengeSGPRPairAtSite).
+/// A per-call-site continuation \c MCSymbol is attached as the post-instr
+/// symbol of the emitted \c SI_CALL and returned to the caller —
+/// \c rewritePayloadReturn uses it to materialize the return address
+/// via \c S_GETPC when the payload clobbers the scavenged pair.
+///
+/// Both the \c PATCHPOINT MI and \p ExternHandle (the target-
+/// module extern declaration the marker references) are erased here as
+/// a pair.
+static llvm::MCSymbol *emitSICallAtPatchpoint(llvm::MachineInstr &PatchpointMI,
+                                              llvm::Function &PayloadFn,
+                                              llvm::Function *ExternHandle,
+                                              llvm::MCRegister ScavengedPair) {
+  auto &MBB = *PatchpointMI.getParent();
+  auto &MF = *MBB.getParent();
+  const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
+  const auto *TII = ST.getInstrInfo();
+  const auto *TRI = ST.getRegisterInfo();
+  const llvm::DebugLoc DL;
+  llvm::MCRegister Sub0 = TRI->getSubReg(ScavengedPair, llvm::AMDGPU::sub0);
+  llvm::MCRegister Sub1 = TRI->getSubReg(ScavengedPair, llvm::AMDGPU::sub1);
+
+  // PC-relative materialization of the callee address into the pair.
+  (void)llvm::BuildMI(MBB, PatchpointMI, DL,
+                      TII->get(llvm::AMDGPU::S_GETPC_B64), ScavengedPair);
+  (void)llvm::BuildMI(MBB, PatchpointMI, DL,
+                      TII->get(llvm::AMDGPU::S_ADD_U32), Sub0)
+      .addReg(Sub0)
+      .addGlobalAddress(&PayloadFn, 0, llvm::SIInstrInfo::MO_REL32);
+  (void)llvm::BuildMI(MBB, PatchpointMI, DL,
+                      TII->get(llvm::AMDGPU::S_ADDC_U32), Sub1)
+      .addReg(Sub1)
+      .addGlobalAddress(&PayloadFn, 0, llvm::SIInstrInfo::MO_REL32 + 1);
+
+  // SI_CALL — same pair as dst and src, so post-swap the pair holds
+  // the return address for the payload's S_SETPC_B64_return.
+  auto CallMI = llvm::BuildMI(MBB, PatchpointMI, DL,
+                              TII->get(llvm::AMDGPU::SI_CALL), ScavengedPair)
+                    .addReg(ScavengedPair)
+                    .addGlobalAddress(&PayloadFn);
+
+  // Continuation symbol pinned at the point control returns to. Used by
+  // rewritePayloadReturn's Case-B trampoline when the payload has
+  // clobbered ScavengedPair before its return terminator.
+  llvm::MCSymbol *ContSym = MF.getContext().createTempSymbol(
+      "luthier_call_ret", /*AlwaysAddSuffix=*/true);
+  CallMI->setPostInstrSymbol(MF, ContSym);
+
+  // Erase the PATCHPOINT first — that drops the extern handle's last
+  // IR user, so the handle becomes safe to delete right after.
+  PatchpointMI.eraseFromParent();
+  if (ExternHandle) {
+    assert(ExternHandle->use_empty() &&
+           "payload extern handle still has IR users after PATCHPOINT erase");
+    ExternHandle->eraseFromParent();
+  }
+  return ContSym;
+}
+
+/// Move the payload's IR \c Function from \p IModule into \p TargetModule
+/// and steal its cached \c MachineFunctionAnalysis::Result from \p IFAM
+/// into \p TargetFAM without deep-cloning the underlying
+/// \c MachineFunction.
+///
+/// The steal is done via the \c FAMResults / \c FAMResultLists ADL tags
+/// declared above. \c std::list::splice is used so the \c unique_ptr owning the
+/// \c MachineFunction migrates atomically between the two FAMs' storage.
+///
+/// Fails if \p IFAM has no cached \c MachineFunctionAnalysis result for
+/// \p PayloadFn.
+llvm::Error movePayloadMFIntoTarget(llvm::Function &PayloadFn,
+                                    llvm::Module &TargetModule,
+                                    llvm::FunctionAnalysisManager &IFAM,
+                                    llvm::FunctionAnalysisManager &TargetFAM) {
+  llvm::Module &IModule = *PayloadFn.getParent();
+  LLVM_DEBUG(luthier::dbgs()
+             << "[TargetModulePatcherPass]   movePayloadMFIntoTarget '"
+             << PayloadFn.getName() << "'\n");
+
+  // 1. Detach the IR Function from IModule and attach to TargetModule.
+  // Identity is preserved — existing references remain valid.
+  IModule.getFunctionList().remove(PayloadFn.getIterator());
+  TargetModule.getFunctionList().push_back(&PayloadFn);
+
+  // 2. Splice the MFAnalysis result entry between the two FAMs.
+  llvm::AnalysisKey *const ID = llvm::MachineFunctionAnalysis::ID();
+  auto &IResults = IFAM.*get(FAMResultsTag{});
+  auto &ILists = IFAM.*get(FAMResultListsTag{});
+  auto &TResults = TargetFAM.*get(FAMResultsTag{});
+  auto &TLists = TargetFAM.*get(FAMResultListsTag{});
+
+  auto ResIt = IResults.find({ID, &PayloadFn});
+  if (ResIt == IResults.end())
+    return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+        "TargetModulePatcherPass: payload function '{0}' has no cached "
+        "MachineFunctionAnalysis result in the IModule's FAM — the "
+        "ISel/machine-passes stage must have failed to lower it.",
+        PayloadFn.getName()));
+
+  FAMResultListT::iterator ListIt = ResIt->second;
+  FAMResultListT &ISlot = ILists[&PayloadFn];
+  FAMResultListT &TSlot = TLists[&PayloadFn];
+
+  // std::list::splice(pos, other, it) moves a single node from `other`
+  // to `*this` before `pos`. The node's iterator (`ListIt`) stays valid
+  // and now refers to the moved element in TSlot.
+  TSlot.splice(TSlot.end(), ISlot, ListIt);
+
+  // 3. Update the index maps. Erase from IFAM, insert into TargetFAM
+  // with the now-migrated iterator.
+  IResults.erase(ResIt);
+  TResults[{ID, &PayloadFn}] = ListIt;
+
+  // 4. Clean up the IModule's per-function list slot if it became empty
+  // (mirrors AnalysisManager::clear behavior).
+  if (ISlot.empty())
+    ILists.erase(&PayloadFn);
+
+  return llvm::Error::success();
+}
+
+/// Rewrite every return terminator in \p PayloadMF so control lands back
+/// at the caller's SI_CALL continuation \p ContSym via \p ScavengedPair.
+///
+/// Our SI_CALL emits into \p ScavengedPair via
+/// \c S_SWAPPC_B64, so post-swap the pair holds the return address the
+/// caller expects the payload to jump through. Two cases:
+///
+///   * **Case A** — no MI in the payload writes any sub-reg overlapping
+///     \p ScavengedPair. The pair still holds the return address at every
+///     return site, so we simply repoint each \c S_SETPC_B64_return's
+///     operand to \p ScavengedPair.
+///
+///   * **Case B** — some MI clobbers \p ScavengedPair between entry and
+///     the return. The pair's contents are stale, so we re-materialize
+///     \p ContSym's address into it at every return site via the same
+///     \c S_GETPC_B64 + \c S_ADD_U32 / \c S_ADDC_U32 pattern
+llvm::Error rewritePayloadReturn(llvm::MachineFunction &PayloadMF,
+                                 llvm::MCRegister ScavengedPair,
+                                 llvm::MCSymbol *ContSym) {
+  const auto &ST = PayloadMF.getSubtarget<llvm::GCNSubtarget>();
+  const auto *TII = ST.getInstrInfo();
+  const auto *TRI = ST.getRegisterInfo();
+  auto &MCCtx = PayloadMF.getContext();
+  const llvm::MCRegister Sub0 =
+      TRI->getSubReg(ScavengedPair, llvm::AMDGPU::sub0);
+  const llvm::MCRegister Sub1 =
+      TRI->getSubReg(ScavengedPair, llvm::AMDGPU::sub1);
+
+  // Detect whether ANY MI in the payload defines any sub-reg overlapping
+  // ScavengedPair. Return terminators themselves are uses; their operand
+  // is not a def, so scanning all_defs is safe against false positives.
+  bool ScavClobbered = false;
+  for (const llvm::MachineBasicBlock &MBB : PayloadMF) {
+    for (const llvm::MachineInstr &MI : MBB) {
+      for (const llvm::MachineOperand &MO : MI.all_defs()) {
+        if (!MO.isReg())
+          continue;
+        llvm::Register R = MO.getReg();
+        if (!R.isPhysical())
+          continue;
+        if (TRI->regsOverlap(R, ScavengedPair)) {
+          ScavClobbered = true;
+          break;
+        }
+      }
+      if (ScavClobbered)
+        break;
+    }
+    if (ScavClobbered)
+      break;
+  }
+  LLVM_DEBUG(luthier::dbgs()
+             << "[TargetModulePatcherPass]   rewritePayloadReturn '"
+             << PayloadMF.getName() << "' ScavengedPair="
+             << llvm::printReg(ScavengedPair, TRI)
+             << " clobbered=" << ScavClobbered << "\n");
+
+  // Collect return terminators. Snapshot before mutating so we don't
+  // invalidate the MBB iterator while inserting into the same MBB.
+  llvm::SmallVector<llvm::MachineInstr *, 4> Returns;
+  for (llvm::MachineBasicBlock &MBB : PayloadMF)
+    for (llvm::MachineInstr &MI : MBB)
+      if (MI.isReturn())
+        Returns.push_back(&MI);
+
+  for (llvm::MachineInstr *RetMI : Returns) {
+    if (RetMI->getOpcode() != llvm::AMDGPU::S_SETPC_B64_return)
+      return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "TargetModulePatcherPass: unexpected return opcode {0} in "
+          "payload '{1}' — expected S_SETPC_B64_return post-PEI.",
+          RetMI->getOpcode(), PayloadMF.getName()));
+    auto &MBB = *RetMI->getParent();
+    const llvm::DebugLoc DL;
+
+    if (!ScavClobbered) {
+      // Case A: repoint the setpc's use to ScavengedPair.
+      llvm::MachineOperand &RAOp = RetMI->getOperand(0);
+      RAOp.setReg(ScavengedPair);
+      RAOp.setIsUndef(false);
+      continue;
+    }
+
+    // Case B: rematerialize ContSym's address into ScavengedPair via
+    // S_GETPC_B64 + MO_FAR_BRANCH_OFFSET-tagged S_ADD_U32/S_ADDC_U32,
+    // then set the setpc to use the (now-live) pair.
+    auto GetPC = llvm::BuildMI(MBB, RetMI, DL,
+                               TII->get(llvm::AMDGPU::S_GETPC_B64),
+                               ScavengedPair);
+    llvm::MCSymbol *PostGetPCLabel = MCCtx.createTempSymbol(
+        "luthier_payload_ret_getpc", /*AlwaysAddSuffix=*/true);
+    GetPC->setPostInstrSymbol(PayloadMF, PostGetPCLabel);
+
+    llvm::MCSymbol *OffsetLo = MCCtx.createTempSymbol(
+        "luthier_payload_ret_lo", /*AlwaysAddSuffix=*/true);
+    llvm::MCSymbol *OffsetHi = MCCtx.createTempSymbol(
+        "luthier_payload_ret_hi", /*AlwaysAddSuffix=*/true);
+    (void)llvm::BuildMI(MBB, RetMI, DL, TII->get(llvm::AMDGPU::S_ADD_U32))
+        .addReg(Sub0, llvm::RegState::Define)
+        .addReg(Sub0)
+        .addSym(OffsetLo, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
+    (void)llvm::BuildMI(MBB, RetMI, DL, TII->get(llvm::AMDGPU::S_ADDC_U32))
+        .addReg(Sub1, llvm::RegState::Define)
+        .addReg(Sub1)
+        .addSym(OffsetHi, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
+
+    // Bind OffsetLo/Hi to the low/high halves of (ContSym - PostGetPCLabel).
+    const llvm::MCExpr *OffsetExpr = llvm::MCBinaryExpr::createSub(
+        llvm::MCSymbolRefExpr::create(ContSym, MCCtx),
+        llvm::MCSymbolRefExpr::create(PostGetPCLabel, MCCtx), MCCtx);
+    const llvm::MCExpr *Mask = llvm::MCConstantExpr::create(0xFFFFFFFFULL, MCCtx);
+    OffsetLo->setVariableValue(
+        llvm::MCBinaryExpr::createAnd(OffsetExpr, Mask, MCCtx));
+    OffsetHi->setVariableValue(llvm::MCBinaryExpr::createAShr(
+        OffsetExpr, llvm::MCConstantExpr::create(32, MCCtx), MCCtx));
+
+    llvm::MachineOperand &RAOp = RetMI->getOperand(0);
+    RAOp.setReg(ScavengedPair);
+    RAOp.setIsUndef(false);
+  }
+  return llvm::Error::success();
+}
+
 /// Map a Luthier \c ScalarValueArgument to the AMDGPU
 /// \c PreloadedValue that supplies its bits from the HSA kernarg preload.
 /// Returns \c std::nullopt for SVA entries that have no kernarg source
@@ -800,315 +1165,14 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
   return llvm::Error::success();
 }
 
-/// Clone an IModule \c MachineFunction's frame layout into the target
-/// host \c MachineFunction. Frame indices in the cloned payload MIs will
-/// continue to be valid because we add equivalent slots to the host MF
-/// in the same index order (with the same offset & alignment). This is
-/// a verbatim port of the prior \c PatchLiftedRepresentationPass helper.
-void patchFrameInfo(const llvm::MachineFunction &InjectedPayloadMF,
-                    llvm::MachineFunction &ToBeInstrumentedMF) {
-  auto &SrcMFI = InjectedPayloadMF.getFrameInfo();
-  if (!SrcMFI.hasStackObjects()) {
-    LLVM_DEBUG(luthier::dbgs()
-               << "[TargetModulePatcherPass]   patchFrameInfo: payload '"
-               << InjectedPayloadMF.getName()
-               << "' has no stack objects, skipping\n");
-    return;
-  }
-  auto &DstMFI = ToBeInstrumentedMF.getFrameInfo();
-  LLVM_DEBUG(luthier::dbgs()
-             << "[TargetModulePatcherPass]   patchFrameInfo: payload '"
-             << InjectedPayloadMF.getName()
-             << "' srcStack=" << SrcMFI.getStackSize() << " into host '"
-             << ToBeInstrumentedMF.getName() << "' dstStack(before)="
-             << DstMFI.getStackSize() << " srcObjs=" << SrcMFI.getNumObjects()
-             << " srcFixed=" << SrcMFI.getNumFixedObjects() << "\n");
-  DstMFI.setStackSize(DstMFI.getStackSize() + SrcMFI.getStackSize());
-
-  auto CopyObjectProperties = [](llvm::MachineFrameInfo &DstMFI,
-                                 const llvm::MachineFrameInfo &SrcMFI,
-                                 int SrcFI, int DestFI) {
-    if (SrcMFI.isStatepointSpillSlotObjectIndex(SrcFI))
-      DstMFI.markAsStatepointSpillSlotObjectIndex(DestFI);
-    DstMFI.setObjectSSPLayout(DestFI, SrcMFI.getObjectSSPLayout(SrcFI));
-    DstMFI.setObjectZExt(DestFI, SrcMFI.isObjectZExt(SrcFI));
-    DstMFI.setObjectSExt(DestFI, SrcMFI.isObjectSExt(SrcFI));
-  };
-  for (int I = 0, E = SrcMFI.getNumObjects() - SrcMFI.getNumFixedObjects();
-       I != E; ++I) {
-    if (SrcMFI.isDeadObjectIndex(I))
-      continue;
-    int NewFI;
-    if (SrcMFI.isVariableSizedObjectIndex(I)) {
-      NewFI = DstMFI.CreateVariableSizedObject(SrcMFI.getObjectAlign(I),
-                                               SrcMFI.getObjectAllocation(I));
-    } else {
-      NewFI = DstMFI.CreateStackObject(
-          SrcMFI.getObjectSize(I), SrcMFI.getObjectAlign(I),
-          SrcMFI.isSpillSlotObjectIndex(I), SrcMFI.getObjectAllocation(I),
-          SrcMFI.getStackID(I));
-      DstMFI.setObjectOffset(NewFI, SrcMFI.getObjectOffset(I));
-    }
-    CopyObjectProperties(DstMFI, SrcMFI, I, NewFI);
-  }
-  for (int I = -1; I >= (int)-SrcMFI.getNumFixedObjects(); --I) {
-    if (SrcMFI.isDeadObjectIndex(I))
-      continue;
-    int NewFI = DstMFI.CreateFixedObject(
-        SrcMFI.getObjectSize(I), SrcMFI.getObjectOffset(I),
-        SrcMFI.isImmutableObjectIndex(I), SrcMFI.isAliasedObjectIndex(I));
-    CopyObjectProperties(DstMFI, SrcMFI, I, NewFI);
-  }
-}
-
-/// Inline-clone the body of \p InjectedPayloadMF directly before the
-/// \c PATCHPOINT marker \p InsertionPointMI in the host MF, splitting the
-/// host MBB at the marker so that the payload's return blocks branch
-/// through to the continuation, and then erasing the marker itself.
-/// \p VMap maps GVs in the IModule to their counterparts in the target
-/// module so cross-module operands resolve. Per the design (see
-/// \c Prototype::createInjectedPayload / \c assignToInject), the marker
-/// is the transient carrier of the injection site through codegen — it
-/// has no runtime effect and must not reach the AsmPrinter.
-void inlineInjectedPayload(const llvm::MachineFunction &InjectedPayloadMF,
-                           llvm::MachineInstr &InsertionPointMI,
-                           llvm::DenseMap<const llvm::MachineBasicBlock *,
-                                          llvm::MachineBasicBlock *> &MBBMap,
-                           const llvm::ValueToValueMapTy &VMap) {
-  assert(InsertionPointMI.getOpcode() == llvm::TargetOpcode::PATCHPOINT &&
-         "TargetModulePatcherPass::inlineInjectedPayload expects the "
-         "insertion point to be a PATCHPOINT marker MI");
-  auto &InsertionPointMBB = *InsertionPointMI.getParent();
-  auto &ToBeInstrumentedMF = *InsertionPointMI.getMF();
-  LLVM_DEBUG(luthier::dbgs()
-             << "[TargetModulePatcherPass]   inlineInjectedPayload payload='"
-             << InjectedPayloadMF.getName() << "' (" << InjectedPayloadMF.size()
-             << " MBB(s)) into host '" << ToBeInstrumentedMF.getName()
-             << "' at " << llvm::printMBBReference(InsertionPointMBB)
-             << " before MI opcode=" << InsertionPointMI.getOpcode() << "\n");
-  unsigned NumReturnBlocksInHook = 0;
-  const llvm::MachineBasicBlock *HookLastReturnMBB = nullptr;
-  llvm::MachineBasicBlock *HookLastReturnMBBDest = nullptr;
-
-  for (auto It = InjectedPayloadMF.rbegin(), End = InjectedPayloadMF.rend();
-       It != End; ++It) {
-    if (It->isReturnBlock() && HookLastReturnMBB == nullptr) {
-      HookLastReturnMBB = &*It;
-      NumReturnBlocksInHook++;
-    }
-  }
-  LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     payload return "
-                                "block count="
-                             << NumReturnBlocksInHook << "\n");
-  if (!HookLastReturnMBB) {
-    llvm::report_fatal_error(
-        "TargetModulePatcherPass: payload MF has no return block");
-  }
-
-  if (InjectedPayloadMF.size() > 1) {
-    if (InsertionPointMI.getIterator() != InsertionPointMBB.begin())
-      HookLastReturnMBBDest =
-          InsertionPointMBB.splitAt(*InsertionPointMI.getPrevNode());
-    else
-      HookLastReturnMBBDest = &InsertionPointMBB;
-    if (NumReturnBlocksInHook == 1)
-      MBBMap.insert({HookLastReturnMBB, HookLastReturnMBBDest});
-  }
-
-  for (const auto &HookMBB : InjectedPayloadMF) {
-    if (HookMBB.isEntryBlock()) {
-      if (InsertionPointMI.getIterator() != InsertionPointMBB.begin()) {
-        MBBMap.insert({&HookMBB, &InsertionPointMBB});
-      } else if (InjectedPayloadMF.size() == 1) {
-        MBBMap.insert({&InjectedPayloadMF.front(), &InsertionPointMBB});
-      } else {
-        // Multi-MBB payload, IP at host MBB's first instruction. We
-        // create a NewEntryBlock that holds the payload's entry MIs,
-        // splice it into the MF's MBB list directly before the host
-        // MBB, and reroute every predecessor.
-        //
-        // `addSuccessor` / `removeSuccessor` only update CFG metadata
-        // — the predecessor's ACTUAL terminator `MachineInstr`
-        // operands still reference the host MBB. Without rewriting
-        // those operands, a predecessor that reaches the host MBB
-        // via an explicit branch (e.g. `s_cbranch_execnz` with a
-        // target MBB operand) jumps straight past NewEntryBlock and
-        // skips the instrumentation; the wave then deadlocks on a
-        // later `s_waitcnt` because its half of the wave-mode
-        // instrumentation never ran. `ReplaceUsesOfBlockWith` walks
-        // the terminator's MBB operands, swaps the reference, AND
-        // calls `replaceSuccessor` — so it subsumes the manual
-        // `removeSuccessor` call.
-        auto *NewEntryBlock = ToBeInstrumentedMF.CreateMachineBasicBlock();
-        ToBeInstrumentedMF.insert(HookLastReturnMBBDest->getIterator(),
-                                  NewEntryBlock);
-        llvm::SmallVector<llvm::MachineBasicBlock *, 2> PredMBBs;
-        for (auto It = InsertionPointMBB.pred_begin();
-             It != InsertionPointMBB.pred_end(); ++It) {
-          PredMBBs.push_back(*It);
-        }
-        for (auto *PredMBB : PredMBBs) {
-          PredMBB->ReplaceUsesOfBlockWith(&InsertionPointMBB, NewEntryBlock);
-        }
-        NewEntryBlock->addSuccessor(&InsertionPointMBB);
-        MBBMap.insert({&InjectedPayloadMF.front(), NewEntryBlock});
-      }
-    } else if (HookMBB.isReturnBlock()) {
-      if (NumReturnBlocksInHook > 1 || &HookMBB != HookLastReturnMBB) {
-        auto *TargetReturnBlock = ToBeInstrumentedMF.CreateMachineBasicBlock();
-        ToBeInstrumentedMF.insert(HookLastReturnMBBDest->getIterator(),
-                                  TargetReturnBlock);
-        MBBMap.insert({&HookMBB, TargetReturnBlock});
-      }
-    } else {
-      auto *NewHookMBB = ToBeInstrumentedMF.CreateMachineBasicBlock();
-      ToBeInstrumentedMF.insert(HookLastReturnMBBDest->getIterator(),
-                                NewHookMBB);
-      MBBMap.insert({&HookMBB, NewHookMBB});
-    }
-  }
-
-  for (auto &MBB : InjectedPayloadMF) {
-    auto *DstMBB = MBBMap[&MBB];
-    for (auto It = MBB.succ_begin(), IterEnd = MBB.succ_end(); It != IterEnd;
-         ++It) {
-      auto *DstSuccMBB = MBBMap[*It];
-      if (!DstMBB->isSuccessor(DstSuccMBB))
-        DstMBB->addSuccessor(DstSuccMBB, MBB.getSuccProbability(It));
-    }
-    if (MBB.isReturnBlock() && NumReturnBlocksInHook > 1) {
-      if (!DstMBB->isSuccessor(HookLastReturnMBBDest))
-        DstMBB->addSuccessor(HookLastReturnMBBDest);
-    }
-  }
-
-  const llvm::TargetSubtargetInfo &STI = ToBeInstrumentedMF.getSubtarget();
-  const llvm::TargetInstrInfo *TII = STI.getInstrInfo();
-  const llvm::TargetRegisterInfo *TRI = STI.getRegisterInfo();
-  auto &SrcMRI = InjectedPayloadMF.getRegInfo();
-  auto &DstMRI = ToBeInstrumentedMF.getRegInfo();
-
-  // Allocate fresh virtual registers in the target MF's MRI for every
-  // virtual register used by the payload, copying register class /
-  // register bank / type / allocation hints. Operand cloning below uses
-  // this map to translate payload vreg references into target vreg
-  // references. Without this remap, MachineInstr::addOperand walks
-  // DstMRI's per-vreg storage tables with payload vreg indices and OOBs
-  // when the payload's vreg count exceeds the target MF's.
-  llvm::DenseMap<llvm::Register, llvm::Register> SrcToDstVReg;
-  for (unsigned I = 0, E = SrcMRI.getNumVirtRegs(); I != E; ++I) {
-    llvm::Register SrcReg = llvm::Register::index2VirtReg(I);
-    llvm::Register NewReg =
-        DstMRI.createIncompleteVirtualRegister(SrcMRI.getVRegName(SrcReg));
-    DstMRI.setRegClassOrRegBank(NewReg, SrcMRI.getRegClassOrRegBank(SrcReg));
-    llvm::LLT RegTy = SrcMRI.getType(SrcReg);
-    if (RegTy.isValid())
-      DstMRI.setType(NewReg, RegTy);
-    if (const auto *Hints = SrcMRI.getRegAllocationHints(SrcReg))
-      for (llvm::Register PrefReg : Hints->second)
-        DstMRI.addRegAllocationHint(NewReg, PrefReg);
-    SrcToDstVReg[SrcReg] = NewReg;
-  }
-
-  llvm::DenseSet<const uint32_t *> ConstRegisterMasks;
-  for (const uint32_t *Mask : TRI->getRegMasks())
-    ConstRegisterMasks.insert(Mask);
-
-  for (const auto &MBB : InjectedPayloadMF) {
-    auto *DstMBB = MBBMap[&MBB];
-    llvm::MachineBasicBlock::iterator InsertionPoint;
-    // A single-MBB payload's only MBB is BOTH its entry and its (sole)
-    // return block. We need the entry-block case (insert at the IP MI)
-    // to win — otherwise the return-block branch maps the payload's MIs
-    // to DstMBB->begin() and we end up inserting the payload at the
-    // start of the host MBB, BEFORE every original MI that was supposed
-    // to run prior to the IP.
-    if (MBB.isEntryBlock() && InjectedPayloadMF.size() == 1)
-      InsertionPoint = InsertionPointMI.getIterator();
-    else if (MBB.isReturnBlock() && NumReturnBlocksInHook == 1)
-      InsertionPoint = DstMBB->begin();
-    else
-      InsertionPoint = DstMBB->end();
-
-    for (auto &SrcMI : MBB.instrs()) {
-      // Drop the payload's return-edge terminators — the inlined body
-      // falls through (or branches) to the host's continuation MBB
-      // instead of "returning" to the runtime caller.
-      if (MBB.isReturnBlock() && SrcMI.isTerminator())
-        break;
-      if (SrcMI.isBundle())
-        continue;
-      const auto &MCID = TII->get(SrcMI.getOpcode());
-      auto *DstMI =
-          ToBeInstrumentedMF.CreateMachineInstr(MCID, llvm::DebugLoc(),
-                                                /*NoImplicit=*/true);
-      DstMI->setFlags(SrcMI.getFlags());
-      DstMI->setAsmPrinterFlag(SrcMI.getAsmPrinterFlags());
-      DstMBB->insert(InsertionPoint, DstMI);
-      for (auto &SrcMO : SrcMI.operands()) {
-        llvm::MachineOperand DstMO(SrcMO);
-        DstMO.clearParent();
-        if (DstMO.isReg() && DstMO.getReg().isVirtual()) {
-          auto It = SrcToDstVReg.find(DstMO.getReg());
-          assert(It != SrcToDstVReg.end() &&
-                 "payload references vreg not in source MRI");
-          DstMO.setReg(It->second);
-        } else if (DstMO.isMBB()) {
-          DstMO.setMBB(MBBMap[DstMO.getMBB()]);
-        } else if (DstMO.isRegMask()) {
-          if (!ConstRegisterMasks.count(DstMO.getRegMask())) {
-            uint32_t *DstMask = ToBeInstrumentedMF.allocateRegMask();
-            std::memcpy(DstMask, SrcMO.getRegMask(),
-                        sizeof(*DstMask) * llvm::MachineOperand::getRegMaskSize(
-                                               TRI->getNumRegs()));
-            DstMO.setRegMask(DstMask);
-          }
-        } else if (DstMO.isGlobal()) {
-          auto GVEntry = VMap.find(DstMO.getGlobal());
-          if (GVEntry == VMap.end()) {
-            ToBeInstrumentedMF.getFunction().getContext().emitError(
-                llvm::formatv("TargetModulePatcherPass: GV {0} referenced "
-                              "by payload MI was not cloned into the "
-                              "target module",
-                              DstMO.getGlobal()->getName()));
-          } else {
-            auto *DestGV = llvm::cast<llvm::GlobalValue>(GVEntry->second);
-            DstMO.ChangeToGA(DestGV, DstMO.getOffset(), DstMO.getTargetFlags());
-          }
-        }
-        DstMI->addOperand(DstMO);
-      }
-
-      /// Fix tied operands
-      for (unsigned I = 0, E = SrcMI.getNumOperands(); I != E; ++I) {
-        const llvm::MachineOperand &TiedMO = SrcMI.getOperand(I);
-        if (!TiedMO.isReg() || !TiedMO.isTied() || !TiedMO.isUse())
-          continue;
-        if (DstMI->getOperand(I).isTied())
-          continue;
-        DstMI->tieOperands(SrcMI.findTiedOperandIdx(I), I);
-      }
-    }
-  }
-
-  // The PATCHPOINT marker only survived past codegen so this pass could
-  // find the injection site. The payload body now sits ahead of it and
-  // the marker's implicit-uses/defs (the payload's aggregate reg touches)
-  // are subsumed by the cloned MIs' own operands. Erase it — leaving it
-  // in place would emit as an all-zero pseudo NOP shadow, and downstream
-  // passes still keyed on IPIP would see a dangling MI.
-  LLVM_DEBUG(luthier::dbgs()
-             << "[TargetModulePatcherPass]     erasing PATCHPOINT marker\n");
-  InsertionPointMI.eraseFromParent();
-}
-
 /// Moves every non-payload global object -- globals, hooks, helper functions --
 /// out of the IModule and into the target module, and re-homes each moved
 /// definition's MIR into \p TargetFAM so the asm printer can find it. Injected
-/// payloads are the only things left behind; Phase B.3 inlines those at their
-/// instrumentation points instead. \p VMap comes back populated so the
-/// per-payload inliner can resolve operands: a moved object maps to itself, and
-/// a declaration that the target module already had maps to that one.
+/// payloads are the only things left behind; Phase B.3 moves those into the
+/// target module individually via \c movePayloadMFIntoTarget when it emits
+/// each SI_CALL. \p VMap comes back populated so downstream operand-remap
+/// consumers resolve correctly: a moved object maps to itself, and a
+/// declaration that the target module already had maps to that one.
 llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
                                   llvm::Module &TargetModule,
                                   llvm::FunctionAnalysisManager &IFAM,
@@ -1121,8 +1185,9 @@ llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
              << " global(s), " << IModule.size() << " function(s)\n");
   // Pass 0 — move, rather than copy, every tool global into the target module.
   // A moved GlobalVariable keeps its identity, so every reference to it — from
-  // the IModule MIR that pass 2 clones and Phase B.3 inlines, and from the
-  // target module afterwards — stays valid without remapping, and the target
+  // the IModule MIR that pass 2 clones and Phase B.3's moved payload MFs, and
+  // from the target module afterwards — stays valid without remapping, and the
+  // target
   // binary ends up with exactly one definition instead of a definition plus an
   // orphaned original. Copying instead left the definition behind in the
   // IModule and produced a second, separately-attributed GlobalVariable whose
@@ -1496,24 +1561,30 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
                                 "stripStaleNumRegsAttrs ===\n");
   stripStaleNumRegsAttrs(TargetModule);
 
-  // Step 3: Inline every injected payload at its corresponding target
-  // MachineInstr. Following the design directive, payload MIs (minus
-  // their return terminators) are deep-cloned into the host MF right
-  // before the target MI; the payload's return-edge terminators are
-  // replaced by fall-through / branch into the host continuation MBB,
-  // matching the prior PatchLiftedRepresentationPass inline path.
+  // Step 3: Outline every injected payload behind an SI_CALL at its
+  // target PATCHPOINT. Ordering:
+  //   3a. Seed each touched target MF's MBB.liveins from the cached
+  //       IPPredicatedLiveness so `scavengeSGPRPairAtSite`'s
+  //       `LivePhysRegs::addLiveOuts` sees a correct successor-liveness
+  //       union. The branch-relaxation phase later re-seeds; that pass
+  //       is idempotent against a clean state.
+  //   3b. Scavenge an SReg_64 pair for every PATCHPOINT up front (fail
+  //       fast — no mutation yet).
+  //   3c. Per payload: emit SI_CALL (+ callee-address materialization)
+  //       at the PATCHPOINT (erasing the marker AND the extern-handle
+  //       Function decl as a spec-mandated pair), move the payload MF
+  //       ownership from IFAM to TargetFAM (moving the IR Function
+  //       from IModule to TargetModule), and rewrite the payload's
+  //       return terminators to jump back via the scavenged pair
+  //       (Case A) or via an MCSymbol trampoline (Case B).
   LLVM_DEBUG(luthier::dbgs()
-             << "[TargetModulePatcherPass] === Phase B.3: inline "
-                "injected payloads ===\n");
+             << "[TargetModulePatcherPass] === Phase B.3: outline "
+                "injected payloads via SI_CALL ===\n");
 
-  // `MachineBasicBlock::splitAt` (called by `inlineInjectedPayload` when
-  // the payload entry isn't the first MI of its MBB) needs `TracksLiveness`
-  // + populated MBB liveins on the target MF. CodeDiscoveryPass-lifted MFs
-  // don't carry liveness info by default. Set this up once per unique
-  // target MF before any inlining happens. Phase B.4's per-kernel relaxer
-  // recomputes again, but `fullyRecomputeLiveIns` is idempotent (the
-  // fixed-point converges in 0 extra iterations when the state is
-  // already consistent).
+  // 3a. Seed liveins on every target MF that hosts a PATCHPOINT.
+  // Mirrors TargetModuleBranchRelaxation's PMBB-seeded liveness setup —
+  // one source of truth for target-module liveness across the whole
+  // patcher.
   llvm::DenseSet<llvm::MachineFunction *> TargetMFsTouchedByPayloads;
   for (const auto &[InjectedPayloadFunc, InsertionPointMI] :
        IPIP.payload_mi()) {
@@ -1521,18 +1592,45 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   }
   for (llvm::MachineFunction *MF : TargetMFsTouchedByPayloads) {
     MF->getProperties().setTracksLiveness();
-    llvm::SmallVector<llvm::MachineBasicBlock *, 16> AllMBBs;
-    for (llvm::MachineBasicBlock &MBB : *MF)
-      AllMBBs.push_back(&MBB);
-    llvm::fullyRecomputeLiveIns(AllMBBs);
+    for (llvm::MachineBasicBlock &MBB : *MF) {
+      if (MBB.empty())
+        continue;
+      const PredicatedMachineBasicBlock &PMBB =
+          const_cast<IPPredicatedCFG &>(IPCFG).getPredMBB(MBB.front());
+      const llvm::LivePhysRegs *LI = IPLiveness.getPMBBLiveIns(PMBB);
+      if (!LI)
+        continue;
+      MBB.clearLiveIns();
+      for (llvm::MCPhysReg R : *LI)
+        MBB.addLiveIn(R);
+      MBB.sortUniqueLiveIns();
+    }
   }
 
+  // 3b. Scavenge SGPR pairs. Snapshotted into `ScavengedByPayload` before
+  // any orchestration mutation so a scavenge failure aborts cleanly.
+  llvm::MapVector<llvm::Function *, llvm::MCRegister> ScavengedByPayload;
+  for (const auto &[InjectedPayloadFunc, InsertionPointMI] :
+       IPIP.payload_mi()) {
+    const llvm::MachineFunction &TargetHostMF = *InsertionPointMI->getMF();
+    const auto &SI = TargetMFAM.getResult<llvm::SlotIndexesAnalysis>(
+        const_cast<llvm::MachineFunction &>(TargetHostMF));
+    auto ScavOrErr =
+        scavengeSGPRPairAtSite(*InsertionPointMI, SVLocations, SI);
+    if (!ScavOrErr) {
+      Ctx.emitError(llvm::toString(ScavOrErr.takeError()));
+      return llvm::PreservedAnalyses::none();
+    }
+    ScavengedByPayload[InjectedPayloadFunc] = *ScavOrErr;
+  }
+
+  // 3c. Per-payload orchestration.
   unsigned PayloadCount = 0;
   for (const auto &[InjectedPayloadFunc, InsertionPointMI] :
        IPIP.payload_mi()) {
     ++PayloadCount;
-    llvm::DenseMap<const llvm::MachineBasicBlock *, llvm::MachineBasicBlock *>
-        MBBMap;
+    const llvm::MCRegister Scav = ScavengedByPayload[InjectedPayloadFunc];
+
     auto *InjectedPayloadMFRes =
         IFAM.getCachedResult<llvm::MachineFunctionAnalysis>(
             *InjectedPayloadFunc);
@@ -1543,37 +1641,37 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
           InjectedPayloadFunc->getName()))));
       return llvm::PreservedAnalyses::none();
     }
-    const llvm::MachineFunction &InjectedPayloadMF =
-        InjectedPayloadMFRes->getMF();
-    patchFrameInfo(InjectedPayloadMF,
-                   *InsertionPointMI->getParent()->getParent());
-    inlineInjectedPayload(InjectedPayloadMF, *InsertionPointMI, MBBMap, VMap);
-  }
-  LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   Phase B.3 inlined "
-                             << PayloadCount << " payload(s)\n");
+    llvm::MachineFunction &PayloadMF = InjectedPayloadMFRes->getMF();
 
-  // Erase every payload's target-module extern-handle declaration. Each
-  // handle only existed as the \c PATCHPOINT marker's target operand and
-  // \c inlineInjectedPayload has now erased every such marker, so the
-  // handles are unreferenced. Left in the target module they would be
-  // AsmPrinter'd as external symbol references with no matching
-  // definition anywhere.
-  LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] === Phase B.3.1: "
-                                "erase payload extern handles ===\n");
-  llvm::SmallVector<llvm::Function *, 8> ExternHandlesToErase;
-  for (const auto &[InjectedPayloadFunc, _] : IPIP.payload_mi()) {
-    if (llvm::Function *Extern =
-            IPIP.getExternHandleFromInjectedPayload(*InjectedPayloadFunc))
-      ExternHandlesToErase.push_back(Extern);
+    // Emit the SI_CALL at the PATCHPOINT and capture the continuation
+    // symbol before we mutate the payload MF (order matters: the setpc
+    // rewrite Case-B branch uses this symbol). The helper also erases
+    // the PATCHPOINT MI and the extern-handle Function decl atomically
+    llvm::Function *ExternHandle =
+        IPIP.getExternHandleFromInjectedPayload(*InjectedPayloadFunc);
+    llvm::MCSymbol *ContSym = emitSICallAtPatchpoint(
+        *InsertionPointMI, *InjectedPayloadFunc, ExternHandle, Scav);
+
+    // Move the payload MF from IFAM to TargetFAM (and the IR Function
+    // from IModule to TargetModule). After this call, PayloadMF is
+    // owned by TargetFAM; the reference stays valid because splice
+    // keeps the list node — and thus the Result's unique_ptr — in
+    // place.
+    if (auto Err = movePayloadMFIntoTarget(*InjectedPayloadFunc, TargetModule,
+                                            IFAM, TargetFAM)) {
+      Ctx.emitError(llvm::toString(std::move(Err)));
+      return llvm::PreservedAnalyses::none();
+    }
+
+    // Rewrite payload returns to land back at ContSym via Scav.
+    if (auto Err = rewritePayloadReturn(PayloadMF, Scav, ContSym)) {
+      Ctx.emitError(llvm::toString(std::move(Err)));
+      return llvm::PreservedAnalyses::none();
+    }
   }
-  for (llvm::Function *Extern : ExternHandlesToErase) {
-    LLVM_DEBUG(luthier::dbgs()
-               << "[TargetModulePatcherPass]   erase extern handle '"
-               << Extern->getName() << "'\n");
-    assert(Extern->use_empty() &&
-           "payload extern handle still has IR users after PATCHPOINT removal");
-    Extern->eraseFromParent();
-  }
+  LLVM_DEBUG(luthier::dbgs()
+             << "[TargetModulePatcherPass]   Phase B.3 outlined "
+             << PayloadCount << " payload(s)\n");
 
   // Post-inline branch displacement check. CodeGenerator::printAssemblyFile
   // invokes AsmPrinter directly with no intermediate machine-pass chain, so
