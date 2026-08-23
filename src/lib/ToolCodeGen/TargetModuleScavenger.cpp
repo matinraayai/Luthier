@@ -104,8 +104,9 @@ void TargetModuleScavenger::backward() {
 }
 
 bool TargetModuleScavenger::isReserved(llvm::Register Reg) const {
-  if (ReservedRegs.contains(Reg.id()))
-    return true;
+  for (llvm::MCPhysReg R : ReservedRegs)
+    if (TRI->regsOverlap(Reg, R))
+      return true;
   return MRI->isReserved(Reg);
 }
 
@@ -138,8 +139,10 @@ TargetModuleScavenger::getRegsAvailable(const llvm::TargetRegisterClass *RC) {
 }
 
 /// See the stock \c findSurvivorBackwards. Sole modification: the
-/// \c MRI.isReserved guard is replaced by a Luthier-aware predicate
-/// that also rejects \p ReservedRegs members.
+/// \c MRI.isReserved guard is replaced by a predicate that also rejects
+/// any candidate whose regunits overlap a reg in \p ReservedRegs (via
+/// \c TRI.regsOverlap), so a paired/aliased candidate that overlaps an
+/// individually-reserved reg is caught.
 static std::pair<llvm::MCPhysReg, llvm::MachineBasicBlock::iterator>
 findSurvivorBackwards(
     const llvm::MachineRegisterInfo &MRI,
@@ -157,7 +160,12 @@ findSurvivorBackwards(
   llvm::LiveRegUnits Used(TRI);
 
   auto Forbidden = [&](llvm::MCPhysReg Reg) {
-    return MRI.isReserved(Reg) || ReservedRegs.contains(Reg);
+    if (MRI.isReserved(Reg))
+      return true;
+    for (llvm::MCPhysReg R : ReservedRegs)
+      if (TRI.regsOverlap(Reg, R))
+        return true;
+    return false;
   };
 
   assert(From->getParent() == To->getParent() &&
