@@ -61,9 +61,14 @@ static llvm::Error disassembleTrace(
     const MemoryAllocationAccessor &SegAccessor, uint64_t StartDeviceAddr,
     llvm::MCDisassembler &Disassembler, size_t MaxReadSize,
     const llvm::MCInstrInfo &MII, llvm::MCInstPrinter *IP,
+    const InstructionTraces::TraceGroup &ExistingTraces,
     InstructionTraces::Trace &Instructions, uint64_t &LastInstructionAddr) {
   /// Indicates whether the last disassembled instruction was a trace terminator
   bool WasTraceTermInstrEncountered{false};
+
+  /// Set once we stop disassembling because the next address is already
+  /// covered by an existing trace
+  bool StoppedByOverlap{false};
 
   /// Start adding instructions to the trace
   uint64_t CurrentDeviceAddress = StartDeviceAddr;
@@ -73,6 +78,8 @@ static llvm::Error disassembleTrace(
   /// - An instruction ending the trace was encountered, i.e return
   /// instructions (S_ENGPGM), call instructions (short and long), unconditional
   /// and/or indirect branches
+  /// - The next address the trace would disassemble is already covered
+  ///   by another trace
   /// - The end of the current allocation descriptor is reached, and the next
   /// adjacent address does not have a memory allocation descriptor (i.e. there
   /// is no memory allocation after the end of the already disassembled memory
@@ -80,7 +87,7 @@ static llvm::Error disassembleTrace(
   /// Note that a trace might not have any instructions associated with it if
   /// it is determinted that its starting address does not belong to a memory
   /// allocation
-  while (!WasTraceTermInstrEncountered) {
+  while (!WasTraceTermInstrEncountered && !StoppedByOverlap) {
     MemoryAllocationAccessor::AllocationDescriptor AllocDesc;
 
     LUTHIER_RETURN_ON_ERROR(
@@ -100,8 +107,27 @@ static llvm::Error disassembleTrace(
     uint64_t CurrentHostAddr = EntryPointHostAddr;
     uint64_t SegmentHostEndAddr = EntryPointHostAddr + SegmentSize;
 
-    while (!WasTraceTermInstrEncountered &&
+    while (!WasTraceTermInstrEncountered && !StoppedByOverlap &&
            CurrentHostAddr < SegmentHostEndAddr) {
+      /// If this address is already covered by a previously-discovered trace,
+      /// stop before disassembling
+      for (const auto &[TraceInterval, ExistingTrace] : ExistingTraces) {
+        if (CurrentDeviceAddress >= TraceInterval.first &&
+            CurrentDeviceAddress <= TraceInterval.second &&
+            ExistingTrace->contains(CurrentDeviceAddress)) {
+          LLVM_DEBUG(luthier::dbgs()
+                     << llvm::formatv(
+                            "[InstructionTraces] Address {0:x} already covered "
+                            "by trace [{1:x}, {2:x}]; ending current trace\n",
+                            CurrentDeviceAddress, TraceInterval.first,
+                            TraceInterval.second));
+          StoppedByOverlap = true;
+          break;
+        }
+      }
+      if (StoppedByOverlap)
+        break;
+
       size_t ReadSize = (CurrentHostAddr + MaxReadSize) < SegmentHostEndAddr
                             ? MaxReadSize
                             : SegmentHostEndAddr - CurrentHostAddr;
@@ -223,9 +249,9 @@ InstructionTraces::discoverTraces(EntryPoint EP,
     auto InstTrace = std::make_unique<Trace>();
     uint64_t TraceDeviceEndAddr{0};
 
-    LUTHIER_RETURN_ON_ERROR(
-        disassembleTrace(MemAccessor, CurrentDeviceAddr, *DisAsm, MaxInstSize,
-                         MII, IP.get(), *InstTrace, TraceDeviceEndAddr));
+    LUTHIER_RETURN_ON_ERROR(disassembleTrace(
+        MemAccessor, CurrentDeviceAddr, *DisAsm, MaxInstSize, MII, IP.get(),
+        Out->Traces, *InstTrace, TraceDeviceEndAddr));
 
     /// Handle direct branch and call instructions' targets, check if we have
     /// any targets not covered by current discovered traces

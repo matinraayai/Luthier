@@ -34,14 +34,13 @@ readRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
 
 llvm::Error readRegMIRProcessor(
     const llvm::MachineFunction &MF,
-    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Args,
-    llvm::MDNode *Payload,
+    llvm::ArrayRef<
+        std::pair<llvm::InlineAsm::Flag, const llvm::MachineOperand *>>
+        Args,
     const std::function<llvm::MachineInstrBuilder(int)> &MIBuilder,
     const std::function<llvm::Register(const llvm::TargetRegisterClass *)>
         &VirtRegBuilder,
-    const llvm::DenseMap<ScalarValueArgument, llvm::Register> &,
-    const llvm::DenseMap<llvm::MCRegister, llvm::Register> &,
-    llvm::DenseMap<llvm::MCRegister, llvm::Register> &);
+    const llvm::DenseMap<llvm::MCRegister, llvm::Register> &ReadPhysRegVRegs);
 
 } // namespace luthier
 

@@ -45,11 +45,6 @@ implicitArgPtrIRProcessor(const llvm::Function &Intrinsic,
   luthier::IntrinsicIRLoweringInfo Out;
   // The kernarg hidden address will be returned in an SGPR
   Out.setReturnValueInfo(User, "s");
-  // We need access to the base of the kernel argument buffer, and the offset
-  // from where the hidden kernel argument starts. Declare them up front so
-  // the MIR-lowering driver pre-stages the SVA vregs.
-  Out.getEffects().ReadSVAs.push_back(KERNEL_ARG_PTR);
-  Out.getEffects().ReadSVAs.push_back(IMPLICIT_ARG_OFFSET);
 
   return Out;
 }
@@ -76,10 +71,10 @@ llvm::Error implicitArgPtrMIRProcessor(
       "The register argument of luthier::implicitArgPtr is not a definition."));
   llvm::Register Output = Args[0].second;
   auto KernArgIt = SVAVRegs.find(KERNEL_ARG_PTR);
-  auto OffsetIt = SVAVRegs.find(IMPLICIT_ARG_OFFSET);
+  auto OffsetIt = SVAVRegs.find(IMPLICIT_ARG_BUFFER);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       KernArgIt != SVAVRegs.end() && OffsetIt != SVAVRegs.end(),
-      "luthier::implicitArgPtr: KERNEL_ARG_PTR / IMPLICIT_ARG_OFFSET missing "
+      "luthier::implicitArgPtr: KERNEL_ARG_PTR / IMPLICIT_ARG_BUFFER missing "
       "from pre-staged SVA map (IR processor must declare them)"));
   llvm::Register KernArgSGPR = KernArgIt->second;
   llvm::Register HiddenOffsetSGPR = OffsetIt->second;

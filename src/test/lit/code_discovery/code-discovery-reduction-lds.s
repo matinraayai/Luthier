@@ -1,15 +1,14 @@
 // RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx908 -filetype=obj %s -o %t.o && \
 // RUN: ld.lld -shared --unresolved-symbols=ignore-all -o %t %t.o && \
 // RUN: (luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx908 \
-// RUN:    -load-pass-plugin=%luthier_tool_code_gen_plugin \
-// RUN:    '-passes=luthier-mock-load-amdgpu-code-objects,luthier-code-discovery,print-mir-prepare,function(machine-function(print))' \
+// RUN:    '-passes=target(luthier-mock-load-amdgpu-code-objects),luthier-code-discovery,target(print-mir-prepare,function(machine-function(print)))' \
 // RUN:    -code-object-paths=%t \
 // RUN:    -initial-entrypoint=0:reduce_sum_lds.kd \
 // RUN:    -initial-execution-point=0:reduce_sum_lds.kd \
 // RUN:    -o /dev/null 2>&1 || true) > %t.out && \
 // RUN: FileCheck %s < %t.out
 
-// Regression test for two bugs in MIRToIRTranslator that were exposed by
+// Regression test for two bugs in TraceFunctionTranslator that were exposed by
 // kernels with control-flow on scalar-register/immediate comparisons:
 //   * In `getOperandAsValue` the immediate operand defaulted to i64, while
 //     register operands defaulted to the register's natural width (e.g. i32

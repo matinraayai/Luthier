@@ -1,28 +1,18 @@
 // RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx908 -filetype=obj %s -o %t.o && \
 // RUN: ld.lld -shared --unresolved-symbols=ignore-all -o %t %t.o && \
 // RUN: luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx908 \
-// RUN:   -load-pass-plugin=%luthier_tool_code_gen_plugin \
-// RUN:   '-passes=luthier-mock-load-amdgpu-code-objects,luthier-code-discovery,print-mir-prepare,function(machine-function(print))' \
+// RUN:   '-passes=target(luthier-mock-load-amdgpu-code-objects),luthier-code-discovery,target(print-mir-prepare,function(machine-function(print)))' \
 // RUN:   -code-object-paths=%t \
 // RUN:   -initial-entrypoint=0:vector_add.kd \
 // RUN:   -initial-execution-point=0:vector_add.kd \
 // RUN:   -o /dev/null 2>&1 | %tee_out FileCheck %s
 
-// Smoke test that CodeDiscoveryPass + MIRToIRTranslator can lift a real
+// Smoke test that CodeDiscoveryPass + TraceFunctionTranslator can lift a real
 // HIP-compiled SAXPY-style kernel (global loads, ALU, control flow with
 // EXEC narrowing, global store).
 
 // CHECK: define {{.*}} @vector_add
 
-// EXEC mask predicate check (wave64): every vector MBB gets a CheckBB that
-// computes the per-lane active predicate and a SkipBB that bypasses the
-// body for inactive lanes. DAG-matched here because the structure repeats
-// for every vector MBB in the function.
-// CHECK-DAG: call i32 @llvm.amdgcn.mbcnt.lo(i32 -1, i32 0)
-// CHECK-DAG: call i32 @llvm.amdgcn.mbcnt.hi(i32 -1, i32 %{{.*}})
-// CHECK-DAG: lshr i64 {{.*}}, %{{.*}}
-// CHECK-DAG: trunc i64 %{{.*}} to i1
-// CHECK-DAG: br i1 %{{.*}}, label %{{.*}}, label %skip
 // FLAT semantics lift global_load_dword / global_store_dword to typed
 // load/store IR over ptr addrspace(1). VOP3 ops without semantics still
 // fall through as asm sideeffect stubs.

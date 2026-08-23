@@ -62,6 +62,10 @@ MarkAnnotationsPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &) {
         F->addFnAttr(InjectedPayloadAttribute);
         LLVM_DEBUG(luthier::dbgs()
                    << "Marked injected payload " << F->getName() << ".\n");
+      } else if (Content == BuiltinAttribute) {
+        F->addFnAttr(BuiltinAttribute);
+        LLVM_DEBUG(luthier::dbgs()
+           << "Marked builtin " << F->getName() << ".\n");
       }
     }
     AnnotationGV->dropAllReferences();

@@ -18,7 +18,8 @@
 /// injected-payload PEI's app-frame preservation. Replaces the defunct
 /// \c namespace stateValueArray family of compile-time helpers; the lane
 /// numbers come directly from the \c StateValueArraySpecs layout that
-/// \c IntrinsicMIRLoweringPass finalizes via named MD on the module.
+/// \c StateValueArraySpecsAnalysis produces from the instrumentation
+/// module's \c luthier::readSVA call sites.
 ///
 /// The kernel prolog (PrePostAmbleEmitter) temporarily stashes four
 /// kernarg-derived registers — \c SGPR0, \c SGPR1, \c FLAT_SCR_LO,
@@ -30,7 +31,7 @@
 /// the instrumentation-private frame values back from the "store" lanes
 /// the prolog populated.
 ///
-/// Layout (matches what \c StateValueArraySpecs::getSVASpecs produces):
+/// Layout (matches what \c StateValueArraySpecsAnalysis produces):
 ///
 ///   Lane | Spilled phys-reg (kernarg / app value)
 ///   -----|----------------------------------------------------------------

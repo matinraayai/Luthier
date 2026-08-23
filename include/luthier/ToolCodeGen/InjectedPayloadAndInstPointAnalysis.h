@@ -13,13 +13,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file InjectedPayloadAndInstPointAnalysis.h
-/// This file describes the \c InjectedPayloadAndInstPointAnalysis which
-/// maps injected payload functions in the instrumentation module to their
+/// \file
+/// Describes the \c InjectedPayloadAndInstPointAnalysis which maps injected
+/// payload functions in the instrumentation module to their
 /// corresponding target \c MachineInstr instrumentation points.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_AND_INST_POINT_ANALYSIS_H
 #define LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_AND_INST_POINT_ANALYSIS_H
+#include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
@@ -30,20 +31,45 @@ namespace luthier {
 
 class InjectedPayloadAndInstPoint {
 private:
-  /// Maps each target MI to the ordered list of injected payload functions
-  /// that will be patched before it
+  /// Maps each target MI (the \c PATCHPOINT marker) to the ordered list of
+  /// injected payload functions to patch at it
   llvm::DenseMap<llvm::MachineInstr *, llvm::SmallVector<llvm::Function *, 2>>
       AppMIToInjectedPayloadsMap;
   /// Inverse map: each injected payload function to its single target MI
   llvm::DenseMap<llvm::Function *, llvm::MachineInstr *>
       InjectedPayloadToAppMIMap;
+  /// Maps the target module's extern declaration of a payload (the handle
+  /// named by the site's \c PATCHPOINT target operand) to the payload's
+  /// definition in the instrumentation module
+  llvm::DenseMap<llvm::Function *, llvm::Function *>
+      ExternHandleToInjectedPayloadMap;
+  /// Inverse of \c ExternHandleToInjectedPayloadMap
+  llvm::DenseMap<llvm::Function *, llvm::Function *>
+      InjectedPayloadToExternHandleMap;
 
 public:
   InjectedPayloadAndInstPoint() = default;
 
-  void addEntry(llvm::MachineInstr &AppMI, llvm::Function &InjectedPayload) {
+  void addEntry(llvm::MachineInstr &AppMI, llvm::Function &InjectedPayload,
+                llvm::Function &ExternHandle) {
     AppMIToInjectedPayloadsMap[&AppMI].push_back(&InjectedPayload);
     InjectedPayloadToAppMIMap.insert({&InjectedPayload, &AppMI});
+    ExternHandleToInjectedPayloadMap.insert({&ExternHandle, &InjectedPayload});
+    InjectedPayloadToExternHandleMap.insert({&InjectedPayload, &ExternHandle});
+  }
+
+  [[nodiscard]] llvm::Function *
+  getInjectedPayloadFromExternHandle(const llvm::Function &Extern) const {
+    auto It = ExternHandleToInjectedPayloadMap.find(
+        const_cast<llvm::Function *>(&Extern));
+    return It == ExternHandleToInjectedPayloadMap.end() ? nullptr : It->second;
+  }
+
+  [[nodiscard]] llvm::Function *getExternHandleFromInjectedPayload(
+      const llvm::Function &InjectedPayload) const {
+    auto It = InjectedPayloadToExternHandleMap.find(
+        const_cast<llvm::Function *>(&InjectedPayload));
+    return It == InjectedPayloadToExternHandleMap.end() ? nullptr : It->second;
   }
 
   [[nodiscard]] llvm::MachineInstr *
@@ -101,8 +127,8 @@ public:
     return llvm::make_range(payload_mi_begin(), payload_mi_end());
   }
 
-  bool invalidate(llvm::Module &IModule, const llvm::PreservedAnalyses &PA,
-                  llvm::ModuleAnalysisManager::Invalidator &PAC);
+  bool invalidate(Prototype &P, const llvm::PreservedAnalyses &PA,
+                  PrototypeAnalysisManager::Invalidator &PAC);
 };
 
 class InjectedPayloadAndInstPointAnalysis
@@ -117,7 +143,7 @@ public:
 
   InjectedPayloadAndInstPointAnalysis() = default;
 
-  Result run(llvm::Module &IModule, llvm::ModuleAnalysisManager &);
+  Result run(Prototype &P, PrototypeAnalysisManager &PAM);
 };
 
 } // namespace luthier

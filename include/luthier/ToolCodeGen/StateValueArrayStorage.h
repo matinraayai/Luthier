@@ -29,23 +29,22 @@ class GCNSubtarget;
 
 namespace luthier {
 
+class StateValueArraySpecs;
+
 /// \brief Contains information on the scheme used for storing with a way to
 /// load the state value array into its destination VGPR
 struct StateValueArrayStorage
     : public std::enable_shared_from_this<StateValueArrayStorage> {
 public:
   enum StorageKind {
-    SVS_SINGLE_VGPR,          /// The state value array is stored in a
-                              /// free VGPR
-    SVS_ONE_AGPR_post_gfx908, /// The state value array is stored in a free
-                              /// AGPR, and the target supports using AGPR as
-                              /// an operand in vector instructions
-    SVS_TWO_AGPRs_pre_gfx908, /// The state value array is stored in an
-                              /// AGPR, with a free AGPR to use as a temp
-                              /// spill slot for the app's VGPR. Only
-                              /// applicable for pre-gfx908, since they don't
-                              /// support using AGPRs as operands for vector
-                              /// instructions
+    SVS_SINGLE_VGPR, /// The state value array is stored in a
+                     /// free VGPR
+    SVS_TWO_AGPRs,   /// The state value array is stored in an
+                     /// AGPR, with a free AGPR to use as a temp
+                     /// spill slot for the app's VGPR. Only
+                     /// applicable for pre-gfx908, since they don't
+                     /// support using AGPRs as operands for vector
+                     /// instructions
     SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908, /// The state value array
                                                  /// is stored in in an AGPR,
                                                  /// with two SGPRs holding
@@ -127,7 +126,8 @@ public:
   /// the \p TargetSVS
   virtual void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
-                      const StateValueArrayStorage &TargetSVS) const = 0;
+                      const StateValueArrayStorage &TargetSVS,
+                      const StateValueArraySpecs &Specs) const = 0;
 
   virtual bool operator==(const StateValueArrayStorage &LHS) const = 0;
 
@@ -193,52 +193,12 @@ public:
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
-                      const StateValueArrayStorage &TargetSVS) const override;
+                      const StateValueArrayStorage &TargetSVS,
+                      const StateValueArraySpecs &Specs) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
     Regs.push_back(StorageVGPR);
-  }
-};
-
-/// \brief describes the state value array when stored in a Single free AGPR for
-/// targets that support using AGPRs as a vector instruction operand
-struct SingleAGPRStateValueArrayStorage : public StateValueArrayStorage {
-public:
-  llvm::MCRegister StorageAGPR{};
-
-  /// method for providing LLVM RTTI
-  [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
-    return S->getScheme() == SVS_ONE_AGPR_post_gfx908;
-  }
-
-  /// Constructor
-  /// \param StorageAGPR the AGPR where the state value array is stored
-  explicit SingleAGPRStateValueArrayStorage(llvm::MCRegister StorageAGPR)
-      : StorageAGPR(StorageAGPR),
-        StateValueArrayStorage(SVS_ONE_AGPR_post_gfx908) {};
-
-  llvm::MCRegister getStateValueStorageReg() const override {
-    return StorageAGPR;
-  }
-
-  bool operator==(const StateValueArrayStorage &LHS) const override;
-
-  bool requiresLoadAndStoreBeforeUse() override { return false; }
-
-  void emitCodeToLoadSVA(llvm::MachineInstr &MI,
-                         llvm::MCRegister DestVGPR) const override {};
-
-  void emitCodeToStoreSVA(llvm::MachineInstr &MI,
-                          llvm::MCRegister SrcVGPR) const override {};
-
-  void
-  emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
-                      const StateValueArrayStorage &TargetSVS) const override;
-
-  void getAllStorageRegisters(
-      llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
-    Regs.push_back(StorageAGPR);
   }
 };
 
@@ -254,13 +214,13 @@ public:
 
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
-    return S->getScheme() == SVS_TWO_AGPRs_pre_gfx908;
+    return S->getScheme() == SVS_TWO_AGPRs;
   }
 
   /// Constructor
   TwoAGPRValueStorage(llvm::MCRegister StorageAGPR, llvm::MCRegister TempAGPR)
       : StorageAGPR(StorageAGPR), TempAGPR(TempAGPR),
-        StateValueArrayStorage(SVS_TWO_AGPRs_pre_gfx908) {};
+        StateValueArrayStorage(SVS_TWO_AGPRs) {};
 
   llvm::MCRegister getStateValueStorageReg() const override {
     return StorageAGPR;
@@ -278,7 +238,8 @@ public:
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
-                      const StateValueArrayStorage &TargetSVS) const override;
+                      const StateValueArrayStorage &TargetSVS,
+                      const StateValueArraySpecs &Specs) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -335,7 +296,8 @@ public:
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
-                      const StateValueArrayStorage &TargetSVS) const override;
+                      const StateValueArrayStorage &TargetSVS,
+                      const StateValueArraySpecs &Specs) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -388,7 +350,8 @@ public:
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
-                      const StateValueArrayStorage &TargetSVS) const override;
+                      const StateValueArrayStorage &TargetSVS,
+                      const StateValueArraySpecs &Specs) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -433,7 +396,8 @@ public:
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
-                      const StateValueArrayStorage &TargetSVS) const override;
+                      const StateValueArrayStorage &TargetSVS,
+                      const StateValueArraySpecs &Specs) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {

@@ -13,10 +13,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file LuthierPassPlugin.h
+/// \file
 /// Implements Luthier's pass manager plugin. Similar to LLVM plugins, Luthier
-/// pass plugins can be used to augment the normal instrumentation process
-/// defined in the \c InstrumentationPMDriver target module pass.
+/// pass plugins can be used to augment Luthier's instrumentation process.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_PASS_PLUGINS_PASS_PLUGIN_H
 #define LUTHIER_PASS_PLUGINS_PASS_PLUGIN_H
@@ -48,6 +47,8 @@ class SubtargetFeatures;
 
 namespace luthier {
 
+class InstrumentationPassBuilder;
+
 extern "C" {
 
 /// \brief Contains information provided by a Luthier pass plugin
@@ -68,46 +69,9 @@ struct PassPluginLibraryInfo {
   const char *PluginVersion{};
   /// Extra arguments passed to all callbacks set by the plugin
   void *ExtraArgs{nullptr};
-  /// The callback used to create the instrumentation module; If there are
-  /// multiple plugins their created modules should be linked together
-  std::unique_ptr<llvm::Module> (*IModuleCreationCallback)(llvm::LLVMContext &,
-                                                           const llvm::Triple &,
-                                                           llvm::StringRef,
-                                                           llvm::StringRef &,
-                                                           void *){nullptr};
-  /// Use this to register the "primary" instrumentation logic creation passes
-  void (*RegisterPreIROptimizationPasses)(llvm::ModulePassManager &,
-                                          void *){nullptr};
-  /// The callback for augmenting the instrumentation pass builder
-  /// This can be used to add any additional analysis required by the plugin,
-  /// and to also modify the "default" part of the IR optimization pipeline as
-  /// documented by the LLVM pass plugin and the \c llvm::PassBuilder
-  void (*RegisterInstrumentationPassBuilderCallback)(llvm::PassBuilder &,
-                                                     void *){nullptr};
-  /// The callback for adding passes to the instrumentation pass manager
-  /// before the Luthier IR lowering pass
-  void (*PreLuthierIRIntrinsicLoweringPassesCallback)(llvm::ModulePassManager &,
-                                                      void *){nullptr};
-
-  /// The callback for adding passes to the instrumentation pass manager after
-  /// the Luthier IR lowering pass
-  void (*PostLuthierIRIntrinsicLoweringPassesCallback)(
-      llvm::ModulePassManager &, void *){nullptr};
-
-  /// The callback for registering the plugin's instrumentation legacy codegen
-  /// passes with the legacy pass registry
-  /// It is the plugin's responsibility to ensure each pass is registered
-  /// only once
-  void (*RegisterLegacyCodegenPassesCallback)(llvm::PassRegistry &,
-                                              void *){nullptr};
-  /// The callback for augmenting the legacy pass manager of the instrumentation
-  /// codegen pipeline via the target pass config
-  /// Use the passed \c llvm::PassRegistry to lookup information regarding each
-  /// registered pass
-  void (*AugmentTargetPassConfigCallback)(llvm::PassRegistry &,
-                                          llvm::TargetPassConfig &,
-                                          llvm::TargetMachine &,
-                                          void *){nullptr};
+  /// The callback for augmenting the \c InstrumentationPassBuilder.
+  void (*RegisterPrototypePassBuilderCallback)(InstrumentationPassBuilder &,
+                                               void *){nullptr};
 };
 
 /// \macro LUTHIER_PASS_PLUGIN_API_VERSION
@@ -117,7 +81,7 @@ struct PassPluginLibraryInfo {
 /// against that of the plugin. A mismatch is an error. The supported version
 /// will be incremented for ABI-breaking changes to the \c PassPluginLibraryInfo
 /// struct, i.e. when callbacks are added, removed, or reordered.
-#define LUTHIER_PASS_PLUGIN_API_VERSION 1
+#define LUTHIER_PASS_PLUGIN_API_VERSION 2
 }
 
 /// A loaded pass plugin.
@@ -149,60 +113,12 @@ public:
   /// Get the plugin API version
   [[nodiscard]] uint32_t getAPIVersion() const { return Info.APIVersion; }
 
-  /// Invoke the instrumentation module creation callback
-  std::unique_ptr<llvm::Module> instrumentationModuleCreationCallback(
-      llvm::LLVMContext &Context, const llvm::Triple &TT,
-      llvm::StringRef CPUName, llvm::StringRef FS) const;
-
-  /// Register passes to be run before the instrumentation IR optimization
-  /// passes
-  void registerPreIROptimizationPasses(llvm::ModulePassManager &MPM) const {
-    if (Info.RegisterPreIROptimizationPasses) {
-      Info.RegisterPreIROptimizationPasses(MPM, Info.ExtraArgs);
-    }
-  }
-
-  /// Invoke the pass builder callback
-  void registerInstrumentationPassBuilderCallback(llvm::PassBuilder &PB) const {
-    if (Info.RegisterInstrumentationPassBuilderCallback)
-      return Info.RegisterInstrumentationPassBuilderCallback(PB,
-                                                             Info.ExtraArgs);
-  }
-
-  /// Invoke the callback before adding the Luthier intrinsic IR lowering pass
-  /// to \p MPM
-  void invokePreLuthierIRIntrinsicLoweringPassesCallback(
-      llvm::ModulePassManager &MPM) const {
-    if (Info.PreLuthierIRIntrinsicLoweringPassesCallback) {
-      return Info.PreLuthierIRIntrinsicLoweringPassesCallback(MPM,
-                                                              Info.ExtraArgs);
-    }
-  }
-
-  /// Invoke the callback for adding passes to the instrumentation pass manager
-  /// after the Luthier IR lowering pass
-  void invokePostLuthierIRIntrinsicLoweringPassesCallback(
-      llvm::ModulePassManager &MPM) const {
-    if (Info.PostLuthierIRIntrinsicLoweringPassesCallback) {
-      return Info.PostLuthierIRIntrinsicLoweringPassesCallback(MPM,
-                                                               Info.ExtraArgs);
-    }
-  }
-
-  /// Invoke the callback for registration codegen passes to the driver's
-  /// pass registry
-  void registerLegacyCodegenPassesCallback(llvm::PassRegistry &PR) const {
-    if (Info.RegisterLegacyCodegenPassesCallback)
-      Info.RegisterLegacyCodegenPassesCallback(PR, Info.ExtraArgs);
-  }
-
-  /// Invoke the callback for modifying the instrumentation legacy codegen pass
-  /// pipeline
-  void invokeAugmentTargetPassConfigCallback(llvm::PassRegistry &PR,
-                                             llvm::TargetPassConfig &TPC,
-                                             llvm::TargetMachine &TM) const {
-    if (Info.AugmentTargetPassConfigCallback)
-      Info.AugmentTargetPassConfigCallback(PR, TPC, TM, Info.ExtraArgs);
+  /// Invoke the callback for augmenting the \c InstrumentationPassBuilder
+  /// used by the \c luthier-llc driver.
+  void
+  registerPrototypePassBuilderCallback(InstrumentationPassBuilder &PPB) const {
+    if (Info.RegisterPrototypePassBuilderCallback)
+      Info.RegisterPrototypePassBuilderCallback(PPB, Info.ExtraArgs);
   }
 
 private:

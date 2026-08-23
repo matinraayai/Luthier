@@ -71,6 +71,19 @@ if (LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND AND NOT TARGET Luthier::LLVMSPIRVTransla
     set_target_properties(Luthier::LLVMSPIRVTranslator PROPERTIES
             IMPORTED_LOCATION "${LUTHIER_LLVM_SPIRV_TRANSLATOR_LIBRARY}"
             INTERFACE_INCLUDE_DIRECTORIES "${LUTHIER_LLVM_SPIRV_TRANSLATOR_INCLUDE_DIR}")
+    # The SPIR-V translator is a static archive that has an unresolved reference
+    # to llvm::itaniumDemangle (from LLVMDemangle). Because the archive is pulled
+    # in transitively, CMake places it at the very end of the link line, after all
+    # of the LLVM_LINK_COMPONENTS shared libraries. GNU ld resolves the archive's
+    # symbols left-to-right, so a definition-only DSO listed *before* the archive
+    # cannot satisfy it (Demangle otherwise only appears via libLLVMSupport's
+    # transitive DT_NEEDED, which triggers "DSO missing from command line").
+    # Declaring LLVMDemangle as an interface dependency of the archive forces CMake
+    # to place libLLVMDemangle after it, satisfying the reference.
+    if (TARGET LLVMDemangle)
+        set_property(TARGET Luthier::LLVMSPIRVTranslator APPEND PROPERTY
+                INTERFACE_LINK_LIBRARIES LLVMDemangle)
+    endif ()
 endif ()
 
 mark_as_advanced(LUTHIER_LLVM_SPIRV_TRANSLATOR LUTHIER_LLVM_SPIRV_TRANSLATOR_INCLUDE_DIR

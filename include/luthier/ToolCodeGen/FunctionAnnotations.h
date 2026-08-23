@@ -52,6 +52,9 @@ namespace luthier {
 /// \c luthier::readReg
 #define LUTHIER_INTRINSIC_ATTRIBUTE luthier.intrinsic
 
+/// All Luthier built-in bindings must have this attribute (e.g. \c readReg)
+#define LUTHIER_BUILTIN_ATTRIBUTE luthier.builtin
+
 /// Prefix of the CUID symbol inside a HIP module
 #define LUTHIER_HIP_CUID_PREFIX __hip_cuid_
 
@@ -68,6 +71,9 @@ static constexpr llvm::StringLiteral HipCUIDPrefix{
 
 static constexpr llvm::StringLiteral IntrinsicAttribute{
     LUTHIER_STRINGIFY(LUTHIER_INTRINSIC_ATTRIBUTE)};
+
+static constexpr llvm::StringLiteral BuiltinAttribute{
+  LUTHIER_STRINGIFY(LUTHIER_BUILTIN_ATTRIBUTE)};
 
 static constexpr llvm::StringLiteral InjectedPayloadAttribute{
     LUTHIER_STRINGIFY(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)};
@@ -110,9 +116,6 @@ static constexpr llvm::StringLiteral HipSurfaceVarsAttr{
 
 static constexpr const char *InitialExecutionPointAttr =
     "luthier.function.initial_execution_point";
-
-static constexpr const char *TargetInstrPointAttr =
-    "luthier.target_instr_point";
 
 /// Annotation string attached to every \c __host__ function serving as a
 /// handle for its \c __device__ overload inside the host code.

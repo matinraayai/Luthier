@@ -19,6 +19,7 @@
 #ifndef LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_CFG_H
 #define LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_CFG_H
 #include "luthier/Common/DenseMapInfo.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseSet.h>
@@ -34,12 +35,6 @@ class IPPredicatedCFG;
 class PredicatedMachineBasicBlock;
 
 /// \brief Inter-procedural predicated control-flow graph for target modules
-///
-/// \details Each node is a \c PredicatedMachineBasicBlock — a single MBB broken
-/// down to have either scalar or vector instructions. Intra-procedural edges
-/// come from MBB successor links; inter-procedural call edges come from
-/// \c TraceCallGraph.  MBBs whose call targets could not be fully resolved
-/// are flagged with \c hasUnresolvedEdges().
 class IPPredicatedCFG {
 private:
   llvm::SmallVector<std::unique_ptr<PredMBBBuilder>> AllPredMBBs{};
@@ -179,7 +174,8 @@ public:
   LLVM_DUMP_METHOD void dump() const;
 
   static llvm::Expected<std::unique_ptr<IPPredicatedCFG>>
-  getIPPredCFG(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
+  getIPPredCFG(Prototype &IP,
+               PrototypeAnalysisManager &IPAM);
 };
 
 class IPPredCFGAnalysis : public llvm::AnalysisInfoMixin<IPPredCFGAnalysis> {
@@ -198,8 +194,8 @@ public:
         : IPPredCFG(std::move(IPCFG)) {}
 
   public:
-    bool invalidate(llvm::Module &M, const llvm::PreservedAnalyses &PA,
-                    llvm::ModuleAnalysisManager::Invalidator &Inv);
+    bool invalidate(Prototype &IP, const llvm::PreservedAnalyses &PA,
+                    PrototypeAnalysisManager::Invalidator &Inv);
 
     [[nodiscard]] const IPPredicatedCFG &getVecCFG() const {
       return *IPPredCFG;
@@ -209,7 +205,8 @@ public:
 
   IPPredCFGAnalysis() = default;
 
-  Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
+  Result run(Prototype &IP,
+             PrototypeAnalysisManager &IPAM);
 };
 
 class IPPredCFGPrinter : public llvm::PassInfoMixin<IPPredCFGAnalysis> {
@@ -218,8 +215,8 @@ class IPPredCFGPrinter : public llvm::PassInfoMixin<IPPredCFGAnalysis> {
 public:
   explicit IPPredCFGPrinter(llvm::raw_ostream &OS) : OS(OS) {}
 
-  llvm::PreservedAnalyses run(llvm::Module &M,
-                              llvm::ModuleAnalysisManager &MAM);
+  llvm::PreservedAnalyses run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

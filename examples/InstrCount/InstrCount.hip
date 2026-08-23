@@ -58,19 +58,18 @@
 #include <luthier/LLVM/streams.h>
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
 #include <luthier/ToolCodeGen/CodeDiscoveryPass.h>
+#include <luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h>
 #include <luthier/ToolCodeGen/EntryPoint.h>
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
+#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
 #include <luthier/ToolCodeGen/InstructionTracesAnalysis.h>
-#include <luthier/ToolCodeGen/InstrumentationPMDriver.h>
-#include <luthier/ToolCodeGen/InstrumentationPass.h>
-#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
-#include <luthier/ToolCodeGen/TraceCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/NewPMAsmPrinter.h>
 #include <luthier/ToolCodeGen/PrePostAmbleEmitter.h>
+#include <luthier/ToolCodeGen/PrototypeCallGraph.h>
 #include <memory>
 #include <mutex>
 
@@ -159,8 +158,6 @@ struct InstrCountTool
         llvm::cl::desc("Whether to demangle kernel names before printing"),
         llvm::cl::init(true), llvm::cl::NotHidden, llvm::cl::cat(Cat)};
 
-    luthier::InstrumentationPMDriverOptions DriverOpts;
-    luthier::CodeDiscoveryPassOptions DiscoveryOpts;
   } Opts;
 
   std::recursive_mutex Mutex;
@@ -176,12 +173,6 @@ struct InstrCountTool
   unsigned NextInstrIdx = 0;
 
   //===---------------------------------------------------------------===//
-  // InstrumentationPipelineTrait callback (optional). Invoked by
-  // runInstrumentationPipelineForDispatch before each per-dispatch sweep.
-  //===---------------------------------------------------------------===//
-  void onBeginDispatchInstrumentation() { NextInstrIdx = 0; }
-
-  //===---------------------------------------------------------------===//
   // PacketMonitorTrait callback. Called for every AQL packet submitted
   // on any intercepted queue.
   //===---------------------------------------------------------------===//
@@ -194,11 +185,12 @@ struct InstrCountTool
   // InstrumentationPMDriver for each MachineFunction in the discovered
   // target module.
   //===---------------------------------------------------------------===//
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &IModule,
-                         llvm::ModuleAnalysisManager &IMAM,
-                         llvm::MachineFunction &MF,
-                         llvm::FunctionAnalysisManager &TargetFAM);
+
+  /// Prototype-level entry point: payload creation reads the target module's
+  /// MIR and writes into the instrumentation module, so it needs both halves of
+  /// the prototype.
+  llvm::PreservedAnalyses run(luthier::Prototype &P,
+                              luthier::PrototypeAnalysisManager &PAM);
 };
 
 //===----------------------------------------------------------------------===//
@@ -207,8 +199,8 @@ struct InstrCountTool
 
 __attribute__((device)) uint64_t InstrCountTool::Counter;
 
-__attribute__((device, used)) void InstrCountTool::countInstructionsVector(
-    bool CountWaveFrontLevel) {
+__attribute__((device, used)) void
+InstrCountTool::countInstructionsVector(bool CountWaveFrontLevel) {
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   const uint32_t LaneId = __lane_id() + 1;
   uint32_t FirstActiveThreadId = __ffsll(ExecMask);
@@ -225,7 +217,7 @@ __attribute__((device, used)) void InstrCountTool::countInstructionsVector(
 }
 
 __attribute__((device, used)) void InstrCountTool::countInstructionsScalar() {
-  (void)luthier::sAtomicAdd(&InstrCountTool::Counter, 1UL);
+  atomicAdd(&InstrCountTool::Counter, 1ULL);
 }
 
 //===----------------------------------------------------------------------===//
@@ -239,8 +231,8 @@ LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(InstrCountTool)
 
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
-static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>
-    *AmdExtSnapshot{nullptr};
+static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable> *AmdExtSnapshot{
+    nullptr};
 static luthier::rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
     *LoaderSnapshot{nullptr};
 
@@ -248,41 +240,58 @@ static luthier::rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
 // InstrCountTool::runInstrumentationPass
 //===----------------------------------------------------------------------===//
 
-luthier::InstrumentationPreservedAnalyses
-InstrCountTool::runInstrumentationPass(llvm::Module &IModule,
-                                       llvm::ModuleAnalysisManager &,
-                                       llvm::MachineFunction &MF,
-                                       llvm::FunctionAnalysisManager &) {
-  luthier::errs() << "[InstrCountTool] runInstrumentationPass for MF '"
-                  << MF.getName() << "' starting at instr idx "
-                  << NextInstrIdx << "\n";
-  unsigned StartIdx = NextInstrIdx;
-  auto *CountWavefrontLevelConstVal = llvm::ConstantInt::getBool(
-      IModule.getContext(), Opts.CountWavefrontLevel);
-  for (auto &MBB : MF) {
-    for (auto &MI : MBB) {
-      unsigned I = NextInstrIdx++;
-      if (I < Opts.InstrBeginInterval || I >= Opts.InstrEndInterval)
-        continue;
+llvm::PreservedAnalyses
+InstrCountTool::run(luthier::Prototype &P,
+                    luthier::PrototypeAnalysisManager &PAM) {
+  llvm::Module &IModule = P.getInstrumentationModule();
+  NextInstrIdx = 0;
+  P.forEachTargetMF(PAM, [&](llvm::MachineFunction &MF) {
+    luthier::errs() << "[InstrCountTool] runInstrumentationPass for MF '"
+                    << MF.getName() << "' starting at instr idx "
+                    << NextInstrIdx << "\n";
+    unsigned StartIdx = NextInstrIdx;
+    auto *CountWavefrontLevelConstVal = llvm::ConstantInt::getBool(
+        IModule.getContext(), Opts.CountWavefrontLevel);
+    for (auto &MBB : MF) {
+      for (auto &MI : MBB) {
+        unsigned I = NextInstrIdx++;
+        if (I < Opts.InstrBeginInterval || I >= Opts.InstrEndInterval)
+          continue;
 
-      const void *HostHandle = nullptr;
-      llvm::SmallVector<InjectedPayloadCreationPass::PayloadArg, 1> Args;
-      if (luthier::isScalar(MI) || luthier::isLaneAccess(MI)) {
-        HostHandle = reinterpret_cast<const void *>(
-            &InstrCountTool::countInstructionsScalar);
-      } else {
-        HostHandle = reinterpret_cast<const void *>(
-            &InstrCountTool::countInstructionsVector);
-        Args.push_back(CountWavefrontLevelConstVal);
+        const void *HostHandle = nullptr;
+        llvm::SmallVector<luthier::PayloadArg, 1> Args;
+        if (luthier::isScalar(MI) || luthier::isLaneAccess(MI)) {
+          HostHandle = reinterpret_cast<const void *>(
+              &InstrCountTool::countInstructionsScalar);
+        } else {
+          HostHandle = reinterpret_cast<const void *>(
+              &InstrCountTool::countInstructionsVector);
+          Args.push_back(CountWavefrontLevelConstVal);
+        }
+        LUTHIER_REPORT_FATAL_ON_ERROR(
+            this->createInjectedPayload(HostHandle, P, PAM, MI, Args));
       }
-      LUTHIER_REPORT_FATAL_ON_ERROR(
-          this->createInjectedPayload(HostHandle, IModule, MI, Args));
     }
-  }
-  luthier::errs() << "[InstrCountTool] runInstrumentationPass for MF '"
-                  << MF.getName() << "' visited "
-                  << (NextInstrIdx - StartIdx) << " MI(s)\n";
-  return luthier::InstrumentationPreservedAnalyses{};
+    luthier::errs() << "[InstrCountTool] runInstrumentationPass for MF '"
+                    << MF.getName() << "' visited " << (NextInstrIdx - StartIdx)
+                    << " MI(s)\n";
+  });
+  llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
+  // Payload creation only adds functions to the instrumentation module and
+  // attaches instrumentation-point metadata to target MIs. No MachineFunction
+  // is created or destroyed, so every cached MachineFunctionAnalysis result —
+  // including the lifted target MIR this pass just walked — stays valid.
+  PA.preserve<luthier::TargetModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::TargetFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
+  // Abandon the IPIP and callgraph because we had to calcluate them in code
+  // discovery
+  PA.abandon<luthier::InjectedPayloadAndInstPointAnalysis>();
+  PA.abandon<luthier::PrototypeCallGraphAnalysis>();
+  return PA;
 }
 
 //===----------------------------------------------------------------------===//
@@ -310,6 +319,14 @@ void InstrCountTool::onPackets(
     const bool ActiveRegion = NumKernelLaunched >= Opts.KernelBeginInterval &&
                               NumKernelLaunched < Opts.KernelEndInterval;
 
+    // The launcher's cache is keyed by the *original* kernel descriptor, and
+    // overrideWithInstrumented rewrites Packet.kernel_object in place. Capture
+    // the key before that happens: the counter read-back below needs it, and by
+    // then DispatchPacket->kernel_object names the instrumented variant.
+    const auto *OriginalKD =
+        reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
+            DispatchPacket->kernel_object);
+
     bool MustDestroySignalAfterLaunch = false;
     if (DispatchPacket->completion_signal.handle == 0) {
       LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
@@ -323,14 +340,11 @@ void InstrCountTool::onPackets(
             DispatchPacket->completion_signal);
 
     if (ActiveRegion) {
-      luthier::errs() << "Kernel is being instrumented.\n";
 
       // If the (kernel_object, preset) pair isn't already cached, run the
       // pipeline and load the resulting relocatable into the launcher.
       // overrideWithInstrumented succeeds iff the cache has the variant.
-      const auto *KD =
-          reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
-              DispatchPacket->kernel_object);
+      const auto *KD = OriginalKD;
       // Probe the cache; on miss, run the pipeline + load and re-try the
       // override. The probe Error MUST be bound to a local so its
       // destructor doesn't trip the unhandled-error abort.
@@ -339,9 +353,7 @@ void InstrCountTool::onPackets(
         llvm::consumeError(std::move(MissErr));
         std::unique_ptr<llvm::MemoryBuffer> ObjBuf;
         LUTHIER_REPORT_FATAL_ON_ERROR(
-            this->runInstrumentationPipelineForDispatch(*KD, Opts.DriverOpts,
-                                                        Opts.DiscoveryOpts)
-                .moveInto(ObjBuf));
+            this->runInstrumentationPipelineForDispatch(*KD).moveInto(ObjBuf));
         LUTHIER_REPORT_FATAL_ON_ERROR(
             this->loadInstrumented(std::move(ObjBuf), KD, 0).takeError());
         LUTHIER_REPORT_FATAL_ON_ERROR(
@@ -350,9 +362,10 @@ void InstrCountTool::onPackets(
     }
 
     auto T1 = std::chrono::high_resolution_clock::now();
-    constexpr auto Timeout = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                 std::chrono::seconds{300})
-                                 .count();
+    constexpr auto Timeout =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::seconds{300})
+            .count();
     PacketWriter(DispatchPacket, 1);
 
     const hsa_signal_value_t CurrentSignal =
@@ -360,9 +373,9 @@ void InstrCountTool::onPackets(
             DispatchPacket->completion_signal, HSA_SIGNAL_CONDITION_LT,
             SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
     if (CurrentSignal >= SignalValue)
-      llvm::report_fatal_error(llvm::formatv(
-          "Wait timeout reached for signal handle {0:x}",
-          DispatchPacket->completion_signal.handle));
+      llvm::report_fatal_error(
+          llvm::formatv("Wait timeout reached for signal handle {0:x}",
+                        DispatchPacket->completion_signal.handle));
 
     if (MustDestroySignalAfterLaunch) {
       LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
@@ -378,9 +391,7 @@ void InstrCountTool::onPackets(
     // call the dispatch path already uses; counter address comes from
     // the device-tool code loader's HSA executable symbol record.
     if (ActiveRegion) {
-      const auto *KernelDesc =
-          reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
-              DispatchPacket->kernel_object);
+      const auto *KernelDesc = OriginalKD;
       hsa_amd_pointer_info_t CounterAgentInfo{};
       CounterAgentInfo.size = sizeof(CounterAgentInfo);
       hsa_status_t PInfoStatus = AmdExt.callFunction<hsa_amd_pointer_info>(
@@ -403,8 +414,7 @@ void InstrCountTool::onPackets(
           } else {
             uint64_t CounterSnapshot = 0;
             hsa_status_t RC = Core.callFunction<hsa_memory_copy>(
-                &CounterSnapshot,
-                reinterpret_cast<void *>(*AddrOrErr),
+                &CounterSnapshot, reinterpret_cast<void *>(*AddrOrErr),
                 sizeof(CounterSnapshot));
             if (RC == HSA_STATUS_SUCCESS) {
               TotalNumInstructions += CounterSnapshot;
@@ -479,8 +489,8 @@ static void atToolInit(void *) {
     luthier::registerDebugCLOptions();
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         llvm::cl::ParseCommandLineOptions(
-            0, &Argv, "Luthier ROCm Instruction Counter Tool",
-            &luthier::errs(), nullptr, "LUTHIER_ARGS"),
+            0, &Argv, "Luthier ROCm Instruction Counter Tool", &luthier::errs(),
+            nullptr, "LUTHIER_ARGS"),
         "Failed to parse the command line arguments."));
     llvm::EnablePrettyStackTrace();
     luthier::printStackTraceOnFatalSignal();

@@ -14,25 +14,21 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file InjectedPayloadPreserveLiveRegsPass.h
-/// IModule transform: for each injected-payload function, snapshot the
-/// physical registers that are live at the AppMI insertion point and not
-/// already participating in the payload's declared read/write set, so the
-/// payload restores them on exit and the target application's state is
+/// Prototype-level transform: for each injected-payload function,
+/// snapshot the physical registers that are live at the AppMI insertion point
+/// and not already participating in the payload's declared read/write set, so
+/// the payload restores them on exit and the target application's state is
 /// preserved across the payload's execution.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_PRESERVE_LIVE_REGS_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_PRESERVE_LIVE_REGS_PASS_H
-#include "luthier/ToolCodeGen/LegacyPassSupport.h"
-#include <llvm/Pass.h>
+#include "luthier/ToolCodeGen/Prototype.h"
+#include <llvm/IR/PassManager.h>
 
 namespace luthier {
 
-class InjectedPayloadPreserveLiveRegsPass;
-
-LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(InjectedPayloadPreserveLiveRegsPass);
-
-/// \brief Legacy module pass: emits preservation copies in every injected-
-/// payload function for the physical registers that are live at the
+/// \brief Prototype-level pass: emits preservation copies in every
+/// injected-payload function for the physical registers that are live at the
 /// instrumentation point but neither read nor written by the payload.
 ///
 /// For each payload \c F with insertion point \c AppMI:
@@ -43,21 +39,15 @@ LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(InjectedPayloadPreserveLiveRegsPass);
 ///       terminator; add \c implicit-use \c $R on the terminator so RA
 ///       treats it as live-out.
 ///
-/// Depends on \c IModuleIPPredicatedLivenessAnalysis (for Active) and
-/// \c InjectedPayloadAccessedRegsAnalysis (for Reads/Writes).
-class InjectedPayloadPreserveLiveRegsPass : public llvm::ModulePass {
+/// Depends on \c IPPredicatedLivenessAnalysis (for Active) and
+/// \c InjectedPayloadSideEffectsAnalysis (for Reads/Writes).
+class InjectedPayloadPreserveLiveRegsPass
+    : public llvm::PassInfoMixin<InjectedPayloadPreserveLiveRegsPass> {
 public:
-  static char ID;
+  InjectedPayloadPreserveLiveRegsPass() = default;
 
-  InjectedPayloadPreserveLiveRegsPass() : llvm::ModulePass(ID) {}
-
-  [[nodiscard]] llvm::StringRef getPassName() const override {
-    return "Luthier Injected Payload Preserve Live Regs Pass";
-  }
-
-  bool runOnModule(llvm::Module &IModule) override;
-
-  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
+  llvm::PreservedAnalyses run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

@@ -9,9 +9,7 @@
 target triple = "amdgcn-amd-amdhsa"
 
 ; Mangled: luthier::readReg<unsigned int>(llvm::MCRegister) -> _ZN7luthier7readRegIjEET_N4llvm10MCRegisterE
-define internal i32 @_ZN7luthier7readRegIjEET_N4llvm10MCRegisterE(i32 %r) #0 {
-  ret i32 0
-}
+declare i32 @_ZN7luthier7readRegIjEET_N4llvm10MCRegisterE(i32) #0
 
 define void @host_helper() {
   ret void

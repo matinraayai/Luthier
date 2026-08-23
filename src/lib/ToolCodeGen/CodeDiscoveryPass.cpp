@@ -26,11 +26,12 @@
 #include "luthier/ToolCodeGen/InitialExecutionPointAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
 #include "luthier/ToolCodeGen/MIRConvenience.h"
-#include "luthier/ToolCodeGen/MIRToIRTranslator.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
+#include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "luthier/ToolCodeGen/PseudoOpcodeAndRegMapper.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
-#include "luthier/ToolCodeGen/TraceCallGraph.h"
+#include "luthier/ToolCodeGen/TraceFunctionTranslationAnalysis.h"
+#include "luthier/ToolCodeGen/TraceFunctionTranslator.h"
 #include <MCTargetDesc/AMDGPUMCExpr.h>
 #include <SIMachineFunctionInfo.h>
 #include <SIRegisterInfo.h>
@@ -853,8 +854,8 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
 
   /// Set pre-loaded kernel argument field for targets that support it.
   /// The preloaded kernargs occupy the SGPRs immediately after the standard
-  /// user SGPRs; the MIRToIRTranslator seeds them with the equivalent kernarg
-  /// loads (using the captured offset/length attributes).
+  /// user SGPRs; the TraceFunctionTranslator seeds them with the equivalent
+  /// kernarg loads (using the captured offset/length attributes).
   if (ST.hasKernargPreload()) {
     unsigned PreloadLength = AMDHSA_BITS_GET(
         KDOnHost.kernarg_preload, llvm::amdhsa::KERNARG_PRELOAD_SPEC_LENGTH);
@@ -915,8 +916,9 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   /// SGPR allocation on \c !hasArchitectedSGPRs(). The feature is on by
   /// default for GFX12+, but is a plain subtarget feature (\c
   /// +architected-sgprs) that can also be enabled on some GFX9 parts, so gate
-  /// on the predicate rather than a generation check. The \c MIRToIRTranslator
-  /// seeds the architected TTMP registers directly for these targets.
+  /// on the predicate rather than a generation check. The \c
+  /// TraceFunctionTranslator seeds the architected TTMP registers directly for
+  /// these targets.
   if (!ST.hasArchitectedSGPRs()) {
     if (!F->hasFnAttribute("amdgpu-no-workgroup-id-x"))
       MFI->addWorkGroupIDX();
@@ -1056,7 +1058,7 @@ initLiftedDeviceFunctionEntry(uint64_t DeviceEntryPointAddr,
 /// basic block
 /// \return \c llvm::Error indicating the success or failure of the operation
 static llvm::Error
-convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
+convertAndAddMCOperandsToMI(const llvm::MCInst & RealInst,
                             llvm::MachineInstrBuilder &MIBuilder) {
   const unsigned Opcode = MIBuilder->getOpcode();
   const llvm::MCInstrDesc &MCID = MIBuilder->getDesc();
@@ -1064,9 +1066,12 @@ convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
   assert(MBB && "MI is not part of a machine basic block");
   llvm::MachineFunction *MF = MBB->getParent();
   assert(MF && "MI is not part of a machine function");
+  auto *TRI = static_cast<const llvm::SIRegisterInfo *>(
+      MF->getSubtarget().getRegisterInfo());
+  llvm::MCRegister ExecReg = TRI->getExec();
   const bool IsDirectBranch =
       MIBuilder->isBranch() && !MIBuilder->isIndirectBranch();
-  for (auto [MCOpIdx, MCOp] : llvm::enumerate(MCOperands)) {
+  for (auto [MCOpIdx, MCOp] : llvm::enumerate(RealInst.getOperands())) {
     if (MCOp.isReg()) {
       LLVM_DEBUG(luthier::dbgs()
                  << "[CodeDiscoveryPass] Converting MC register operand "
@@ -1159,7 +1164,8 @@ convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
     MIBuilder->addMemOperand(*MF, MMO);
   }
 
-  if (size_t NumMCOps = MCOperands.size(); NumMCOps < MCID.NumOperands) {
+  if (size_t NumMCOps = RealInst.getNumOperands();
+      NumMCOps < MCID.NumOperands) {
     LLVM_DEBUG(luthier::dbgs() << "[CodeDiscoveryPass] Must fixup instruction ";
                MIBuilder->print(luthier::dbgs()); luthier::dbgs() << "\n";
                luthier::dbgs()
@@ -1243,21 +1249,9 @@ convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
     }
   }
 
-  /// FIXME: Test to see if this is necessary and not covered already by
-  /// tied operand logic above.
   /// SDWA instructions with dst_unused:UNUSED_PRESERVE partially write their
   /// destination (only the selected byte/word lane), so the untouched lanes
-  /// must be preserved from the destination register's prior value. Real
-  /// hardware has no separate encoding bits for this "vdst_in" source: it
-  /// simply reads back the same physical register named by $vdst before
-  /// overwriting it, so the SDWA pseudo's MCID has no explicit operand slot
-  /// for it at all (unlike the VOP3/FLAT/etc. `$vdst_in` ties handled by the
-  /// missing-explicit-operand loop above, which *are* real operand slots).
-  /// The MachineVerifier nonetheless requires this to be modeled as an
-  /// implicit use of $vdst that is tied to the def, or it flags the
-  /// instruction as illegal (SIInstrInfo::verifyInstruction). Synthesize
-  /// that implicit tied use here, mirroring what SIPeepholeSDWA does when it
-  /// forms this same kind of SDWA instruction from IR-level codegen.
+  /// must be preserved from the destination register's prior value.
   if (llvm::SIInstrInfo::isSDWA(*MIBuilder)) {
     int DstUnusedIdx =
         llvm::AMDGPU::getNamedOperandIdx(Opcode, llvm::AMDGPU::OpName::dst_unused);
@@ -1284,12 +1278,21 @@ convertAndAddMCOperandsToMI(llvm::ArrayRef<llvm::MCOperand> MCOperands,
     }
   }
 
+  if (const int RealFIIdx = llvm::AMDGPU::getNamedOperandIdx(
+          RealInst.getOpcode(), llvm::AMDGPU::OpName::fi);
+      RealFIIdx != -1) {
+    LLVM_DEBUG(luthier::dbgs()
+               << "[CodeDiscoveryPass] Dropping the $fi operand, which the "
+                  "pseudo opcode does not model\n");
+    MIBuilder->removeOperand(RealFIIdx);
+  }
+
   /// Add implicit use of the execute mask if it's not already reflected in
   /// the machine instruction
-  if (MCID.hasImplicitUseOfPhysReg(llvm::AMDGPU::EXEC) &&
-      !MIBuilder->hasRegisterImplicitUseOperand(llvm::AMDGPU::EXEC)) {
+  if (MCID.hasImplicitUseOfPhysReg(ExecReg) &&
+      !MIBuilder->hasRegisterImplicitUseOperand(ExecReg)) {
     MIBuilder->addOperand(
-        llvm::MachineOperand::CreateReg(llvm::AMDGPU::EXEC, false, true));
+        llvm::MachineOperand::CreateReg(ExecReg, false, true));
   }
 
   return llvm::Error::success();
@@ -1353,7 +1356,12 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
             "Trace has no instruction at address {0:x}.", CurrentInstrAddr));
       const TraceInstr &Inst = InstIt->second;
       auto MCInst = Inst.getMCInst();
-      const unsigned Opcode = getPseudoOpcodeFromReal(MCInst.getOpcode());
+      unsigned Opcode = getPseudoOpcodeFromReal(MCInst.getOpcode());
+
+      /// Change the S_SETPC_B64 to its return variant so that its MBB counts
+      /// as a terminator
+      if (Opcode == llvm::AMDGPU::S_SETPC_B64)
+        Opcode = llvm::AMDGPU::S_SETPC_B64_return;
       const llvm::MCInstrDesc &MCID = MCInstInfo.get(Opcode);
       bool IsIndirectBranch = MCID.isIndirectBranch();
       bool IsDirectBranch = MCID.isBranch() && !IsIndirectBranch;
@@ -1402,7 +1410,7 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
               "[CodeDiscoveryPass] Populating {0} operands for instruction\n",
               MCID.operands().size()));
       LUTHIER_RETURN_ON_ERROR(
-          convertAndAddMCOperandsToMI(MCInst.getOperands(), Builder));
+          convertAndAddMCOperandsToMI(MCInst, Builder));
 
       LLVM_DEBUG(luthier::dbgs() << "[CodeDiscoveryPass] Built instruction: ";
                  Builder->print(luthier::dbgs()); luthier::dbgs() << "\n");
@@ -1410,8 +1418,28 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
           MFTrace.getInitialEntryPoint().getEntryPointAddress()) {
         EntryInst = Builder.getInstr();
       }
-      // Basic Block resolving; We also split blocks further down to "vector"
-      // and scalar block to make it easier to deal with predication calculation
+      // Basic Block resolving. First check for a scalar<->vector transition
+      // or EXEC-write between the previous MI and the current one; if
+      // there is, split BEFORE the current MI.
+      if (llvm::MachineInstr *PrevMI = Builder->getPrevNode()) {
+        bool IsCurrentMIVector = shouldImplicitReadExec(*Builder);
+        bool IsFormerMIVector = shouldImplicitReadExec(*PrevMI);
+        bool CurrentMIWritesExecMask =
+            Builder->modifiesRegister(llvm::AMDGPU::EXEC, TRI);
+        bool FormerMIWritesExecMask =
+            PrevMI->modifiesRegister(llvm::AMDGPU::EXEC, TRI);
+        // Split not only BEFORE an EXEC-writing MI but also AFTER one, so
+        // MIs following an EXEC write don't share an MBB with it
+        bool ShouldSplitCurrentMBB = CurrentMIWritesExecMask ||
+                                     FormerMIWritesExecMask ||
+                                     IsCurrentMIVector ^ IsFormerMIVector;
+        if (ShouldSplitCurrentMBB) {
+          LLVM_DEBUG(luthier::dbgs() << "[CodeDiscoveryPass] Splitting MBB for "
+                                        "vector/scalar transition\n");
+          llvm::MachineBasicBlock *OldMBB = CurrentMBB;
+          CurrentMBB = OldMBB->splitAt(*PrevMI, false);
+        }
+      }
       if (MCID.isTerminator()) {
         LLVM_DEBUG(luthier::dbgs()
                    << "[CodeDiscoveryPass] Instruction is a terminator\n");
@@ -1449,19 +1477,6 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
                          "[CodeDiscoveryPass] New MBB idx {0} created\n",
                          CurrentMBB->getNumber()));
         }
-      } else if (llvm::MachineInstr *PrevMI = Builder->getPrevNode()) {
-        bool IsCurrentMIVector = shouldImplicitReadExec(*Builder);
-        bool IsFormerMIVector = shouldImplicitReadExec(*PrevMI);
-        bool CurrentMIWritesExecMask =
-            Builder->modifiesRegister(llvm::AMDGPU::EXEC, TRI);
-        bool ShouldSplitCurrentMBB =
-            CurrentMIWritesExecMask || IsCurrentMIVector ^ IsFormerMIVector;
-        if (ShouldSplitCurrentMBB) {
-          LLVM_DEBUG(luthier::dbgs() << "[CodeDiscoveryPass] Splitting MBB for "
-                                        "vector/scalar transition\n");
-          llvm::MachineBasicBlock *OldMBB = CurrentMBB;
-          CurrentMBB = OldMBB->splitAt(*PrevMI, false);
-        }
       }
       /// Indirect branch and all call targets require further processing so
       /// we return them to the code discovery pass
@@ -1471,6 +1486,40 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
 
       CurrentInstrAddr += Inst.getSize();
     }
+  }
+
+  /// For each call MI, isolate the call to its own MBB and
+  /// place a synthetic \c S_ENDPGM in a SEPARATE MBB right after the call
+  /// MBB in the MF layout.
+  for (llvm::MachineInstr *RetMI : UnresolvedReturnInsts) {
+    llvm::MachineBasicBlock *CallMBB = RetMI->getParent();
+
+    llvm::MachineBasicBlock *AfterCallMBB = CallMBB->getNextNode();
+    auto InsertionPoint = AfterCallMBB ? AfterCallMBB->getIterator() : MF.end();
+
+    assert(std::next(RetMI->getIterator()) == CallMBB->end() &&
+           "call MI is expected to be the last MI in its trace-lifted MBB");
+
+    llvm::MachineBasicBlock *EndpgmMBB = MF.CreateMachineBasicBlock();
+
+    MF.insert(InsertionPoint, EndpgmMBB);
+    llvm::MachineInstrBuilder SyntheticEndpgm =
+        llvm::BuildMI(*EndpgmMBB, EndpgmMBB->end(), llvm::DebugLoc(),
+                      MCInstInfo.get(llvm::AMDGPU::S_ENDPGM))
+            .addImm(0);
+    auto SyntheticMDOrErr =
+        TargetMachineInstrMDNode::initializeMDNode(*SyntheticEndpgm);
+    LUTHIER_RETURN_ON_ERROR(SyntheticMDOrErr.takeError());
+    LLVM_DEBUG(luthier::dbgs() << llvm::formatv(
+                   "[CodeDiscoveryPass] Isolated synthetic S_ENDPGM MBB "
+                   "idx {0} appended for call in MBB idx {1}\n",
+                   EndpgmMBB->getNumber(), CallMBB->getNumber()));
+
+    /// Remove all other successors of the call block that was added earlier
+    while (!CallMBB->succ_empty())
+      CallMBB->removeSuccessor(CallMBB->succ_begin());
+
+    CallMBB->addSuccessor(EndpgmMBB);
   }
   // Resolve the direct branch and target MIs/MBBs
   LLVM_DEBUG(luthier::dbgs()
@@ -1563,12 +1612,19 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
 }
 
 llvm::PreservedAnalyses
-CodeDiscoveryPass::run(llvm::Module &TargetModule,
-                       llvm::ModuleAnalysisManager &TargetMAM) {
+CodeDiscoveryPass::run(Prototype &IP,
+                       PrototypeAnalysisManager &IPAM) {
+  llvm::Module &TargetModule = IP.getTargetModule();
   llvm::LLVMContext &Ctx = TargetModule.getContext();
 
   LLVM_DEBUG(luthier::dbgs()
                  << "[CodeDiscoveryPass] Running code discovery pass\n";);
+
+  // Code discovery only writes the target module, so it goes through that
+  // module's own managers.
+  llvm::ModuleAnalysisManager &TargetMAM =
+      IPAM.getResult<TargetModuleAnalysisManagerPrototypeProxy>(IP)
+          .getManager();
 
   llvm::MachineModuleInfo &TargetMMI =
       TargetMAM.getResult<llvm::MachineModuleAnalysis>(TargetModule).getMMI();
@@ -1617,13 +1673,13 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
   llvm::SmallDenseSet<EntryPoint> VisitedPointsOfEntry{};
 
   /// Prototype of the device functions, computed up front via the stateless
-  /// MIRToIRTranslator factory so we don't construct (and re-construct) a
+  /// TraceFunctionTranslator factory so we don't construct (and re-construct) a
   /// translator over the initial entry-point MF before the worklist loop.
   const llvm::MachineFunction &InitialExecPointMF =
       InitialExecPointMFAndSymbol->first;
   const llvm::Function &InitialExecPointFn = InitialExecPointMF.getFunction();
   llvm::Expected<llvm::FunctionType *> DeviceFuncPrototypeOrErr =
-      MIRToIRTranslator::computeStandardDeviceFunctionType(
+      TraceFunctionTranslator::computeStandardDeviceFunctionType(
           Ctx, InitialExecPointMF.getSubtarget<llvm::GCNSubtarget>(),
           InitialExecPointFn.getFnAttributeAsParsedInteger("amdgpu-num-sgpr"),
           InitialExecPointFn.getFnAttributeAsParsedInteger("amdgpu-num-vgpr"));
@@ -1711,30 +1767,53 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
 
     /// Invalidate all module-level analysis not related to Functions and
     /// Machine Functions proxies because we just added a new machine function
-    /// and they are now stale
+    /// and they are now stale. Also invalidate the IP-level analyses (in
+    /// particular \c PrototypeCallGraphAnalysis) so the next iteration's
+    /// callgraph query sees the new MF.
     llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
     PA.preserve<llvm::MachineFunctionAnalysisManagerModuleProxy>();
     PA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
     TargetMAM.invalidate(TargetModule, PA);
+    /// The Prototype-level proxies have to be preserved too, for a stronger
+    /// reason than staleness: their invalidation hooks call InnerAM->clear() on
+    /// the *entire* shared manager (see Prototype.cpp), so letting them fire
+    /// here destroys every cached MachineFunctionAnalysis result — and those
+    /// results own the MachineFunctions, \c MF among them, which this loop goes
+    /// on to use immediately below. Module-level invalidation was already done
+    /// explicitly against TargetMAM above, so these proxies have nothing to
+    /// contribute. Everything else stays unpreserved, so the IP-level analyses
+    /// this invalidate exists for (\c PrototypeCallGraphAnalysis in particular)
+    /// are still dropped.
+    // The MF just populated, and every MF lifted before it, must stay cached —
+    // the loop keeps using MF immediately below, and later iterations walk the
+    // ones already discovered. Module-level invalidation for the target module
+    // was done explicitly above, so the inner proxies are all still accurate.
+    PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
+    PA.preserve<TargetFunctionAnalysisManagerPrototypeProxy>();
+    PA.preserve<TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+    PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
+    PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
+    PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
+    IPAM.invalidate(IP, PA);
 
-    llvm::Error Err = llvm::Error::success();
-
-    /// Translate the machine function to LLVM IR
-    MIRToIRTranslator Translator{MF, Err};
-
-    if (Err) {
+    /// Translate the machine function to LLVM IR through the pinned
+    /// translation analysis; the initial flush performs the full translation
+    TranslationState &Translation =
+        MFAM.getResult<TraceFunctionTranslationAnalysis>(MF);
+    if (llvm::Error Err = Translation.flush()) {
       Ctx.emitError(llvm::toString(std::move(Err)));
-      /// MF is fully populated with MIR and the translator ctor may have
-      /// started emitting IR, so nothing is preserved.
+      /// MF is fully populated with MIR and the translator may have started
+      /// emitting IR, so nothing is preserved.
       return llvm::PreservedAnalyses::none();
     }
 
-    Translator.translate();
-
     /// Go over all discovered call target addresses and add them to be visited
-    /// (if not visited already)
-    const TraceCallGraph &CG =
-        TargetMAM.getResult<TraceCallGraphAnalysis>(TargetModule);
+    /// (if not visited already). We ask the IP-level
+    /// \c PrototypeCallGraphAnalysis directly — payload-side extension is a
+    /// no-op when the IModule has no injected payloads yet (which is always the
+    /// case at code-discovery time).
+    const PrototypeCallGraph &CG =
+        IPAM.getResult<PrototypeCallGraphAnalysis>(IP);
     for (uint64_t Addr : CG.discovered_addrs()) {
       LLVM_DEBUG(luthier::dbgs()
                  << "[CodeDiscoveryPass] Callgraph discovered target 0x"
@@ -1750,10 +1829,10 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
 
     const llvm::TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
     for (llvm::MachineInstr *TraceTermMI : TraceTermInstructions) {
-      /// If a terminator is a call, then it is likely that the instruction
-      /// after the call is reachable. Add it to the list of unvisited entry
-      /// points if it is a trace instruction
-      if (TraceTermMI->isCall() && Opts.EagerDiscoverCallReturnEntryPoint) {
+      /// If a terminator is a call, then the instruction after the call is
+      /// reachable by a jump instruction later down the line. Add it to the
+      /// list of unvisited entry points if it is a trace instruction
+      if (TraceTermMI->isCall()) {
         TargetMachineInstrMDNode *TraceTermMD =
             TargetMachineInstrMDNode::getInstrMDNodeIfExists(*TraceTermMI);
         if (!TraceTermMD)
@@ -1833,10 +1912,20 @@ CodeDiscoveryPass::run(llvm::Module &TargetModule,
     CallTerm->setCalledFunction(It->second);
   }
 
+  // Preserve the outer MAM proxy so the Prototype adaptor doesn't
+  // wipe every cached module-level analysis for both modules on the way out —
+  // downstream passes (InstrumentationPMDriver, NewPMAsmPrinter) still need
+  // the target module's MachineFunctionAnalysis cache we just populated.
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  PA.preserve<llvm::MachineFunctionAnalysisManagerModuleProxy>();
-  PA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
-  PA.preserve<llvm::MachineFunctionAnalysis>();
+  // Everything this pass produced is the lifted MIR itself, held by the cached
+  // MachineFunctionAnalysis results; dropping them would discard the pass's
+  // entire output. Only Prototype-level analyses are invalidated.
+  PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
   return PA;
 }
 } // namespace luthier

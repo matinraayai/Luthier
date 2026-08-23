@@ -18,25 +18,23 @@
 /// Implements Luthier's Injected Payload Prologue and Epilogue insertion pass.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/InjectedPayloadPEIPass.h"
-#include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
-#include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
+#include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
-#include "luthier/ToolCodeGen/WrapperAnalysisPasses.h"
 
 #include <AMDGPU.h>
 #include <GCNSubtarget.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
-#include <llvm/CodeGen/MachineModuleInfo.h>
+#include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/CodeGen/MachineRegisterInfo.h>
-#include <llvm/CodeGen/Passes.h>
 #include <llvm/CodeGen/TargetInstrInfo.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
 #include <llvm/IR/Function.h>
@@ -47,14 +45,6 @@
 #define DEBUG_TYPE "luthier-injected-payload-pei"
 
 namespace luthier {
-
-char InjectedPayloadPEIPass::ID = 0;
-
-LUTHIER_INITIALIZE_LEGACY_PASS_BODY(InjectedPayloadPEIPass,
-                                    "injected-payload-pei",
-                                    "Luthier Injected Payload PEI Pass",
-                                    /*CFGOnly=*/false,
-                                    /*IsAnalysis=*/false);
 
 namespace {
 
@@ -97,23 +87,16 @@ getFrameLoadSlotsForTarget(const llvm::GCNSubtarget &ST,
 
 } // namespace
 
-bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
-  // Skip anything that isn't a Luthier injected payload. Hooks (callees
-  // of payloads) keep their normal LLVM-emitted frame and don't need
-  // custom SVA setup.
-  const llvm::Function &F = MF.getFunction();
+llvm::PreservedAnalyses
+InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
+                            llvm::MachineFunctionAnalysisManager &MFAM) {
+  // Skip anything that isn't an injected payload
+  llvm::Function &F = MF.getFunction();
   if (!F.hasFnAttribute(InjectedPayloadAttribute)) {
     LLVM_DEBUG(luthier::dbgs()
                << F.getName() << " is not an injected payload; skipping.\n");
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
-
-  // Defensive: payloads MUST be marked Naked. If somebody bypassed
-  // InjectedPayloadCreationPass::assignToInject and forgot the attribute,
-  // stock PEI already ran and emitted a frame we'd be doubling up on.
-  assert(
-      F.hasFnAttribute(llvm::Attribute::Naked) &&
-      "Injected payload must carry Attribute::Naked so stock PEI is a no-op");
 
   LLVM_DEBUG(luthier::dbgs()
              << "Running InjectedPayloadPEIPass on " << F.getName() << "\n");
@@ -124,57 +107,80 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   const llvm::MachineRegisterInfo &MRI = MF.getRegInfo();
   llvm::MachineFrameInfo &MFI = MF.getFrameInfo();
 
-  // Pull cached analyses from the IModule MAM (set up by the driver).
-  auto &IModule = const_cast<llvm::Module &>(
-      *getAnalysis<llvm::MachineModuleInfoWrapperPass>().getMMI().getModule());
-  auto &IMAM = getAnalysis<IModuleMAMWrapperPass>().getMAM();
+  // The MF being processed lives in the instrumentation module; the MAM
+  // outer proxy exposes cached module-level analyses (IPIP,
+  // TargetAppModuleAndMAM) populated by upstream instrumentation-module
+  // passes.
+  llvm::Module &IModule = *F.getParent();
+  const auto &MAMProxy =
+      MFAM.getResult<llvm::ModuleAnalysisManagerMachineFunctionProxy>(MF);
+  const auto &PAMProxy =
+      MFAM.getResult<PrototypeAnalysisManagerMachineFunctionProxy>(MF);
+
+  auto P = [&]() -> Prototype * {
+    if (auto *PPA = MAMProxy.getCachedResult<ParentPrototypeAnalysis>(IModule);
+        PPA) {
+      return PPA->getPrototype();
+    }
+    return nullptr;
+  }();
+  if (!P) {
+    Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
+        llvm::formatv("IModule's Prototype was not cached with the "
+                      "ParentPrototypeAnalysis"))));
+    return llvm::PreservedAnalyses::all();
+  }
 
   const auto *IPIP =
-      IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
+      PAMProxy.getCachedResult<InjectedPayloadAndInstPointAnalysis>(*P);
   if (!IPIP) {
     Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
         "InjectedPayloadAndInstPointAnalysis is required but not cached.")));
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
   if (!IPIP->contains(F)) {
     LLVM_DEBUG(luthier::dbgs()
                << F.getName()
                << " has no recorded insertion point; skipping.\n");
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
   const llvm::MachineInstr *TargetMI = IPIP->at(F);
 
-  auto *TargetMAMRes =
-      IMAM.getCachedResult<TargetAppModuleAndMAMAnalysis>(IModule);
-  if (!TargetMAMRes) {
-    Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
-        "TargetAppModuleAndMAMAnalysis is required but not cached.")));
-    return false;
-  }
-  auto &TargetModule = TargetMAMRes->getTargetAppModule();
-  auto &TargetMAM = TargetMAMRes->getTargetAppMAM();
+  // SVStorageAndLoadLocationsAnalysis is a Prototype-level analysis, so a
+  // MachineFunction pass cannot compute one; it is read out of the cache
+  // through the outer proxy, keyed by the prototype ParentPrototypeAnalysis
+  // resolved above. buildInstrumentationPipeline materializes it just before
+  // the machine-pass stage — after the last Prototype-level pass that reports
+  // PreservedAnalyses::none(), which would otherwise drop it again.
+  const auto &IPAMProxy =
+      MFAM.getResult<PrototypeAnalysisManagerMachineFunctionProxy>(
+          MF);
 
-  // LRStateValueStorageAndLoadLocationsAnalysis is now a legacy ModulePass on
-  // the IModule's legacy codegen PM. It computes per-IP load plans by
-  // consulting IModuleIPPredicatedLivenessAnalysis (also legacy).
-  const auto &StateValueLocations =
-      getAnalysis<LRStateValueStorageAndLoadLocationsAnalysis>().getResult();
-  const auto *LoadPlan =
-      StateValueLocations.getStateValueArrayLoadPlanForInstPoint(*TargetMI);
+  const SVStorageAndLoadLocations *StateValueLocations =
+      IPAMProxy.getCachedResult<SVStorageAndLoadLocationsAnalysis>(*P);
+  if (!StateValueLocations) {
+    Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
+        "SV locations analysis has not been cached")));
+    return llvm::PreservedAnalyses::all();
+  }
+
+  const InstPointSVALoadPlan *LoadPlan =
+      StateValueLocations->getStateValueArrayLoadPlanForInstPoint(*TargetMI);
   if (!LoadPlan) {
     Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
         "No SVA load plan recorded for instrumentation point in {0}",
         F.getName()))));
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
   auto &StateValueStorage = LoadPlan->StateValueStorageLocation;
 
-  // Pull the finalized SVA specs (set in IntrinsicMIRLoweringPass).
-  auto SpecsPtr = StateValueArraySpecs::getSVASpecs(IModule, MF.getTarget());
+  // Pull the finalized SVA specs from the Prototype-level analysis
+  const StateValueArraySpecs *SpecsPtr =
+      IPAMProxy.getCachedResult<StateValueArraySpecsAnalysis>(*P);
   if (!SpecsPtr) {
     Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
-        "Failed to read StateValueArraySpecs from IModule metadata")));
-    return false;
+        "StateValueArraySpecsAnalysis result has not been cached")));
+    return llvm::PreservedAnalyses::all();
   }
   const StateValueArraySpecs &Specs = *SpecsPtr;
 
@@ -230,7 +236,7 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   if (!UsesSVA) {
     LLVM_DEBUG(luthier::dbgs()
                << F.getName() << " doesn't use the SVA; skipping PEI.\n");
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   // If the payload uses the SVA but we never discovered an SVA VGPR from
@@ -246,15 +252,11 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
         "SVA VGPR exists, OR explicit no-SA SVA allocation support "
         "(not yet implemented).",
         F.getName()))));
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
-  // ---- Update the FunctionPreambleDescriptor on the target side ----------
-  // PrePostAmbleEmitter consults this to decide which kernel/device-fn
-  // prologues need scratch+stack setup. Mark the target accordingly.
-  auto &PKInfo =
-      TargetMAM.getResult<FunctionPreambleDescriptorAnalysis>(TargetModule);
-  const llvm::MachineFunction *TargetMF = TargetMI->getMF();
+  // Local "does this payload need to read the instrumentation frame regs
+  // back from the SVA lanes?" flag.
   bool RequiresAccessToStack = false;
   if (StateValueStorage.getStateValueStorageReg() == 0) {
     // SVA is spilled — payload necessarily needs FS to load it.
@@ -262,18 +264,30 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   }
   if (MFI.hasStackObjects() || MFI.hasCalls())
     RequiresAccessToStack = true;
-  if (RequiresAccessToStack) {
-    if (TargetMF->getFunction().getCallingConv() ==
-        llvm::CallingConv::AMDGPU_KERNEL) {
-      PKInfo.Kernels[TargetMF].RequiresScratchAndStackSetup = true;
-    } else {
-      PKInfo.DeviceFunctions[TargetMF].RequiresScratchAndStackSetup = true;
-    }
-  }
 
   // ---- Emit the prologue ------------------------------------------------
   llvm::MachineBasicBlock &EntryMBB = MF.front();
   auto EntryInsertPt = EntryMBB.SkipPHIsAndLabels(EntryMBB.begin());
+
+  /// Declares the SVA VGPR live-in on \p MBB when nothing in this payload
+  /// defines it.
+  ///
+  /// The SVA VGPR belongs to the kernel this payload is spliced into, not to
+  /// the payload: under a VGPR storage scheme the kernel's prologue sets it up
+  /// and it simply enters the payload live, with no def anywhere in this MF.
+  /// The read/write-lane pairs below would then read an undefined physical
+  /// register as far as the machine verifier is concerned. The other storage
+  /// schemes go through emitCodeToLoadSVA, which materializes the value into
+  /// SVAVGPR here, so for those it is defined locally and must not be declared
+  /// live-in.
+  auto declareSVALiveIn = [&](llvm::MachineBasicBlock &MBB) {
+    if (StateValueStorage.requiresLoadAndStoreBeforeUse())
+      return;
+    if (!MBB.isLiveIn(SVAVGPR))
+      MBB.addLiveIn(SVAVGPR);
+  };
+
+  declareSVALiveIn(EntryMBB);
 
   // If the SVS isn't already a free VGPR, load the SVA into the SVA VGPR.
   // emitCodeToLoadSVA is a no-op for VGPRStateValueArrayStorage; for the
@@ -310,6 +324,11 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   for (llvm::MachineBasicBlock &MBB : MF) {
     if (!MBB.isReturnBlock())
       continue;
+    // A payload with more than one block reaches its returns without ever
+    // defining the SVA VGPR, so those blocks need the same live-in as the
+    // entry; for a single-block payload this is the entry block and the call
+    // is a no-op.
+    declareSVALiveIn(MBB);
     auto FirstTerm = MBB.getFirstTerminator();
     // Reverse order: frame-reg restore, then SVS store.
     for (const auto &[PhysReg, SpillLane] : FrameSpillSlots) {
@@ -341,14 +360,8 @@ bool InjectedPayloadPEIPass::runOnMachineFunction(llvm::MachineFunction &MF) {
                     << ":\n";
     MF.print(luthier::dbgs());
   });
-  return true;
-}
 
-void InjectedPayloadPEIPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
-  AU.addRequired<IModuleMAMWrapperPass>();
-  AU.addRequired<llvm::MachineModuleInfoWrapperPass>();
-  AU.addRequired<LRStateValueStorageAndLoadLocationsAnalysis>();
-  llvm::MachineFunctionPass::getAnalysisUsage(AU);
+  return llvm::PreservedAnalyses::none();
 }
 
 } // namespace luthier

@@ -37,6 +37,8 @@ class MachineFunction;
 
 class MachineInstr;
 
+class MachineOperand;
+
 class TargetRegisterClass;
 
 class Register;
@@ -107,96 +109,53 @@ enum ScalarValueArgument : uint8_t {
   WORK_ITEM_PRIVATE_SEGMENT_SIZE = 7,
   /// 64-bit address of the instrumentation routine's argument buffer
   USER_ARG_PTR = 8,
-  /// 32-bit offset of the instrumentation implicit argument buffer from the
-  /// \c USER_ARG_PTR
-  IMPLICIT_ARG_OFFSET = 9,
+  /// 64-bit address of the instrumentation implicit argument buffer
+  IMPLICIT_ARG_BUFFER = 9,
   /// Marks the last defined scalar value argument
-  SCALAR_VALUE_ARGUMENT_LAST = IMPLICIT_ARG_OFFSET
+  SCALAR_VALUE_ARGUMENT_LAST = IMPLICIT_ARG_BUFFER
 };
 
 template <ScalarValueArgument SA> struct ScalarValueArgumentInfo;
 
 template <> struct ScalarValueArgumentInfo<WAVEFRONT_PRIVATE_SEGMENT_BUFFER> {
   static constexpr uint8_t NumLanes = 4;
-  static constexpr auto NamedMD =
-      "luthier.sva.wavefront_private_segment_buffer";
 };
 
 template <> struct ScalarValueArgumentInfo<KERNEL_ARG_PTR> {
   static constexpr uint8_t NumLanes = 2;
-  static constexpr auto NamedMD = "luthier.sva.kernel_arg_ptr";
 };
 
 template <> struct ScalarValueArgumentInfo<DISPATCH_ID> {
   static constexpr uint8_t NumLanes = 2;
-  static constexpr auto NamedMD = "luthier.sva.dispatch_id";
 };
 
 template <> struct ScalarValueArgumentInfo<FLAT_SCRATCH> {
   static constexpr uint8_t NumLanes = 2;
-  static constexpr auto NamedMD = "luthier.sva.flat_scratch";
 };
 
 template <> struct ScalarValueArgumentInfo<PRIVATE_SEGMENT_WAVE_BYTE_OFFSET> {
   static constexpr uint8_t NumLanes = 1;
-  static constexpr auto NamedMD =
-      "luthier.sva.private_segment_wave_byte_offset";
 };
 
 template <> struct ScalarValueArgumentInfo<QUEUE_PTR> {
   static constexpr uint8_t NumLanes = 2;
-  static constexpr auto NamedMD = "luthier.sva.queue_ptr";
 };
 
 template <> struct ScalarValueArgumentInfo<DISPATCH_PTR> {
   static constexpr uint8_t NumLanes = 1;
-  static constexpr auto NamedMD = "luthier.sva.dispatch_ptr";
 };
 
 template <> struct ScalarValueArgumentInfo<WORK_ITEM_PRIVATE_SEGMENT_SIZE> {
   static constexpr uint8_t NumLanes = 1;
-  static constexpr auto NamedMD = "luthier.sva.workitem_private_segment_size";
 };
 
 template <> struct ScalarValueArgumentInfo<USER_ARG_PTR> {
   static constexpr uint8_t NumLanes = 2;
-  static constexpr auto NamedMD = "luthier.sva.user_arg_ptr";
 };
 
-template <> struct ScalarValueArgumentInfo<IMPLICIT_ARG_OFFSET> {
-  static constexpr uint8_t NumLanes = 1;
-  static constexpr auto NamedMD = "luthier.sva.implicit_arg_offset";
+template <> struct ScalarValueArgumentInfo<IMPLICIT_ARG_BUFFER> {
+  static constexpr uint8_t NumLanes = 2;
 };
-
-/// \brief Describes the ISA-state effects of a single Luthier intrinsic at
-/// the placeholder layer (after the IR processing stage has replaced each
-/// intrinsic call with an inline-asm placeholder). Populated by each
-/// intrinsic's \c IRProcessor and serialized by
-/// \c ProcessIntrinsicsAtIRLevelPass into the
-/// \c !luthier.intrinsic.placeholders named-MD side channel
-///
-/// \c ForwardISAStateToCalleesPass uses this information to compute, per
-/// callee Function, the union of SVA scalar args read, phys-regs read, and
-/// phys-regs written transitively, and extends the callee's signature
-/// accordingly
-struct IntrinsicISAStateEffects {
-  /// Scalar value arguments this intrinsic reads.
-  llvm::SmallVector<ScalarValueArgument, 1> ReadSVAs;
-  /// Physical registers this intrinsic reads. Wide registers are allowed;
-  /// downstream consumers decompose into 32-bit channels via TRI.
-  llvm::SmallVector<llvm::MCRegister, 1> ReadPhysRegs;
-  /// Physical registers this intrinsic writes. Same channel-decomposition
-  /// note as above.
-  llvm::SmallVector<llvm::MCRegister, 1> WrittenPhysRegs;
-};
-
-/// Decode an effects MDNode produced by \c ProcessIntrinsicsAtIRLevelPass
-/// (shape: empty MDNode or 3-operand
-/// \c !{!{sva-i32s}, !{read-physreg-i32s}, !{written-physreg-i32s}}).
-/// An empty / malformed node decodes to a record with all three vectors
-/// empty (i.e. "no callee-visible ISA-state effects").
-IntrinsicISAStateEffects
-decodeIntrinsicISAStateEffects(const llvm::MDNode *EffNode);
 
 /// \brief Holds the result of the IR processing stage of an intrinsic IR call
 /// instruction, including how all non-constant values used/defined by a Luthier
@@ -230,12 +189,6 @@ private:
   /// How the argument values (if present) must be lowered to a
   /// \c llvm::Register
   llvm::SmallVector<ValueLoweringInfo, 4> Args{};
-  /// Metadata values forwarded to the MIR lowering stage as a payload MDNode
-  llvm::SmallVector<llvm::Metadata *> ExtraInfoValues{};
-  /// ISA-state effects produced by this intrinsic. Populated by the IR
-  /// processor; consumed by \c ForwardISAStateToCalleesPass via the
-  /// serialized form in \c !luthier.intrinsic.placeholders .
-  IntrinsicISAStateEffects Effects{};
 
 public:
   /// Sets the inline asm constraint to \p Constraint for the given
@@ -258,32 +211,6 @@ public:
 
   /// \returns All arguments' \c IntrinsicValueLoweringInfo
   llvm::ArrayRef<ValueLoweringInfo> getArgsInfo() const { return Args; }
-
-  /// Adds \p Val as an extra metadata value to be forwarded to the MIR
-  /// lowering stage
-  void addExtraLoweringValue(llvm::Metadata &Val) {
-    ExtraInfoValues.emplace_back(&Val);
-  }
-
-  /// Convenience overload: wraps \p Val in \c ConstantAsMetadata before
-  /// forwarding it to the MIR lowering stage
-  void addExtraLoweringValue(llvm::Constant &Val) {
-    ExtraInfoValues.emplace_back(llvm::ConstantAsMetadata::get(&Val));
-  }
-
-  /// \returns The list of all extra lowering metadata values
-  llvm::ArrayRef<llvm::Metadata *> getExtraLoweringValues() const {
-    return ExtraInfoValues;
-  }
-
-  /// Direct access to the effects record so processors can populate it
-  /// inline with their existing \c setReturnValueInfo / \c addArgInfo /
-  /// \c addExtraLoweringValue calls.
-  IntrinsicISAStateEffects &getEffects() { return Effects; }
-
-  [[nodiscard]] const IntrinsicISAStateEffects &getEffects() const {
-    return Effects;
-  }
 };
 
 /// \brief describes a function used by each Luthier intrinsic to process
@@ -333,12 +260,10 @@ typedef std::function<llvm::Expected<IntrinsicIRLoweringInfo>(
 ///    restore COPYs back the right value.
 typedef std::function<llvm::Error(
     const llvm::MachineFunction &,
-    llvm::ArrayRef<std::pair<llvm::InlineAsm::Flag, llvm::Register>>,
-    llvm::MDNode *, const std::function<llvm::MachineInstrBuilder(int)> &,
-    const std::function<llvm::Register(const llvm::TargetRegisterClass *)> &,
-    const llvm::DenseMap<ScalarValueArgument, llvm::Register> &,
-    const llvm::DenseMap<llvm::MCRegister, llvm::Register> &,
-    llvm::DenseMap<llvm::MCRegister, llvm::Register> &)>
+    llvm::ArrayRef<
+        std::pair<llvm::InlineAsm::Flag, const llvm::MachineOperand *>>,
+    const std::function<llvm::MachineInstrBuilder(int)> &,
+    const std::function<llvm::Register(const llvm::TargetRegisterClass *)> &)>
     IntrinsicMIRProcessorFunc;
 
 /// \brief Used internally to store the intrinsic processors

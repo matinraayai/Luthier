@@ -48,18 +48,17 @@
 #include <luthier/LLVM/streams.h>
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
 #include <luthier/ToolCodeGen/CodeDiscoveryPass.h>
+#include <luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h>
 #include <luthier/ToolCodeGen/EntryPoint.h>
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
+#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
-#include <luthier/ToolCodeGen/InstrumentationPMDriver.h>
-#include <luthier/ToolCodeGen/InstrumentationPass.h>
-#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
-#include <luthier/ToolCodeGen/TraceCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/NewPMAsmPrinter.h>
 #include <luthier/ToolCodeGen/PrePostAmbleEmitter.h>
+#include <luthier/ToolCodeGen/PrototypeCallGraph.h>
 #include <memory>
 #include <mutex>
 
@@ -77,7 +76,8 @@ struct OpcodeHistogramTool
   __attribute__((device, used)) static void
   countOpcodeHistogramVector(bool CountWaveFrontLevel, int OpcodeNumber);
 
-  __attribute__((device, used)) static void countOpcodeHistogramScalar(int OpcodeNumber);
+  __attribute__((device, used)) static void
+  countOpcodeHistogramScalar(int OpcodeNumber);
 
   struct Options {
     llvm::cl::OptionCategory Cat{"Opcode Histogram Tool Options"};
@@ -103,8 +103,6 @@ struct OpcodeHistogramTool
         "demangle-kernel-names",
         llvm::cl::desc("Demangle kernel names before printing"),
         llvm::cl::init(true), llvm::cl::NotHidden, llvm::cl::cat(Cat)};
-    luthier::InstrumentationPMDriverOptions DriverOpts;
-    luthier::CodeDiscoveryPassOptions DiscoveryOpts;
   } Opts;
 
   std::recursive_mutex Mutex;
@@ -115,18 +113,15 @@ struct OpcodeHistogramTool
       std::vector<uint64_t>(llvm::AMDGPU::INSTRUCTION_LIST_END, 0)};
   unsigned NextInstrIdx = 0;
 
-  /// InstrumentationPipelineTrait callback (optional): reset the per-dispatch
-  /// instruction counter before each sweep.
-  void onBeginDispatchInstrumentation() { NextInstrIdx = 0; }
-
   void onPackets(const hsa_queue_t &Queue, uint64_t PacketIdx,
                  llvm::ArrayRef<luthier::hsa::AqlPacket> Packets,
                  hsa_amd_queue_intercept_packet_writer PacketWriter);
 
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &IModule, llvm::ModuleAnalysisManager &,
-                         llvm::MachineFunction &MF,
-                         llvm::FunctionAnalysisManager &);
+  /// Prototype-level entry point: payload creation reads the target module's
+  /// MIR and writes into the instrumentation module, so it needs both halves of
+  /// the prototype.
+  llvm::PreservedAnalyses run(luthier::Prototype &P,
+                              luthier::PrototypeAnalysisManager &PAM);
 };
 
 LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(OpcodeHistogramTool)
@@ -134,8 +129,9 @@ LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(OpcodeHistogramTool)
 __attribute__((device)) uint64_t
     OpcodeHistogramTool::KernelHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];
 
-__attribute__((device, used)) void OpcodeHistogramTool::countOpcodeHistogramVector(
-    bool CountWaveFrontLevel, int OpcodeNumber) {
+__attribute__((device, used)) void
+OpcodeHistogramTool::countOpcodeHistogramVector(bool CountWaveFrontLevel,
+                                                int OpcodeNumber) {
   unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
   const uint32_t LaneId = __lane_id() + 1;
   uint32_t FirstActiveThreadId = __ffsll(ExecMask);
@@ -158,42 +154,57 @@ OpcodeHistogramTool::countOpcodeHistogramScalar(int OpcodeNumber) {
 
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
-static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>
-    *AmdExtSnapshot{nullptr};
+static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable> *AmdExtSnapshot{
+    nullptr};
 static luthier::rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
     *LoaderSnapshot{nullptr};
 
-
-luthier::InstrumentationPreservedAnalyses
-OpcodeHistogramTool::runInstrumentationPass(llvm::Module &IModule,
-                                            llvm::ModuleAnalysisManager &,
-                                            llvm::MachineFunction &MF,
-                                            llvm::FunctionAnalysisManager &) {
-  for (auto &MBB : MF) {
-    for (auto &MI : MBB) {
-      unsigned I = NextInstrIdx++;
-      if (I < Opts.InstrBeginInterval || I >= Opts.InstrEndInterval)
-        continue;
-      auto *OpcodeNumber = llvm::ConstantInt::get(
-          llvm::Type::getInt32Ty(IModule.getContext()), MI.getOpcode(), false);
-      const void *HostHandle = nullptr;
-      llvm::SmallVector<InjectedPayloadCreationPass::PayloadArg, 2> Args;
-      if (luthier::isScalar(MI) || luthier::isLaneAccess(MI)) {
-        HostHandle = reinterpret_cast<const void *>(
-            &OpcodeHistogramTool::countOpcodeHistogramScalar);
-        Args.push_back(OpcodeNumber);
-      } else {
-        HostHandle = reinterpret_cast<const void *>(
-            &OpcodeHistogramTool::countOpcodeHistogramVector);
-        Args.push_back(llvm::ConstantInt::getBool(IModule.getContext(),
-                                                  Opts.CountWavefrontLevel));
-        Args.push_back(OpcodeNumber);
+llvm::PreservedAnalyses
+OpcodeHistogramTool::run(luthier::Prototype &P,
+                         luthier::PrototypeAnalysisManager &PAM) {
+  llvm::Module &IModule = P.getInstrumentationModule();
+  NextInstrIdx = 0;
+  P.forEachTargetMF(PAM, [&](llvm::MachineFunction &MF) {
+    for (auto &MBB : MF) {
+      for (auto &MI : MBB) {
+        unsigned I = NextInstrIdx++;
+        if (I < Opts.InstrBeginInterval || I >= Opts.InstrEndInterval)
+          continue;
+        auto *OpcodeNumber =
+            llvm::ConstantInt::get(llvm::Type::getInt32Ty(IModule.getContext()),
+                                   MI.getOpcode(), false);
+        const void *HostHandle = nullptr;
+        llvm::SmallVector<luthier::PayloadArg, 2> Args;
+        if (luthier::isScalar(MI) || luthier::isLaneAccess(MI)) {
+          HostHandle = reinterpret_cast<const void *>(
+              &OpcodeHistogramTool::countOpcodeHistogramScalar);
+          Args.push_back(OpcodeNumber);
+        } else {
+          HostHandle = reinterpret_cast<const void *>(
+              &OpcodeHistogramTool::countOpcodeHistogramVector);
+          Args.push_back(llvm::ConstantInt::getBool(IModule.getContext(),
+                                                    Opts.CountWavefrontLevel));
+          Args.push_back(OpcodeNumber);
+        }
+        LUTHIER_REPORT_FATAL_ON_ERROR(
+            this->createInjectedPayload(HostHandle, P, PAM, MI, Args));
       }
-      LUTHIER_REPORT_FATAL_ON_ERROR(
-          this->createInjectedPayload(HostHandle, IModule, MI, Args));
     }
-  }
-  return luthier::InstrumentationPreservedAnalyses{};
+  });
+  llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
+  // Payload creation only adds functions to the instrumentation module and
+  // attaches instrumentation-point metadata to target MIs. No MachineFunction
+  // is created or destroyed, so every cached MachineFunctionAnalysis result —
+  // including the lifted target MIR this pass just walked — stays valid.
+  PA.preserve<luthier::TargetModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::TargetFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.abandon<luthier::InjectedPayloadAndInstPointAnalysis>();
+  PA.abandon<luthier::PrototypeCallGraphAnalysis>();
+  return PA;
 }
 
 void OpcodeHistogramTool::onPackets(
@@ -235,9 +246,7 @@ void OpcodeHistogramTool::onPackets(
         llvm::consumeError(std::move(MissErr));
         std::unique_ptr<llvm::MemoryBuffer> ObjBuf;
         LUTHIER_REPORT_FATAL_ON_ERROR(
-            this->runInstrumentationPipelineForDispatch(*KD, Opts.DriverOpts,
-                                                        Opts.DiscoveryOpts)
-                .moveInto(ObjBuf));
+            this->runInstrumentationPipelineForDispatch(*KD).moveInto(ObjBuf));
         LUTHIER_REPORT_FATAL_ON_ERROR(
             this->loadInstrumented(std::move(ObjBuf), KD, 0).takeError());
         LUTHIER_REPORT_FATAL_ON_ERROR(
@@ -257,9 +266,9 @@ void OpcodeHistogramTool::onPackets(
             DispatchPacket->completion_signal, HSA_SIGNAL_CONDITION_LT,
             SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
     if (Current >= SignalValue)
-      llvm::report_fatal_error(llvm::formatv(
-          "Wait timeout for signal {0:x}",
-          DispatchPacket->completion_signal.handle));
+      llvm::report_fatal_error(
+          llvm::formatv("Wait timeout for signal {0:x}",
+                        DispatchPacket->completion_signal.handle));
     if (MustDestroySignalAfterLaunch) {
       LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
           Core.callFunction<&::CoreApiTable::hsa_signal_destroy_fn>(
@@ -324,10 +333,9 @@ static void atToolInit(void *) {
     const auto Argv = "";
     luthier::registerDebugCLOptions();
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        llvm::cl::ParseCommandLineOptions(0, &Argv,
-                                          "Luthier Opcode Histogram Tool",
-                                          &luthier::errs(), nullptr,
-                                          "LUTHIER_ARGS"),
+        llvm::cl::ParseCommandLineOptions(
+            0, &Argv, "Luthier Opcode Histogram Tool", &luthier::errs(),
+            nullptr, "LUTHIER_ARGS"),
         "Failed to parse the command line arguments."));
     llvm::EnablePrettyStackTrace();
     luthier::printStackTraceOnFatalSignal();

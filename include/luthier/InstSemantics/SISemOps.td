@@ -459,6 +459,14 @@ def DirectCall;
 
 def GetWavefrontSize;
 
+/// Subtarget-aware EXEC register. Emits \c Translator.TRI.getExec() —
+/// \c AMDGPU::EXEC_LO on wave32, \c AMDGPU::EXEC on wave64.
+def GetExecReg;
+
+/// Subtarget-aware VCC register. Emits \c Translator.TRI.getVCC() —
+/// \c AMDGPU::VCC_LO on wave32, \c AMDGPU::VCC on wave64.
+def GetVCCReg;
+
 /// Parameterized integer LLVM type. Takes a single dag argument that resolves
 /// to a C++ \c unsigned expression giving the bit width. Emits
 /// \c Builder.getIntNTy(<width>). Typical use: \c (LLVMIntNTy (GetWavefrontSize))
@@ -675,6 +683,15 @@ class SetSCCImplicit<dag val> {
 
 class GetSCCImplicit {
   dag ret = (LLVMTrunc (ImplicitUse SCC), si_llvm_i1_ty);
+}
+
+/// TODO: Replace all uses/defs for VCC with these two functions.
+class GetVCCImplicit {
+  dag ret = (LLVMTrunc (ImplicitUse VCC), (LLVMIntNTy (GetWavefrontSize)));
+}
+
+class SetVCCImplicit<dag val> {
+  dag ret = (ImplicitDef VCC, (LLVMZExtOrTrunc val, (LLVMIntNTy (GetWavefrontSize))));
 }
 
 /// Inverse of \c BallotWaveMask: extracts the current lane's bit from a

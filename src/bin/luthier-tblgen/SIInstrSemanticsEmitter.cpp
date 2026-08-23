@@ -48,6 +48,16 @@ void SIInstrSemanticsEmitter::emitRegisterReference(
     return;
   }
 
+  /// Subtarget-aware register references
+  if (Def->getName() == "GetExecReg") {
+    OS << "Translator.TRI.getExec()";
+    return;
+  }
+  if (Def->getName() == "GetVCCReg") {
+    OS << "Translator.TRI.getVCC()";
+    return;
+  }
+
   llvm::PrintFatalError(Loc, "Register operand " + Def->getName() +
                                  " is neither a `Register` nor a "
                                  "`SuperRegFactory<[...]>` record");
@@ -177,8 +187,8 @@ void SIInstrSemanticsEmitter::emitSemanticStatement(
     // (used to compute the absolute target when the callee operand is still
     // a raw displacement); the second is the callee, which may be either an
     // llvm::Function* (post-callgraph fixup) or a ConstantInt displacement
-    // (pre-fixup). Dispatches to MIRToIRTranslator::emitDirectTailCall, which
-    // picks the right lowering based on the callee's runtime type.
+    // (pre-fixup). Dispatches to TraceFunctionTranslator::emitDirectTailCall,
+    // which picks the right lowering based on the callee's runtime type.
     else if (OpName == "DirectCall") {
       if (unsigned NumArgs = Dag->getNumArgs(); NumArgs != 2)
         llvm::PrintFatalError(
@@ -443,7 +453,7 @@ void SIInstrSemanticsEmitter::emitSemanticFunction(llvm::raw_ostream &OS,
   OS << "template <>\n";
   OS << "void inline raiseMachineInstr<llvm::AMDGPU::" << InstName << ">(\n";
   OS << "    const llvm::MachineInstr &MI, llvm::IRBuilderBase &Builder,\n";
-  OS << "    MIRToIRTranslator &Translator) {\n";
+  OS << "    TraceFunctionTranslator &Translator) {\n";
 
   for (const llvm::Init *El : SemList->getElements()) {
     const auto *StmtDag = llvm::dyn_cast<llvm::DagInit>(El);

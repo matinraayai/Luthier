@@ -13,43 +13,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file CodeDiscoveryPass.h
-/// Defines the \c CodeDiscoveryPass class.
-//===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_CODE_DISCOVERY_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_CODE_DISCOVERY_PASS_H
+#include "luthier/ToolCodeGen/Prototype.h"
 #include <llvm/IR/PassManager.h>
-#include <llvm/Support/CommandLine.h>
 
 namespace luthier {
 
-/// \brief Command-line options for \c CodeDiscoveryPass.
-struct CodeDiscoveryPassOptions {
-  llvm::cl::opt<bool> EagerDiscoverCallReturnEntryPoint{
-      "eager-discover-call-ret-entry-point",
-      llvm::cl::desc(
-          "Eagerly enqueue the post-call return PC as an entry point to "
-          "be added to the set of entry points for the code discovery pass."),
-      llvm::cl::init(true)};
-};
-
-/// \brief Target module pass in charge of:
-/// - Discovering all statically reachable code and entry points from an
-/// initial entry point. The entry point can be any function
-/// (entry or non-entry)
+/// \brief Prototype pass in charge of:
+/// - Discovering all statically reachable code and entry points in the
+///   \e target module from an initial entry point. The entry point can be
+///   any function (entry or non-entry).
 /// - Disassembling and creating equivalent machine functions for each entry
-/// point
+///   point.
 /// - Translating each recovered machine function to equivalent LLVM IR for
-/// further semantics analysis
+///   further semantics analysis.
+///
+/// The pass is expressed at the \c Prototype level so it can drive
+/// \c PrototypeCallGraphAnalysis (which needs access to both modules) between
+/// lift iterations to discover further entry points.
 class CodeDiscoveryPass : public llvm::PassInfoMixin<CodeDiscoveryPass> {
-  const CodeDiscoveryPassOptions &Opts;
 
 public:
-  explicit CodeDiscoveryPass(const CodeDiscoveryPassOptions &Opts)
-      : Opts(Opts) {}
+  CodeDiscoveryPass() = default;
 
-  llvm::PreservedAnalyses run(llvm::Module &TargetModule,
-                              llvm::ModuleAnalysisManager &TargetMAM);
+  llvm::PreservedAnalyses run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

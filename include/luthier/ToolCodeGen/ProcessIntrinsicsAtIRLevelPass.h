@@ -29,15 +29,12 @@ namespace luthier {
 /// inside the instrumentation module
 class ProcessIntrinsicsAtIRLevelPass
     : public llvm::PassInfoMixin<ProcessIntrinsicsAtIRLevelPass> {
-private:
-  const llvm::GCNTargetMachine &TM;
 
 public:
-  explicit ProcessIntrinsicsAtIRLevelPass(const llvm::GCNTargetMachine &TM)
-      : TM(TM) {};
+  ProcessIntrinsicsAtIRLevelPass() = default;
 
   llvm::PreservedAnalyses run(llvm::Module &IModule,
-                              llvm::ModuleAnalysisManager &IMAM);
+                              llvm::ModuleAnalysisManager &MAM);
 };
 
 } // namespace luthier

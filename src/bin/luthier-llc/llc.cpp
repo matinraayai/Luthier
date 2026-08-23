@@ -1,52 +1,80 @@
-//===-- llc.cpp - Implement the LLVM Native Code Generator ----------------===//
+//===-- llc.cpp - Luthier's LLVM LLC Fork ---------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-//
-// This is the llc code generator driver. It provides a convenient
-// command-line interface for generating an assembly file or a relocatable file,
-// given LLVM bitcode.
-//
+///
+/// A fork of LLVM's llc code generator driver modified for running Luthier's
+/// prototype passes with support for plugins.
+///
 //===----------------------------------------------------------------------===//
 
-#include "NewPMDriver.h"
 #include "luthier/Common/Debug.h"
+#include "luthier/Common/ErrorCheck.h"
+#include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
-#include "luthier/ToolCodeGenTesting/LuthierFile.h"
+#include "luthier/PassPlugin/LuthierPassPlugin.h"
+#include "luthier/ToolCodeGen/CodeObjectManagerAnalysis.h"
+#include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
+#include "luthier/ToolCodeGen/InitialExecutionPointAnalysis.h"
+#include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
+#include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
+#include "luthier/ToolCodeGen/InstrumentationPassBuilder.h"
+#include "luthier/ToolCodeGen/LuthierFile.h"
+#include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
+#include "luthier/ToolCodeGen/MockAMDGPULoader.h"
+#include "luthier/ToolCodeGen/MockLoadAMDGPUCodeObjects.h"
+#include "luthier/ToolCodeGen/MockLoaderMemoryAccessor.h"
+#include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
+#include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
+#include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
+#include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
+#include "luthier/ToolCodeGen/Prototype.h"
+#include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/RuntimeLibcallInfo.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/CodeGen/CommandFlags.h"
+#include "llvm/CodeGen/LibcallLoweringInfo.h"
 #include "llvm/CodeGen/LinkAllAsmWriterComponents.h"
 #include "llvm/CodeGen/LinkAllCodegenComponents.h"
 #include "llvm/CodeGen/MIRParser/MIRParser.h"
+#include "llvm/CodeGen/MIRPrinter.h"
+#include "llvm/CodeGen/MachineFunctionAnalysis.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
+#include "llvm/CodeGen/MachinePassManager.h"
+#include "llvm/CodeGen/MachineVerifier.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/AutoUpgrade.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DiagnosticHandler.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
+#include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LLVMRemarkStreamer.h"
-#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/MC/MCTargetOptionsCommandFlags.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Pass.h"
-#include "llvm/Plugins/PassPlugin.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Remarks/HotnessThresholdParser.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/InitLLVM.h"
@@ -58,16 +86,74 @@
 #include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/WithColor.h"
+#include "llvm/Target/CGPassBuilderOption.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/SubtargetFeature.h"
 #include "llvm/TargetParser/Triple.h"
+#include "llvm/Transforms/Scalar/LoopPassManager.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include <cassert>
 #include <memory>
 #include <optional>
 using namespace llvm;
+
+namespace {
+
+enum class VerifierKind { None, InputOutput, EachPass };
+
+struct LLCDiagnosticHandler : public DiagnosticHandler {
+  bool handleDiagnostics(const DiagnosticInfo &DI) override {
+    DiagnosticHandler::handleDiagnostics(DI);
+    if (DI.getKind() == DK_SrcMgr) {
+      const auto &DISM = cast<DiagnosticInfoSrcMgr>(DI);
+      const SMDiagnostic &SMD = DISM.getSMDiag();
+
+      SMD.print(nullptr, errs());
+
+      if (DISM.isInlineAsmDiag() && DISM.getLocCookie())
+        WithColor::note() << "!srcloc = " << DISM.getLocCookie() << "\n";
+
+      return true;
+    }
+
+    if (auto *Remark = dyn_cast<DiagnosticInfoOptimizationBase>(&DI))
+      if (!Remark->isEnabled())
+        return true;
+
+    DiagnosticPrinterRawOStream DP(errs());
+    errs() << LLVMContext::getDiagnosticMessagePrefix(DI.getSeverity()) << ": ";
+    DI.print(DP);
+    errs() << "\n";
+    return true;
+  }
+};
+
+} // namespace
+
+static llvm::cl::OptionCategory OptPluginOptions{"Luthier Opt Plugin Options"};
+
+static std::unique_ptr<luthier::MockAMDGPULoader> Loader =
+    std::make_unique<luthier::MockAMDGPULoader>();
+
+static luthier::MockAMDGPULoaderAnalysisOptions MockLoaderOptions;
+
+
+
+
+
+
+
+static cl::opt<RegAllocType, false, RegAllocTypeParser>
+    RegAlloc("regalloc-npm",
+             cl::desc("Register allocator to use for new pass manager"),
+             cl::Hidden, cl::init(RegAllocType::Unset));
+
+static cl::opt<bool>
+    DebugPM("debug-pass-manager", cl::Hidden,
+            cl::desc("Print pass management debugging information"));
 
 static codegen::RegisterCodeGenFlags CGF;
 static codegen::RegisterSaveStatsFlag SSF;
@@ -81,9 +167,6 @@ static cl::opt<std::string>
 
 static cl::list<std::string>
     InstPrinterOptions("M", cl::desc("InstPrinter options"));
-
-static cl::opt<std::string>
-    InputLanguage("x", cl::desc("Input language ('ir' or 'mir')"));
 
 static cl::opt<std::string> OutputFilename("o", cl::desc("Output filename"),
                                            cl::value_desc("filename"));
@@ -165,12 +248,6 @@ static cl::opt<bool> AsmVerbose("asm-verbose",
                                 cl::desc("Add comments to directives."),
                                 cl::init(true));
 
-static cl::opt<bool>
-    CompileTwice("compile-twice", cl::Hidden,
-                 cl::desc("Run everything twice, re-using the same pass "
-                          "manager and verify the result is the same."),
-                 cl::init(false));
-
 static cl::opt<bool> DiscardValueNames(
     "discard-value-names",
     cl::desc("Discard names from Value (other than GlobalValue)."),
@@ -220,45 +297,13 @@ static cl::opt<std::string> RemarksFormat(
 static cl::list<std::string> PassPlugins("load-pass-plugin",
                                          cl::desc("Load plugin library"));
 
-static cl::opt<bool> EnableNewPassManager(
-    "enable-new-pm", cl::desc("Enable the new pass manager"), cl::init(false));
-
 // This flag specifies a textual description of the optimization pass pipeline
-// to run over the module. This flag switches opt to use the new pass manager
-// infrastructure, completely disabling all of the flags specific to the old
-// pass management.
+// to run over the Prototype.
 static cl::opt<std::string> PassPipeline(
     "passes",
-    cl::desc(
-        "A textual description of the pass pipeline. To have analysis passes "
-        "available before a certain pass, add 'require<foo-analysis>'."));
+    cl::desc("A textual description of the pass pipeline for Prototype."));
 static cl::alias PassPipeline2("p", cl::aliasopt(PassPipeline),
                                cl::desc("Alias for -passes"));
-
-static std::vector<std::string> &getRunPassNames() {
-  static std::vector<std::string> RunPassNames;
-  return RunPassNames;
-}
-
-namespace {
-struct RunPassOption {
-  void operator=(const std::string &Val) const {
-    if (Val.empty())
-      return;
-    SmallVector<StringRef, 8> PassNames;
-    StringRef(Val).split(PassNames, ',', -1, false);
-    for (auto PassName : PassNames)
-      getRunPassNames().push_back(std::string(PassName));
-  }
-};
-} // namespace
-
-static RunPassOption RunPassOpt;
-
-static cl::opt<RunPassOption, true, cl::parser<std::string>> RunPass(
-    "run-pass",
-    cl::desc("Run compiler only for specified passes (comma separated list)"),
-    cl::value_desc("pass-name"), cl::location(RunPassOpt));
 
 // PGO command line options
 enum PGOKind {
@@ -287,13 +332,17 @@ static void setPGOOptions(TargetMachine &TM) {
   case NoPGO:
     PGOOpt = std::nullopt;
     break;
+  default:
+    llvm_unreachable(
+        "CL parser should prevent the switch case from reaching here");
   }
 
   if (PGOOpt)
     TM.setPGOOption(PGOOpt);
 }
 
-static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &,
+static int compileModule(char **argv,
+                         SmallVectorImpl<luthier::PassPlugin> &,
                          LLVMContext &Context, std::string &OutputFilename);
 
 [[noreturn]] static void reportError(Twine Msg, StringRef Filename = "") {
@@ -320,13 +369,11 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(Triple::OSType OS) {
     if (InputFilename.empty() || InputFilename == "-")
       OutputFilename = "-";
     else {
-      // If InputFilename ends in .bc or .ll, remove it.
+      // Strip a recognized input suffix and append one based on
+      // codegen::getFileType() (only .s / .o / - reachable here — .luthier
+      // output requires an explicit -o foo.luthier).
       StringRef IFN = InputFilename;
-      if (IFN.ends_with(".bc") || IFN.ends_with(".ll"))
-        OutputFilename = std::string(IFN.drop_back(3));
-      else if (IFN.ends_with(".mir"))
-        OutputFilename = std::string(IFN.drop_back(4));
-      else if (IFN.ends_with(".luthier"))
+      if (IFN.ends_with(".luthier"))
         OutputFilename = std::string(IFN.drop_back(8));
       else
         OutputFilename = std::string(IFN);
@@ -348,15 +395,19 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(Triple::OSType OS) {
     }
   }
 
-  // Decide if we need "binary" output.
+  bool EmitsLuthier = StringRef(OutputFilename).ends_with(".luthier");
+
+  // Decide if we need "binary" output.  .luthier is always text (YAML).
   bool Binary = false;
-  switch (codegen::getFileType()) {
-  case CodeGenFileType::AssemblyFile:
-    break;
-  case CodeGenFileType::ObjectFile:
-  case CodeGenFileType::Null:
-    Binary = true;
-    break;
+  if (!EmitsLuthier) {
+    switch (codegen::getFileType()) {
+    case CodeGenFileType::AssemblyFile:
+      break;
+    case CodeGenFileType::ObjectFile:
+    case CodeGenFileType::Null:
+      Binary = true;
+      break;
+    }
   }
 
   // Open the file.
@@ -374,8 +425,6 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(Triple::OSType OS) {
 //
 int main(int argc, char **argv) {
   InitLLVM X(argc, argv);
-  auto FinalizeLuthierStreams =
-      llvm::scope_exit([] { luthier::finalizeStreams(); });
 
   // Enable debug stream buffering.
   EnableDebugBuffering = true;
@@ -389,33 +438,12 @@ int main(int argc, char **argv) {
   InitializeAllAsmPrinters();
   InitializeAllTargetMCAs();
 
-  // Initialize codegen and IR passes used by llc so that the -print-after,
-  // -print-before, and -stop-after options work.
-  PassRegistry *Registry = PassRegistry::getPassRegistry();
-  initializeCore(*Registry);
-  initializeCodeGen(*Registry);
-  initializeLoopStrengthReducePass(*Registry);
-  initializeLowerIntrinsicsPass(*Registry);
-  initializePostInlineEntryExitInstrumenterPass(*Registry);
-  initializeUnreachableBlockElimLegacyPassPass(*Registry);
-  initializeConstantHoistingLegacyPassPass(*Registry);
-  initializeScalarOpts(*Registry);
-  initializeVectorization(*Registry);
-  initializeScalarizeMaskedMemIntrinLegacyPassPass(*Registry);
-  initializeExpandReductionsPass(*Registry);
-  initializeHardwareLoopsLegacyPass(*Registry);
-  initializeTransformUtils(*Registry);
-  initializeReplaceWithVeclibLegacyPass(*Registry);
-
-  // Initialize debugging passes.
-  initializeScavengerTestPass(*Registry);
-
-  SmallVector<PassPlugin, 1> PluginList;
+  SmallVector<luthier::PassPlugin, 1> PluginList;
   PassPlugins.setCallback([&](const std::string &PluginPath) {
-    auto Plugin = PassPlugin::Load(PluginPath);
+    auto Plugin = luthier::PassPlugin::Load(PluginPath);
     if (!Plugin)
       reportFatalUsageError(Plugin.takeError());
-    PluginList.emplace_back(Plugin.get());
+    PluginList.emplace_back(std::move(*Plugin));
   });
 
   // Register the Target and CPU printer for --version.
@@ -426,16 +454,9 @@ int main(int argc, char **argv) {
   luthier::registerDebugCLOptions();
   cl::ParseCommandLineOptions(argc, argv, "llvm system compiler\n");
 
-  if (!PassPipeline.empty() && !getRunPassNames().empty()) {
-    errs() << "The `llc -run-pass=...` syntax for the new pass manager is "
-              "not supported, please use `llc -passes=<pipeline>` (or the `-p` "
-              "alias for a more concise version).\n";
-    return 1;
-  }
-
   if (TimeTrace)
     timeTraceProfilerInitialize(TimeTraceGranularity, argv[0]);
-  auto TimeTraceScopeExit = make_scope_exit([]() {
+  auto TimeTraceScopeExit = llvm::scope_exit([]() {
     if (TimeTrace) {
       if (auto E = timeTraceProfilerWrite(TimeTraceFile, OutputFilename)) {
         handleAllErrors(std::move(E), [&](const StringError &SE) {
@@ -456,16 +477,13 @@ int main(int argc, char **argv) {
   Expected<LLVMRemarkFileHandle> RemarksFileOrErr =
       setupLLVMOptimizationRemarks(Context, RemarksFilename, RemarksPasses,
                                    RemarksFormat, RemarksWithHotness,
-                                   RemarksHotnessThreshold);
+                                   RemarksHotnessThreshold.value());
   if (Error E = RemarksFileOrErr.takeError())
     reportError(std::move(E), RemarksFilename);
   LLVMRemarkFileHandle RemarksFile = std::move(*RemarksFileOrErr);
 
   codegen::MaybeEnableStatistics();
   std::string OutputFilename;
-
-  if (InputLanguage != "" && InputLanguage != "ir" && InputLanguage != "mir")
-    reportError("input language must be '', 'IR' or 'MIR'");
 
   // Compile the module TimeCompilations times to give better compile time
   // metrics.
@@ -479,41 +497,9 @@ int main(int argc, char **argv) {
   return codegen::MaybeSaveStatistics(OutputFilename, "llc");
 }
 
-static bool addPass(PassManagerBase &PM, const char *argv0, StringRef PassName,
-                    TargetPassConfig &TPC) {
-  if (PassName == "none")
-    return false;
-
-  const PassRegistry *PR = PassRegistry::getPassRegistry();
-  const PassInfo *PI = PR->getPassInfo(PassName);
-  if (!PI) {
-    WithColor::error(errs(), argv0)
-        << "run-pass " << PassName << " is not registered.\n";
-    return true;
-  }
-
-  Pass *P;
-  if (PI->getNormalCtor())
-    P = PI->getNormalCtor()();
-  else {
-    WithColor::error(errs(), argv0)
-        << "cannot create pass: " << PI->getPassName() << "\n";
-    return true;
-  }
-  std::string Banner = std::string("After ") + std::string(P->getPassName());
-  TPC.addMachinePrePasses();
-  PM.add(P);
-  TPC.addMachinePostPasses(Banner);
-
-  return false;
-}
-
-static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &PluginList,
+static int compileModule(char **argv,
+                         SmallVectorImpl<luthier::PassPlugin> &PluginList,
                          LLVMContext &Context, std::string &OutputFilename) {
-  // Load the module to be compiled...
-  SMDiagnostic Err;
-  std::unique_ptr<Module> M;
-  std::unique_ptr<MIRParser> MIR;
   Triple TheTriple;
   std::string CPUStr = codegen::getCPUStr(),
               FeaturesStr = codegen::getFeaturesStr();
@@ -605,9 +591,36 @@ static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &PluginList,
 
   const Target *TheTarget = nullptr;
   std::unique_ptr<TargetMachine> Target;
+  std::unique_ptr<luthier::Prototype> IP;
+  std::optional<luthier::LuthierFileParser> Parser;
 
-  // No input file: synthesize an empty module from -mtriple so that we
-  // can start from an empty module for tests that start from code discovery
+  auto SetDataLayout = [&](StringRef DataLayoutTargetTriple,
+                           StringRef OldDLStr) -> std::optional<std::string> {
+    std::string IRTargetTriple = DataLayoutTargetTriple.str();
+    if (!TargetTriple.empty())
+      IRTargetTriple = Triple::normalize(TargetTriple);
+    TheTriple = Triple(IRTargetTriple);
+    if (TheTriple.getTriple().empty())
+      TheTriple.setTriple(sys::getDefaultTargetTriple());
+
+    std::string Error;
+    TheTarget =
+        TargetRegistry::lookupTarget(codegen::getMArch(), TheTriple, Error);
+    if (!TheTarget) {
+      WithColor::error(errs(), argv[0]) << Error << "\n";
+      exit(1);
+    }
+
+    InitializeOptions(TheTriple);
+    Target = std::unique_ptr<TargetMachine>(TheTarget->createTargetMachine(
+        TheTriple, CPUStr, FeaturesStr, Options, RM, CM, OLvl));
+    assert(Target && "Could not allocate target machine!");
+    setPGOOptions(*Target);
+    return Target->createDataLayout().getStringRepresentation();
+  };
+
+  // Only two supported input shapes: an empty input (synthesize an empty
+  // Prototype from -mtriple) or a .luthier file.
   if (InputFilename.empty()) {
     if (TargetTriple.empty()) {
       WithColor::error(errs(), argv[0])
@@ -627,80 +640,22 @@ static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &PluginList,
         TheTriple, CPUStr, FeaturesStr, Options, RM, CM, OLvl));
     assert(Target && "Could not allocate target machine!");
     setPGOOptions(*Target);
-    M = std::make_unique<Module>("", Context);
-    M->setTargetTriple(TheTriple);
-    M->setDataLayout(Target->createDataLayout());
-  }
 
-  // If user just wants to list available options, skip module loading
-  else if (!SkipModule) {
-    auto SetDataLayout = [&](StringRef DataLayoutTargetTriple,
-                             StringRef OldDLStr) -> std::optional<std::string> {
-      // If we are supposed to override the target triple, do so now.
-      std::string IRTargetTriple = DataLayoutTargetTriple.str();
-      if (!TargetTriple.empty())
-        IRTargetTriple = Triple::normalize(TargetTriple);
-      TheTriple = Triple(IRTargetTriple);
-      if (TheTriple.getTriple().empty())
-        TheTriple.setTriple(sys::getDefaultTargetTriple());
-
-      std::string Error;
-      TheTarget =
-          TargetRegistry::lookupTarget(codegen::getMArch(), TheTriple, Error);
-      if (!TheTarget) {
-        WithColor::error(errs(), argv[0]) << Error << "\n";
-        exit(1);
-      }
-
-      InitializeOptions(TheTriple);
-      Target = std::unique_ptr<TargetMachine>(TheTarget->createTargetMachine(
-          TheTriple, CPUStr, FeaturesStr, Options, RM, CM, OLvl));
-      assert(Target && "Could not allocate target machine!");
-
-      // Set PGO options based on command line flags
-      setPGOOptions(*Target);
-
-      return Target->createDataLayout().getStringRepresentation();
-    };
-    if (InputLanguage == "mir" ||
-        (InputLanguage == "" && StringRef(InputFilename).ends_with(".mir"))) {
-      MIR = createMIRParserFromFile(InputFilename, Err, Context,
-                                    setMIRFunctionAttributes);
-      if (MIR)
-        M = MIR->parseIRModule(SetDataLayout);
-    } else if (InputLanguage == "" &&
-               StringRef(InputFilename).ends_with(".luthier")) {
-      auto ParserOrErr = luthier::LuthierFileParser::create(InputFilename);
-      if (!ParserOrErr)
-        reportError(ParserOrErr.takeError(), InputFilename);
-      auto ResultOrErr = ParserOrErr->loadTargetModule(
-          Context, SetDataLayout, setMIRFunctionAttributes);
-      if (!ResultOrErr)
-        reportError(ResultOrErr.takeError(), InputFilename);
-      M = std::move(ResultOrErr->first);
-      MIR = std::move(ResultOrErr->second);
-    } else {
-      M = parseIRFile(InputFilename, Err, Context,
-                      ParserCallbacks(SetDataLayout));
-    }
-    if (!M) {
-      Err.print(argv[0], WithColor::error(errs(), argv[0]));
-      return 1;
-    }
-    if (!TargetTriple.empty())
-      M->setTargetTriple(Triple(Triple::normalize(TargetTriple)));
-
-    std::optional<CodeModel::Model> CM_IR = M->getCodeModel();
-    if (!CM && CM_IR)
-      Target->setCodeModel(*CM_IR);
-    if (std::optional<uint64_t> LDT = codegen::getExplicitLargeDataThreshold())
-      Target->setLargeDataThreshold(*LDT);
-  } else {
+    auto TargetM = std::make_unique<Module>("", Context);
+    TargetM->setTargetTriple(TheTriple);
+    TargetM->setDataLayout(Target->createDataLayout());
+    auto IModuleM =
+        std::make_unique<Module>("luthier-instrumentation", Context);
+    IModuleM->setTargetTriple(TheTriple);
+    IModuleM->setDataLayout(Target->createDataLayout());
+    IP = std::make_unique<luthier::Prototype>(std::move(TargetM),
+                                              std::move(IModuleM));
+  } else if (SkipModule) {
+    // -mcpu=help / -mattr=help: don't parse the module.
     TheTriple = Triple(Triple::normalize(TargetTriple));
     if (TheTriple.getTriple().empty())
       TheTriple.setTriple(sys::getDefaultTargetTriple());
 
-    // Get the target specific parser.
     std::string Error;
     TheTarget =
         TargetRegistry::lookupTarget(codegen::getMArch(), TheTriple, Error);
@@ -708,22 +663,41 @@ static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &PluginList,
       WithColor::error(errs(), argv[0]) << Error << "\n";
       return 1;
     }
-
     InitializeOptions(TheTriple);
     Target = std::unique_ptr<TargetMachine>(TheTarget->createTargetMachine(
         TheTriple, CPUStr, FeaturesStr, Options, RM, CM, OLvl));
     assert(Target && "Could not allocate target machine!");
-
-    // Set PGO options based on command line flags
     setPGOOptions(*Target);
-
-    // If we don't have a module then just exit now. We do this down
-    // here since the CPU/Feature help is underneath the target machine
-    // creation.
     return 0;
+  } else if (StringRef(InputFilename).ends_with(".luthier")) {
+    if (auto Err =
+            luthier::LuthierFileParser::create(InputFilename).moveInto(Parser))
+      reportError(std::move(Err), InputFilename);
+
+    if (auto Err = Parser
+                       ->loadPrototype(Context, SetDataLayout,
+                                       setMIRFunctionAttributes)
+                       .moveInto(IP))
+      reportError(std::move(Err), InputFilename);
+
+    if (!TargetTriple.empty())
+      IP->getTargetModule().setTargetTriple(
+          Triple(Triple::normalize(TargetTriple)));
+
+    std::optional<CodeModel::Model> CM_IR =
+        IP->getTargetModule().getCodeModel();
+    if (!CM && CM_IR)
+      Target->setCodeModel(*CM_IR);
+    if (std::optional<uint64_t> LDT = codegen::getExplicitLargeDataThreshold())
+      Target->setLargeDataThreshold(*LDT);
+  } else {
+    WithColor::error(errs(), argv[0])
+        << "unsupported input file '" << InputFilename
+        << "': expected a '.luthier' file or no input\n";
+    return 1;
   }
 
-  assert(M && "Should have exited if we didn't have a module!");
+  assert(IP && "should have constructed an Prototype above");
   if (codegen::getFloatABIForCalls() != FloatABI::Default)
     Target->Options.FloatABIType = codegen::getFloatABIForCalls();
 
@@ -738,6 +712,8 @@ static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &PluginList,
   // Return a copy of the output filename via the output param
   OutputFilename = Out->outputFilename();
 
+  bool EmitLuthierFile = StringRef(Out->outputFilename()).ends_with(".luthier");
+
   // Tell target that this tool is not necessarily used with argument ABI
   // compliance (i.e. narrow integer argument extensions).
   Target->Options.VerifyArgABICompliance = 0;
@@ -751,32 +727,22 @@ static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &PluginList,
       reportError(EC.message(), SplitDwarfOutputFile);
   }
 
-  // Add an appropriate TargetLibraryInfo pass for the module's triple.
-  TargetLibraryInfoImpl TLII(M->getTargetTriple(), Target->Options.VecLib);
+  // Add an appropriate TargetLibraryInfo pass for the target module's triple.
+  TargetLibraryInfoImpl TLII(IP->getTargetModule().getTargetTriple(),
+                             Target->Options.VecLib);
 
   // The -disable-simplify-libcalls flag actually disables all builtin optzns.
   if (DisableSimplifyLibCalls)
     TLII.disableAllFunctions();
 
-  // Verify module immediately to catch problems before doInitialization() is
-  // called on any passes.
-  if (!NoVerify && verifyModule(*M, &errs()))
+  // Verify target module immediately to catch problems before
+  // doInitialization() is called on any passes.
+  if (!NoVerify && verifyModule(IP->getTargetModule(), &errs()))
     reportError("input module cannot be verified", InputFilename);
 
   // Override function attributes based on CPUStr, FeaturesStr, and command line
   // flags.
-  codegen::setFunctionAttributes(*M, CPUStr, FeaturesStr);
-
-  for (auto &Plugin : PluginList) {
-    CodeGenFileType CGFT = codegen::getFileType();
-    if (Plugin.invokePreCodeGenCallback(*M, *Target, CGFT, Out->os())) {
-      // TODO: Deduplicate code with below and the NewPMDriver.
-      if (Context.getDiagHandlerPtr()->HasErrors)
-        exit(1);
-      Out->keep();
-      return 0;
-    }
-  }
+  codegen::setFunctionAttributes(IP->getTargetModule(), CPUStr, FeaturesStr);
 
   if (mc::getExplicitRelaxAll() &&
       codegen::getFileType() != CodeGenFileType::ObjectFile)
@@ -789,161 +755,256 @@ static int compileModule(char **argv, SmallVectorImpl<PassPlugin> &PluginList,
   else if (VerifyEach)
     VK = VerifierKind::EachPass;
 
-  if (EnableNewPassManager || !PassPipeline.empty()) {
-    return compileModuleWithNewPM(argv[0], std::move(M), std::move(MIR),
-                                  std::move(Target), std::move(Out),
-                                  std::move(DwoOut), Context, PluginList, TLII,
-                                  VK, PassPipeline, codegen::getFileType());
+  CodeGenFileType FileType = codegen::getFileType();
+  StringRef Arg0 = argv[0];
+
+  if (!PassPipeline.empty() && TargetPassConfig::hasLimitedCodeGenPipeline()) {
+    WithColor::error(errs(), Arg0)
+        << "--passes cannot be used with "
+        << TargetPassConfig::getLimitedCodeGenPipelineReason() << ".\n";
+    return 1;
   }
 
-  // Build up all of the passes that we want to do to the module.
-  legacy::PassManager PM;
-  PM.add(new TargetLibraryInfoWrapperPass(TLII));
-  PM.add(new RuntimeLibraryInfoWrapper(
-      M->getTargetTriple(), Target->Options.ExceptionModel,
-      Target->Options.FloatABIType, Target->Options.EABIVersion,
-      Options.MCOptions.ABIName, Target->Options.VecLib));
+  raw_pwrite_stream *OS = &Out->os();
 
-  {
-    raw_pwrite_stream *OS = &Out->os();
+  std::unique_ptr<buffer_ostream> BOS;
+  if (!EmitLuthierFile && FileType != CodeGenFileType::AssemblyFile &&
+      !Out->os().supportsSeeking()) {
+    BOS = std::make_unique<buffer_ostream>(Out->os());
+    OS = BOS.get();
+  }
 
-    // Manually do the buffering rather than using buffer_ostream,
-    // so we can memcmp the contents in CompileTwice mode
-    SmallVector<char, 0> Buffer;
-    std::unique_ptr<raw_svector_ostream> BOS;
-    if ((codegen::getFileType() != CodeGenFileType::AssemblyFile &&
-         !Out->os().supportsSeeking()) ||
-        CompileTwice) {
-      BOS = std::make_unique<raw_svector_ostream>(Buffer);
-      OS = BOS.get();
-    }
+  CGPassBuilderOption Opt = getCGPassBuilderOption();
+  Opt.DisableVerify = VK != VerifierKind::InputOutput;
+  Opt.DebugPM = DebugPM;
+  Opt.RegAlloc = RegAlloc;
 
-    const char *argv0 = argv[0];
-    MachineModuleInfoWrapperPass *MMIWP =
-        new MachineModuleInfoWrapperPass(Target.get());
+  MachineModuleInfo MMI(Target.get());
 
-    // Set a temporary diagnostic handler. This is used before
-    // MachineModuleInfoWrapperPass::doInitialization for features like -M.
-    bool HasMCErrors = false;
-    MCContext &MCCtx = MMIWP->getMMI().getContext();
-    MCCtx.setDiagnosticHandler([&](const SMDiagnostic &SMD, bool IsInlineAsm,
-                                   const SourceMgr &SrcMgr,
-                                   std::vector<const MDNode *> &LocInfos) {
-      WithColor::error(errs(), argv0) << SMD.getMessage() << '\n';
-      HasMCErrors = true;
+  PassInstrumentationCallbacks PIC;
+  StandardInstrumentations SI(Context, Opt.DebugPM,
+                              VK == VerifierKind::EachPass);
+  registerCodeGenCallback(PIC, *Target);
+
+  luthier::InstrumentationPassBuilder PB(*Target, PipelineTuningOptions(),
+                                         std::nullopt, &PIC);
+
+
+  // Each of the prototype's two modules gets its own set of managers. Sharing
+  // one set is what let a pass over the instrumentation module clear the target
+  // module's cached MachineFunctionAnalysis results: LLVM's per-module proxies
+  // clear the inner manager they reach wholesale whenever a module pass does not
+  // preserve them (FunctionAnalysisManagerModuleProxy::Result::invalidate in
+  // PassManager.cpp), and a nested llvm::ModulePassManager re-invalidates after
+  // every pass it runs.
+  //
+  // Declaration order matters and must run innermost -> outermost, because
+  // destruction runs in reverse and a proxy Result's destructor calls clear() on
+  // the managers it proxies. An outer manager therefore has to be destroyed
+  // *before* every manager it proxies, or the proxy result's destructor writes
+  // into a freed AnalysisManager. PAM is the outermost of all (it proxies both
+  // modules' MAM, FAM and MFAM), so it goes last; each MAM proxies its own FAM
+  // and MFAM, so it goes after them. This mirrors the LAM/FAM/CGAM/MAM ordering
+  // LLVM's own tools use.
+  LoopAnalysisManager TargetLAM, ILAM;
+  FunctionAnalysisManager TargetFAM, IFAM;
+  CGSCCAnalysisManager TargetCGAM, ICGAM;
+  MachineFunctionAnalysisManager TargetMFAM, IMFAM;
+  ModuleAnalysisManager TargetMAM, IMAM;
+  luthier::PrototypeAnalysisManager PAM;
+
+  const luthier::InstrumentationPassBuilder::ModuleAnalysisManagers TargetAMs{
+      TargetMAM, TargetCGAM, TargetFAM, TargetLAM, TargetMFAM};
+  const luthier::InstrumentationPassBuilder::ModuleAnalysisManagers IAMs{
+      IMAM, ICGAM, IFAM, ILAM, IMFAM};
+
+  // Owns the Module -> Prototype mapping ParentPrototypeAnalysis serves. It has
+  // to outlive the pipeline, and the prototype is registered into it once the
+  // prototype's modules are final (see below, just before IPPM.run).
+  static luthier::ModuleToPrototypeMap ParentPrototypeMap;
+
+  for (const auto &Plugin : PluginList)
+    Plugin.registerPrototypePassBuilderCallback(PB);
+
+  PB.registerPrototypeAnalyses(PAM);
+  PB.registerAnalyses(TargetAMs);
+  PB.registerAnalyses(IAMs);
+  PB.crossRegisterProxies(PAM, TargetAMs, IAMs);
+  // StandardInstrumentations takes a single ModuleAnalysisManager, used only by
+  // its optional debug instrumentation. The instrumentation module is where the
+  // heavy pipelines run, so it is the one worth wiring up.
+  SI.registerCallbacks(PIC, &IMAM);
+
+  // Everything below is registered on both modules' managers: a module analysis
+  // is resolved out of the manager belonging to the module it is asked about.
+  // The single MMI is deliberately shared -- it owns the MCContext the
+  // MachineFunctions of both modules are created against.
+  for (FunctionAnalysisManager *F : {&TargetFAM, &IFAM})
+    F->registerPass([&] { return TargetLibraryAnalysis(TLII); });
+
+  for (ModuleAnalysisManager *M : {&TargetMAM, &IMAM}) {
+    M->registerPass([&] {
+      const TargetOptions &Opts = Target->Options;
+      return RuntimeLibraryAnalysis(IP->getTargetModule().getTargetTriple(),
+                                    Target->Options.ExceptionModel,
+                                    Target->Options.FloatABIType,
+                                    Target->Options.EABIVersion,
+                                    Opts.MCOptions.ABIName,
+                                    Target->Options.VecLib);
+    });
+    M->registerPass([&] { return LibcallLoweringModuleAnalysis(); });
+    M->registerPass([&] { return MachineModuleAnalysis(MMI); });
+
+    // The initial entry/execution points are read from target-module
+    // metadata stamped by MockLoadAMDGPUCodeObjects, so these analyses take
+    // no resolver and know nothing about the mock loader.
+    M->registerPass([]() { return luthier::InitialEntryPointAnalysis(); });
+    M->registerPass([]() { return luthier::InitialExecutionPointAnalysis(); });
+    M->registerPass([]() {
+      return luthier::MemoryAllocationAnalysis(std::move(
+          std::make_unique<luthier::MockLoaderMemoryAccessor>(*Loader)));
     });
 
-    // Construct a custom pass pipeline that starts after instruction
-    // selection.
-    if (!getRunPassNames().empty()) {
-      if (!MIR) {
-        WithColor::error(errs(), argv[0])
-            << "run-pass is for .mir file only.\n";
-        delete MMIWP;
-        return 1;
-      }
-      TargetPassConfig *PTPC = Target->createPassConfig(PM);
-      TargetPassConfig &TPC = *PTPC;
-      if (TPC.hasLimitedCodeGenPipeline()) {
-        WithColor::error(errs(), argv[0])
-            << "run-pass cannot be used with "
-            << TPC.getLimitedCodeGenPipelineReason() << ".\n";
-        delete PTPC;
-        delete MMIWP;
-        return 1;
-      }
+    M->registerPass(
+        []() { return luthier::ParentPrototypeAnalysis(ParentPrototypeMap); });
 
-      TPC.setDisableVerify(NoVerify);
-      PM.add(&TPC);
-      PM.add(MMIWP);
-      TPC.printAndVerify("");
-      for (const std::string &RunPassName : getRunPassNames()) {
-        if (addPass(PM, argv0, RunPassName, TPC))
-          return 1;
-      }
-      TPC.setInitialized();
-      PM.add(createPrintMIRPass(*OS));
+    M->registerPass([]() { return luthier::CodeObjectManagerAnalysis(); });
+    M->registerPass([]() { return luthier::MockAMDGPULoaderAnalysis(*Loader); });
 
-      // Add MIR2Vec vocabulary printer if requested
-      if (PrintMIR2VecVocab) {
-        PM.add(createMIR2VecVocabPrinterLegacyPass(errs()));
-      }
+    // Intrinsic-lowering passes (ProcessIntrinsicsAtIRLevelPass,
+    // IntrinsicMIRLoweringPass) query this to find the processor for each
+    // luthier:: intrinsic call. The registry's default constructor installs the
+    // built-ins from IntrinsicRegistry.def; it has to outlive the pipeline, so
+    // it is function-local static rather than a captured local.
+    M->registerPass([]() -> luthier::IntrinsicsProcessorsAnalysis {
+      static luthier::IntrinsicProcessorRegistry IntrinsicRegistry;
+      return luthier::IntrinsicsProcessorsAnalysis(IntrinsicRegistry);
+    });
+  }
 
-      // Add MIR2Vec printer if requested
-      if (PrintMIR2Vec) {
-        PM.add(createMIR2VecPrinterLegacyPass(errs()));
-      }
+  PB.registerPipelineParsingCallback(
+      [&](llvm::StringRef Name, llvm::ModulePassManager &MPM,
+          llvm::ArrayRef<llvm::PassBuilder::PipelineElement>) {
+        if (Name == "luthier-asm-printer") {
+          MPM.addPass(luthier::NewPMAsmPrinter(
+              llvm::CodeGenFileType::AssemblyFile, llvm::outs(), false));
+          return true;
+        }
+        if (Name == "luthier-mock-load-amdgpu-code-objects") {
+          MPM.addPass(luthier::MockLoadAMDGPUCodeObjects(MockLoaderOptions));
+          return true;
+        };
+        if (Name == "luthier-amdgpu-mock-loader-printer") {
+          MPM.addPass(luthier::AMDGPUMockLoaderPrinter(llvm::outs()));
+          return true;
+        };
+        if (Name == "injected-payload-side-effects-printer") {
+          MPM.addPass(llvm::createModuleToFunctionPassAdaptor(
+              luthier::InjectedPayloadSideEffectsPrinterPass(llvm::outs())));
+          return true;
+        }
+        // Takes an output stream, so llvm::PassBuilder cannot construct it from
+        // a bare name. Registered here so a pipeline can ask for MIR output
+        // (paired with machine-function(print)) without -filetype=null.
+        if (Name == "print-mir-prepare") {
+          MPM.addPass(PrintMIRPreparePass(llvm::outs()));
+          return true;
+        }
+        return false;
+      });
 
-      PM.add(createFreeMachineFunctionPass());
-    } else {
-      if (Target->addPassesToEmitFile(PM, *OS, DwoOut ? &DwoOut->os() : nullptr,
-                                      codegen::getFileType(), NoVerify,
-                                      MMIWP)) {
-        if (!HasMCErrors)
-          reportError("target does not support generation of this file type");
-      }
-
-      // Add MIR2Vec vocabulary printer if requested
-      if (PrintMIR2VecVocab) {
-        PM.add(createMIR2VecVocabPrinterLegacyPass(errs()));
-      }
-
-      // Add MIR2Vec printer if requested
-      if (PrintMIR2Vec) {
-        PM.add(createMIR2VecPrinterLegacyPass(errs()));
-      }
+  // Prototype-level passes that need constructor arguments, and so cannot be
+  // listed in LuthierPassRegistry.def's PROTOTYPE_PASS block.
+  PB.registerPipelineParsingCallback([](llvm::StringRef Name,
+                                        luthier::PrototypePassManager &PPM,
+                                        bool IsTarget) {
+    if (IsTarget)
+      return false;
+    if (Name.trim() == "prototype-callgraph-printer") {
+      PPM.addPass(luthier::PrototypeCallGraphPrinter(llvm::outs()));
+      return true;
     }
+    return false;
+  });
 
-    Target->getObjFileLowering()->Initialize(MMIWP->getMMI().getContext(),
-                                             *Target);
-    if (MIR) {
-      assert(MMIWP && "Forgot to create MMIWP?");
-      if (MIR->parseMachineFunctions(*M, MMIWP->getMMI()))
-        return 1;
-    }
+  luthier::PrototypePassManager IPPM;
 
-    // Before executing passes, print the final values of the LLVM options.
-    cl::PrintOptionValues();
+  if (!PassPipeline.empty()) {
 
-    // If requested, run the pass manager over the same module again,
-    // to catch any bugs due to persistent state in the passes. Note that
-    // opt has the same functionality, so it may be worth abstracting this out
-    // in the future.
-    SmallVector<char, 0> CompileTwiceBuffer;
-    if (CompileTwice) {
-      std::unique_ptr<Module> M2(llvm::CloneModule(*M));
-      PM.run(*M2);
-      CompileTwiceBuffer = Buffer;
-      Buffer.clear();
-    }
-
-    PM.run(*M);
-
-    if (Context.getDiagHandlerPtr()->HasErrors || HasMCErrors)
+    if (auto Err = PB.parsePipeline(IPPM, PassPipeline)) {
+      logAllUnhandledErrors(std::move(Err), errs(), "error: ");
       return 1;
-
-    // Compare the two outputs and make sure they're the same
-    if (CompileTwice) {
-      if (Buffer.size() != CompileTwiceBuffer.size() ||
-          (memcmp(Buffer.data(), CompileTwiceBuffer.data(), Buffer.size()) !=
-           0)) {
-        errs()
-            << "Running the pass manager twice changed the output.\n"
-               "Writing the result of the second run to the specified output\n"
-               "To generate the one-run comparison binary, just run without\n"
-               "the compile-twice option\n";
-        Out->os() << Buffer;
-        Out->keep();
-        return 1;
-      }
     }
 
-    if (BOS) {
-      Out->os() << Buffer;
+    if (!EmitLuthierFile) {
+      // The user's -passes covers pipeline shape; append a MIR/AsmPrinter
+      // tail so the tool still produces the requested .s / .o output.
+      ModulePassManager TargetMPM;
+      TargetMPM.addPass(PrintMIRPreparePass(*OS));
+      MachineFunctionPassManager MFPM;
+      if (VK == VerifierKind::InputOutput)
+        MFPM.addPass(MachineVerifierPass());
+      MFPM.addPass(PrintMIRPass(*OS));
+      FunctionPassManager FPM;
+      FPM.addPass(createFunctionToMachineFunctionPassAdaptor(std::move(MFPM)));
+      TargetMPM.addPass(createModuleToFunctionPassAdaptor(std::move(FPM)));
+
+      PB.addTargetModulePass(IPPM, std::move(TargetMPM));
+    }
+  } else if (!EmitLuthierFile) {
+    /// TODO: Run the complete instrumentation pipeline here
+  }
+  // When EmitLuthierFile is set and -passes is empty, the driver runs no
+  // default pipeline: the tool re-emits the Prototype as-is.
+
+  if (PrintPipelinePasses) {
+    std::string PipelineStr;
+    raw_string_ostream PSO(PipelineStr);
+    IPPM.printPipeline(PSO, [&PIC](StringRef ClassName) {
+      auto PassName = PIC.getPassNameForClassName(ClassName);
+      return PassName.empty() ? ClassName : PassName;
+    });
+    outs() << PipelineStr << '\n';
+    return 0;
+  }
+
+  cl::PrintOptionValues();
+
+  if (Parser.has_value()) {
+    if (auto Err = Parser->loadMIR(*IP, PAM))
+      reportError(std::move(Err), InputFilename);
+  }
+
+  // Passes that only see one module — the machine-function passes
+  // InjectedPayloadPEIPass and SVAPhysVGPRPinPass — find their way back to the
+  // owning prototype through ParentPrototypeAnalysis. They read it with
+  // getCachedResult, so the result has to be materialized here rather than
+  // left to be computed lazily on first use.
+  ParentPrototypeMap.registerPrototype(*IP);
+  (void)IMAM.getResult<luthier::ParentPrototypeAnalysis>(
+      IP->getInstrumentationModule());
+  (void)TargetMAM.getResult<luthier::ParentPrototypeAnalysis>(
+      IP->getTargetModule());
+
+  // InjectedPayloadPEIPass likewise requires a cached
+  // InjectedPayloadAndInstPointAnalysis: a machine-function pass has no way to
+  // compute a Prototype-level analysis itself. Materializing it up front is
+  // safe — a pipeline that goes on to add or remove payloads reports the
+  // analysis as not preserved, which drops this result.
+  (void)PAM.getResult<luthier::InjectedPayloadAndInstPointAnalysis>(*IP);
+
+  IPPM.run(*IP, PAM);
+
+  if (Context.getDiagHandlerPtr()->HasErrors)
+    return 1;
+
+  if (EmitLuthierFile) {
+    if (auto Err = luthier::writeLuthierFile(Out->os(), *IP, PAM)) {
+      logAllUnhandledErrors(std::move(Err), errs(), "error: ");
+      return 1;
     }
   }
 
-  // Declare success.
   Out->keep();
   if (DwoOut)
     DwoOut->keep();

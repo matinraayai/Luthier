@@ -14,9 +14,9 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file TargetModulePatcherPass.h
-/// Master pass that patches the IModule into the target module to produce
-/// a fully-instrumented target code. Runs as the final IModule legacy
-/// ModulePass. This pass consists of two stages:
+/// Prototype-level master pass that patches the IModule into the
+/// target module to produce a fully-instrumented target code. Runs as the
+/// final Prototype pass. This pass consists of two stages:
 ///
 /// - **SVA Setup & Storage Code Emission**:
 ///   - For the initial-entry-point kernel: emit the SVA-setup sequence
@@ -40,41 +40,28 @@
 ///     emitted after the host function. Once all outlined payloads are
 ///     placed, walk the s_branches and relax any whose displacement
 ///     exceeds the s_branch limit to `s_setpc_b64`-via-scavenged-SGPRs,
-///     using IModuleIPPredicatedLivenessAnalysis::getPMBBLiveIns and,
+///     using IPPredicatedLivenessAnalysis::getPMBBLiveIns and,
 ///     as a last resort, two free SVA lanes from
 ///     `StateValueArraySpecs::findLowestFreeLanes`.
-///   - The pass MUST NOT invalidate the target MAM between phases —
-///     SVStorageAndLoadLocations, IModuleIPPredicatedLivenessAnalysis,
-///     and FunctionPreambleDescriptorAnalysis must all remain queryable
-///     in Phase B.
 ///
-/// Pipeline slot: very last legacy ModulePass on the IModule, after
-/// `injected-payload-pei` and `machine-passes`.
+/// Pipeline slot: very last Prototype-level pass, after
+/// `injected-payload-pei` and `machine-passes` have finished lowering the
+/// instrumentation module's MIR.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_TARGET_MODULE_PATCHER_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_TARGET_MODULE_PATCHER_PASS_H
-#include "luthier/ToolCodeGen/LegacyPassSupport.h"
-#include <llvm/Pass.h>
+#include "luthier/ToolCodeGen/Prototype.h"
+#include <llvm/IR/PassManager.h>
 
 namespace luthier {
 
-class TargetModulePatcherPass;
-
-LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(TargetModulePatcherPass);
-
-class TargetModulePatcherPass : public llvm::ModulePass {
+class TargetModulePatcherPass
+    : public llvm::PassInfoMixin<TargetModulePatcherPass> {
 public:
-  static char ID;
+  TargetModulePatcherPass() = default;
 
-  TargetModulePatcherPass() : llvm::ModulePass(ID) {}
-
-  [[nodiscard]] llvm::StringRef getPassName() const override {
-    return "Luthier Target Module Patcher Pass";
-  }
-
-  bool runOnModule(llvm::Module &IModule) override;
-
-  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
+  llvm::PreservedAnalyses run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

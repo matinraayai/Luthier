@@ -1,5 +1,5 @@
 // Verifies that InjectedPayloadPreserveLiveRegsPass — fed by
-// IModuleIPPredicatedLivenessAnalysis — emits at least one
+// IPPredicatedLivenessAnalysis — emits at least one
 // COPY-from-physreg in the generated payload's entry block, because the
 // payload is attached to the kernel's first MI where kernarg-preloaded
 // SGPRs (and the workitem-id VGPR) are live but unused by the payload.
@@ -17,7 +17,6 @@
 // RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx908 -filetype=obj %s -o %t.o && \
 // RUN: ld.lld -shared --unresolved-symbols=ignore-all -o %t %t.o && \
 // RUN: luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx908 \
-// RUN:    -load-pass-plugin=%luthier_tool_code_gen_plugin \
 // RUN:    %luthier_mock_injection_plugin \
 // RUN:    -passes=luthier-mock-load-amdgpu-code-objects,luthier-code-discovery,luthier-apply-instrumentation \
 // RUN:    -code-object-paths=%t \
@@ -26,7 +25,7 @@
 // RUN:    -imodule-path=%luthier_test_imodule_dir/TrivialCounter-gfx908.ll \
 // RUN:    -imodule-output=%t.mir \
 // RUN:    -imodule-ir-passes=luthier-mock-inject-at-function-entry,luthier-process-intrinsics-at-ir-level \
-// RUN:    '-imodule-mir-passes=isel,mir-lowering,injected-payload-accessed-regs,imodule-ip-pred-liveness,payload-preserve-live-regs' \
+// RUN:    '-imodule-mir-passes=isel,mir-lowering,injected-payload-accessed-regs,ip-pred-liveness,payload-preserve-live-regs' \
 // RUN:    -o /dev/null && \
 // RUN: FileCheck %s < %t.mir
 

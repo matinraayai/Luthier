@@ -22,6 +22,7 @@
 #define LUTHIER_INTRINSIC_INTRINSICS_H
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include <llvm/MC/MCRegister.h>
+#include <type_traits>
 
 namespace luthier {
 
@@ -30,67 +31,73 @@ namespace luthier {
 /// noinline attribute as  well as a \c LUTHIER_INTRINSIC_ATTRIBUTE attribute
 /// to be recognized by Luthier as an intrinsic
 #define LUTHIER_INTRINSIC_ANNOTATE                                             \
-  __attribute__((device,                                                       \
-                 annotate(LUTHIER_STRINGIFY(LUTHIER_INTRINSIC_ATTRIBUTE))))
+  extern __attribute__((                                                       \
+      device, annotate(LUTHIER_STRINGIFY(LUTHIER_INTRINSIC_ATTRIBUTE))))
 
 #if defined(__HIPCC__)
 
-/// \brief Macro to use to prevent the compiler from optimizing a code region
-/// away
-/// \details This macro places an empty volatile inline assembly with "memory"
-/// side-effects to prevent the compiler from dead-code eliminating a basic
-/// block
-#define LUTHIER_DONT_OPTIMIZE __asm__ __volatile__("" : : : "memory");
+namespace detail {
 
-/// \brief Macro to use on all values involved in an intrinsic device
-/// binding, to prevent their elimination from the binding prototype by the
-/// compiler
-/// \details This macro places an empty volatile inline assembly with
-/// the arbitrary constraint on the passed <tt>Value</t>>, which will prevent
-/// the compiler from optimizing it away
-/// \note These operations will not show up in the IR of a Luthier device
-/// module, as the body of Luthier intrinsic bindings are removed at the end of
-/// the LLVM IR pipeline
-/// \param Value the L-value to prevent optimization on
+/// \brief Type trait admitting any scalar type that can be held in one or more
+/// AMD GPU general-purpose registers:
+///   - integral types (\c bool, \c int8_t / \c uint8_t, ..., \c int64_t /
+///     \c uint64_t) covered by \c std::is_integral_v
+///   - floating point types (\c float, \c double, and — where recognized by
+///     the standard library — \c _Float16) covered by \c
+///     std::is_floating_point_v
+///   - \c _Float16 and \c __bf16 half-precision extensions used by HIP fp16 /
+///     bf16 headers (these are not always caught by \c
+///     std::is_floating_point_v)
+///   - the AMDGPU built-in opaque type \c __amdgpu_buffer_rsrc_t, which is a
+///     128-bit buffer resource descriptor commonly held in an SGPR quad
 template <typename T>
-__attribute__((device, always_inline)) void doNotOptimize(T const &Value) {
-  __asm__ __volatile__("" : : "X"((void*)(&Value)) : "memory");
-}
+struct is_amdgpu_register_compatible
+    : std::integral_constant<
+          bool, std::is_integral_v<T> || std::is_floating_point_v<T> ||
+                    std::is_same_v<T, _Float16> || std::is_same_v<T, __bf16> ||
+                    std::is_same_v<T, __amdgpu_buffer_rsrc_t>> {};
+
+template <typename T>
+inline constexpr bool is_amdgpu_register_compatible_v =
+    is_amdgpu_register_compatible<T>::value;
+
+} // namespace detail
 
 /// \brief Intrinsic to read the value of a register
 /// \details The readReg intrinsic reads the value of the \p Reg and returns it
-/// \tparam T the return type of the output; Must be of integral type and be
-/// compatible with the size of \p Reg; For example reading \c
-/// llvm::AMDGPU::SGPR4_SGPR5 must return a <tt>uint64_t</tt>
+/// \tparam T the return type of the output; Must be a type that can be held
+/// in one or more AMD GPU registers (see
+/// \c detail::is_amdgpu_register_compatible): an integral type, a floating
+/// point type (including \c _Float16 / \c __bf16), or the AMDGPU built-in
+/// opaque type \c __amdgpu_buffer_rsrc_t. The size of \p T must match the
+/// size of \p Reg (for example, reading \c llvm::AMDGPU::SGPR4_SGPR5
+/// requires a 64-bit \p T such as \c uint64_t or \c double; reading a 128-bit
+/// SGPR quad can produce an \c __amdgpu_buffer_rsrc_t).
 /// \param Reg the ID of the register to be read; It will be removed during
-/// the IR processing stage from the IR; Must be a constant value,
-/// and the register must be at most 64-bit wide
+/// the IR processing stage from the IR; Must be a constant value
 /// \returns the value of the read register
-template <typename T, typename = std::enable_if_t<std::is_integral<T>::value>>
+template <typename T, typename = std::enable_if_t<
+                          detail::is_amdgpu_register_compatible_v<T>>>
 LUTHIER_INTRINSIC_ANNOTATE T readReg(llvm::MCRegister Reg);
 
 /// \brief Intrinsic to write the value of a register
 /// \details The writeReg intrinsic writes \p Val into the register named \p Reg
-/// \tparam T the type of value to be written output; Must be of integral type
-/// and be compatible with the size of \p Reg; For example writing to
-// \c llvm::AMDGPU::SGPR4_SGPR5 requires a <tt>uint64_t</tt> \p Val
-/// \param Reg the ID of the register to be read; It will be removed during
-/// the IR processing stage from the IR; Must be a constant value,
-/// and the register must be at most 64-bit wide
+/// \tparam T the type of value to be written; Must be a type that can be held
+/// in one or more AMD GPU registers (see
+/// \c detail::is_amdgpu_register_compatible): an integral type, a floating
+/// point type (including \c _Float16 / \c __bf16), or the AMDGPU built-in
+/// opaque type \c __amdgpu_buffer_rsrc_t. The size of \p T must match the
+/// size of \p Reg (for example, writing to \c llvm::AMDGPU::SGPR4_SGPR5
+/// requires a 64-bit \p Val such as \c uint64_t or \c double; writing a
+/// 128-bit SGPR quad can take an \c __amdgpu_buffer_rsrc_t).
+/// \param Reg the ID of the register to be written; It will be removed during
+/// the IR processing stage from the IR; Must be a constant value
 /// \param Val the value to write into the register
-template <typename T, typename = std::enable_if_t<std::is_integral<T>::value>>
+template <typename T, typename = std::enable_if_t<
+                          detail::is_amdgpu_register_compatible_v<T>>>
 LUTHIER_INTRINSIC_ANNOTATE void writeReg(llvm::MCRegister Reg, T Val);
 
 LUTHIER_INTRINSIC_ANNOTATE void writeExec(uint64_t Val);
-
-/// \return the address of the implicit argument segment
-LUTHIER_INTRINSIC_ANNOTATE uint32_t *implicitArgPtr();
-
-LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdX();
-
-LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdY();
-
-LUTHIER_INTRINSIC_ANNOTATE uint32_t workgroupIdZ();
 
 template <typename T,
           typename = std::enable_if_t<

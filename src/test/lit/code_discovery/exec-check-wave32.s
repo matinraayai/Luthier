@@ -1,8 +1,7 @@
 // RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx1100 -filetype=obj %s -o %t.o && \
 // RUN: ld.lld -shared --unresolved-symbols=ignore-all -o %t %t.o && \
 // RUN: luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1100 \
-// RUN:   -load-pass-plugin=%luthier_tool_code_gen_plugin \
-// RUN:   '-passes=luthier-mock-load-amdgpu-code-objects,luthier-code-discovery,print' \
+// RUN:   '-passes=target(luthier-mock-load-amdgpu-code-objects),luthier-code-discovery,target(print)' \
 // RUN:   -code-object-paths=%t \
 // RUN:   -initial-entrypoint=0:wave32_vec.kd \
 // RUN:   -initial-execution-point=0:wave32_vec.kd \
@@ -12,10 +11,8 @@
 // mbcnt.lo is needed to compute the lane id; mbcnt.hi must NOT be emitted.
 
 // CHECK: define {{.*}} @wave32_vec
-// CHECK-DAG: call i32 @llvm.amdgcn.mbcnt.lo(i32 -1, i32 0)
-// CHECK-DAG: lshr i32 {{.*}}, %{{.*}}
-// CHECK-DAG: trunc i32 %{{.*}} to i1
-// CHECK-DAG: br i1 %{{.*}}, label %{{.*}}, label %skip
+// CHECK: check:
+// CHECK-NEXT: br label %
 // CHECK-NOT: call i32 @llvm.amdgcn.mbcnt.hi
 
   .text

@@ -1,8 +1,7 @@
 // RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx1100 -filetype=obj %s -o %t.o && \
 // RUN: ld.lld -shared --unresolved-symbols=ignore-all -o %t %t.o && \
 // RUN: luthier-llc --disable-verify -mtriple=amdgcn-amd-amdhsa -mcpu=gfx1100 \
-// RUN:   -load-pass-plugin=%luthier_tool_code_gen_plugin \
-// RUN:   '-passes=luthier-mock-load-amdgpu-code-objects,luthier-code-discovery,print' \
+// RUN:   '-passes=target(luthier-mock-load-amdgpu-code-objects),luthier-code-discovery,target(print)' \
 // RUN:   -code-object-paths=%t \
 // RUN:   -initial-entrypoint=0:_Z6kernelv.kd \
 // RUN:   -initial-execution-point=0:_Z6kernelv.kd \
@@ -16,7 +15,7 @@
 //   - CodeDiscoveryPass rewrites the direct-call $simm16 from a 16-bit
 //     displacement to MO_GlobalAddress(callee Function) after the
 //     callgraph resolves the target.
-//   - MIRToIRTranslator's S_CALL_B64_sem emits:
+//   - TraceFunctionTranslator's S_CALL_B64_sem emits:
 //       (a) a call to llvm.amdgcn.s.getpc that writes the return address
 //           (post-PC) into the $sdst register file (s[30:31] in this kernel);
 //       (b) a direct call to the resolved callee Function.

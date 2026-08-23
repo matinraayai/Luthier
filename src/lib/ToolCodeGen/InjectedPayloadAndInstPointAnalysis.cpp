@@ -13,75 +13,81 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file InjectedPayloadAndInstPointAnalysis.cpp
-/// This file implements the \c InjectedPayloadAndInstPointAnalysis class.
+/// \file
+/// Implements the \c InjectedPayloadAndInstPointAnalysis class.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
-#include "luthier/ToolCodeGen/WrapperAnalysisPasses.h"
+#include "luthier/ToolCodeGen/Prototype.h"
+#include <llvm/ADT/StringRef.h>
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
+#include <llvm/CodeGen/MachineOperand.h>
+#include <llvm/CodeGen/TargetOpcodes.h>
+#include <llvm/IR/Function.h>
 #include <llvm/IR/Module.h>
 
 #undef DEBUG_TYPE
 
-#define DEBUG_TYPE "luthier-generate-inst-ir"
+#define DEBUG_TYPE "luthier-injected-payload-and-inst-points"
 
 namespace luthier {
 
 bool InjectedPayloadAndInstPoint::invalidate(
-    llvm::Module &IModule, const llvm::PreservedAnalyses &PA,
-    llvm::ModuleAnalysisManager::Invalidator &Inv) {
-  /// Invalidates this cached result whenever \c
-  /// InjectedPayloadAndInstPointAnalysis is not preserved — i.e., whenever a
-  /// pass adds or removes injected payload functions from the IModule.
+    Prototype &P, const llvm::PreservedAnalyses &PA,
+    PrototypeAnalysisManager::Invalidator &Inv) {
+  // Because this is read from the inner machine-passes pipeline via
+  // PrototypeAnalysisManagerMachineFunctionProxy::getCachedResult,
+  // Model this as a stateless outer analysis
   auto PAC = PA.getChecker<InjectedPayloadAndInstPointAnalysis>();
-  return !PAC.preserved() &&
-         !PAC.preservedSet<llvm::AllAnalysesOn<llvm::Module>>();
+  return !PAC.preservedWhenStateless();
 }
 
 llvm::AnalysisKey InjectedPayloadAndInstPointAnalysis::Key;
 
 InjectedPayloadAndInstPointAnalysis::Result
-InjectedPayloadAndInstPointAnalysis::run(llvm::Module &IModule,
-                                         llvm::ModuleAnalysisManager &IMAM) {
+InjectedPayloadAndInstPointAnalysis::run(Prototype &P,
+                                         PrototypeAnalysisManager &PAM) {
   InjectedPayloadAndInstPoint Result;
 
-  // Get the target module and its machine module info.
-  auto &TargetAppResult =
-      IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule);
-  llvm::Module &TargetModule = TargetAppResult.getTargetAppModule();
-  llvm::ModuleAnalysisManager &TargetMAM = TargetAppResult.getTargetAppMAM();
+  llvm::Module &TargetModule = P.getTargetModule();
+  llvm::Module &IModule = P.getInstrumentationModule();
 
-  // Build a reverse map: pcsections MDNode* → MachineInstr* for all target MIs.
-  llvm::DenseMap<const llvm::MDNode *, llvm::MachineInstr *> PCSToMI;
-  for (llvm::Function &F : TargetModule) {
+  // Only the target module's MIR is walked below, so this is the target
+  // module's FunctionAnalysisManager.
+  llvm::FunctionAnalysisManager &FAM =
+      PAM.getResult<TargetFunctionAnalysisManagerPrototypeProxy>(P)
+          .getManager();
 
-    llvm::MachineFunctionAnalysis::Result *MFRes =
-        TargetMAM
-            .getResult<llvm::FunctionAnalysisManagerModuleProxy>(TargetModule)
-            .getManager()
-            .getCachedResult<llvm::MachineFunctionAnalysis>(F);
-    if (MFRes) {
-      for (llvm::MachineBasicBlock &MBB : MFRes->getMF()) {
-        for (llvm::MachineInstr &MI : MBB) {
-          if (llvm::MDNode *PCS = MI.getPCSections())
-            PCSToMI.insert({PCS, &MI});
-        }
-      }
-    }
+  // Index the instrumentation module's injected-payload definitions by name.
+  llvm::DenseMap<llvm::StringRef, llvm::Function *> PayloadDefsByName;
+  for (llvm::Function &F : IModule) {
+    if (F.hasFnAttribute(InjectedPayloadAttribute))
+      PayloadDefsByName[F.getName()] = &F;
   }
 
-  // Scan IModule functions for !luthier.target_instr_point metadata.
-  // Each such function is a collector (injected payload) whose metadata
-  // points to the pcsections MDNode of its target MI.
-  for (llvm::Function &F : IModule) {
-    llvm::MDNode *MD = F.getMetadata(TargetInstrPointAttr);
-    if (!MD)
+  // Walk the target module's MIR for PATCHPOINT markers
+  for (llvm::Function &F : TargetModule) {
+    llvm::MachineFunctionAnalysis::Result *MFRes =
+        FAM.getCachedResult<llvm::MachineFunctionAnalysis>(F);
+    if (!MFRes)
       continue;
-    if (auto It = PCSToMI.find(MD); It != PCSToMI.end())
-      Result.addEntry(*It->second, F);
+    for (llvm::MachineBasicBlock &MBB : MFRes->getMF()) {
+      for (llvm::MachineInstr &MI : MBB) {
+        if (MI.getOpcode() != llvm::TargetOpcode::PATCHPOINT)
+          continue;
+        const llvm::MachineOperand &TargetOp = MI.getOperand(2);
+        assert(TargetOp.isGlobal() &&
+               "Second operand must be the injected payload function name");
+        auto *ExternHandle = llvm::cast<llvm::Function>(
+            const_cast<llvm::GlobalValue *>(TargetOp.getGlobal()));
+        auto It = PayloadDefsByName.find(ExternHandle->getName());
+        assert(It != PayloadDefsByName.end() &&
+               "Payload extern decl doesn't have an associated definition");
+        Result.addEntry(MI, *It->second, *ExternHandle);
+      }
+    }
   }
 
   return Result;

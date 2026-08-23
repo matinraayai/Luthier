@@ -13,22 +13,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-///
-/// \file StateValueArraySpecs.h
-/// Defines the \c StateValueArraySpecs class used to set up and read named
-/// metadata used in a \c llvm::Module to express the specifications of the
-/// state value array used across all functions.
+/// \file
+/// Defines the \c StateValueArraySpecs class describing the SVA lane layout
+/// used across all functions of the instrumentation module, and the
+/// \c StateValueArraySpecsAnalysis that computes it by walking the IR of the
+/// instrumentation module for uses of \c luthier::readSVA .
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_STATE_VALUE_ARRAY_SPECS_H
 #define LUTHIER_TOOL_CODE_GEN_STATE_VALUE_ARRAY_SPECS_H
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
-#include <SIRegisterInfo.h>
+#include "luthier/ToolCodeGen/Prototype.h"
+#include <llvm/IR/PassManager.h>
 
 namespace llvm {
 class GCNSubtarget;
-}
+} // namespace llvm
 
 namespace luthier {
+
+class StateValueArraySpecsAnalysis;
 
 class StateValueArraySpecs {
   static constexpr uint8_t StackPointerRegSpillLane{0};
@@ -41,9 +44,11 @@ class StateValueArraySpecs {
 
   llvm::DenseMap<ScalarValueArgument, uint8_t> ScalarArguments{};
 
-  StateValueArraySpecs() = default;
+  friend class StateValueArraySpecsAnalysis;
 
 public:
+  StateValueArraySpecs() = default;
+
   [[nodiscard]] constexpr uint8_t getStackPointerRegSpillLane() const {
     return StackPointerRegSpillLane;
   }
@@ -102,12 +107,32 @@ public:
   [[nodiscard]] llvm::SmallVector<uint8_t, 4>
   findLowestFreeLanes(unsigned NumLanes, unsigned WaveSize) const;
 
-  static std::unique_ptr<StateValueArraySpecs>
-  getSVASpecs(const llvm::Module &M, const llvm::TargetMachine &TM);
+  bool invalidate(Prototype &, const llvm::PreservedAnalyses &PA,
+                  PrototypeAnalysisManager::Invalidator &);
+};
 
-  static std::unique_ptr<StateValueArraySpecs> setModuleSVASpec(
-      llvm::Module &M, const llvm::TargetMachine &TM,
-      const llvm::SmallDenseSet<ScalarValueArgument> &RequestedSVArgs);
+/// \brief Prototype-level analysis producing the \c StateValueArraySpecs
+/// for the instrumentation module.
+///
+/// \details The analysis walks every IR \c Function of the instrumentation
+/// module, finds \c luthier::readSVA call sites or inline assembly place
+/// holders, aggregates the requested \c ScalarValueArguments, and lays out the
+/// SVA lanes accordingly. When the target module's initial entry point is not a
+/// kernel, every SA is treated as used — the target is being instrumented from
+/// within an already-instrumented kernel, and the SVA has already been set up
+/// to preserve every SA.
+class StateValueArraySpecsAnalysis
+    : public llvm::AnalysisInfoMixin<StateValueArraySpecsAnalysis> {
+  friend llvm::AnalysisInfoMixin<StateValueArraySpecsAnalysis>;
+
+  static llvm::AnalysisKey Key;
+
+public:
+  StateValueArraySpecsAnalysis() = default;
+
+  using Result = StateValueArraySpecs;
+
+  Result run(Prototype &IP, PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

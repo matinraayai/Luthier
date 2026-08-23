@@ -21,19 +21,21 @@
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/Intrinsic/ReadReg.h"
+#include "luthier/Intrinsic/ReadSVA.h"
+#include "luthier/Intrinsic/WriteReg.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
 #include "luthier/ToolCodeGen/MIRConvenience.h"
-#include "luthier/ToolCodeGen/ProcessIntrinsicsAtIRLevelPass.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
-#include "luthier/ToolCodeGen/WrapperAnalysisPasses.h"
 #include <AMDGPU.h>
 #include <SIInstrInfo.h>
 #include <SIMachineFunctionInfo.h>
 #include <SIRegisterInfo.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
+#include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachineSSAUpdater.h>
 #include <llvm/CodeGen/SlotIndexes.h>
@@ -44,22 +46,17 @@
 
 namespace luthier {
 
-char IntrinsicMIRLoweringPass::ID = 0;
-
-LUTHIER_INITIALIZE_LEGACY_PASS_BODY(IntrinsicMIRLoweringPass, "mir-lowering",
-                                    "Intrinsic MIR lowering pass",
-                                    true /* Only looks at CFG */,
-                                    false /* Analysis Pass */)
-
 namespace {
 
 /// Decode the trailing register-operand args of an inline-asm MachineInstr
-/// into (Flag, Register) pairs. AsmString operands and other non-flag
-/// metadata operands are ignored; the iteration skips the register operands
-/// described by each flag's \c getNumOperandRegisters().
-llvm::SmallVector<std::pair<llvm::InlineAsm::Flag, llvm::Register>>
+/// into (Flag, MachineOperand) pairs. AsmString operands and other non-flag
+/// metadata operands are ignored.
+llvm::SmallVector<
+    std::pair<llvm::InlineAsm::Flag, const llvm::MachineOperand *>>
 getInlineAsmArgs(const llvm::MachineInstr &MI) {
-  llvm::SmallVector<std::pair<llvm::InlineAsm::Flag, llvm::Register>> Out;
+  llvm::SmallVector<
+      std::pair<llvm::InlineAsm::Flag, const llvm::MachineOperand *>>
+      Out;
   for (unsigned I = llvm::InlineAsm::MIOp_FirstOperand,
                 NumOps = MI.getNumOperands();
        I < NumOps; ++I) {
@@ -67,8 +64,7 @@ getInlineAsmArgs(const llvm::MachineInstr &MI) {
     if (!MO.isImm())
       continue;
     const llvm::InlineAsm::Flag F(MO.getImm());
-    const llvm::Register Reg(MI.getOperand(I + 1).getReg());
-    Out.emplace_back(F, Reg);
+    Out.emplace_back(F, &MI.getOperand(I + 1));
     I += F.getNumOperandRegisters();
   }
   return Out;
@@ -88,78 +84,18 @@ const llvm::TargetRegisterClass *getSGPRRegClassForLanes(unsigned NumLanes) {
   }
 }
 
-/// Lookup table: placeholder-key (the InlineAsm template string used as
-/// operand 0 of an INLINEASM MachineInstr) → (intrinsic-name, aux-MDNode).
-/// Aux may be \c nullptr if no aux was forwarded.
-struct PlaceholderInfo {
-  llvm::StringRef IntrinsicName;
-  llvm::MDNode *Aux;
-  IntrinsicISAStateEffects Effects;
-};
-using PlaceholderMap = llvm::DenseMap<llvm::StringRef, PlaceholderInfo>;
-
-/// Walk the module's \c !luthier.intrinsic.placeholders NamedMDNode and
-/// build a key → PlaceholderInfo map. Each NamedMD operand is a 3-tuple
-/// \c !{key, name, aux} written by \c ProcessIntrinsicsAtIRLevelPass.
-PlaceholderMap buildPlaceholderMap(const llvm::Module &IModule) {
-  PlaceholderMap Out;
-  const llvm::NamedMDNode *NamedMD =
-      IModule.getNamedMetadata(LuthierIntrinsicNamedMDName);
-  if (!NamedMD)
-    return Out;
-  for (const llvm::MDNode *Entry : NamedMD->operands()) {
-    if (!Entry || Entry->getNumOperands() < 3)
-      continue;
-    auto *KeyMD = llvm::dyn_cast<llvm::MDString>(Entry->getOperand(0));
-    auto *NameMD = llvm::dyn_cast<llvm::MDString>(Entry->getOperand(1));
-    if (!KeyMD || !NameMD)
-      continue;
-    auto *AuxMD = llvm::dyn_cast<llvm::MDNode>(Entry->getOperand(2));
-    // An empty aux MDNode means "no aux data"; surface it as nullptr to the
-    // processor, matching the prior pcsections behaviour.
-    if (AuxMD && AuxMD->getNumOperands() == 0)
-      AuxMD = nullptr;
-    const llvm::MDNode *EffNode =
-        Entry->getNumOperands() >= 4
-            ? llvm::dyn_cast<llvm::MDNode>(Entry->getOperand(3))
-            : nullptr;
-    Out.try_emplace(KeyMD->getString(),
-                    PlaceholderInfo{NameMD->getString(), AuxMD,
-                                    decodeIntrinsicISAStateEffects(EffNode)});
-  }
-  return Out;
-}
-
-/// Extract the placeholder key from an inline-asm MachineInstr. Returns an
-/// empty StringRef if the asm template is not a Luthier placeholder key.
-llvm::StringRef getPlaceholderKey(const llvm::MachineInstr &MI) {
-  if (MI.getNumOperands() == 0)
-    return {};
-  const llvm::MachineOperand &Op0 = MI.getOperand(0);
-  if (!Op0.isSymbol())
-    return {};
-  llvm::StringRef AsmStr(Op0.getSymbolName());
-  if (!AsmStr.starts_with(LuthierIntrinsicPlaceholderKeyPrefix))
-    return {};
-  return AsmStr;
-}
-
 } // namespace
-
-struct IntrinsicMIRLoweringPass::PlaceholderLookupTable {
-  PlaceholderMap Map;
-};
 
 bool IntrinsicMIRLoweringPass::processMachineFunction(
     llvm::MachineFunction &MF, bool IsInjectedPayload,
     const IntrinsicsProcessorsAnalysis::Result &IntrinsicsProcessors,
-    const PlaceholderLookupTable &Placeholders,
-    llvm::SmallDenseSet<ScalarValueArgument> &ScalarArgumentsUsed,
-    PerFunctionSVAInfo &MFSVAInfo) {
+    const StateValueArraySpecs &SVASpecs, PerFunctionSVAInfo &MFSVAInfo) {
   llvm::LLVMContext &Ctx = MF.getFunction().getContext();
   const llvm::TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
   const llvm::TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
   llvm::MachineRegisterInfo &MRI = MF.getRegInfo();
+  llvm::MachineFrameInfo &MFI = MF.getFrameInfo();
+  auto *SIMFI = MF.getInfo<llvm::SIMachineFunctionInfo>();
 
   /// Per-MF cache: SA -> wide vreg holding the SA's value. Returned vreg may
   /// be a single SGPR_32 (1-lane SAs) or a REG_SEQUENCE'd wide SGPR (multi
@@ -230,6 +166,57 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     return MFSVAInfo.SVAVGPRPlaceholder;
   };
 
+  /// Lazily allocate the two SGPRSpill FIs used to route readReg / writeReg
+  /// of SGPR32 / SGPR33 through the SVA. Both slots are allocated together
+  /// on first frame-reg access so that MFInfo->allocateSGPRSpillToVGPRLane's
+  /// monotonic NumVirtualVGPRSpillLanes counter deterministically lines them
+  /// up with SVA lanes 0 (StackPointerRegSpillLane) and 1
+  /// (FramePointerRegSSpillLane)
+  auto getOrAllocFrameLaneFI = [&](uint8_t Lane) -> int {
+    if (MFSVAInfo.FrameLaneFI.empty()) {
+      MFSVAInfo.FrameLaneFI.assign(2, /*sentinel=*/-1);
+      (void)getOrCreateSVAVGPRPlaceholder();
+      for (uint8_t L = 0; L < 2; ++L) {
+        int FI = MFI.CreateStackObject(/*Size=*/4, llvm::Align(4),
+                                       /*isSpillSlot=*/true);
+        MFI.setStackID(FI, llvm::TargetStackID::SGPRSpill);
+        if (!SIMFI->allocateSGPRSpillToVGPRLane(
+                MF, FI, /*SpillToPhysVGPRLane=*/false)) {
+          Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+              "Failed to allocate SGPR-to-VGPR-lane spill for frame-reg "
+              "SVA lane {0} in MF {1}",
+              L, MF.getName()))));
+          MFSVAInfo.FrameLaneFI.clear();
+          return -1;
+        }
+        MFSVAInfo.FrameLaneFI[L] = FI;
+      }
+    }
+    return MFSVAInfo.FrameLaneFI[Lane];
+  };
+
+  /// Returns the SVA lane for a frame reg read/written by an injected
+  /// payload, matching \c InjectedPayloadPEIPass /
+  /// \c SVAFrameLanes::getPayloadAppFrameSpillSlots convention: SGPR32
+  /// (the app's SP) is spilled to \c StackPointerRegSpillLane. \c PEI at
+  /// head does not spill SGPR33 (it uses \c FLAT_SCR_LO for the FP-analogue
+  /// on non-architected-FS targets), but readReg / writeReg on the frame
+  /// offset reg is still useful for symmetry; route it to
+  /// \c FramePointerRegSpillLane so the two frame lanes stay contiguous
+  /// and the SVA layout on that lane index is meaningful. Returns
+  /// \c std::nullopt if \p PhysReg is neither, or if this isn't an
+  /// injected payload.
+  auto getFrameSVALaneForPhysReg =
+      [&](llvm::MCRegister PhysReg) -> std::optional<uint8_t> {
+    if (!IsInjectedPayload)
+      return std::nullopt;
+    if (PhysReg == SIMFI->getStackPtrOffsetReg())
+      return SVASpecs.getStackPointerRegSpillLane();
+    if (PhysReg == SIMFI->getFrameOffsetReg())
+      return SVASpecs.getFramePointerRegSpillLane();
+    return std::nullopt;
+  };
+
   /// SVA scalar argument accessor: returns a virtual register holding the
   /// value of the requested scalar argument.
   ///
@@ -244,7 +231,6 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     if (CacheIt != SAResultCache.end())
       return CacheIt->second;
 
-    ScalarArgumentsUsed.insert(SA);
     (void)getOrCreateSVAVGPRPlaceholder();
 
     unsigned NumLanes = StateValueArraySpecs::getArgumentLaneSize(SA);
@@ -329,7 +315,7 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     // GetValueInMiddleOfBlock(MBB) queries on a successor MBB would
     // synthesize an IMPLICIT_DEF "undef" PHI source instead of using the
     // entry COPY, and the return-block restore would COPY the undef back —
-    // which would also make InjectedPayloadAccessedRegsAnalysis report a
+    // which would also make InjectedPayloadSideEffectsAnalysis report a
     // spurious Write on a phys-reg the payload only reads.
     It->getSecond()->AddAvailableValue(&EntryBlock, RootVirtReg);
     return {RootVirtReg, It->getSecond().get()};
@@ -482,20 +468,10 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
       if (!MI.isInlineAsm())
         continue;
 
-      // Recover the intrinsic identity from the placeholder's opaque key.
-      // The key is the InlineAsm template string (operand 0 of the
-      // INLINEASM MachineInstr), and survives SelectionDAG even though
-      // !pcsections does not. The Module's
-      // !luthier.intrinsic.placeholders NamedMD maps key -> (name, aux).
-      llvm::StringRef Key = getPlaceholderKey(MI);
-      if (Key.empty())
-        continue;
-      auto KeyIt = Placeholders.Map.find(Key);
-      if (KeyIt == Placeholders.Map.end())
-        continue;
-      llvm::StringRef IntrinsicName = KeyIt->second.IntrinsicName;
-      llvm::MDNode *IntrinsicPayload = KeyIt->second.Aux;
-      const IntrinsicISAStateEffects &Effects = KeyIt->second.Effects;
+      const llvm::MachineOperand &AsmStrOp =
+          MI.getOperand(llvm::InlineAsm::MIOp_AsmString);
+      const char *AsmStr = AsmStrOp.getSymbolName();
+      llvm::StringRef IntrinsicName(AsmStr);
 
       auto ArgVec = getInlineAsmArgs(MI);
 
@@ -503,61 +479,127 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
         return llvm::BuildMI(*MBB, MI, llvm::MIMetadata(MI), TII->get(Opcode));
       };
 
-      std::optional<IntrinsicProcessor> Processor =
-          IntrinsicsProcessors.getProcessorIfRegistered(IntrinsicName);
-      if (!Processor.has_value()) {
-        Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
-            llvm::formatv("Intrinsic processor for {0} was not found in the "
-                          "intrinsic processors.",
-                          IntrinsicName))));
-        return Changed;
-      }
+      bool isReadReg = IntrinsicName == "luthier::readReg";
+      bool isWriteReg = IntrinsicName == "luthier::writeReg";
+      bool isReadSVA = IntrinsicName == "luthier::readSVA";
 
-      // Pre-stage per-SA vregs from this placeholder's declared SVA reads.
-      llvm::DenseMap<ScalarValueArgument, llvm::Register> SVAVRegs;
-      for (ScalarValueArgument SA : Effects.ReadSVAs)
-        SVAVRegs[SA] = SVAScalarArgumentAccessor(SA);
-
-      // Pre-stage per-32-bit-channel vregs from this placeholder's declared
-      // phys-reg reads. Wide regs are decomposed channel-wise here so each
-      // intrinsic processor only sees 32-bit-channel keys uniformly.
-      llvm::DenseMap<llvm::MCRegister, llvm::Register> ReadPhysRegVRegs;
-      for (llvm::MCRegister Reg : Effects.ReadPhysRegs) {
-        unsigned RegSizeBits = TRI->getRegSizeInBits(Reg, MRI);
+      if (isReadReg || isWriteReg) {
+        // The physical register enum is passed as the immediate operand
+        // (ArgVec[1]); ArgVec[0] is the regdef output produced by the IR
+        // processor's setReturnValueInfo.
+        llvm::DenseMap<llvm::MCRegister, llvm::Register> ReadPhysRegVRegs;
+        llvm::MCRegister PhysReg(ArgVec[1].second->getImm());
+        unsigned RegSizeBits = TRI->getRegSizeInBits(PhysReg, MRI);
         unsigned NumChannels = std::max(1u, (RegSizeBits + 31) / 32);
-        if (RegSizeBits < 32) {
+        // Frame-reg fast path: readReg / writeReg of SP or FP inside an
+        // injected payload must go through the SVA fixed frame lanes
+        std::optional<uint8_t> FrameSVALane = getFrameSVALaneForPhysReg(PhysReg);
+        // Reads route through the SVA on the read side: allocate the FI
+        // lazily, materialize an SGPR_32 vreg via loadRegFromStackSlot at
+        // the entry-block insertion point, and hand it to the read processor
+        // in place of the usual COPY-from-physreg vreg. Writes are handled
+        // AFTER the write processor runs (below) so it can populate
+        // WritePhysRegSlots normally first — for writes, the fallthrough
+        // branches (getReadChannelVReg) are also skipped so we don't emit
+        // a stale COPY-from-physreg for the SSA-updater plumbing that only
+        // exists for the phys-reg preserve/restore contract, which does
+        // not apply to SP/FP (their epilogue restore is PEI's V_READLANE).
+        if (FrameSVALane) {
+          if (isReadReg) {
+            int FI = getOrAllocFrameLaneFI(*FrameSVALane);
+            if (FI < 0)
+              return Changed;
+            llvm::Register FrameVReg =
+                MRI.createVirtualRegister(&llvm::AMDGPU::SGPR_32RegClass);
+            TII->loadRegFromStackSlot(MF.front(), SVAInsertPt, FrameVReg, FI,
+                                      &llvm::AMDGPU::SReg_32RegClass,
+                                      /*VReg=*/{});
+            ReadPhysRegVRegs[PhysReg] = FrameVReg;
+          }
+          // For writes: leave ReadPhysRegVRegs empty for this channel —
+          // writeRegMIRProcessor's single-channel path doesn't consult it,
+          // and the frame-write side below emits SI_SPILL_S32_SAVE directly.
+        } else if (RegSizeBits < 32) {
           // Sub-32 reads are folded into the 32-bit super-register channel.
           const auto *SITRI = static_cast<const llvm::SIRegisterInfo *>(TRI);
-          llvm::MCRegister SuperReg = SITRI->get32BitRegister(Reg);
+          llvm::MCRegister SuperReg = SITRI->get32BitRegister(PhysReg);
           if (!ReadPhysRegVRegs.count(SuperReg))
             ReadPhysRegVRegs[SuperReg] =
                 getReadChannelVReg(SuperReg, MBB, MIBuilder);
-          continue;
-        }
-        for (unsigned I = 0; I < NumChannels; ++I) {
-          llvm::MCRegister Channel = Reg;
-          if (NumChannels > 1) {
-            unsigned SubIdx = llvm::SIRegisterInfo::getSubRegFromChannel(I);
-            Channel = TRI->getSubReg(Reg, SubIdx);
+        } else {
+          for (unsigned I = 0; I < NumChannels; ++I) {
+            llvm::MCRegister Channel = PhysReg;
+            if (NumChannels > 1) {
+              unsigned SubIdx = llvm::SIRegisterInfo::getSubRegFromChannel(I);
+              Channel = TRI->getSubReg(PhysReg, SubIdx);
+            }
+            if (!ReadPhysRegVRegs.count(Channel))
+              ReadPhysRegVRegs[Channel] =
+                  getReadChannelVReg(Channel, MBB, MIBuilder);
           }
-          if (!ReadPhysRegVRegs.count(Channel))
-            ReadPhysRegVRegs[Channel] =
-                getReadChannelVReg(Channel, MBB, MIBuilder);
+        }
+        if (isReadReg) {
+          if (auto Err = readRegMIRProcessor(
+                  MF, ArgVec, MIBuilder, VirtRegBuilder, ReadPhysRegVRegs)) {
+            Ctx.emitError(llvm::toString(std::move(Err)));
+            return Changed;
+          }
+        } else {
+          // The processor fills WritePhysRegSlots; the driver records each
+          // entry with the appropriate SSAUpdater after the processor returns.
+          llvm::DenseMap<llvm::MCRegister, llvm::Register> WritePhysRegSlots;
+          if (auto Err =
+                  writeRegMIRProcessor(MF, ArgVec, MIBuilder, VirtRegBuilder,
+                                       ReadPhysRegVRegs, WritePhysRegSlots)) {
+            Ctx.emitError(llvm::toString(std::move(Err)));
+            return Changed;
+          }
+          // Frame-reg fast path for writes: spill the new value into the
+          // SVA lane the payload epilogue reads on the way out, so the app
+          // observes the write after payload returns. All other channels
+          // go through the normal COPY-back-to-physreg SSAUpdater plumbing.
+          if (FrameSVALane) {
+            auto WSIt = WritePhysRegSlots.find(PhysReg);
+            if (WSIt != WritePhysRegSlots.end()) {
+              int FI = getOrAllocFrameLaneFI(*FrameSVALane);
+              if (FI < 0)
+                return Changed;
+              TII->storeRegToStackSlot(*MBB, MI, WSIt->second,
+                                       /*isKill=*/false, FI,
+                                       &llvm::AMDGPU::SReg_32RegClass,
+                                       /*VReg=*/{});
+              WritePhysRegSlots.erase(WSIt);
+            }
+          }
+          recordOverwrittenRegs(WritePhysRegSlots, MBB, MIBuilder);
+        }
+      } else if (isReadSVA) {
+        // The SA enum is passed as the immediate operand (ArgVec[1]);
+        // ArgVec[0] is the regdef output.
+        llvm::DenseMap<ScalarValueArgument, llvm::Register> SVAVRegs;
+        ScalarValueArgument SA =
+            static_cast<ScalarValueArgument>(ArgVec[1].second->getImm());
+        SVAVRegs[SA] = SVAScalarArgumentAccessor(SA);
+        if (auto Err = readSVAMIRProcessor(MF, ArgVec, MIBuilder, SVAVRegs)) {
+          Ctx.emitError(llvm::toString(std::move(Err)));
+          return Changed;
+        }
+      } else {
+        std::optional<IntrinsicProcessor> Processor =
+            IntrinsicsProcessors.getProcessorIfRegistered(IntrinsicName);
+        if (!Processor.has_value()) {
+          Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
+              llvm::formatv("Intrinsic processor for {0} was not found in the "
+                            "intrinsic processors.",
+                            IntrinsicName))));
+          return Changed;
+        }
+        if (auto Err = Processor->MIRProcessor(MF, ArgVec, MIBuilder,
+                                               VirtRegBuilder)) {
+          Ctx.emitError(llvm::toString(std::move(Err)));
+          return Changed;
         }
       }
-
-      // The processor fills WritePhysRegSlots; the driver records each entry
-      // with the appropriate SSAUpdater after the processor returns.
-      llvm::DenseMap<llvm::MCRegister, llvm::Register> WritePhysRegSlots;
-      if (auto Err = Processor->MIRProcessor(
-              MF, ArgVec, IntrinsicPayload, MIBuilder, VirtRegBuilder, SVAVRegs,
-              ReadPhysRegVRegs, WritePhysRegSlots)) {
-        Ctx.emitError(llvm::toString(std::move(Err)));
-        return Changed;
-      }
-
-      recordOverwrittenRegs(WritePhysRegSlots, MBB, MIBuilder);
-
       MI.eraseFromParent();
       Changed = true;
     }
@@ -627,61 +669,44 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
 }
 
 bool IntrinsicMIRLoweringPass::lowerIntrinsics(
-    llvm::Module &IModule,
-    llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> &SVAInfoByMF,
-    std::unique_ptr<StateValueArraySpecs> &SVASpecs) {
+    Prototype &IP, PrototypeAnalysisManager &IPAM,
+    const StateValueArraySpecs &SVASpecs,
+    llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> &SVAInfoByMF) {
   bool Changed = false;
 
-  llvm::MachineModuleInfo &MMI =
-      getAnalysis<llvm::MachineModuleInfoWrapperPass>().getMMI();
+  llvm::Module &IModule = IP.getInstrumentationModule();
 
-  llvm::ModuleAnalysisManager &IMAM =
-      getAnalysis<IModuleMAMWrapperPass>().getMAM();
+  llvm::ModuleAnalysisManager &MAM =
+      IPAM.getResult<IModuleAnalysisManagerPrototypeProxy>(IP).getManager();
 
   const auto &IntrinsicsProcessors =
-      IMAM.getResult<IntrinsicsProcessorsAnalysis>(IModule);
+      MAM.getResult<IntrinsicsProcessorsAnalysis>(IModule);
 
-  auto &TargetModuleAndMAM =
-      IMAM.getResult<TargetAppModuleAndMAMAnalysis>(IModule);
-  llvm::Module &TargetModule = TargetModuleAndMAM.getTargetAppModule();
-  llvm::ModuleAnalysisManager &TargetMAM = TargetModuleAndMAM.getTargetAppMAM();
-  bool IsInitialEntryPointKernel =
-      TargetMAM.getResult<InitialEntryPointAnalysis>(TargetModule)
-          .getInitialEntryPoint()
-          .isKernel();
-
-  // Build the placeholder-key -> (name, aux) lookup table once per pass
-  // run, by walking the module's !luthier.intrinsic.placeholders NamedMD.
-  PlaceholderLookupTable Placeholders{buildPlaceholderMap(IModule)};
-
-  // Set of all scalar arguments used across the entire module.
-  llvm::SmallDenseSet<ScalarValueArgument> ScalarArgumentsUsed{};
-
-  // If the initial entry point is not a kernel, then we are instrumenting
-  // newly discovered code from an already-running instrumented kernel. In
-  // that situation the SVA has already been initialized to save all possible
-  // scalar arguments just to be safe.
-  if (!IsInitialEntryPointKernel) {
-    for (std::underlying_type_t<ScalarValueArgument> I =
-             SCALAR_VALUE_ARGUMENT_FIRST;
-         I <= SCALAR_VALUE_ARGUMENT_LAST; I++) {
-      ScalarArgumentsUsed.insert(static_cast<ScalarValueArgument>(I));
-    }
-  }
+  // The IModule's MFs are reached through the function analysis manager's
+  // MachineFunctionAnalysis rather than the MMI: that is where the .luthier MIR
+  // parser puts them, and where the other consumers of instrumentation-module
+  // MIR look (InjectedPayloadAndInstPointAnalysis, writeLuthierFile, the target
+  // module patcher). Going through the MMI silently finds nothing for a
+  // MIR-sourced instrumentation module and skips every lowering.
+  llvm::FunctionAnalysisManager &IModuleFAM =
+      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(IModule)
+          .getManager();
 
   for (llvm::Function &F : IModule) {
+    if (F.isDeclaration())
+      continue;
     bool IsInjectedPayload = F.hasFnAttribute(InjectedPayloadAttribute);
-    llvm::MachineFunction *MF = MMI.getMachineFunction(F);
-    if (!MF)
+    llvm::MachineFunction *MF = nullptr;
+    if (auto *MFRes =
+            IModuleFAM.getCachedResult<llvm::MachineFunctionAnalysis>(F))
+      MF = &MFRes->getMF();
+    else
       continue;
     Changed |= processMachineFunction(*MF, IsInjectedPayload,
-                                      IntrinsicsProcessors, Placeholders,
-                                      ScalarArgumentsUsed, SVAInfoByMF[MF]);
+                                      IntrinsicsProcessors, SVASpecs,
+                                      SVAInfoByMF[MF]);
   }
 
-  // Finalize the SVA layout now that we know which SAs were requested.
-  SVASpecs = StateValueArraySpecs::setModuleSVASpec(IModule, MMI.getTarget(),
-                                                    ScalarArgumentsUsed);
   return Changed;
 }
 
@@ -689,8 +714,26 @@ void IntrinsicMIRLoweringPass::materializeReadlanes(
     llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> &SVAInfoByMF,
     const StateValueArraySpecs &SVASpecs, bool &Changed) {
   for (auto &[MF, SVAInfo] : SVAInfoByMF) {
-    if (SVAInfo.Readlanes.empty())
+    // Frame-reg reads/writes are emitted eagerly in Phase 1
+    // (processMachineFunction) — their FI allocations already advanced
+    // MFInfo->NumVirtualVGPRSpillLanes past lanes 0 and 1, so the SA
+    // allocations below correctly land on lanes 2+.
+    if (SVAInfo.Readlanes.empty()) {
+      // If the payload only touched frame regs (no SAs), the SVA VGPR
+      // placeholder created by the frame-reg accessor is no longer
+      // load-bearing — the LaneVGPR is owned by MFInfo->SpillVGPRs[] and
+      // downstream (PEI) discovers the SVA physreg via SVStorageAndLoadLocations.
+      if (SVAInfo.SVAVGPRPlaceholder.isValid()) {
+        llvm::MachineRegisterInfo &MRI = MF->getRegInfo();
+        llvm::MachineInstr *PlaceholderDef =
+            MRI.getUniqueVRegDef(SVAInfo.SVAVGPRPlaceholder);
+        if (PlaceholderDef && PlaceholderDef->isImplicitDef())
+          PlaceholderDef->eraseFromParent();
+        SVAInfo.SVAVGPRPlaceholder = llvm::Register();
+        Changed = true;
+      }
       continue;
+    }
 
     llvm::LLVMContext &Ctx = MF->getFunction().getContext();
     const llvm::TargetInstrInfo *TII = MF->getSubtarget().getInstrInfo();
@@ -819,22 +862,39 @@ void IntrinsicMIRLoweringPass::materializeReadlanes(
   }
 }
 
-bool IntrinsicMIRLoweringPass::runOnModule(llvm::Module &IModule) {
+llvm::PreservedAnalyses
+IntrinsicMIRLoweringPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> SVAInfoByMF;
-  std::unique_ptr<StateValueArraySpecs> SVASpecs{nullptr};
 
-  bool Changed = lowerIntrinsics(IModule, SVAInfoByMF, SVASpecs);
+  const StateValueArraySpecs &SVASpecs =
+      IPAM.getResult<StateValueArraySpecsAnalysis>(IP);
+  bool Changed = lowerIntrinsics(IP, IPAM, SVASpecs, SVAInfoByMF);
+  materializeReadlanes(SVAInfoByMF, SVASpecs, Changed);
 
-  if (SVASpecs)
-    materializeReadlanes(SVAInfoByMF, *SVASpecs, Changed);
+  if (!Changed)
+    return llvm::PreservedAnalyses::all();
 
-  return Changed;
+  // Preserve the outer MAM proxy so the Prototype adaptor doesn't
+  // wipe every cached module-level analysis for both modules on the way out —
+  // downstream passes still need the cached MachineFunctionAnalysis results
+  // for the instrumentation module we just mutated.
+  llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
+  // This pass rewrites MIR inside the instrumentation module. It does not
+  // touch the target module at all, and it handles its own module's MIR in
+  // place rather than through an analysis, so every inner analysis-manager
+  // proxy stays valid; only Prototype-level analyses derived from the
+  // instrumentation module's MIR are dropped.
+  PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
+  // The SVA specs derived by StateValueArraySpecsAnalysis depend only on
+  // the IModule's IR call sites and target-module entry-point metadata,
+  // neither of which this pass modifies. Preserve it explicitly.
+  PA.preserve<StateValueArraySpecsAnalysis>();
+  return PA;
 }
-
-void IntrinsicMIRLoweringPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
-  AU.addRequired<IModuleMAMWrapperPass>();
-  AU.addRequired<llvm::MachineModuleInfoWrapperPass>();
-  ModulePass::getAnalysisUsage(AU);
-};
 
 } // namespace luthier

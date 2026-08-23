@@ -1,15 +1,14 @@
 // RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx908 -filetype=obj %s -o %t.o && \
 // RUN: ld.lld -shared --unresolved-symbols=ignore-all -o %t %t.o && \
 // RUN: luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx908 \
-// RUN:   -load-pass-plugin=%luthier_tool_code_gen_plugin \
-// RUN:   '-passes=luthier-mock-load-amdgpu-code-objects,luthier-code-discovery,print' \
+// RUN:   '-passes=target(luthier-mock-load-amdgpu-code-objects),luthier-code-discovery,target(print)' \
 // RUN:   -code-object-paths=%t \
 // RUN:   -initial-entrypoint=0:ds_rmw.kd \
 // RUN:   -initial-execution-point=0:ds_rmw.kd \
 // RUN:   -o - 2>/dev/null | %tee_out FileCheck %s
 
 // DSSem smoke test: ds_read_b32 / ds_write_b32 must lift through
-// MIRToIRTranslator into typed load/store against ptr addrspace(3).
+// TraceFunctionTranslator into typed load/store against ptr addrspace(3).
 
 // CHECK: define {{.*}} @ds_rmw
 // CHECK-DAG: load i32, ptr addrspace(3)

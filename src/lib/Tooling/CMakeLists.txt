@@ -7,7 +7,6 @@ add_library(LuthierTooling SHARED
         $<TARGET_OBJECTS:LuthierIntrinsic>
         $<TARGET_OBJECTS:LuthierCommon>
         $<TARGET_OBJECTS:LuthierToolCodeGen>
-        $<TARGET_OBJECTS:LuthierToolCodeGenTesting>
         $<TARGET_OBJECTS:LuthierToolIRCompilation>
         $<TARGET_OBJECTS:LuthierPassPlugin>
         $<TARGET_OBJECTS:LuthierHSATooling>

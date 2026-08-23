@@ -491,8 +491,8 @@ def S_CBRANCH_SCC1_pad_s_nop_sem : InstSISemantic<S_CBRANCH_SCC1_pad_s_nop> {
 // Sources: same as S_BRANCH.
 def S_CBRANCH_EXECZ_sem : InstSISemantic<S_CBRANCH_EXECZ> {
   let Semantic = [
-    (LLVMCondBranch (LLVMCmp LLVMICmpEQ, (ImplicitUse EXEC),
-                                     (ConstantInt si_llvm_i64_ty, 0)),
+    (LLVMCondBranch (LLVMCmp LLVMICmpEQ, (ImplicitUse GetExecReg),
+                                     (ConstantInt (LLVMIntNTy (GetWavefrontSize)), 0)),
                    (GetNextBB),
                    (GetNamedOperandAsBB $simm16))
   ];
@@ -500,8 +500,8 @@ def S_CBRANCH_EXECZ_sem : InstSISemantic<S_CBRANCH_EXECZ> {
 
 def S_CBRANCH_EXECZ_pad_s_nop_sem : InstSISemantic<S_CBRANCH_EXECZ_pad_s_nop> {
   let Semantic = [
-    (LLVMCondBranch (LLVMCmp LLVMICmpEQ, (ImplicitUse EXEC),
-                                     (ConstantInt si_llvm_i64_ty, 0)),
+    (LLVMCondBranch (LLVMCmp LLVMICmpEQ, (ImplicitUse GetExecReg),
+                                     (ConstantInt (LLVMIntNTy (GetWavefrontSize)), 0)),
                    (GetNextBB),
                    (GetNamedOperandAsBB $simm16))
   ];
@@ -511,8 +511,8 @@ def S_CBRANCH_EXECZ_pad_s_nop_sem : InstSISemantic<S_CBRANCH_EXECZ_pad_s_nop> {
 // Sources: same as S_BRANCH.
 def S_CBRANCH_EXECNZ_sem : InstSISemantic<S_CBRANCH_EXECNZ> {
   let Semantic = [
-    (LLVMCondBranch (LLVMCmp LLVMICmpNE, (ImplicitUse EXEC),
-                                     (ConstantInt si_llvm_i64_ty, 0)),
+    (LLVMCondBranch (LLVMCmp LLVMICmpNE, (ImplicitUse GetExecReg),
+                                     (ConstantInt (LLVMIntNTy (GetWavefrontSize)), 0)),
                    (GetNamedOperandAsBB $simm16),
                    (GetNextBB))
   ];
@@ -520,8 +520,8 @@ def S_CBRANCH_EXECNZ_sem : InstSISemantic<S_CBRANCH_EXECNZ> {
 
 def S_CBRANCH_EXECNZ_pad_s_nop_sem : InstSISemantic<S_CBRANCH_EXECNZ_pad_s_nop> {
   let Semantic = [
-    (LLVMCondBranch (LLVMCmp LLVMICmpNE, (ImplicitUse EXEC),
-                                     (ConstantInt si_llvm_i64_ty, 0)),
+    (LLVMCondBranch (LLVMCmp LLVMICmpNE, (ImplicitUse GetExecReg),
+                                     (ConstantInt (LLVMIntNTy (GetWavefrontSize)), 0)),
                    (GetNamedOperandAsBB $simm16),
                    (GetNextBB))
   ];
@@ -531,8 +531,8 @@ def S_CBRANCH_EXECNZ_pad_s_nop_sem : InstSISemantic<S_CBRANCH_EXECNZ_pad_s_nop> 
 // Sources: same as S_BRANCH.
 def S_CBRANCH_VCCZ_sem : InstSISemantic<S_CBRANCH_VCCZ> {
   let Semantic = [
-    (LLVMCondBranch (LLVMCmp LLVMICmpEQ, (ImplicitUse VCC),
-                                     (ConstantInt si_llvm_i64_ty, 0)),
+    (LLVMCondBranch (LLVMCmp LLVMICmpEQ, (ImplicitUse GetVCCReg),
+                                     (ConstantInt (LLVMIntNTy (GetWavefrontSize)), 0)),
                    (GetNextBB),
                    (GetNamedOperandAsBB $simm16))
   ];
@@ -540,8 +540,8 @@ def S_CBRANCH_VCCZ_sem : InstSISemantic<S_CBRANCH_VCCZ> {
 
 def S_CBRANCH_VCCZ_pad_s_nop_sem : InstSISemantic<S_CBRANCH_VCCZ_pad_s_nop> {
   let Semantic = [
-    (LLVMCondBranch (LLVMCmp LLVMICmpEQ, (ImplicitUse VCC),
-                                     (ConstantInt si_llvm_i64_ty, 0)),
+    (LLVMCondBranch (LLVMCmp LLVMICmpEQ, (ImplicitUse GetVCCReg),
+                                     (ConstantInt (LLVMIntNTy (GetWavefrontSize)), 0)),
                    (GetNextBB),
                    (GetNamedOperandAsBB $simm16))
   ];
@@ -551,8 +551,8 @@ def S_CBRANCH_VCCZ_pad_s_nop_sem : InstSISemantic<S_CBRANCH_VCCZ_pad_s_nop> {
 // Sources: same as S_BRANCH.
 def S_CBRANCH_VCCNZ_sem : InstSISemantic<S_CBRANCH_VCCNZ> {
   let Semantic = [
-    (LLVMCondBranch (LLVMCmp LLVMICmpNE, (ImplicitUse VCC),
-                                     (ConstantInt si_llvm_i64_ty, 0)),
+    (LLVMCondBranch (LLVMCmp LLVMICmpNE, (ImplicitUse GetVCCReg),
+                                     (ConstantInt (LLVMIntNTy (GetWavefrontSize)), 0)),
                    (GetNamedOperandAsBB $simm16),
                    (GetNextBB))
   ];
@@ -560,8 +560,8 @@ def S_CBRANCH_VCCNZ_sem : InstSISemantic<S_CBRANCH_VCCNZ> {
 
 def S_CBRANCH_VCCNZ_pad_s_nop_sem : InstSISemantic<S_CBRANCH_VCCNZ_pad_s_nop> {
   let Semantic = [
-    (LLVMCondBranch (LLVMCmp LLVMICmpNE, (ImplicitUse VCC),
-                                     (ConstantInt si_llvm_i64_ty, 0)),
+    (LLVMCondBranch (LLVMCmp LLVMICmpNE, (ImplicitUse GetVCCReg),
+                                     (ConstantInt (LLVMIntNTy (GetWavefrontSize)), 0)),
                    (GetNamedOperandAsBB $simm16),
                    (GetNextBB))
   ];

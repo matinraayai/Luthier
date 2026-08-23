@@ -15,20 +15,23 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file implements the Pre and post amble emitter, as well as the
-/// \c FunctionPreambleDescriptor and its analysis pass.
+/// This file implements the Pre and post amble emitter.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
 #include "luthier/LLVM/streams.h"
+#include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
+#include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/SVAFrameLanes.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
-#include "luthier/ToolCodeGen/WrapperAnalysisPasses.h"
 #include <GCNSubtarget.h>
 #include <SIMachineFunctionInfo.h>
+#include <llvm/CodeGen/MachineFunctionAnalysis.h>
+#include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/CodeGen/SlotIndexes.h>
 
@@ -129,7 +132,8 @@ static void emitCodeToReturnSGPRArgsToOriginalPlace(
 static void emitCodeToMoveSVA(llvm::ModuleAnalysisManager &TargetMAM,
                               llvm::Module &TargetModule,
                               llvm::MachineFunction *MF,
-                              luthier::SVStorageAndLoadLocations &SVLocations) {
+                              luthier::SVStorageAndLoadLocations &SVLocations,
+                              const luthier::StateValueArraySpecs &Specs) {
   auto &TargetMFAM =
       TargetMAM
           .getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(
@@ -148,8 +152,8 @@ static void emitCodeToMoveSVA(llvm::ModuleAnalysisManager &TargetMAM,
       if (CurMBBInterval.getSVS() != NextMBBInterval.getSVS()) {
         auto InsertionMI =
             SlotIndexes.getInstructionFromIndex(NextMBBInterval.begin());
-        CurMBBInterval.getSVS().emitCodeToSwitchSVS(*InsertionMI,
-                                                    NextMBBInterval.getSVS());
+        CurMBBInterval.getSVS().emitCodeToSwitchSVS(
+            *InsertionMI, NextMBBInterval.getSVS(), Specs);
       }
     }
     // Analyze the branch at the end of this block (if exists)
@@ -179,7 +183,7 @@ static void emitCodeToMoveSVA(llvm::ModuleAnalysisManager &TargetMAM,
           NewTBB->addSuccessor(TBB);
           // Emit the SVS switch code before the branch
           MBBIntervals.back().getSVS().emitCodeToSwitchSVS(
-              NewTBB->front(), SuccessorIntervalBegin.getSVS());
+              NewTBB->front(), SuccessorIntervalBegin.getSVS(), Specs);
           OldToNewSuccessorsList.emplace_back(TBB, NewTBB);
         } else if (FBB == SuccessorMBB) {
           // Create a new basic block and insert it at the end
@@ -190,7 +194,7 @@ static void emitCodeToMoveSVA(llvm::ModuleAnalysisManager &TargetMAM,
           NewFBB->addSuccessor(FBB);
           // Emit the SVS switch code before the branch
           MBBIntervals.back().getSVS().emitCodeToSwitchSVS(
-              NewFBB->front(), SuccessorIntervalBegin.getSVS());
+              NewFBB->front(), SuccessorIntervalBegin.getSVS(), Specs);
           OldToNewSuccessorsList.emplace_back(TBB, NewTBB);
         } else {
           // This is a fallthrough block; We insert the SVS code inside
@@ -217,30 +221,4 @@ static void emitCodeToMoveSVA(llvm::ModuleAnalysisManager &TargetMAM,
   }
 }
 
-llvm::AnalysisKey FunctionPreambleDescriptorAnalysis::Key;
-
-FunctionPreambleDescriptorAnalysis::Result
-FunctionPreambleDescriptorAnalysis::run(
-    llvm::Module &TargetModule, llvm::ModuleAnalysisManager &TargetMAM) {
-
-  return {TargetMAM.getCachedResult<llvm::MachineModuleAnalysis>(TargetModule)
-              ->getMMI(),
-          TargetModule};
-}
-
-FunctionPreambleDescriptor::FunctionPreambleDescriptor(
-    const llvm::MachineModuleInfo &TargetMMI,
-    const llvm::Module &TargetModule) {
-  for (const auto &F : TargetModule) {
-    auto *MF = TargetMMI.getMachineFunction(F);
-    if (!MF)
-      continue;
-    if (MF->getFunction().getCallingConv() ==
-        llvm::CallingConv::AMDGPU_KERNEL) {
-      Kernels.insert({MF, {}});
-    } else {
-      DeviceFunctions.insert({MF, {}});
-    }
-  }
-}
 } // namespace luthier

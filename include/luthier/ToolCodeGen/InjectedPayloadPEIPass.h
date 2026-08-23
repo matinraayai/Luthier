@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Describes Luthier's Injected Payload Prologue and Epilogue insertion pass.
+/// Describes the Injected Payload Prologue and Epilogue insertion pass.
 /// Runs *after* LLVM's stock PrologEpilogInserter. Payload functions carry
 /// Attribute::Naked (set by InjectedPayloadCreationPass::assignToInject), so
 /// the stock PEI is a no-op for them — this pass emits the actual SVA load,
@@ -24,38 +24,29 @@
 ///
 /// Key dependencies:
 ///   - InjectedPayloadAttribute on the MF's Function
-///   - The SVA VGPR allocated by IntrinsicMIRLoweringPass; discovered post-RA
-///     by walking V_READLANE_B32 instructions in the entry MBB whose lane
-///     immediate is < total SA lanes (read-side discovery; MFInfo->WWMReservedRegs
-///     is unusable today, see reference_amdgpu_wwm_pipeline memory note)
+///   - The SVA VGPR allocated by IntrinsicMIRLoweringPass; the load plan
+///     recorded by SVStorageAndLoadLocationsAnalysis is the source of truth
+///     for the SVA VGPR at each instrumentation point.
 ///   - StateValueArraySpecs for the SVA layout (lanes, used SAs)
-///   - StateValueArrayStorage scheme picked by the target-side
-///     SVStorageAndLoadLocations analysis (consumed via MAM cache)
+///   - StateValueArrayStorage scheme picked by the Prototype-level
+///     SVStorageAndLoadLocationsAnalysis.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_PEI_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_PEI_PASS_H
-#include "luthier/ToolCodeGen/LegacyPassSupport.h"
-#include <llvm/CodeGen/MachineFunctionPass.h>
+#include <llvm/CodeGen/MachinePassManager.h>
+#include <llvm/IR/PassManager.h>
 
 namespace luthier {
 
-class InjectedPayloadPEIPass;
-
-LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(InjectedPayloadPEIPass);
-
-class InjectedPayloadPEIPass : public llvm::MachineFunctionPass {
+class InjectedPayloadPEIPass
+    : public llvm::PassInfoMixin<InjectedPayloadPEIPass> {
 public:
-  static char ID;
+  InjectedPayloadPEIPass() = default;
 
-  InjectedPayloadPEIPass() : llvm::MachineFunctionPass(ID) {};
+  llvm::PreservedAnalyses run(llvm::MachineFunction &MF,
+                              llvm::MachineFunctionAnalysisManager &MFAM);
 
-  [[nodiscard]] llvm::StringRef getPassName() const override {
-    return "Luthier Injected Payload Prologue Epilogue Insertion Pass";
-  }
-
-  bool runOnMachineFunction(llvm::MachineFunction &MF) override;
-
-  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
+  static bool isRequired() { return true; }
 };
 
 } // namespace luthier

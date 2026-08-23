@@ -19,10 +19,32 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_INITIAL_EXECUTION_POINT_H
 #define LUTHIER_TOOL_CODE_GEN_INITIAL_EXECUTION_POINT_H
+#include <llvm/ADT/StringRef.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Support/AMDHSAKernelDescriptor.h>
+#include <llvm/Support/Error.h>
 
 namespace luthier {
+
+/// \brief Name of the target module's named metadata recording the initial
+/// execution point — the kernel the initial entry point was launched from.
+///
+/// \details The node holds a single operand of the form
+/// \code !{i64 <kernel descriptor address>} \endcode
+/// See \c InitialEntryPointMDName for why this lives on the module rather than
+/// being resolved on demand.
+inline constexpr llvm::StringRef InitialExecutionPointMDName =
+    "luthier.initial_execution_point";
+
+/// Records \p KD as the initial execution point of \p M, replacing any
+/// previously recorded execution point.
+void setInitialExecutionPoint(llvm::Module &M,
+                              const llvm::amdhsa::kernel_descriptor_t &KD);
+
+/// \return the initial execution point recorded on \p M, or an error if \p M
+/// carries no \c luthier.initial_execution_point metadata or it is malformed
+llvm::Expected<const llvm::amdhsa::kernel_descriptor_t *>
+getInitialExecutionPoint(const llvm::Module &M);
 
 class InitialExecutionPointAnalysis
     : public llvm::AnalysisInfoMixin<InitialExecutionPointAnalysis> {
@@ -30,23 +52,29 @@ class InitialExecutionPointAnalysis
 
   static llvm::AnalysisKey Key;
 
-  std::function<const llvm::amdhsa::kernel_descriptor_t &(
-      llvm::Module &, llvm::ModuleAnalysisManager &)>
-      ExecutionPointResolver;
-
 public:
   class Result {
     friend InitialExecutionPointAnalysis;
 
-    const llvm::amdhsa::kernel_descriptor_t &InitialExecutionPoint;
+    const llvm::amdhsa::kernel_descriptor_t *InitialExecutionPoint;
 
-    explicit Result(const llvm::amdhsa::kernel_descriptor_t &EP)
+    explicit Result(const llvm::amdhsa::kernel_descriptor_t *EP)
         : InitialExecutionPoint(EP) {};
 
   public:
+    /// \return the recorded execution point. Only valid when the module carried
+    /// well-formed metadata; a parse failure is reported on the module's context
+    /// by \c run and leaves this null.
     [[nodiscard]] const llvm::amdhsa::kernel_descriptor_t &
     getInitialExecutionPoint() const {
-      return InitialExecutionPoint;
+      assert(InitialExecutionPoint &&
+             "queried the initial execution point of a module that does not "
+             "record one");
+      return *InitialExecutionPoint;
+    }
+
+    [[nodiscard]] bool hasInitialExecutionPoint() const {
+      return InitialExecutionPoint != nullptr;
     }
 
     bool invalidate(llvm::Module &, const llvm::PreservedAnalyses &,
@@ -55,15 +83,11 @@ public:
     }
   };
 
-  explicit InitialExecutionPointAnalysis(
-      std::function<const llvm::amdhsa::kernel_descriptor_t &(
-          llvm::Module &, llvm::ModuleAnalysisManager &)>
-          ExecutionPointResolver)
-      : ExecutionPointResolver(std::move(ExecutionPointResolver)) {};
+  InitialExecutionPointAnalysis() = default;
 
-  Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
-    return Result{ExecutionPointResolver(M, MAM)};
-  }
+  /// Parses \c luthier.initial_execution_point off \p M. A missing or malformed
+  /// node is reported on \p M 's context and yields an empty result.
+  Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
 };
 
 } // namespace luthier

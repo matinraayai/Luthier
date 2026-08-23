@@ -13,26 +13,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file InstrumentationPipelineTrait.h
-/// CRTP trait that owns the per-dispatch instrumentation pipeline shared by
-/// every HSA tool: it builds the target \c Module / analysis managers,
-/// registers the common instrumentation analyses, and drives
-/// \c CodeDiscoveryPass -> \c InstrumentationPMDriver -> \c NewPMAsmPrinter to
-/// produce an instrumented relocatable for a dispatched kernel.
+/// \file
+/// CRTP trait for creating and running the instrumentation pipeline used by
+/// every HSA tool.
 ///
-/// The trait forwards a set of optional, plugin-style callbacks to the
-/// \c InstrumentationPMDriver. Each callback is detected on \c Derived via a
+/// The trait forwards a set of optional, plugin-style callbacks to
+/// the pipeline builder. Each callback is detected on \c Derived via a
 /// \c requires-expression; if \c Derived does not define a given method, the
 /// corresponding driver callback is a no-op. The detected customization
 /// points (all optional) are:
-///   - \c onBeginDispatchInstrumentation()
 ///   - \c createInstrumentationModule(llvm::LLVMContext &)
-///   - \c augmentInstrumentationPassBuilder(llvm::PassBuilder &)
 ///   - \c preIROptimizationPasses(llvm::ModulePassManager &)
-///   - \c preLuthierIRIntrinsicLoweringPasses(llvm::ModulePassManager &)
-///   - \c postLuthierIRIntrinsicLoweringPasses(llvm::ModulePassManager &)
-///   - \c augmentTargetPassConfig(llvm::PassRegistry &,
-///        llvm::TargetPassConfig &, llvm::TargetMachine &)
 ///   - \c registerInstrumentationAnalyses(llvm::ModuleAnalysisManager &,
 ///        llvm::MachineFunctionAnalysisManager &)
 //===----------------------------------------------------------------------===//
@@ -42,21 +33,23 @@
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/HSATooling/HsaMemoryAllocationAccessor.h"
 #include "luthier/HSATooling/LoadedCodeObjectCache.h"
+#include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
 #include "luthier/ToolCodeGen/EntryPoint.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include "luthier/ToolCodeGen/InitialExecutionPointAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
-#include "luthier/ToolCodeGen/InstrumentationPMDriver.h"
-#include "luthier/ToolCodeGen/InstrumentationPass.h"
+#include "luthier/ToolCodeGen/InstrumentationPassBuilder.h"
+#include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
-#include "luthier/ToolCodeGen/Metadata.h"
-#include "luthier/ToolCodeGen/MetadataParserAnalysis.h"
 #include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
+#include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
 #include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
+#include "luthier/ToolCodeGen/Prototype.h"
+#include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "luthier/ToolCodeGen/ToolDeviceCodeParser.h"
-#include "luthier/ToolCodeGen/TraceCallGraph.h"
+#include "luthier/ToolCodeGen/TraceFunctionTranslationAnalysis.h"
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/IR/LLVMContext.h>
@@ -66,8 +59,10 @@
 #include <llvm/Passes/StandardInstrumentations.h>
 #include <llvm/Support/AMDHSAKernelDescriptor.h>
 #include <llvm/Support/Error.h>
+#include <llvm/Support/FileSystem.h>
 #include <llvm/Support/SmallVectorMemoryBuffer.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Target/CGPassBuilderOption.h>
 #include <llvm/Target/TargetMachine.h>
 #include <memory>
 #include <string>
@@ -86,20 +81,22 @@ template <typename Derived, typename TargetUnitT = llvm::MachineFunction>
 class InstrumentationPipelineTrait {
   Derived &derived() { return static_cast<Derived &>(*this); }
 
-  /// Thin module-pass adapter that forwards into the tool's
-  /// \c InstrumentationPass<Derived, Module, TargetUnitT>::run() so the driver
-  /// can hook the tool's payload-injection logic into its IR pipeline without
-  /// copying the singleton tool object.
+  /// Thin Prototype-pass adapter that forwards into the tool's own
+  /// \c run(Prototype &, PrototypeAnalysisManager &) so the pipeline can hook
+  /// the tool's payload-injection logic in without copying the singleton tool
+  /// object.
+  ///
+  /// Payload creation is a Prototype-level pass now: it reads the target
+  /// module's MIR and writes into the instrumentation module, so it needs both
+  /// halves of the prototype rather than a single module.
   struct InjectPayloadsAdapter
       : public llvm::PassInfoMixin<InjectPayloadsAdapter> {
     Derived *T;
     explicit InjectPayloadsAdapter(Derived *T) : T(T) {}
-    llvm::PreservedAnalyses run(llvm::Module &IModule,
-                                llvm::ModuleAnalysisManager &IMAM) {
-      using Base =
-          luthier::InstrumentationPass<Derived, llvm::Module, TargetUnitT>;
-      return static_cast<Base *>(T)->run(IModule, IMAM);
+    llvm::PreservedAnalyses run(Prototype &P, PrototypeAnalysisManager &PAM) {
+      return T->run(P, PAM);
     }
+    static bool isRequired() { return true; }
   };
 
 public:
@@ -108,27 +105,18 @@ public:
   /// pass run that consumes them. After the common analyses are registered, the
   /// tool's optional \c registerInstrumentationAnalyses(MAM, MFAM) hook (if
   /// present) is invoked so a tool can add its own.
-  void registerInstrumentationAnalyses(
-      const llvm::amdhsa::kernel_descriptor_t &KD, llvm::TargetMachine &TM,
-      llvm::MachineModuleInfo &MMI, amdgpu::hsamd::MetadataParser &MDParser,
-      llvm::ModuleAnalysisManager &MAM,
-      llvm::MachineFunctionAnalysisManager &MFAM) {
+  void
+  registerInstrumentationAnalyses(llvm::MachineModuleInfo &MMI,
+                                  llvm::ModuleAnalysisManager &MAM,
+                                  llvm::MachineFunctionAnalysisManager &MFAM) {
     Derived &D = derived();
-    (void)TM;
 
     MAM.registerPass([&] { return llvm::MachineModuleAnalysis(MMI); });
     MFAM.registerPass([] { return luthier::InstructionTracesAnalysis(); });
-    MAM.registerPass([&] {
-      return luthier::InitialEntryPointAnalysis(
-          [&](llvm::Module &, llvm::ModuleAnalysisManager &) {
-            return luthier::EntryPoint(KD);
-          });
-    });
-    MAM.registerPass([&] {
-      return luthier::InitialExecutionPointAnalysis(
-          [&](llvm::Module &, llvm::ModuleAnalysisManager &)
-              -> const llvm::amdhsa::kernel_descriptor_t & { return KD; });
-    });
+    MFAM.registerPass(
+        [] { return luthier::TraceFunctionTranslationAnalysis(); });
+    MAM.registerPass([] { return luthier::InitialEntryPointAnalysis(); });
+    MAM.registerPass([] { return luthier::InitialExecutionPointAnalysis(); });
     MAM.registerPass([&] {
       return luthier::MemoryAllocationAnalysis(
           std::make_unique<luthier::HsaMemoryAllocationAccessor>(
@@ -136,11 +124,12 @@ public:
               D.getCoreApiTableSnapshot(), D.getAmdExtTableSnapshot(),
               D.getLoaderTableSnapshot().getTable()));
     });
-    MAM.registerPass([&] { return luthier::MetadataParserAnalysis(MDParser); });
-    MAM.registerPass([] { return luthier::TraceCallGraphAnalysis(); });
-    MAM.registerPass(
-        [] { return luthier::FunctionPreambleDescriptorAnalysis(); });
-    MAM.registerPass([] { return luthier::IPPredCFGAnalysis(); });
+    // PrototypeCallGraphAnalysis, IPPredCFGAnalysis and
+    // FunctionPreambleDescriptorAnalysis are Prototype analyses; they are
+    // registered on the PrototypeAnalysisManager (see
+    // registerPrototypeAnalyses on InstrumentationPassBuilder), not here.
+    // Registering a Prototype analysis on a ModuleAnalysisManager compiles but
+    // can never resolve at run time.
 
     if constexpr (requires(Derived &Tool) {
                     Tool.registerInstrumentationAnalyses(MAM, MFAM);
@@ -148,135 +137,160 @@ public:
       D.registerInstrumentationAnalyses(MAM, MFAM);
   }
 
-  /// Run \c CodeDiscoveryPass -> \c InstrumentationPMDriver ->
-  /// \c NewPMAsmPrinter for the kernel referenced by \p KD and return the
-  /// resulting relocatable object-file bytes.
+  /// Assemble and run the standard instrumentation pipeline for the kernel
+  /// referenced by \p KD, returning the resulting relocatable object-file
+  /// bytes.
   ///
-  /// \p DriverOpts / \p DiscoveryOpts are the tool's per-pipeline options
-  /// (a tool typically threads these from its own \c Options member).
+  /// The pipeline itself comes from
+  /// \c InstrumentationPassBuilder::buildInstrumentationPipeline: code
+  /// discovery, the tool's payload injection, IModule optimization and
+  /// intrinsic lowering, AMDGPU codegen, and finally the target-module patch
+  /// plus asm printing. \p Level selects the optimization level used for the
+  /// instrumentation module's IR pipeline.
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>>
   runInstrumentationPipelineForDispatch(
       const llvm::amdhsa::kernel_descriptor_t &KD,
-      const InstrumentationPMDriverOptions &DriverOpts,
-      const CodeDiscoveryPassOptions &DiscoveryOpts) {
+      llvm::OptimizationLevel Level = llvm::OptimizationLevel::O2) {
     Derived &D = derived();
-
-    if constexpr (requires(Derived &Tool) {
-                    Tool.onBeginDispatchInstrumentation();
-                  })
-      D.onBeginDispatchInstrumentation();
 
     std::unique_ptr<llvm::TargetMachine> TM;
     LUTHIER_RETURN_ON_ERROR(D.buildTargetMachineForKD(&KD).moveInto(TM));
 
     llvm::LLVMContext Ctx;
-    auto M = std::make_unique<llvm::Module>("luthier.target", Ctx);
-    M->setTargetTriple(TM->getTargetTriple());
-    M->setDataLayout(TM->createDataLayout());
+    auto TargetM = std::make_unique<llvm::Module>("luthier.target", Ctx);
+    TargetM->setTargetTriple(TM->getTargetTriple());
+    TargetM->setDataLayout(TM->createDataLayout());
+
+    // The prototype owns both modules for the whole run. The instrumentation
+    // module holds the tool's hooks: either the tool builds it, or its embedded
+    // device-side bitcode is parsed here. It is populated up front rather than
+    // materialized mid-pipeline, because every pass from payload injection
+    // onwards expects both halves of the prototype to exist.
+    llvm::Triple ToolTriple = TM->getTargetTriple();
+    std::string ToolCPU(TM->getTargetCPU());
+    llvm::SubtargetFeatures ToolFeatures(TM->getTargetFeatureString());
+
+    std::unique_ptr<llvm::Module> IModuleM;
+    if constexpr (requires(Derived &Tool) {
+                    Tool.createInstrumentationModule(Ctx);
+                  }) {
+      IModuleM = D.createInstrumentationModule(Ctx);
+    } else {
+      LUTHIER_RETURN_ON_ERROR(
+          D.parseModule(ToolTriple, ToolCPU, ToolFeatures, Ctx)
+              .moveInto(IModuleM));
+    }
+    IModuleM->setTargetTriple(ToolTriple);
+    IModuleM->setDataLayout(TM->createDataLayout());
+
+    // Record the dispatch's entry/execution point on the target module so the
+    // corresponding analyses can read them without knowing where a kernel
+    // descriptor comes from.
+    luthier::setInitialEntryPoint(*TargetM, luthier::EntryPoint(KD));
+    luthier::setInitialExecutionPoint(*TargetM, KD);
+
+    luthier::Prototype IP(std::move(TargetM), std::move(IModuleM));
 
     llvm::MachineModuleInfo MMI(TM.get());
 
-    // Declaration order matters: C++ destroys these in reverse, and MAM caches
-    // a `FunctionAnalysisManagerModuleProxy::Result` whose destructor calls
-    // `FAM->clear()`. So MAM must die before FAM. Keep MAM declared LAST among
-    // the managers (same convention LLVM uses in `PassBuilder` examples).
-    llvm::LoopAnalysisManager LAM;
-    llvm::FunctionAnalysisManager FAM;
-    llvm::CGSCCAnalysisManager CGAM;
-    llvm::MachineFunctionAnalysisManager MFAM;
-    llvm::ModuleAnalysisManager MAM;
+    // Each of the prototype's two modules gets its own set of managers. They
+    // must not be shared: LLVM reaches a module's inner managers through
+    // proxies whose invalidation hook clears the inner manager wholesale
+    // (FunctionAnalysisManagerModuleProxy::Result::invalidate in
+    // PassManager.cpp), and a nested llvm::ModulePassManager re-invalidates
+    // after every pass it runs. With one shared set, the first pass of the
+    // instrumentation module's IR pipeline to report PreservedAnalyses::none()
+    // therefore destroys the target module's cached MachineFunctionAnalysis
+    // results -- and with them the lifted target MIR those results own.
+    //
+    // Declaration order matters: these are destroyed in reverse, and an inner
+    // analysis-manager proxy's destructor clears the manager it proxies. So an
+    // outer manager must be declared after everything it proxies -- innermost
+    // first, the Prototype manager (which proxies all six) last.
+    llvm::LoopAnalysisManager TargetLAM, ILAM;
+    llvm::FunctionAnalysisManager TargetFAM, IFAM;
+    llvm::CGSCCAnalysisManager TargetCGAM, ICGAM;
+    llvm::MachineFunctionAnalysisManager TargetMFAM, IMFAM;
+    llvm::ModuleAnalysisManager TargetMAM, IMAM;
+    luthier::PrototypeAnalysisManager IPAM;
 
-    // PIC + SI must outlive MPM.run(). StandardInstrumentations reads
+    const luthier::InstrumentationPassBuilder::ModuleAnalysisManagers TargetAMs{
+        TargetMAM, TargetCGAM, TargetFAM, TargetLAM, TargetMFAM};
+    const luthier::InstrumentationPassBuilder::ModuleAnalysisManagers IAMs{
+        IMAM, ICGAM, IFAM, ILAM, IMFAM};
+
+    // PIC + SI must outlive the pipeline run. StandardInstrumentations reads
     // --print-after-all / --print-before-all / --print-changed / -time-passes
     // and registers the corresponding PassInstrumentationCallbacks.
     llvm::PassInstrumentationCallbacks PIC;
     llvm::StandardInstrumentations SI(Ctx, /*DebugLogging=*/false);
 
-    llvm::PassBuilder PB(TM.get(), llvm::PipelineTuningOptions(), std::nullopt,
-                         &PIC);
-    PB.registerModuleAnalyses(MAM);
-    PB.registerFunctionAnalyses(FAM);
-    PB.registerLoopAnalyses(LAM);
-    PB.registerCGSCCAnalyses(CGAM);
-    PB.registerMachineFunctionAnalyses(MFAM);
-    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM, &MFAM);
-    SI.registerCallbacks(PIC, &MAM);
+    luthier::InstrumentationPassBuilder PB(*TM, llvm::PipelineTuningOptions(),
+                                           std::nullopt, &PIC);
+    PB.registerPrototypeAnalyses(IPAM);
+    PB.registerAnalyses(TargetAMs);
+    PB.registerAnalyses(IAMs);
+    PB.crossRegisterProxies(IPAM, TargetAMs, IAMs);
 
-    luthier::amdgpu::hsamd::MetadataParser MetadataParserInstance;
-    registerInstrumentationAnalyses(KD, *TM, MMI, MetadataParserInstance, MAM,
-                                    MFAM);
+    // StandardInstrumentations takes a single ModuleAnalysisManager, used only
+    // by its optional debug instrumentation (-print-changed, CFG checking).
+    // The instrumentation module is where all the heavy pipelines run, so it is
+    // the one worth wiring up.
+    SI.registerCallbacks(PIC, &IMAM);
+
+    // Both modules need the common analyses: a module analysis is resolved out
+    // of the manager belonging to the module it is asked about. The single MMI
+    // is deliberately shared -- it owns the MCContext the MachineFunctions of
+    // both modules are created against, and TargetModulePatcherPass moves MIR
+    // between them.
+    registerInstrumentationAnalyses(MMI, TargetMAM, TargetMFAM);
+    registerInstrumentationAnalyses(MMI, IMAM, IMFAM);
+
+    // Intrinsic lowering resolves each luthier:: intrinsic through this
+    // registry, which the tool owns.
+    for (llvm::ModuleAnalysisManager *M : {&TargetMAM, &IMAM})
+      M->registerPass([&D] {
+        return luthier::IntrinsicsProcessorsAnalysis(
+            D.getIntrinsicProcessorRegistry());
+      });
+
+    // The machine-function passes InjectedPayloadPEIPass and SVAPhysVGPRPinPass
+    // resolve their module back to the owning prototype through this map, and
+    // read the analysis with getCachedResult -- so it has to be registered and
+    // materialized before the pipeline runs.
+    luthier::ModuleToPrototypeMap ParentMap;
+    ParentMap.registerPrototype(IP);
+    for (llvm::ModuleAnalysisManager *M : {&TargetMAM, &IMAM})
+      M->registerPass(
+          [&ParentMap] { return luthier::ParentPrototypeAnalysis(ParentMap); });
 
     llvm::SmallVector<char, 0> ObjBuf;
     llvm::raw_svector_ostream ObjOS(ObjBuf);
 
-    llvm::Triple ToolTriple = TM->getTargetTriple();
-    std::string ToolCPU(TM->getTargetCPU());
-    llvm::SubtargetFeatures ToolFeatures(TM->getTargetFeatureString());
+    llvm::CGPassBuilderOption CGPBO = llvm::getCGPassBuilderOption();
 
-    llvm::ModulePassManager MPM;
-    MPM.addPass(luthier::CodeDiscoveryPass(DiscoveryOpts));
-    MPM.addPass(luthier::InstrumentationPMDriver(
-        DriverOpts, D.getIntrinsicProcessorRegistry(), /*Plugins=*/{},
-        // IModule creator: a tool may override via createInstrumentationModule;
-        // the default materializes the tool's embedded device-side bitcode so
-        // the hooks live in the IModule.
-        [&D, ToolTriple, ToolCPU, ToolFeatures](
-            llvm::LLVMContext &IModCtx) -> std::unique_ptr<llvm::Module> {
+    luthier::PrototypePassManager IPPM;
+    LUTHIER_RETURN_ON_ERROR(PB.buildInstrumentationPipeline(
+        IPPM,
+        // The instrumentation stage: the tool's own payload injection, then any
+        // extra IR-level passes it asks for.
+        [&D](luthier::PrototypePassManager &PPM, llvm::OptimizationLevel) {
+          PPM.addPass(InjectPayloadsAdapter(&D));
           if constexpr (requires(Derived &Tool) {
-                          Tool.createInstrumentationModule(IModCtx);
-                        }) {
-            return D.createInstrumentationModule(IModCtx);
-          } else {
-            auto ModOrErr =
-                D.parseModule(ToolTriple, ToolCPU, ToolFeatures, IModCtx);
-            if (!ModOrErr)
-              llvm::report_fatal_error(ModOrErr.takeError());
-            return std::move(*ModOrErr);
-          }
-        },
-        // PassBuilder augmentation (optional).
-        [&D](llvm::PassBuilder &IPB) {
-          if constexpr (requires(Derived &Tool) {
-                          Tool.augmentInstrumentationPassBuilder(IPB);
+                          Tool.preIROptimizationPasses(PPM);
                         })
-            D.augmentInstrumentationPassBuilder(IPB);
+            D.preIROptimizationPasses(PPM);
         },
-        // PreIROptimization: always insert the payload-injection adapter (its
-        // payload functions reference the hooks, preventing GlobalDCE from
-        // stripping them), then run the tool's optional extras.
-        [&D](llvm::ModulePassManager &IMPM) {
-          IMPM.addPass(InjectPayloadsAdapter(&D));
-          if constexpr (requires(Derived &Tool) {
-                          Tool.preIROptimizationPasses(IMPM);
-                        })
-            D.preIROptimizationPasses(IMPM);
-        },
-        // PreLuthierIRIntrinsicLowering (optional).
-        [&D](llvm::ModulePassManager &IMPM) {
-          if constexpr (requires(Derived &Tool) {
-                          Tool.preLuthierIRIntrinsicLoweringPasses(IMPM);
-                        })
-            D.preLuthierIRIntrinsicLoweringPasses(IMPM);
-        },
-        // PostLuthierIRIntrinsicLowering (optional).
-        [&D](llvm::ModulePassManager &IMPM) {
-          if constexpr (requires(Derived &Tool) {
-                          Tool.postLuthierIRIntrinsicLoweringPasses(IMPM);
-                        })
-            D.postLuthierIRIntrinsicLoweringPasses(IMPM);
-        },
-        // AugmentTargetPassConfig (optional).
-        [&D](llvm::PassRegistry &PR, llvm::TargetPassConfig &TPC,
-             llvm::TargetMachine &ITM) {
-          if constexpr (requires(Derived &Tool) {
-                          Tool.augmentTargetPassConfig(PR, TPC, ITM);
-                        })
-            D.augmentTargetPassConfig(PR, TPC, ITM);
-        }));
-    MPM.addPass(
-        luthier::NewPMAsmPrinter(llvm::CodeGenFileType::ObjectFile, ObjOS));
+        Level, llvm::CodeGenFileType::ObjectFile, CGPBO, &ObjOS, &PIC));
 
-    MPM.run(*M, MAM);
+    // ParentPrototypeAnalysis is consumed via getCachedResult, so materialize
+    // it for both modules up front, each in its own manager.
+    (void)IMAM.getResult<luthier::ParentPrototypeAnalysis>(
+        IP.getInstrumentationModule());
+    (void)TargetMAM.getResult<luthier::ParentPrototypeAnalysis>(
+        IP.getTargetModule());
+
+    IPPM.run(IP, IPAM);
 
     return std::make_unique<llvm::SmallVectorMemoryBuffer>(
         std::move(ObjBuf), "luthier.instrumented",

@@ -20,14 +20,13 @@
 #ifndef LUTHIER_TOOL_CODE_GEN_INTRINSIC_MIR_LOWERING_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_INTRINSIC_MIR_LOWERING_PASS_H
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
-#include "luthier/ToolCodeGen/LegacyPassSupport.h"
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/CodeGen/Register.h>
 #include <llvm/IR/Module.h>
-#include <llvm/Pass.h>
-#include <llvm/PassRegistry.h>
+#include <llvm/IR/PassManager.h>
 
 namespace llvm {
 class MachineFunction;
@@ -35,13 +34,10 @@ class MachineFunction;
 
 namespace luthier {
 
-class IntrinsicMIRLoweringPass;
-
 class StateValueArraySpecs;
 
-LUTHIER_INITIALIZE_LEGACY_PASS_PROTOTYPE(IntrinsicMIRLoweringPass);
-
-class IntrinsicMIRLoweringPass : public llvm::ModulePass {
+class IntrinsicMIRLoweringPass
+    : public llvm::PassInfoMixin<IntrinsicMIRLoweringPass> {
 public:
   /// Describes one pending V_READLANE_B32 to be emitted in phase 2, replacing
   /// an IMPLICIT_DEF SGPR_32 placeholder created during intrinsic lowering.
@@ -55,48 +51,48 @@ public:
   };
 
   /// SVA placeholder state collected per MachineFunction during
-  /// \c lowerIntrinsics, consumed by phase 2 in \c runOnModule.
+  /// \c lowerIntrinsics, consumed by phase 2 in \c run.
   struct PerFunctionSVAInfo {
     /// IMPLICIT_DEF VGPR_32 marked with pcsections !"luthier.sva_vgpr_placeholder";
     /// a later pass resolves this to the actual SVA VGPR.
     llvm::Register SVAVGPRPlaceholder{0};
     /// SGPR_32 placeholders waiting to be replaced by V_READLANE_B32
     llvm::SmallVector<PendingSVAReadlane> Readlanes;
+    /// SGPRSpill frame indices reserved (eagerly, together) for the
+    /// two fixed SVA frame lanes that carry the target application's
+    /// SP / FP: entry [i] is the FI whose framework-counter lane matches
+    /// SVA lane i. Populated on first \c readReg / \c writeReg of SGPR32
+    /// or SGPR33 in an injected payload; both slots are allocated together
+    /// so \c allocateSGPRSpillToVGPRLane's monotonic counter aligns them
+    /// with \c StackPointerRegSpillLane (0) and \c FramePointerRegSSpillLane
+    /// (1) regardless of which of the two frame regs the payload actually
+    /// touched. Empty when no frame-reg access exists in this MF.
+    llvm::SmallVector<int, 2> FrameLaneFI;
   };
 
 private:
-  // Forward-declared opaque type — definition is local to the .cpp.
-  struct PlaceholderLookupTable;
 
   bool processMachineFunction(
       llvm::MachineFunction &MF, bool IsInjectedPayload,
       const IntrinsicsProcessorsAnalysis::Result &IntrinsicsProcessors,
-      const PlaceholderLookupTable &Placeholders,
-      llvm::SmallDenseSet<ScalarValueArgument> &ScalarArgumentsUsed,
-      PerFunctionSVAInfo &MFSVAInfo);
+      const StateValueArraySpecs &SVASpecs, PerFunctionSVAInfo &MFSVAInfo);
 
   void materializeReadlanes(
       llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> &SVAInfoByMF,
       const StateValueArraySpecs &SVASpecs, bool &Changed);
 
   bool
-  lowerIntrinsics(llvm::Module &IModule,
+  lowerIntrinsics(Prototype &IP,
+                  PrototypeAnalysisManager &IPAM,
+                  const StateValueArraySpecs &SVASpecs,
                   llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo>
-                      &SVAInfoByMF,
-                  std::unique_ptr<StateValueArraySpecs> &SVASpecs);
+                      &SVAInfoByMF);
 
 public:
-  static char ID;
+  IntrinsicMIRLoweringPass() = default;
 
-  IntrinsicMIRLoweringPass() : llvm::ModulePass(ID) {};
-
-  [[nodiscard]] llvm::StringRef getPassName() const override {
-    return "Luthier Intrinsic MIR Lowering";
-  }
-
-  bool runOnModule(llvm::Module &IModule) override;
-
-  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
+  llvm::PreservedAnalyses run(Prototype &IP,
+                              PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier

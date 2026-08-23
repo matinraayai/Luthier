@@ -17,22 +17,27 @@
 /// Implements \c InjectedPayloadPreserveLiveRegsPass.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/InjectedPayloadPreserveLiveRegsPass.h"
-#include "luthier/Common/ErrorCheck.h"
-#include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
-#include "luthier/ToolCodeGen/IPPredicatedLivenessIModulePass.h"
-#include "luthier/ToolCodeGen/InjectedPayloadAccessedRegsAnalysis.h"
+#include "luthier/ToolCodeGen/IPPredicatedCFG.h"
+#include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
+#include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
+#include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
 #include <AMDGPU.h>
 #include <SIInstrInfo.h>
+#include <llvm/CodeGen/LivePhysRegs.h>
+#include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFunction.h>
+#include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
-#include <llvm/CodeGen/MachineModuleInfo.h>
+#include <llvm/CodeGen/MachineOperand.h>
 #include <llvm/CodeGen/MachineRegisterInfo.h>
+#include <llvm/CodeGen/TargetOpcodes.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Support/Debug.h>
 
 #undef DEBUG_TYPE
@@ -40,80 +45,140 @@
 
 namespace luthier {
 
-char InjectedPayloadPreserveLiveRegsPass::ID = 0;
+llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
+    Prototype &IP, PrototypeAnalysisManager &IPAM) {
+  LLVM_DEBUG(luthier::dbgs()
+             << "=== Luthier Injected Payload Preserve Live Regs Pass ===\n");
 
-LUTHIER_INITIALIZE_LEGACY_PASS_BODY(InjectedPayloadPreserveLiveRegsPass,
-                                    "payload-preserve-live-regs",
-                                    "Luthier Injected Payload Preserve Live Regs",
-                                    false /* Modifies CFG */,
-                                    false /* Analysis Pass */)
+  llvm::Module &IModule = IP.getInstrumentationModule();
+  llvm::Module &TargetModule = IP.getTargetModule();
 
-void InjectedPayloadPreserveLiveRegsPass::getAnalysisUsage(
-    llvm::AnalysisUsage &AU) const {
-  AU.addRequired<llvm::MachineModuleInfoWrapperPass>();
-  AU.addRequired<IModuleIPPredicatedLivenessAnalysis>();
-  AU.addRequired<InjectedPayloadAccessedRegsAnalysis>();
-  ModulePass::getAnalysisUsage(AU);
-}
+  // This pass only reads the instrumentation module, so it goes through that
+  // module's own managers.
+  llvm::ModuleAnalysisManager &MAM =
+      IPAM.getResult<IModuleAnalysisManagerPrototypeProxy>(IP).getManager();
 
-bool InjectedPayloadPreserveLiveRegsPass::runOnModule(llvm::Module &IModule) {
-  LLVM_DEBUG(luthier::dbgs() << "=== " << getPassName() << " ===\n");
+  llvm::FunctionAnalysisManager &FAM =
+      MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(IModule)
+          .getManager();
 
-  llvm::MachineModuleInfo &MMI =
-      getAnalysis<llvm::MachineModuleInfoWrapperPass>().getMMI();
-  const auto &Liveness =
-      getAnalysis<IModuleIPPredicatedLivenessAnalysis>();
-  const auto &AccessedRegs =
-      getAnalysis<InjectedPayloadAccessedRegsAnalysis>().getMap();
+  // Target-side FAM is where the target module's MachineFunctionAnalysis
+  // results live (populated by CodeDiscoveryPass); we walk it to iterate
+  // every PATCHPOINT MI in the target module.
+  llvm::FunctionAnalysisManager &TargetFAM =
+      IPAM.getResult<TargetFunctionAnalysisManagerPrototypeProxy>(IP)
+          .getManager();
+
+  const IPPredicatedLiveness &Liveness =
+      IPAM.getResult<IPPredicatedLivenessAnalysis>(IP);
+  IPPredicatedCFG &CFG =
+      IPAM.getResult<IPPredCFGAnalysis>(IP).getVecCFG();
 
   bool Changed = false;
 
-  for (llvm::Function &F : IModule.functions()) {
-    if (!F.hasFnAttribute(InjectedPayloadAttribute))
+  // Iterate PATCHPOINT markers in the target module directly (no
+  // precomputed per-payload map). For each, compute the live-out at the
+  // PATCHPOINT — that is the set the payload must preserve — by unioning
+  // successor PMBBs' live-ins and stepping backward through the parent
+  // MBB up to (but not including) the PATCHPOINT itself.
+  for (llvm::Function &TF : TargetModule) {
+    llvm::MachineFunctionAnalysis::Result *MFRes =
+        TargetFAM.getCachedResult<llvm::MachineFunctionAnalysis>(TF);
+    if (!MFRes)
       continue;
-    llvm::MachineFunction *MF = MMI.getMachineFunction(F);
-    if (!MF)
-      continue;
+    llvm::MachineFunction &TMF = MFRes->getMF();
+    const llvm::TargetRegisterInfo &TargetTRI =
+        *TMF.getSubtarget().getRegisterInfo();
 
-    const PayloadLiveSets *LS = Liveness.getLiveSetsForPayload(F);
-    if (!LS) {
-      LLVM_DEBUG(luthier::dbgs()
-                 << "  no liveness for payload " << F.getName() << "\n");
-      continue;
-    }
-    LLVM_DEBUG({
-      const llvm::TargetRegisterInfo *TRIDbg =
-          MF->getSubtarget().getRegisterInfo();
-      luthier::dbgs() << "  payload " << F.getName() << " Active={";
-      for (llvm::MCPhysReg R : LS->Active)
-        luthier::dbgs() << " " << llvm::printReg(R, TRIDbg);
-      luthier::dbgs() << " }\n";
-    });
+    for (llvm::MachineBasicBlock &MBB : TMF) {
+      if (!CFG.contains(MBB))
+        continue;
+      const PredicatedMachineBasicBlock &PMBB = CFG.at(MBB);
 
-    // Compute Preserve = Active \ (Reads U Writes). Under the C calling
-    // convention used today, only the active-lane live set matters for
-    // preservation — inactive lanes are not exposed to the payload since
-    // VALU instructions only operate on active lanes. See
-    // `project_sva_vgpr_wwm_preload` for the WWM-payload future where
-    // inactive-lane preservation is needed.
-    llvm::SmallVector<llvm::MCPhysReg, 16> Preserve;
-    auto AccIt = AccessedRegs.find(&F);
-    const auto *Acc =
-        AccIt == AccessedRegs.end() ? nullptr : &AccIt->second;
-    for (llvm::MCPhysReg R : LS->Active) {
-      if (Acc) {
-        if (Acc->Reads.contains(R) || Acc->Writes.contains(R))
+      // MBB live-out = union of successor PMBBs' live-ins.
+      llvm::LivePhysRegs Live(TargetTRI);
+      for (const PredicatedMachineBasicBlock &Succ : PMBB.successors())
+        if (const llvm::LivePhysRegs *SuccLive =
+                Liveness.getPMBBLiveIns(Succ))
+          for (llvm::MCPhysReg R : *SuccLive)
+            Live.addReg(R);
+
+      for (auto MIt = MBB.rbegin(), MEnd = MBB.rend(); MIt != MEnd; ++MIt) {
+        llvm::MachineInstr &MI = *MIt;
+        if (MI.getOpcode() != llvm::TargetOpcode::PATCHPOINT) {
+          Live.stepBackward(MI);
           continue;
-      }
-      Preserve.push_back(R);
-    }
-    if (Preserve.empty())
-      continue;
+        }
 
-    const llvm::TargetInstrInfo *TII = MF->getSubtarget().getInstrInfo();
-    const llvm::TargetRegisterInfo *TRI =
-        MF->getSubtarget().getRegisterInfo();
-    llvm::MachineRegisterInfo &MRI = MF->getRegInfo();
+        // PatchpointOpers layout: ID, NBytes, Target, NArgs, CC. Operand
+        // 2 is the payload extern handle (a \c GlobalAddress \c Function *
+        // in the target module). Its name matches the IModule payload
+        // definition's name.
+        const llvm::MachineOperand &TargetOp = MI.getOperand(2);
+        assert(TargetOp.isGlobal() &&
+               "PATCHPOINT target operand must be a GlobalAddress");
+        const auto *ExternHandle =
+            llvm::cast<llvm::Function>(TargetOp.getGlobal());
+        llvm::Function *PayloadDef = IModule.getFunction(ExternHandle->getName());
+        if (!PayloadDef || !PayloadDef->hasFnAttribute(InjectedPayloadAttribute)) {
+          Live.stepBackward(MI);
+          continue;
+        }
+        auto *PayloadMFRes =
+            FAM.getCachedResult<llvm::MachineFunctionAnalysis>(*PayloadDef);
+        if (!PayloadMFRes) {
+          Live.stepBackward(MI);
+          continue;
+        }
+        llvm::MachineFunction *MF = &PayloadMFRes->getMF();
+
+        LLVM_DEBUG({
+          luthier::dbgs() << "  payload " << PayloadDef->getName()
+                          << " live-out={";
+          for (llvm::MCPhysReg R : Live)
+            luthier::dbgs() << " " << llvm::printReg(R, &TargetTRI);
+          luthier::dbgs() << " }\n";
+        });
+
+        // Compute Preserve = LiveOut(PATCHPOINT) \ (Reads U Writes),
+        // restricted to the widest live reg at each unit. \c LivePhysRegs
+        // stores subregs_inclusive, so a live 64-bit pair like
+        // \c $sgpr12_sgpr13 also carries $sgpr12, $sgpr13, and their 16-bit
+        // halves. Preserving all of them is redundant, and preserving the
+        // 16-bit halves in particular produces ill-formed SDWA-style COPYs
+        // (SGPR_LO16/HI16 have an allocatable cross-copy class but no valid
+        // whole-lane COPY expansion). Emitting one save/restore for the
+        // widest live reg containing the unit covers the entire live range.
+        const InjectedPayloadSideEffects &Acc =
+            FAM.getResult<InjectedPayloadSideEffectsAnalysis>(*PayloadDef);
+        llvm::SmallVector<llvm::MCPhysReg, 16> Preserve;
+        for (llvm::MCPhysReg R : Live) {
+          if (Acc.reads_contains(R) || Acc.writes_contains(R))
+            continue;
+          bool HasSuperLive = false;
+          for (llvm::MCPhysReg Super : TargetTRI.superregs(R)) {
+            if (Live.contains(Super)) {
+              HasSuperLive = true;
+              break;
+            }
+          }
+          if (HasSuperLive)
+            continue;
+          Preserve.push_back(R);
+        }
+
+        // Advance the walk past the PATCHPOINT itself so that a later
+        // PATCHPOINT MI upstream in the same MBB sees the correct
+        // (post-payload-effects) live state.
+        Live.stepBackward(MI);
+
+        if (Preserve.empty())
+          continue;
+
+        const llvm::TargetInstrInfo *TII = MF->getSubtarget().getInstrInfo();
+        const llvm::TargetRegisterInfo *TRI =
+            MF->getSubtarget().getRegisterInfo();
+        llvm::MachineRegisterInfo &MRI = MF->getRegInfo();
 
     llvm::MachineBasicBlock &EntryMBB = MF->front();
     auto EntryInsertPt = EntryMBB.SkipPHIsAndLabels(EntryMBB.begin());
@@ -131,27 +196,28 @@ bool InjectedPayloadPreserveLiveRegsPass::runOnModule(llvm::Module &IModule) {
                    << ": no reg class\n");
         continue;
       }
-      // TODO: Fix this
-      // Skip architectural registers and their sub-halves (VCC/EXEC/FLAT_SCR/
-      // XNACK_MASK). The full 64-bit registers are caught by the
-      // non-allocatable cross-copy check below, but their 32-bit halves
-      // ($vcc_hi, $exec_lo, ...) report an allocatable sreg_32 cross-copy class
-      // and would otherwise slip through and get an ill-formed save/restore:
-      // the payload uses these as scratch (e.g. the bank-conflict hook clobbers
-      // $vcc for its compares), so the half's regunit live range is not jointly
-      // dominated and regalloc aborts with "Use not jointly dominated by defs".
-      // Per this pass's design these are application-level architectural state
-      // the lifted code doesn't expect to survive the instrumentation boundary.
-      bool IsArchReg = false;
-      for (llvm::MCPhysReg ArchReg :
-           {llvm::AMDGPU::VCC, llvm::AMDGPU::EXEC, llvm::AMDGPU::FLAT_SCR,
-            llvm::AMDGPU::XNACK_MASK}) {
+      // EXEC / FLAT_SCR / XNACK_MASK are wave/context registers the payload's
+      // own PEI (InjectedPayloadPEIPass) and the atomic-optimizer-emitted
+      // wave-scan handle by construction — the app doesn't expect them to
+      // survive the instrumentation boundary. Everything else — including VCC
+      // and SCC — is genuine app state and has to be saved/restored: AMDGPU
+      // ISel routinely picks vcc as the carry of v_add_co_u32/v_addc_u32_e64
+      // and scc as the flag of every scalar arithmetic op, so an app-uniform
+      // atomicAdd payload that lands v_cmp/vcc_lo across a live carry (very
+      // common for 64-bit pointer arithmetic) will corrupt the following
+      // address computation and page-fault the wave. SIRegisterInfo lowers
+      // COPY $vcc via s_mov_b32/s_mov_b64 and COPY $scc via the
+      // S_CSELECT_B32 / S_CMP_LG_U32 pair (see SIRegisterInfo::copyPhysReg).
+      bool IsUnpreservableArchReg = false;
+      for (llvm::MCPhysReg ArchReg : {llvm::AMDGPU::EXEC,
+                                       llvm::AMDGPU::FLAT_SCR,
+                                       llvm::AMDGPU::XNACK_MASK}) {
         if (TRI->regsOverlap(PhysReg, ArchReg)) {
-          IsArchReg = true;
+          IsUnpreservableArchReg = true;
           break;
         }
       }
-      if (IsArchReg) {
+      if (IsUnpreservableArchReg) {
         LLVM_DEBUG(luthier::dbgs()
                    << "  skipping " << llvm::printReg(PhysReg, TRI)
                    << ": architectural register (not preserved)\n");
@@ -165,12 +231,10 @@ bool InjectedPayloadPreserveLiveRegsPass::runOnModule(llvm::Module &IModule) {
                    << ": no cross-copy class\n");
         continue;
       }
-      // Architectural regs like $exec, $vcc, $scc, $flat_scr report a
-      // cross-copy class that's not allocatable. createVirtualRegister
-      // asserts on those. The inlined payload's effects on them are
-      // either handled separately (frame regs by InjectedPayloadPEIPass)
-      // or are application-level architectural state that the lifted
-      // code doesn't expect to survive an instrumentation boundary.
+      // A non-allocatable cross-copy class means the target has no way to
+      // materialize this reg into a vreg. VCC / SCC do NOT hit this branch on
+      // AMDGPU: SIRegisterInfo::getCrossCopyRegClass returns SReg_32 for SCC
+      // and passes VCC through as SReg_64, both of which are allocatable.
       if (!CrossCopyRC->isAllocatable()) {
         LLVM_DEBUG(luthier::dbgs()
                    << "  skipping " << llvm::printReg(PhysReg, TRI)
@@ -206,9 +270,29 @@ bool InjectedPayloadPreserveLiveRegsPass::runOnModule(llvm::Module &IModule) {
       Changed = true;
     }
     EntryMBB.sortUniqueLiveIns();
-  }
+      } // end for each PATCHPOINT MI in reverse
+    } // end for each MBB in TMF
+  } // end for each target function
 
-  return Changed;
+  if (!Changed)
+    return llvm::PreservedAnalyses::all();
+
+  // Preserve the outer MAM proxy so the Prototype adaptor doesn't
+  // wipe every cached module-level analysis for both modules on the way out —
+  // downstream passes still need the cached MachineFunctionAnalysis results
+  // for the instrumentation module we just mutated.
+  llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
+  // Preservation copies are emitted into existing injected-payload MFs in the
+  // instrumentation module. No MachineFunction is created or destroyed and the
+  // target module is untouched, so the inner managers remain accurate; only
+  // Prototype-level analyses over payload liveness are dropped.
+  PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
+  return PA;
 }
 
 } // namespace luthier

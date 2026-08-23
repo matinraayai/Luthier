@@ -38,28 +38,33 @@ add_library(LuthierToolCodeGen OBJECT
         IPPredicatedCFG.cpp
         StateValueArrayStorage.cpp
         ProcessIntrinsicsAtIRLevelPass.cpp
-        ForwardISAStateToCalleesPass.cpp
-        IPPredicatedLivenessIModulePass.cpp
+        IPPredicatedLivenessPass.cpp
         InjectedPayloadPreserveLiveRegsPass.cpp
-        WrapperAnalysisPasses.cpp
         MIRConvenience.cpp
         MetadataParserAnalysis.cpp
         IntrinsicProcessorRegistry.cpp
         IntrinsicProcessorsAnalysis.cpp
         InjectedPayloadAndInstPointAnalysis.cpp
-        InjectedPayloadAccessedRegsAnalysis.cpp
-        InstrumentationPMDriver.cpp
+        InjectedPayloadSideEffectsAnalysis.cpp
         InitialEntryPointAnalysis.cpp
         InitialExecutionPointAnalysis.cpp
         Metadata.cpp
-        MIRToIRTranslator.cpp
+        TraceFunctionTranslator.cpp
+        TraceFunctionTranslationAnalysis.cpp
         RegValueMetadata.cpp
         MIInlineAsmEmitter.cpp
         NewPMAsmPrinter.cpp
         FunctionAnnotations.cpp
-        TraceCallGraph.cpp
+        PrototypeCallGraph.cpp
         PredicatedMachineBasicBlock.cpp
-
+        Prototype.cpp
+        InstrumentationPassBuilder.cpp
+        ParentPrototypeAnalysis.cpp
+        MockAMDGPULoader.cpp
+        MockLoadAMDGPUCodeObjects.cpp
+        MockLoaderMemoryAccessor.cpp
+        CodeObjectManagerAnalysis.cpp
+        LuthierFile.cpp
 )
 
 add_dependencies(LuthierToolCodeGen LuthierRealToPseudoOpcodeMap)

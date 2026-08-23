@@ -15,23 +15,46 @@
 //===----------------------------------------------------------------------===//
 /// \file InitialEntryPointAnalysis.h
 /// Describes the \c InitialEntryPointAnalysis class which provides access to
-/// the initial entrypoint of the lifting process.
+/// the initial entrypoint of the lifting process, plus the target-module
+/// metadata the entry point is recorded in.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_INITIAL_ENTRY_POINT_ANALYSIS_H
 #define LUTHIER_TOOL_CODE_GEN_INITIAL_ENTRY_POINT_ANALYSIS_H
 #include "luthier/ToolCodeGen/EntryPoint.h"
+#include <llvm/ADT/StringRef.h>
 #include <llvm/IR/PassManager.h>
+#include <llvm/Support/Error.h>
 
 namespace luthier {
 
+/// \brief Name of the target module's named metadata recording the initial
+/// entry point of the lifting process.
+///
+/// \details The node holds a single operand of the form
+/// \code !{i64 <raw address>, i1 <is kernel descriptor>} \endcode
+/// The address is a loaded (host-visible) address; whoever loads the code
+/// object decides how a user-facing entry-point spec maps onto one. Recording
+/// it on the module rather than resolving it on demand is what keeps
+/// \c InitialEntryPointAnalysis independent of any particular loader, and lets
+/// the entry point survive a \c .luthier round-trip.
+inline constexpr llvm::StringRef InitialEntryPointMDName =
+    "luthier.initial_entry_point";
+
+/// Records \p EP as the initial entry point of \p M, replacing any previously
+/// recorded entry point.
+void setInitialEntryPoint(llvm::Module &M, const EntryPoint &EP);
+
+/// \return the initial entry point recorded on \p M, or an error if \p M
+/// carries no \c luthier.initial_entry_point metadata or the node is malformed
+llvm::Expected<EntryPoint> getInitialEntryPoint(const llvm::Module &M);
+
+/// \brief Module analysis exposing the initial entry point recorded on the
+/// target module by \c setInitialEntryPoint.
 class InitialEntryPointAnalysis
     : public llvm::AnalysisInfoMixin<InitialEntryPointAnalysis> {
   friend AnalysisInfoMixin;
 
   static llvm::AnalysisKey Key;
-
-  std::function<EntryPoint(llvm::Module &, llvm::ModuleAnalysisManager &)>
-      EntryPointResolver;
 
 public:
   class Result {
@@ -50,14 +73,11 @@ public:
     }
   };
 
-  explicit InitialEntryPointAnalysis(
-      std::function<EntryPoint(llvm::Module &, llvm::ModuleAnalysisManager &)>
-          EntryPointResolver)
-      : EntryPointResolver(std::move(EntryPointResolver)) {};
+  InitialEntryPointAnalysis() = default;
 
-  Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
-    return Result{EntryPointResolver(M, MAM)};
-  }
+  /// Parses \c luthier.initial_entry_point off \p M. A missing or malformed
+  /// node is reported on \p M 's context and yields a default \c EntryPoint.
+  Result run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
 };
 
 } // namespace luthier

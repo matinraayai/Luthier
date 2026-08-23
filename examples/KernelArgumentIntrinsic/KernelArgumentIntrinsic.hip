@@ -42,18 +42,17 @@
 #include <luthier/LLVM/streams.h>
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
 #include <luthier/ToolCodeGen/CodeDiscoveryPass.h>
+#include <luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h>
 #include <luthier/ToolCodeGen/EntryPoint.h>
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
+#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
-#include <luthier/ToolCodeGen/InstrumentationPMDriver.h>
-#include <luthier/ToolCodeGen/InstrumentationPass.h>
-#include <luthier/ToolCodeGen/IPPredicatedCFG.h>
-#include <luthier/ToolCodeGen/TraceCallGraph.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/NewPMAsmPrinter.h>
 #include <luthier/ToolCodeGen/PrePostAmbleEmitter.h>
+#include <luthier/ToolCodeGen/PrototypeCallGraph.h>
 #include <mutex>
 
 #undef DEBUG_TYPE
@@ -104,8 +103,6 @@ struct KernelArgumentIntrinsicTool
         llvm::cl::desc("Whether to demangle kernel names before printing"),
         llvm::cl::init(true), llvm::cl::NotHidden, llvm::cl::cat(Cat)};
 
-    luthier::InstrumentationPMDriverOptions DriverOpts;
-    luthier::CodeDiscoveryPassOptions DiscoveryOpts;
   } Opts;
 
   std::recursive_mutex Mutex;
@@ -115,15 +112,17 @@ struct KernelArgumentIntrinsicTool
                  llvm::ArrayRef<luthier::hsa::AqlPacket> Packets,
                  hsa_amd_queue_intercept_packet_writer PacketWriter);
 
-  luthier::InstrumentationPreservedAnalyses
-  runInstrumentationPass(llvm::Module &IModule, llvm::ModuleAnalysisManager &,
-                         llvm::MachineFunction &MF,
-                         llvm::FunctionAnalysisManager &);
+  /// Prototype-level entry point: payload creation reads the target module's
+  /// MIR and writes into the instrumentation module, so it needs both halves of
+  /// the prototype.
+  llvm::PreservedAnalyses run(luthier::Prototype &P,
+                              luthier::PrototypeAnalysisManager &PAM);
 };
 
 __attribute__((managed)) dim3 KernelArgumentIntrinsicTool::BlockCount{0, 0, 0};
 
-__attribute__((device, used)) void KernelArgumentIntrinsicTool::accessKernelArg() {
+__attribute__((device, used)) void
+KernelArgumentIntrinsicTool::accessKernelArg() {
   KernelArgumentIntrinsicTool::BlockCount = gridDim;
 }
 
@@ -131,22 +130,36 @@ LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(KernelArgumentIntrinsicTool)
 
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
-static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>
-    *AmdExtSnapshot{nullptr};
+static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable> *AmdExtSnapshot{
+    nullptr};
 static luthier::rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
     *LoaderSnapshot{nullptr};
 
-
-luthier::InstrumentationPreservedAnalyses
-KernelArgumentIntrinsicTool::runInstrumentationPass(
-    llvm::Module &IModule, llvm::ModuleAnalysisManager &,
-    llvm::MachineFunction &MF, llvm::FunctionAnalysisManager &) {
-  if (MF.empty())
-    return luthier::InstrumentationPreservedAnalyses{};
-  LUTHIER_REPORT_FATAL_ON_ERROR(this->createInjectedPayload(
-      &KernelArgumentIntrinsicTool::accessKernelArg, IModule,
-      MF.begin()->front(), {}));
-  return luthier::InstrumentationPreservedAnalyses{};
+llvm::PreservedAnalyses
+KernelArgumentIntrinsicTool::run(luthier::Prototype &P,
+                                 luthier::PrototypeAnalysisManager &PAM) {
+  llvm::Module &IModule = P.getInstrumentationModule();
+  P.forEachTargetMF(PAM, [&](llvm::MachineFunction &MF) {
+    if (MF.empty())
+      return;
+    LUTHIER_REPORT_FATAL_ON_ERROR(this->createInjectedPayload(
+        &KernelArgumentIntrinsicTool::accessKernelArg, P, PAM,
+        MF.begin()->front()));
+  });
+  llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
+  // Payload creation only adds functions to the instrumentation module and
+  // attaches instrumentation-point metadata to target MIs. No MachineFunction
+  // is created or destroyed, so every cached MachineFunctionAnalysis result —
+  // including the lifted target MIR this pass just walked — stays valid.
+  PA.preserve<luthier::TargetModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::TargetFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<luthier::IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.abandon<luthier::InjectedPayloadAndInstPointAnalysis>();
+  PA.abandon<luthier::PrototypeCallGraphAnalysis>();
+  return PA;
 }
 
 void KernelArgumentIntrinsicTool::onPackets(
@@ -190,9 +203,7 @@ void KernelArgumentIntrinsicTool::onPackets(
         llvm::consumeError(std::move(MissErr));
         std::unique_ptr<llvm::MemoryBuffer> ObjBuf;
         LUTHIER_REPORT_FATAL_ON_ERROR(
-            this->runInstrumentationPipelineForDispatch(*KD, Opts.DriverOpts,
-                                                        Opts.DiscoveryOpts)
-                .moveInto(ObjBuf));
+            this->runInstrumentationPipelineForDispatch(*KD).moveInto(ObjBuf));
         LUTHIER_REPORT_FATAL_ON_ERROR(
             this->loadInstrumented(std::move(ObjBuf), KD, 0).takeError());
         LUTHIER_REPORT_FATAL_ON_ERROR(
@@ -211,9 +222,9 @@ void KernelArgumentIntrinsicTool::onPackets(
             DispatchPacket->completion_signal, HSA_SIGNAL_CONDITION_LT,
             SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
     if (Current >= SignalValue)
-      llvm::report_fatal_error(llvm::formatv(
-          "Wait timeout for signal {0:x}",
-          DispatchPacket->completion_signal.handle));
+      llvm::report_fatal_error(
+          llvm::formatv("Wait timeout for signal {0:x}",
+                        DispatchPacket->completion_signal.handle));
     if (MustDestroySignalAfterLaunch) {
       LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
           Core.callFunction<&::CoreApiTable::hsa_signal_destroy_fn>(
@@ -268,9 +279,8 @@ static void atToolInit(void *) {
     if (Err)
       llvm::report_fatal_error(std::move(Err));
 
-    KernelArgumentIntrinsicTool::createInstance(*CoreApiSnapshot,
-                                                *AmdExtSnapshot, *LoaderSnapshot,
-                                                Err);
+    KernelArgumentIntrinsicTool::createInstance(
+        *CoreApiSnapshot, *AmdExtSnapshot, *LoaderSnapshot, Err);
     if (Err)
       llvm::report_fatal_error(std::move(Err));
 

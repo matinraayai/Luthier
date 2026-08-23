@@ -14,12 +14,12 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements SVAPhysVGPRPinPass. Looks up the IP that this payload MF is
-/// attached to, asks SVStorageAndLoadLocations for the canonical SVA load
-/// destination physreg, and pins the MF's single MFInfo->SGPRSpillVGPRs[]
-/// entry to it via MachineRegisterInfo::setSimpleHint. The greedy WWM
-/// regalloc honors hints when feasible, and the SVA physreg is feasible
-/// by construction (SVStorageAndLoadLocations picked it specifically
+/// Implements SVAPhysVGPRPinPass. For each injected-payload MF, looks up the
+/// IP that this payload MF is attached to, asks SVStorageAndLoadLocations for
+/// the canonical SVA load destination physreg, and pins the MF's single
+/// MFInfo->SGPRSpillVGPRs[] entry to it via MachineRegisterInfo::setSimpleHint.
+/// The greedy WWM regalloc honors hints when feasible, and the SVA physreg is
+/// feasible by construction (SVStorageAndLoadLocations picked it specifically
 /// because nothing else in the target module uses it).
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/SVAPhysVGPRPinPass.h"
@@ -28,12 +28,12 @@
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
+#include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
+#include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
-#include "luthier/ToolCodeGen/WrapperAnalysisPasses.h"
 
 #include <SIMachineFunctionInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
-#include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachineRegisterInfo.h>
 #include <llvm/IR/Function.h>
 #include <llvm/Support/Debug.h>
@@ -44,24 +44,12 @@
 
 namespace luthier {
 
-char SVAPhysVGPRPinPass::ID = 0;
-
-LUTHIER_INITIALIZE_LEGACY_PASS_BODY(SVAPhysVGPRPinPass, "sva-phys-vgpr-pin",
-                                    "Luthier SVA Physical VGPR Pin Pass",
-                                    /*CFGOnly=*/false,
-                                    /*IsAnalysis=*/false)
-
-void SVAPhysVGPRPinPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
-  AU.addRequired<IModuleMAMWrapperPass>();
-  AU.addRequired<LRStateValueStorageAndLoadLocationsAnalysis>();
-  AU.setPreservesAll();
-  llvm::MachineFunctionPass::getAnalysisUsage(AU);
-}
-
-bool SVAPhysVGPRPinPass::runOnMachineFunction(llvm::MachineFunction &MF) {
+static void pinInjectedPayloadMF(llvm::MachineFunction &MF,
+                                 const InjectedPayloadAndInstPoint &IPIP,
+                                 const SVStorageAndLoadLocations &SVLocations) {
   const llvm::Function &F = MF.getFunction();
   if (!F.hasFnAttribute(InjectedPayloadAttribute))
-    return false;
+    return;
 
   auto *MFInfo = MF.getInfo<llvm::SIMachineFunctionInfo>();
   // The LaneVGPR pool: materializeReadlanes pushed exactly one entry
@@ -70,35 +58,26 @@ bool SVAPhysVGPRPinPass::runOnMachineFunction(llvm::MachineFunction &MF) {
   // are RA-driven spill targets we DON'T want to pin.
   llvm::ArrayRef<llvm::Register> SpillVGPRs = MFInfo->getSGPRSpillVGPRs();
   if (SpillVGPRs.empty())
-    return false;
+    return;
 
-  // Resolve the IP this payload is attached to + ask
-  // SVStorageAndLoadLocations for the canonical SVA load destination.
   llvm::LLVMContext &Ctx = F.getContext();
-  llvm::ModuleAnalysisManager &IMAM =
-      getAnalysis<IModuleMAMWrapperPass>().getMAM();
-  llvm::Module &IModule = const_cast<llvm::Module &>(*F.getParent());
 
-  const auto *IPIP =
-      IMAM.getCachedResult<InjectedPayloadAndInstPointAnalysis>(IModule);
-  if (!IPIP || !IPIP->contains(F))
-    return false;
-  const llvm::MachineInstr *AppMI = IPIP->at(F);
+  if (!IPIP.contains(F))
+    return;
+  const llvm::MachineInstr *AppMI = IPIP.at(F);
 
-  const auto &SVLocations =
-      getAnalysis<LRStateValueStorageAndLoadLocationsAnalysis>().getResult();
   const auto *LoadPlan =
       SVLocations.getStateValueArrayLoadPlanForInstPoint(*AppMI);
   if (!LoadPlan) {
     Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
         "SVAPhysVGPRPinPass: no SVA load plan for IP in {0}", F.getName()))));
-    return false;
+    return;
   }
   llvm::MCRegister TargetPhys = LoadPlan->StateValueArrayLoadVGPR;
   if (!TargetPhys) {
     LLVM_DEBUG(luthier::dbgs() << "  no SVA load VGPR for " << F.getName()
                                << "; nothing to pin\n");
-    return false;
+    return;
   }
 
   // The first SpillVGPR is the SVA LaneVGPR (materializeReadlanes
@@ -111,11 +90,55 @@ bool SVAPhysVGPRPinPass::runOnMachineFunction(llvm::MachineFunction &MF) {
 
   LLVM_DEBUG(luthier::dbgs()
              << "  pinned LaneVGPR " << llvm::printReg(LaneVGPR) << " to "
-                          << llvm::printReg(
-                                 TargetPhys,
-                                 MF.getSubtarget().getRegisterInfo())
-                          << " in " << F.getName() << "\n");
-  return true;
+             << llvm::printReg(TargetPhys, MF.getSubtarget().getRegisterInfo())
+             << " in " << F.getName() << "\n");
+}
+
+llvm::PreservedAnalyses
+SVAPhysVGPRPinPass::run(llvm::MachineFunction &MF,
+                        llvm::MachineFunctionAnalysisManager &MFAM) {
+  llvm::Function &F = MF.getFunction();
+  if (!F.hasFnAttribute(InjectedPayloadAttribute))
+    return llvm::PreservedAnalyses::all();
+
+  llvm::LLVMContext &Ctx = F.getContext();
+  llvm::Module &IModule = *F.getParent();
+
+  const auto &MAMProxy =
+      MFAM.getResult<llvm::ModuleAnalysisManagerMachineFunctionProxy>(MF);
+  const auto &PAMProxy =
+      MFAM.getResult<PrototypeAnalysisManagerMachineFunctionProxy>(MF);
+
+  auto *PPA = MAMProxy.getCachedResult<ParentPrototypeAnalysis>(IModule);
+  Prototype *P = PPA ? PPA->getPrototype() : nullptr;
+  if (!P) {
+    Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
+        "No parent prototype found for instrumentation module")));
+    return llvm::PreservedAnalyses::all();
+  }
+
+  const InjectedPayloadAndInstPoint *IPIP =
+      PAMProxy.getCachedResult<InjectedPayloadAndInstPointAnalysis>(*P);
+  if (!IPIP) {
+    Ctx.emitError(llvm::toString(
+        LUTHIER_MAKE_GENERIC_ERROR("Injected payload and instrumentation point "
+                                   "analysis has not been cached")));
+    return llvm::PreservedAnalyses::all();
+  }
+
+  const SVStorageAndLoadLocations *SVLocations =
+      PAMProxy.getCachedResult<SVStorageAndLoadLocationsAnalysis>(*P);
+  if (!SVLocations) {
+    Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
+        "SV locations analysis has not been cached")));
+    return llvm::PreservedAnalyses::all();
+  }
+
+  pinInjectedPayloadMF(MF, *IPIP, *SVLocations);
+
+  // Register-hint changes don't invalidate any analyses on the MF's CFG
+  // or IR; preserve everything.
+  return llvm::PreservedAnalyses::all();
 }
 
 } // namespace luthier

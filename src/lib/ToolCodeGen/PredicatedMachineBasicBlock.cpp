@@ -20,6 +20,7 @@
 #include "luthier/LLVM/CodeGenHelpers.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
+#include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
 #include <SIInstrInfo.h>
 #include <llvm/CodeGen/TargetSubtargetInfo.h>
 #include <llvm/Support/FormatVariadic.h>
@@ -60,6 +61,10 @@ void PredicatedMachineBasicBlock::print(llvm::raw_ostream &OS,
   const auto &ST = MBB.getParent()->getSubtarget();
   const auto *TII = ST.getInstrInfo();
 
+  OS.indent(Indent) << "PredMBB " << getName()
+                    << " (function=" << MBB.getParent()->getName()
+                    << ", MBB=" << llvm::printMBBReference(MBB) << ")\n";
+
   if (HasUnresolvedEdges)
     OS.indent(Indent) << "  (has unresolved edges)\n";
 
@@ -72,8 +77,14 @@ void PredicatedMachineBasicBlock::print(llvm::raw_ostream &OS,
 
   if (!empty()) {
     OS.indent(Indent) << "Instructions:\n";
-    for (const auto &MI : *this)
+    for (const auto &MI : *this) {
       MI.print(OS.indent(Indent + 2), true, false, false, true, TII);
+      // Tag any MI whose pcsections metadata lacks a trace-instr address for
+      // tests and easier reading
+      if (const auto *MD = TargetMachineInstrMDNode::getInstrMDNodeIfExists(MI))
+        if (!MD->isTraceInstr())
+          OS.indent(Indent + 2) << "    ; synthetic (no trace address)\n";
+    }
   }
 
   OS.indent(Indent) << "Successors: [";

@@ -1,15 +1,14 @@
 // RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx908 -filetype=obj %s -o %t.o && \
 // RUN: ld.lld -shared --unresolved-symbols=ignore-all -o %t %t.o && \
 // RUN: luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx908 \
-// RUN:   -load-pass-plugin=%luthier_tool_code_gen_plugin \
-// RUN:   '-passes=luthier-mock-load-amdgpu-code-objects,luthier-code-discovery,print' \
+// RUN:   '-passes=target(luthier-mock-load-amdgpu-code-objects),luthier-code-discovery,target(print)' \
 // RUN:   -code-object-paths=%t \
 // RUN:   -initial-entrypoint=0:flat_rmw.kd \
 // RUN:   -initial-execution-point=0:flat_rmw.kd \
 // RUN:   -o - 2>/dev/null | %tee_out FileCheck %s
 
 // FLAT semantics smoke test: global_load_dword + global_store_dword must
-// lift through MIRToIRTranslator without assertion and emit proper typed
+// lift through TraceFunctionTranslator without assertion and emit proper typed
 // load/store IR against ptr addrspace(1).
 
 // CHECK: define {{.*}} @flat_rmw

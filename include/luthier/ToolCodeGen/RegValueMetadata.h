@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 /// \file RegValueMetadata.h
 /// Helpers for attaching/reading register-provenance metadata produced by
-/// \c MIRToIRTranslator. Each translated IR value that represents the
+/// \c TraceFunctionTranslator. Each translated IR value that represents the
 /// content of a (slice of a) physical register is tagged so downstream
 /// passes can trace how a value was constructed.
 ///
@@ -42,15 +42,35 @@
 ///    !5 = !{Value %arg0, !"sgpr0", i32 <BaseEnum>, i32 0, i32 2}
 ///    !6 = !{i32 42,      !"src_scc", i32 <BaseEnum>, i32 0, i32 2}
 ///    \endcode
+///
+/// 3. Function-level MD kind \c "luthier.bb_exit_reg_map" attached to the
+///    translated <tt>llvm::Function</tt>. Serializes the translator's
+///    per-basic-block exit register-file state so downstream passes can
+///    ask "for BB X, which SSA value represents register slice S at BB
+///    exit?" without re-running the translator's book-keeping. Because
+///    <tt>llvm::BasicBlock</tt> is not a metadata-attachable IR entity,
+///    the payload lives on the Function and references each BB via a
+///    <tt>blockaddress</tt> constant.
+///
+///    \code
+///    !7 = !{!8, !10, ...}                            ; one tuple per BB
+///    !8 = !{ptr blockaddress(@f, %bb0), !9}
+///    !9 = !{!11, !12}                                ; per-slice entries
+///    !11 = !{Value %v3, !"vgpr0", i32 <Enum>, i32 0, i32 2}
+///    !12 = !{i32 42,    !"sgpr7", i32 <Enum>, i32 0, i32 2}
+///    \endcode
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_REG_VALUE_METADATA_H
 #define LUTHIER_TOOL_CODE_GEN_REG_VALUE_METADATA_H
 
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/MC/MCRegister.h>
 
 namespace llvm {
+class BasicBlock;
 class Function;
 class Instruction;
 class LLVMContext;
@@ -119,6 +139,42 @@ void addEntryRegMapping(llvm::Function &F, llvm::Value *V,
 /// The name is advisory; programmatic readers must use \c getRegValues.
 std::string formatRegValueDescName(const RegValueDesc &D,
                                    llvm::StringRef BaseRegName);
+
+/// Metadata kind name attached to the translated \c Function that carries
+/// the per-basic-block exit register-file state serialized by
+/// \c TraceFunctionTranslator after translation is complete.
+inline constexpr llvm::StringLiteral BBExitRegMapMDKindName =
+    "luthier.bb_exit_reg_map";
+
+/// A single (Value, register-slice) entry inside a per-BB exit map.
+/// \c Name is advisory (populated when writing; empty when reading — use
+/// \c formatRegValueDescName to reconstruct if needed).
+struct BBExitRegSlice {
+  llvm::Value *V;
+  RegValueDesc Desc;
+  llvm::StringRef Name;
+};
+
+/// Build the per-BB tuple <tt>!{blockaddress(@F, BB), !{slices...}}</tt>
+/// for one basic block. Empty \p Slices produces a tuple with an empty
+/// inner list, so consumers still see the BB listed.
+llvm::MDNode *buildBBExitRegMapEntry(llvm::Function &F,
+                                     const llvm::BasicBlock *BB,
+                                     llvm::ArrayRef<BBExitRegSlice> Slices);
+
+/// Overwrite \p F's \c luthier.bb_exit_reg_map with the given per-BB
+/// tuples. Pass an empty range to clear the attachment.
+void setBBExitRegMap(llvm::Function &F,
+                     llvm::ArrayRef<llvm::MDNode *> PerBBEntries);
+
+/// Read back the per-BB exit maps written by \c setBBExitRegMap. \p Out
+/// is populated with (BB → list of live slices). Slices whose Value
+/// operand has been dropped (e.g. by RAUW-to-null) are skipped.
+void getBBExitRegMap(
+    const llvm::Function &F,
+    llvm::DenseMap<const llvm::BasicBlock *,
+                   llvm::SmallVector<std::pair<RegValueDesc, llvm::Value *>, 8>>
+        &Out);
 
 } // namespace luthier
 
