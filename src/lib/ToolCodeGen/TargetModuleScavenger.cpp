@@ -21,8 +21,6 @@
 ///     addition to \c MRI.isReserved at every candidate check.
 ///   * \c isReserved returns true for both \c MRI.isReserved and
 ///     \c ReservedRegs members.
-///   * \c spill consults \c SpillSink first; on a successful sink callback
-///     the FrameIndex spill is skipped entirely.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/TargetModuleScavenger.h"
 
@@ -240,22 +238,8 @@ TargetModuleScavenger::spill(llvm::Register Reg,
                            const llvm::TargetRegisterClass &RC, int SPAdj,
                            llvm::MachineBasicBlock::iterator Before,
                            llvm::MachineBasicBlock::iterator &UseMI) {
-  // Luthier hook: if the caller installed an SVA-lane spill sink and it
-  // succeeds, return a synthetic ScavengedInfo without touching the
-  // FrameIndex machinery. The sink is expected to emit the spill+reload
-  // using SVA lanes via V_WRITELANE/V_READLANE.
-  if (SpillSink) {
-    if (SpillSink(*MBB, Before, *UseMI->getParent(), UseMI, Reg, RC)) {
-      // Synthesize a scavenging slot record so the caller's
-      // scavengeRegisterBackwards bookkeeping (which assumes a slot
-      // index) still works. FrameIndex == -1 marks it as SVA-lane-managed.
-      Scavenged.push_back(ScavengedInfo(-1));
-      Scavenged.back().Reg = Reg;
-      return Scavenged.back();
-    }
-  }
-
   // Stock FrameIndex path — verbatim from llvm::RegScavenger::spill.
+  // TODO: Add a spill to SVA path
   const llvm::MachineFunction &MF = *Before->getMF();
   const llvm::MachineFrameInfo &MFI = MF.getFrameInfo();
   unsigned NeedSize = TRI->getSpillSize(RC);
@@ -312,17 +296,6 @@ TargetModuleScavenger::spill(llvm::Register Reg,
     TRI->eliminateFrameIndex(II, SPAdj, FIOperandNum, /*RS=*/nullptr);
   }
   return Scavenged[SI];
-}
-
-bool TargetModuleScavenger::invokeSVASpillSink(
-    llvm::MachineBasicBlock &SpillMBB,
-    llvm::MachineBasicBlock::iterator SpillBefore,
-    llvm::MachineBasicBlock &ReloadMBB,
-    llvm::MachineBasicBlock::iterator ReloadBefore, llvm::MCRegister Reg,
-    const llvm::TargetRegisterClass &RC) {
-  if (!SpillSink)
-    return false;
-  return SpillSink(SpillMBB, SpillBefore, ReloadMBB, ReloadBefore, Reg, RC);
 }
 
 llvm::Register TargetModuleScavenger::scavengeRegisterBackwards(

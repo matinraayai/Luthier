@@ -15,23 +15,14 @@
 //===----------------------------------------------------------------------===//
 /// \file
 /// Target-module register scavenger — a custom version of
-/// \c llvm::RegScavenger.
-///
-/// Two additions over stock:
-///   1. \c ReservedRegs — a \c DenseSet of phys-regs the scavenger
-///      must never pick, regardless of \c MRI.isReserved / \c LiveUnits /
-///      backward-walk state. Used by \c TargetModulePatcherPass to protect
-///      the SVA storage register on schemes where it lives in SGPRs.
-///   2. \c SVASpillCallback — an optional spill sink that replaces the
-///      stock FrameIndex-based emergency spill. When set, the scavenger
-///      delegates the spill to the caller, which is expected to write the
-///      scavenged reg into free SVA lanes (\c StateValueArraySpecs::
-///      findLowestFreeLanes) via \c V_WRITELANE_B32 / \c V_READLANE_B32.
+/// \c llvm::RegScavenger. Sole addition over stock: \c ReservedRegs —
+/// a \c DenseSet of phys-regs the scavenger must never pick, regardless
+/// of \c MRI.isReserved / \c LiveUnits / backward-walk state. Used by
+/// \c TargetModuleBranchRelaxation to protect the SVA storage register(s).
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_TARGET_MODULE_SCAVENGER_H
 #define LUTHIER_TOOL_CODE_GEN_TARGET_MODULE_SCAVENGER_H
 
-#include <functional>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/BitVector.h>
 #include <llvm/ADT/DenseSet.h>
@@ -54,20 +45,6 @@ namespace luthier {
 /// Sibling-class fork of \c llvm::RegScavenger
 class TargetModuleScavenger {
 public:
-  /// Spill sink for the no-free-reg case. Receives the chosen reg, its
-  /// class, and the spill+reload insertion points the caller picked.
-  /// Spill and reload may live in different MBBs (long-jump trampoline
-  /// reload lands in RestoreBB; standard scavenger reload lands in the
-  /// same MBB). Returns \c true on success; on \c false the scavenger
-  /// falls back to the stock FrameIndex-based path (or reports a hard
-  /// error if there's no emergency slot).
-  using SVASpillCallback = std::function<bool(
-      llvm::MachineBasicBlock &SpillMBB,
-      llvm::MachineBasicBlock::iterator SpillBefore,
-      llvm::MachineBasicBlock &ReloadMBB,
-      llvm::MachineBasicBlock::iterator ReloadBefore, llvm::MCRegister Reg,
-      const llvm::TargetRegisterClass &RC)>;
-
   TargetModuleScavenger() = default;
 
   /// Mark \p Regs as never-pick. The scavenger consults this in addition
@@ -75,14 +52,6 @@ public:
   /// scan's \c Used set.
   void setReservedRegs(llvm::DenseSet<llvm::MCPhysReg> Regs) {
     ReservedRegs = std::move(Regs);
-  }
-
-  /// Install an SVA-lane spill sink. When set and the scavenger needs
-  /// to spill (no globally-free reg in the class found), the callback
-  /// is invoked instead of \c spill(). On \c true the scavenger
-  /// considers the reg available.
-  void setSVASpillCallback(SVASpillCallback CB) {
-    SpillSink = std::move(CB);
   }
 
   // ============ Stock RegScavenger API surface ============================
@@ -149,18 +118,6 @@ public:
   void setRegUsed(llvm::Register Reg,
                   llvm::LaneBitmask LaneMask = llvm::LaneBitmask::getAll());
 
-  /// Explicitly invoke the SVA-lane spill sink with caller-supplied
-  /// insertion points. Used by \c emitLongBranch when the scavenger's
-  /// normal spill flow can't express the reload-in-RestoreBB semantics
-  /// a long-jump needs. Returns \c true on success (the sink emitted
-  /// spill+reload), \c false otherwise.
-  bool invokeSVASpillSink(llvm::MachineBasicBlock &SpillMBB,
-                          llvm::MachineBasicBlock::iterator SpillBefore,
-                          llvm::MachineBasicBlock &ReloadMBB,
-                          llvm::MachineBasicBlock::iterator ReloadBefore,
-                          llvm::MCRegister Reg,
-                          const llvm::TargetRegisterClass &RC);
-
 private:
   /// See \c RegScavenger::ScavengedInfo.
   struct ScavengedInfo {
@@ -189,10 +146,6 @@ private:
   /// Phys-regs the scavenger is forbidden to pick, on top of MRI's
   /// reserved set. Populated via \c setReservedRegs.
   llvm::DenseSet<llvm::MCPhysReg> ReservedRegs;
-
-  /// Optional spill sink. When non-empty, replaces the FrameIndex
-  /// spill path.
-  SVASpillCallback SpillSink;
 };
 
 } // namespace luthier
