@@ -34,6 +34,7 @@
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
+#include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
 
 #include <AMDGPU.h>
 #include <GCNSubtarget.h>
@@ -118,6 +119,18 @@ class TargetModuleBranchRelaxationWorker {
   uint64_t computeBlockSize(const llvm::MachineBasicBlock &MBB) const;
   unsigned getInstrOffset(const llvm::MachineInstr &MI) const;
 
+  /// Only branches whose \c TargetMachineInstrMDNode carries
+  /// \c canRelaxDirectBranch() = true (or which have no MDNode at
+  /// all — the default for both lifted and relaxer-synthesized MIs)
+  /// are eligible. A branch whose MDNode explicitly sets
+  /// \c canRelaxDirectBranch=false stays as-is.
+  static bool canRelaxBranch(const llvm::MachineInstr &MI);
+
+  /// GFX12+ (\c ST.useAddPC64Inst()) long-branch emission
+  void emitAddPCLongBranch(llvm::MachineBasicBlock &BranchBB,
+                           llvm::MachineBasicBlock &DestBB,
+                           const llvm::DebugLoc &DL);
+
   const IPPredicatedCFG &IPCFG;
   const IPPredicatedLiveness &IPLiveness;
   const SVStorageAndLoadLocations &SVLoc;
@@ -169,6 +182,34 @@ public:
 
   bool run(llvm::MachineFunction &MF);
 };
+
+bool TargetModuleBranchRelaxationWorker::canRelaxBranch(
+    const llvm::MachineInstr &MI) {
+  const auto *MD = TargetMachineInstrMDNode::getInstrMDNodeIfExists(MI);
+  if (!MD)
+    return true;
+  return MD->canRelaxDirectBranch();
+}
+
+void TargetModuleBranchRelaxationWorker::emitAddPCLongBranch(
+    llvm::MachineBasicBlock &BranchBB, llvm::MachineBasicBlock &DestBB,
+    const llvm::DebugLoc &DL) {
+  assert(BranchBB.empty() && "trampoline MBB must start empty");
+  auto &MCCtx = MF->getContext();
+  auto *Offset = MCCtx.createTempSymbol("luthier_addpc_offset",
+                                        /*AlwaysAddSuffix=*/true);
+  auto *AddPC = llvm::BuildMI(BranchBB, BranchBB.end(), DL,
+                              TII->get(llvm::AMDGPU::S_ADD_PC_I64))
+                    .addSym(Offset, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET)
+                    .getInstr();
+  auto *PostAddPCLabel = MCCtx.createTempSymbol("luthier_post_addpc",
+                                                /*AlwaysAddSuffix=*/true);
+  AddPC->setPostInstrSymbol(*MF, PostAddPCLabel);
+  auto *OffsetExpr = llvm::MCBinaryExpr::createSub(
+      llvm::MCSymbolRefExpr::create(DestBB.getSymbol(), MCCtx),
+      llvm::MCSymbolRefExpr::create(PostAddPCLabel, MCCtx), MCCtx);
+  Offset->setVariableValue(OffsetExpr);
+}
 
 llvm::DenseSet<llvm::MCPhysReg>
 TargetModuleBranchRelaxationWorker::getSVSReservedRegsAtBranch(
@@ -651,6 +692,8 @@ bool TargetModuleBranchRelaxationWorker::fixupUnconditionalBranch(
                           : DestOffset - SrcOffset));
   BlockInfo[MBB->getNumber()].Size -= OldBrSize;
 
+  const auto &ST = MF->getSubtarget<llvm::GCNSubtarget>();
+
   // Install the SVS-storage regs active at THIS branch as the
   // scavenger's reserved set — narrower than a union over every
   // segment in the MF. The source MBB is an original MBB carried in
@@ -658,7 +701,9 @@ bool TargetModuleBranchRelaxationWorker::fixupUnconditionalBranch(
   // enclosing segment is the MBB's last one. Trampoline MBBs
   // (BranchBB, RestoreBB) that the relaxer creates below inherit
   // this reserved set for the duration of \c emitLongBranch — the
-  // scavenger call it makes runs against these regs.
+  // scavenger call it makes runs against these regs. Not needed on
+  // gfx12+ where \c S_ADD_PC_I64 doesn't scavenge, but it is cheap
+  // to set unconditionally.
   RS.setReservedRegs(getSVSReservedRegsAtBranch(*MBB));
 
   llvm::MachineBasicBlock *BranchBB = MBB;
@@ -677,6 +722,16 @@ bool TargetModuleBranchRelaxationWorker::fixupUnconditionalBranch(
 
   llvm::DebugLoc DL = MI.getDebugLoc();
   MI.eraseFromParent();
+
+  // GFX12+ (\c useAddPC64Inst) short-circuits the whole SVA-lane
+  // spill/reload apparatus
+  if (ST.useAddPC64Inst()) {
+    emitAddPCLongBranch(*BranchBB, *DestBB, DL);
+    BlockInfo[BranchBB->getNumber()].Size = computeBlockSize(*BranchBB);
+    adjustBlockOffsets(*MBB, std::next(BranchBB->getIterator()));
+    RelaxedUnconditionals.insert({BranchBB, DestBB});
+    return true;
+  }
 
   // Choose reload-site placement.
   //
@@ -770,7 +825,8 @@ bool TargetModuleBranchRelaxationWorker::relaxBranchInstructions() {
     if (Last->isUnconditionalBranch()) {
       if (auto *DestBB = TII->getBranchDestBlock(*Last)) {
         if (!isBlockInRange(*Last, *DestBB) && !TII->isTailCall(*Last) &&
-            !RelaxedUnconditionals.contains({&MBB, DestBB})) {
+            !RelaxedUnconditionals.contains({&MBB, DestBB}) &&
+            canRelaxBranch(*Last)) {
           fixupUnconditionalBranch(*Last);
           Changed = true;
         }
@@ -785,7 +841,7 @@ bool TargetModuleBranchRelaxationWorker::relaxBranchInstructions() {
       if (MI.getOpcode() == llvm::TargetOpcode::FAULTING_OP)
         continue;
       auto *DestBB = TII->getBranchDestBlock(MI);
-      if (!isBlockInRange(MI, *DestBB)) {
+      if (!isBlockInRange(MI, *DestBB) && canRelaxBranch(MI)) {
         if (Next != MBB.end() && Next->isConditionalBranch())
           splitBlockBeforeInstr(*Next, DestBB);
         else
