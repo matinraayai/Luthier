@@ -1717,146 +1717,19 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
              << "[TargetModulePatcherPass]   Phase B.3 outlined "
              << PayloadCount << " payload(s)\n");
 
-  // Post-inline branch displacement check. CodeGenerator::printAssemblyFile
-  // invokes AsmPrinter directly with no intermediate machine-pass chain, so
-  // LLVM's BranchRelaxationPass never runs on the target module — out-of-range
-  // branches would otherwise be silently truncated by the encoder. For now we
-  // count + diagnose; the actual relaxation (s_setpc_b64 + SGPR scavenging
-  // via per-MBB live-ins, falling back to spilling two app SGPRs into the
-  // lowest free SVA lanes per StateValueArraySpecs::findLowestFreeLanes) is
-  // the next phase.
-  // Phase B step 4: invoke Luthier's forked BranchRelaxation on every
-  // patched target MF. CodeGenerator::printAssemblyFile takes the MMI
-  // straight to AsmPrinter (no addPassesToEmitFile), so far-jumps need
-  // explicit relaxation here or they'd silently emit with truncated
-  // displacements. We use a sibling-class fork (TargetModuleBranchRelaxation
-  // + TargetModuleScavenger, not subclasses — stock methods are non-
-  // virtual) so the scavenger can be told to reserve the SVA storage
-  // register and, eventually, route emergency spills to SVA lanes.
-  //
-  // ReservedForSVA gathers every reg that ever appears in any SVS
-  // storage segment for this MF — that's the set the scavenger must
-  // not pick when allocating the long-branch PC pair.
-  LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] === Phase B.4: "
-                                "branch relaxation per kernel ===\n");
+  /// Relax short branches in the target module that don't make their targets
+  LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] === "
+                                "Branch relaxation per kernel ===\n");
   for (llvm::Function &F : TargetModule) {
-    if (F.isDeclaration())
+    if (F.isDeclaration() || !getFunctionEntryPoint(F).has_value())
       continue;
-    // Skip non-kernel target functions. The helpers `moveIModuleIntoTarget`
-    // copies in (utility functions referenced from hooks — atomics, lane
-    // ops, ockl printf helpers, etc.) carry terminator shapes
-    // (`S_SETPC_B64` returns, indirect calls) that LLVM AMDGPU's
-    // `analyzeBranch` doesn't fully understand. Running the long-branch
-    // relaxer on them trips `MachineOperand::getMBB()`'s `isMBB()`
-    // assert inside `analyzeBranch`. Lit fixtures don't hit this
-    // because they only carry payload IModules; the runtime path's
-    // embedded bitcode brings in real HIP helpers. Long branches only
-    // need correctness on the kernels themselves anyway — they're the
-    // ones whose post-instrumentation expansion grows the code far
-    // enough to need relaxing.
-    if (F.getCallingConv() != llvm::CallingConv::AMDGPU_KERNEL) {
-      LLVM_DEBUG(luthier::dbgs()
-                 << "[TargetModulePatcherPass]   skip non-kernel '"
-                 << F.getName() << "' for relaxer\n");
-      continue;
-    }
     llvm::MachineFunction &MF =
         TargetFAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
     LLVM_DEBUG(luthier::dbgs()
-               << "[TargetModulePatcherPass]   relaxer for kernel '"
+               << "[TargetModulePatcherPass]   relaxer for function '"
                << F.getName() << "' (" << MF.size() << " MBB(s))\n");
-    llvm::DenseSet<llvm::MCPhysReg> ReservedForSVA;
-    for (const auto &MBB : MF) {
-      for (const auto &Seg : SVLocations.getStorageIntervals(MBB)) {
-        llvm::SmallVector<llvm::MCRegister, 4> Regs;
-        Seg.getSVS().getAllStorageRegisters(Regs);
-        for (llvm::MCRegister R : Regs)
-          ReservedForSVA.insert(R.id());
-      }
-    }
-    LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
-                                  "ReservedForSVA size="
-                               << ReservedForSVA.size() << "\n");
 
-    // Pre-pin a `LongBranchReservedReg` on this MF if any globally
-    // dead SReg_64 exists. `SIInstrInfo::insertIndirectBranch` (and
-    // our TargetModuleBranchRelaxation's emitLuthierLongBranch) consult
-    // `SIMachineFunctionInfo::getLongBranchReservedReg()` first; when
-    // non-zero it bypasses the scavenger entirely. With a pre-pinned
-    // reg every trampoline reuses the same pair, no RestoreBB ever
-    // gets populated, MBB growth per relaxed branch is minimal, and
-    // the relaxer's outer fixed-point loop converges in O(1)
-    // iterations regardless of how tight `--amdgpu-s-branch-bits` is
-    // (no inserted spill code → no neighboring branches pushed out
-    // of range by spill+restore MBBs). Reg selection: any SReg_64 in
-    // the allocation order not in ReservedForSVA, not reserved by
-    // MRI, and not appearing in any MBB's liveins or MI uses/defs
-    // (i.e., globally dead).
-    {
-      auto &MRI = MF.getRegInfo();
-      const auto *TRI = MF.getSubtarget().getRegisterInfo();
-      auto *MFI = MF.getInfo<llvm::SIMachineFunctionInfo>();
-
-      // Liveins under the lifted MIR weren't computed by CodeDiscovery
-      // — we need them populated before we can read MBB.liveins().
-      // TargetModuleBranchRelaxation will recompute again at its run() start;
-      // that's idempotent (fixed-point converges in 0 extra iterations
-      // since the state's already consistent).
-      MF.getProperties().setTracksLiveness();
-      llvm::SmallVector<llvm::MachineBasicBlock *, 16> AllMBBs;
-      for (llvm::MachineBasicBlock &MBB : MF)
-        AllMBBs.push_back(&MBB);
-      llvm::fullyRecomputeLiveIns(AllMBBs);
-
-      // Build the set of regs that appear anywhere in the MF (liveins
-      // post-fullyRecomputeLiveIns + explicit MI operand uses/defs).
-      llvm::DenseSet<llvm::MCPhysReg> UsedAnywhere;
-      for (const auto &MBB : MF) {
-        for (const auto &LI : MBB.liveins())
-          UsedAnywhere.insert(LI.PhysReg);
-        for (const auto &MI : MBB) {
-          for (const auto &MO : MI.operands()) {
-            if (MO.isReg() && MO.getReg().isPhysical())
-              UsedAnywhere.insert(MO.getReg().id());
-          }
-        }
-      }
-
-      // Find the first SReg_64 candidate where neither of its 32-bit
-      // sub-regs appears in UsedAnywhere and the pair itself isn't
-      // reserved or in ReservedForSVA.
-      llvm::Register Picked;
-      for (llvm::MCRegister Reg :
-           llvm::AMDGPU::SReg_64RegClass.getRegisters()) {
-        if (!MRI.isAllocatable(Reg) || MRI.isReserved(Reg))
-          continue;
-        if (ReservedForSVA.contains(Reg.id()))
-          continue;
-        llvm::MCRegister Sub0 = TRI->getSubReg(Reg, llvm::AMDGPU::sub0);
-        llvm::MCRegister Sub1 = TRI->getSubReg(Reg, llvm::AMDGPU::sub1);
-        if (!Sub0 || !Sub1)
-          continue;
-        if (UsedAnywhere.contains(Reg.id()) ||
-            UsedAnywhere.contains(Sub0.id()) ||
-            UsedAnywhere.contains(Sub1.id()))
-          continue;
-        Picked = Reg;
-        break;
-      }
-      if (Picked) {
-        LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
-                                      "LongBranchReservedReg picked="
-                                   << llvm::printReg(Picked, TRI) << "\n");
-        MFI->setLongBranchReservedReg(Picked);
-      } else {
-        LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
-                                      "no globally-dead SReg_64; relaxer must "
-                                      "scavenge via SVA-lane spill\n");
-      }
-    }
-
-    // SVA-lane spill sink: when the long-branch scavenger can't find a
-    // globally-free SReg_64, fall through to here. We spill the chosen
+    // SVA-lane spill sink: We spill the chosen
     // pair into the two lowest free SVA lanes via V_WRITELANE_B32 at
     // SpillBefore and reload via V_READLANE_B32 at ReloadBefore. The
     // SVA storage VGPR is read from the MF's entry MBB's first segment;
@@ -1951,8 +1824,8 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
       return true;
     };
 
-    TargetModuleBranchRelaxation BR(
-        IPCFG, IPLiveness, std::move(ReservedForSVA), std::move(SpillSink));
+    TargetModuleBranchRelaxation BR(IPCFG, IPLiveness, SVLocations,
+                                    std::move(SpillSink));
     LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     running "
                                   "TargetModuleBranchRelaxation on '"
                                << F.getName() << "'\n");
