@@ -17,11 +17,13 @@
 /// Describes \c InjectedPayloadSideEffectsAnalysis, a function-level analysis
 /// that, for each injected-payload \c llvm::Function in the instrumentation
 /// module, returns the set of physical registers the payload reads from and
-/// writes at their injection site in the target application.
+/// writes at their injection site in the target application, as well as
+/// the SVA lanes and implicit args it touches upon.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_SIDE_EFFECTS_ANALYSIS_H
 #define LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_SIDE_EFFECTS_ANALYSIS_H
 #include <llvm/ADT/DenseSet.h>
+#include <llvm/ADT/StringRef.h>
 #include <llvm/ADT/iterator_range.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/MC/MCRegister.h>
@@ -41,8 +43,10 @@ class InjectedPayloadSideEffects {
 public:
   using PhysRegSetT = llvm::DenseSet<llvm::MCRegister>;
   using SVASetT = llvm::SmallDenseSet<ScalarValueArgument, 4>;
+  using ImplicitArgSetT = llvm::SmallDenseSet<llvm::StringRef, 32>;
   using iterator = PhysRegSetT::const_iterator;
   using sva_iterator = SVASetT::const_iterator;
+  using implicit_arg_iterator = ImplicitArgSetT::const_iterator;
 
 private:
   friend class InjectedPayloadSideEffectsAnalysis;
@@ -50,6 +54,7 @@ private:
   PhysRegSetT Reads;
   PhysRegSetT Writes;
   SVASetT SVAs;
+  ImplicitArgSetT ImplicitArgs;
 
 public:
   /// == Reads ================================================================
@@ -82,6 +87,22 @@ public:
   bool svas_empty() const { return SVAs.empty(); }
   bool svas_contains(ScalarValueArgument SA) const { return SVAs.contains(SA); }
 
+  /// == Implicit arguments ===================================================
+  /// AMDGPU \c amdgpu-no-<foo> attr names for each implicit-arg-buffer
+  /// entry the payload transitively uses.
+  implicit_arg_iterator implicit_args_begin() const {
+    return ImplicitArgs.begin();
+  }
+  implicit_arg_iterator implicit_args_end() const { return ImplicitArgs.end(); }
+  llvm::iterator_range<implicit_arg_iterator> implicit_args() const {
+    return {implicit_args_begin(), implicit_args_end()};
+  }
+  size_t implicit_args_size() const { return ImplicitArgs.size(); }
+  bool implicit_args_empty() const { return ImplicitArgs.empty(); }
+  bool implicit_args_contains(llvm::StringRef A) const {
+    return ImplicitArgs.contains(A);
+  }
+
   /// Invalidated whenever the enclosing \c Function's IR changes. The
   /// result is derived by walking the function's call sites (both un-lowered
   /// Luthier-intrinsic calls and inline-asm placeholder calls emitted by
@@ -105,6 +126,10 @@ public:
   using Result = InjectedPayloadSideEffects;
 
   Result run(llvm::Function &F, llvm::FunctionAnalysisManager &FAM);
+
+  /// The \c amdgpu-no-<foo> attr names the analysis inspects on
+  /// payload functions.
+  static llvm::ArrayRef<llvm::StringRef> getAllImplicitArgOptOutAttrs();
 };
 
 /// \brief Printer pass for \c InjectedPayloadSideEffectsAnalysis used for

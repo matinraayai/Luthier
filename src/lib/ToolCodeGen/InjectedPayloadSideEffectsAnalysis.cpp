@@ -1,4 +1,4 @@
-//===-- InjectedPayloadSideEffectsAnalysis.cpp ---------------------------===//
+//===-- InjectedPayloadSideEffectsAnalysis.cpp ----------------------------===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,6 +39,22 @@ namespace luthier {
 
 llvm::AnalysisKey InjectedPayloadSideEffectsAnalysis::Key;
 
+static constexpr llvm::StringLiteral ImplicitArgOptOutAttrList[] = {
+    "amdgpu-no-implicitarg-ptr",   "amdgpu-no-hostcall-ptr",
+    "amdgpu-no-heap-ptr",          "amdgpu-no-multigrid-sync-arg",
+    "amdgpu-no-default-queue",     "amdgpu-no-completion-action",
+};
+
+llvm::ArrayRef<llvm::StringRef>
+InjectedPayloadSideEffectsAnalysis::getAllImplicitArgOptOutAttrs() {
+  static constexpr llvm::StringRef Storage[] = {
+      ImplicitArgOptOutAttrList[0], ImplicitArgOptOutAttrList[1],
+      ImplicitArgOptOutAttrList[2], ImplicitArgOptOutAttrList[3],
+      ImplicitArgOptOutAttrList[4], ImplicitArgOptOutAttrList[5],
+  };
+  return llvm::ArrayRef<llvm::StringRef>(Storage);
+}
+
 bool InjectedPayloadSideEffects::invalidate(
     llvm::Function &, const llvm::PreservedAnalyses &PA,
     llvm::FunctionAnalysisManager::Invalidator &) {
@@ -53,6 +69,11 @@ InjectedPayloadSideEffectsAnalysis::run(llvm::Function &F,
   Result Out;
   if (!F.hasFnAttribute(InjectedPayloadAttribute))
     return Out;
+
+  // Aggregate implicit arg related attributes
+  for (llvm::StringRef Attr : ImplicitArgOptOutAttrList)
+    if (!F.hasFnAttribute(Attr))
+      Out.ImplicitArgs.insert(Attr);
 
   for (llvm::Instruction &I : llvm::instructions(F)) {
     auto *CI = llvm::dyn_cast<llvm::CallInst>(&I);
@@ -111,7 +132,8 @@ InjectedPayloadSideEffectsAnalysis::run(llvm::Function &F,
 llvm::PreservedAnalyses InjectedPayloadSideEffectsPrinterPass::run(
     llvm::Function &F, llvm::FunctionAnalysisManager &FAM) {
   const auto &Result = FAM.getResult<InjectedPayloadSideEffectsAnalysis>(F);
-  if (Result.reads_empty() && Result.writes_empty() && Result.svas_empty())
+  if (Result.reads_empty() && Result.writes_empty() && Result.svas_empty() &&
+      Result.implicit_args_empty())
     return llvm::PreservedAnalyses::all();
 
   const llvm::TargetRegisterInfo *TRI = nullptr;
@@ -151,10 +173,22 @@ llvm::PreservedAnalyses InjectedPayloadSideEffectsPrinterPass::run(
     OS << "\n";
   };
 
+  auto printImplicitArgs =
+      [&](llvm::iterator_range<
+          InjectedPayloadSideEffects::implicit_arg_iterator> Args) {
+        llvm::SmallVector<llvm::StringRef> Sorted(Args.begin(), Args.end());
+        llvm::sort(Sorted);
+        OS << "    ImplicitArgs:";
+        for (llvm::StringRef A : Sorted)
+          OS << " " << A;
+        OS << "\n";
+      };
+
   OS << "Payload " << F.getName() << ":\n";
   printRegs("Reads", Result.reads());
   printRegs("Writes", Result.writes());
   printSVAs(Result.svas());
+  printImplicitArgs(Result.implicit_args());
   return llvm::PreservedAnalyses::all();
 }
 
