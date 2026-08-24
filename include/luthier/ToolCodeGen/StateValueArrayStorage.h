@@ -110,7 +110,7 @@ public:
 
   /// \return \c true if the storage requires to be loaded into a V/AGPR before
   /// being used
-  virtual bool requiresLoadAndStoreBeforeUse() = 0;
+  virtual bool requiresLoadAndStoreBeforeUse() const = 0;
 
   /// Emit a set of instructions before \p MI that loads the state value array
   /// from its storage to the \p DestVGPR
@@ -183,7 +183,7 @@ public:
 
   bool operator==(const StateValueArrayStorage &LHS) const override;
 
-  bool requiresLoadAndStoreBeforeUse() override { return false; }
+  bool requiresLoadAndStoreBeforeUse() const override { return false; }
 
   void emitCodeToLoadSVA(llvm::MachineInstr &MI,
                          llvm::MCRegister DestVGPR) const override {};
@@ -228,7 +228,7 @@ public:
 
   bool operator==(const StateValueArrayStorage &LHS) const override;
 
-  bool requiresLoadAndStoreBeforeUse() override { return true; }
+  bool requiresLoadAndStoreBeforeUse() const override { return true; }
 
   void emitCodeToLoadSVA(llvm::MachineInstr &MI,
                          llvm::MCRegister DestVGPR) const override;
@@ -286,7 +286,7 @@ public:
 
   bool operator==(const StateValueArrayStorage &LHS) const override;
 
-  bool requiresLoadAndStoreBeforeUse() override { return true; }
+  bool requiresLoadAndStoreBeforeUse() const override { return true; }
 
   void emitCodeToLoadSVA(llvm::MachineInstr &MI,
                          llvm::MCRegister DestVGPR) const override;
@@ -340,7 +340,7 @@ public:
 
   bool operator==(const StateValueArrayStorage &LHS) const override;
 
-  bool requiresLoadAndStoreBeforeUse() override { return true; }
+  bool requiresLoadAndStoreBeforeUse() const override { return true; }
 
   void emitCodeToLoadSVA(llvm::MachineInstr &MI,
                          llvm::MCRegister DestVGPR) const override;
@@ -386,7 +386,7 @@ public:
 
   bool operator==(const StateValueArrayStorage &LHS) const override;
 
-  bool requiresLoadAndStoreBeforeUse() override { return true; }
+  bool requiresLoadAndStoreBeforeUse() const override { return true; }
 
   void emitCodeToLoadSVA(llvm::MachineInstr &MI,
                          llvm::MCRegister DestVGPR) const override;
