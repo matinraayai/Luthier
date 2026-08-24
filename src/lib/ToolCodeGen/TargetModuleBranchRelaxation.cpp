@@ -31,6 +31,9 @@
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
+#include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
+#include "luthier/ToolCodeGen/StateValueArraySpecs.h"
+#include "luthier/ToolCodeGen/StateValueArrayStorage.h"
 
 #include <AMDGPU.h>
 #include <GCNSubtarget.h>
@@ -62,121 +65,6 @@
 namespace luthier {
 
 namespace {
-
-/// AMDGPU-specific long-branch emission. Forked from
-/// \c SIInstrInfo::insertIndirectBranch (the pre-gfx12 path, which is
-/// the only path Luthier currently needs — gfx12+ would use
-/// \c S_ADD_PC_I64 and not require scavenging at all). Sole change vs.
-/// stock: scavenges via \p RS (\c TargetModuleScavenger) instead of
-/// the AMDGPU TII-supplied stock \c RegScavenger, so the SVA storage
-/// reg is excluded and the SVA-lane spill sink fires when no free
-/// SReg_64 is available.
-void emitLongBranch(llvm::MachineBasicBlock &MBB,
-                    llvm::MachineBasicBlock &DestBB,
-                    llvm::MachineBasicBlock &RestoreBB,
-                    const llvm::DebugLoc &DL, int64_t BrOffset,
-                    TargetModuleScavenger &RS) {
-  assert(MBB.empty() && "trampoline MBB must start empty");
-  assert(MBB.pred_size() == 1 && "trampoline MBB must have exactly one pred");
-  assert(RestoreBB.empty() && "restore MBB must start empty");
-
-  auto *MF = MBB.getParent();
-  auto &MRI = MF->getRegInfo();
-  const auto &ST = MF->getSubtarget<llvm::GCNSubtarget>();
-  const auto *TII = ST.getInstrInfo();
-  const auto *MFI = MF->getInfo<llvm::SIMachineFunctionInfo>();
-  auto &MCCtx = MF->getContext();
-  auto I = MBB.end();
-
-  // FIXME (carried from stock SIInstrInfo): RegScavenger doesn't like
-  // running on an empty MBB, so we materialize PCReg as a vreg first
-  // and patch it up after scavenging.
-  llvm::Register PCReg =
-      MRI.createVirtualRegister(&llvm::AMDGPU::SReg_64RegClass);
-
-  const bool FlushSGPRWrites = (ST.isWave64() && ST.hasVALUMaskWriteHazard()) ||
-                               ST.hasVALUReadSGPRHazard();
-  auto ApplyHazardWorkarounds = [&]() {
-    if (FlushSGPRWrites)
-      llvm::BuildMI(MBB, I, DL, TII->get(llvm::AMDGPU::S_WAITCNT_DEPCTR))
-          .addImm(llvm::AMDGPU::DepCtr::encodeFieldSaSdst(0, ST));
-  };
-
-  // Build the S_GETPC / S_ADD_U32 / S_ADDC_U32 / S_SETPC_B64 sequence,
-  // tagging the points the AsmPrinter resolves the offset against.
-  llvm::MachineInstr *GetPC =
-      llvm::BuildMI(MBB, I, DL, TII->get(llvm::AMDGPU::S_GETPC_B64), PCReg);
-  ApplyHazardWorkarounds();
-
-  auto *PostGetPCLabel =
-      MCCtx.createTempSymbol("luthier_post_getpc", /*AlwaysAddSuffix=*/true);
-  GetPC->setPostInstrSymbol(*MF, PostGetPCLabel);
-
-  auto *OffsetLo =
-      MCCtx.createTempSymbol("luthier_offset_lo", /*AlwaysAddSuffix=*/true);
-  auto *OffsetHi =
-      MCCtx.createTempSymbol("luthier_offset_hi", /*AlwaysAddSuffix=*/true);
-  llvm::BuildMI(MBB, I, DL, TII->get(llvm::AMDGPU::S_ADD_U32))
-      .addReg(PCReg, llvm::RegState::Define, llvm::AMDGPU::sub0)
-      .addReg(PCReg, llvm::RegState::NoFlags, llvm::AMDGPU::sub0)
-      .addSym(OffsetLo, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
-  llvm::BuildMI(MBB, I, DL, TII->get(llvm::AMDGPU::S_ADDC_U32))
-      .addReg(PCReg, llvm::RegState::Define, llvm::AMDGPU::sub1)
-      .addReg(PCReg, llvm::RegState::NoFlags, llvm::AMDGPU::sub1)
-      .addSym(OffsetHi, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
-  ApplyHazardWorkarounds();
-
-  (void)llvm::BuildMI(&MBB, DL, TII->get(llvm::AMDGPU::S_SETPC_B64))
-      .addReg(PCReg);
-
-  // Scavenge an SReg_64 to replace PCReg.
-  llvm::Register LongBranchReservedReg = MFI->getLongBranchReservedReg();
-  llvm::Register Scav;
-  bool ScavengerSpilled = false;
-  if (LongBranchReservedReg) {
-    RS.enterBasicBlock(MBB);
-    Scav = LongBranchReservedReg;
-  } else {
-    RS.enterBasicBlockEnd(MBB);
-    Scav = RS.scavengeRegisterBackwards(
-        llvm::AMDGPU::SReg_64RegClass, llvm::MachineBasicBlock::iterator(GetPC),
-        /*RestoreAfter=*/false, /*SPAdj=*/0, /*AllowSpill=*/false);
-    if (!Scav) {
-      // No globally-free reg. Invoke the SVA-lane sink with explicit
-      // Spill (in MBB before GetPC) and Reload (in RestoreBB after
-      // the long jump lands) insertion points. Pick a fixed pair
-      // (SGPR0_SGPR1) — the sink emits explicit save/restore so any
-      // pair works.
-      Scav = llvm::AMDGPU::SGPR0_SGPR1;
-      ScavengerSpilled = true;
-      if (!RS.invokeSVASpillSink(MBB, GetPC->getIterator(), RestoreBB,
-                                 RestoreBB.begin(), Scav,
-                                 llvm::AMDGPU::SReg_64RegClass)) {
-        llvm::report_fatal_error(
-            "TargetModuleBranchRelaxation: no free SReg_64 found and SVA-lane "
-            "spill sink unavailable; cannot relax long branch",
-            /*GenCrashDiag=*/false);
-      }
-    }
-  }
-
-  RS.setRegUsed(Scav);
-  MRI.replaceRegWith(PCReg, Scav);
-  MRI.clearVirtRegs();
-
-  auto *DestLabel =
-      !ScavengerSpilled ? DestBB.getSymbol() : RestoreBB.getSymbol();
-  auto *Offset = llvm::MCBinaryExpr::createSub(
-      llvm::MCSymbolRefExpr::create(DestLabel, MCCtx),
-      llvm::MCSymbolRefExpr::create(PostGetPCLabel, MCCtx), MCCtx);
-  auto *Mask = llvm::MCConstantExpr::create(0xFFFFFFFFULL, MCCtx);
-  OffsetLo->setVariableValue(
-      llvm::MCBinaryExpr::createAnd(Offset, Mask, MCCtx));
-  auto *ShAmt = llvm::MCConstantExpr::create(32, MCCtx);
-  OffsetHi->setVariableValue(
-      llvm::MCBinaryExpr::createAShr(Offset, ShAmt, MCCtx));
-  (void)BrOffset;
-}
 
 /// Worker class — fork of \c llvm::BranchRelaxation (anonymous namespace
 /// class) with one substantive change: \c fixupUnconditionalBranch's
@@ -232,20 +120,325 @@ class TargetModuleBranchRelaxationWorker {
 
   const IPPredicatedCFG &IPCFG;
   const IPPredicatedLiveness &IPLiveness;
+  const SVStorageAndLoadLocations &SVLoc;
+  const StateValueArraySpecs &Specs;
+
+  /// Compute the SVS-storage registers that must be treated as reserved
+  /// when scavenging for a long branch out of \p SourceMBB. Branches are
+  /// terminators, so the enclosing \c StateValueStorageSegment is
+  /// always the source MBB's LAST segment.
+  llvm::DenseSet<llvm::MCPhysReg>
+  getSVSReservedRegsAtBranch(const llvm::MachineBasicBlock &SourceMBB) const;
+
+  /// AMDGPU-specific long-branch emission. Forked from
+  /// \c SIInstrInfo::insertIndirectBranch (the pre-gfx12 path).
+  /// Scavenges via \c RS so the SVA storage reg is excluded. When no
+  /// free \c SReg_64 is available, emits an SVA-lane spill of a fixed
+  /// pair (via \c emitSVALaneSpillForLongBranch) instead. \p MBB is
+  /// the trampoline (BranchBB) — empty on entry. \p DestBB is the
+  /// semantic branch destination (target when the scavenger finds a
+  /// free reg). \p ReloadMBB is where the long jump lands when the
+  /// scavenger has to spill: either DestBB itself (single-pred case,
+  /// reload code prepended) or a dedicated MBB spliced in front of
+  /// DestBB (multi-pred case). ReloadMBB may be non-empty in the
+  /// single-pred case.
+  void emitLongBranch(llvm::MachineBasicBlock &MBB,
+                      llvm::MachineBasicBlock &DestBB,
+                      llvm::MachineBasicBlock &ReloadMBB,
+                      const llvm::DebugLoc &DL, int64_t BrOffset);
+
+  /// Save \p Reg (an \c SReg_64) through two free SVA lanes so the
+  /// long-branch trampoline can clobber it. Returns \c false if no
+  /// two free lanes are available OR the source MBB's SVS segment is
+  /// missing — the caller reports a hard error in that case. On \c
+  /// true: emits the load-SVA + WRITELANEs in \p SpillMBB before
+  /// \p SpillBefore, and the READLANEs + store-SVA in \p ReloadMBB
+  /// before \p ReloadBefore.
+  bool emitSVALaneSpillForLongBranch(
+      llvm::MachineBasicBlock &SpillMBB,
+      llvm::MachineBasicBlock::iterator SpillBefore,
+      llvm::MachineBasicBlock &ReloadMBB,
+      llvm::MachineBasicBlock::iterator ReloadBefore, llvm::MCRegister Reg);
 
 public:
-  TargetModuleBranchRelaxationWorker(
-      const IPPredicatedCFG &IPCFG, const IPPredicatedLiveness &IPLiveness,
-      const llvm::DenseSet<llvm::MCPhysReg> &ReservedRegs,
-      TargetModuleScavenger::SVASpillCallback SpillSink)
-      : IPCFG(IPCFG), IPLiveness(IPLiveness) {
-    RS.setReservedRegs(ReservedRegs);
-    if (SpillSink)
-      RS.setSVASpillCallback(std::move(SpillSink));
-  }
+  TargetModuleBranchRelaxationWorker(const IPPredicatedCFG &IPCFG,
+                                     const IPPredicatedLiveness &IPLiveness,
+                                     const SVStorageAndLoadLocations &SVLoc,
+                                     const StateValueArraySpecs &Specs)
+      : IPCFG(IPCFG), IPLiveness(IPLiveness), SVLoc(SVLoc), Specs(Specs) {}
 
   bool run(llvm::MachineFunction &MF);
 };
+
+llvm::DenseSet<llvm::MCPhysReg>
+TargetModuleBranchRelaxationWorker::getSVSReservedRegsAtBranch(
+    const llvm::MachineBasicBlock &SourceMBB) const {
+  llvm::DenseSet<llvm::MCPhysReg> Out;
+  llvm::ArrayRef<StateValueStorageSegment> Segments =
+      SVLoc.getStorageIntervals(SourceMBB);
+  if (Segments.empty())
+    return Out;
+  llvm::SmallVector<llvm::MCRegister, 4> Regs;
+  Segments.back().getSVS().getAllStorageRegisters(Regs);
+  for (llvm::MCRegister R : Regs)
+    Out.insert(R.id());
+  return Out;
+}
+
+bool TargetModuleBranchRelaxationWorker::emitSVALaneSpillForLongBranch(
+    llvm::MachineBasicBlock &SpillMBB,
+    llvm::MachineBasicBlock::iterator SpillBefore,
+    llvm::MachineBasicBlock &ReloadMBB,
+    llvm::MachineBasicBlock::iterator ReloadBefore, llvm::MCRegister Reg) {
+  // The pair is saved through two free SVA lanes; the SVA travels
+  // through the long jump in a courier VGPR that gets stored back to
+  // its permanent storage on the reload side.
+  //
+  //   Spill side (in BranchBB before S_GETPC):
+  //     emitCodeToLoadSVA(anchor, Courier)  // no-op for VGPR schemes;
+  //                                          // otherwise: spills
+  //                                          // Courier's app value
+  //                                          // to the emergency VGPR
+  //                                          // slot, loads SVA into
+  //                                          // Courier
+  //     V_WRITELANE_B32 Sub0 -> Courier[l0]
+  //     V_WRITELANE_B32 Sub1 -> Courier[l1]
+  //     // Courier now carries the SVA-with-encoded-pair; the long
+  //     // jump only touches SGPRs, so it survives across.
+  //
+  //   Reload side (at ReloadBefore in ReloadMBB):
+  //     V_READLANE_B32 Sub0 <- Courier[l0]
+  //     V_READLANE_B32 Sub1 <- Courier[l1]
+  //     emitCodeToStoreSVA(anchor, Courier)  // no-op for VGPR
+  //                                          // schemes; otherwise:
+  //                                          // stores Courier (SVA)
+  //                                          // back to permanent
+  //                                          // storage, restores
+  //                                          // Courier's app value
+  //                                          // from the emergency
+  //                                          // slot.
+  //
+  // SVS lookup: BranchBB (SpillMBB) is not in SVLoc. Its unique
+  // predecessor IS an original MBB — the branch's source MBB — and
+  // that MBB's terminator-enclosing (last) segment is the active SVS
+  // at the branch site. SVS is stable across cross-MBB edges
+  // (emitSVSSwitchesForMF invariant), so the SAME SVS is active on the
+  // reload side regardless of whether ReloadMBB is the branch's DestBB
+  // (single-pred case) or a synthetic block spliced in front of it
+  // (multi-pred case).
+  auto *MF = SpillMBB.getParent();
+  const auto &ST = MF->getSubtarget<llvm::GCNSubtarget>();
+  const auto *TII = ST.getInstrInfo();
+  const auto *TRI = ST.getRegisterInfo();
+
+  if (SpillMBB.pred_size() != 1)
+    return false;
+  llvm::MachineBasicBlock *SourceMBB = *SpillMBB.pred_begin();
+  auto SpillSegs = SVLoc.getStorageIntervals(*SourceMBB);
+  if (SpillSegs.empty())
+    return false;
+  const StateValueArrayStorage &SVS = SpillSegs.back().getSVS();
+
+  unsigned WaveSize = ST.getWavefrontSize();
+  auto FreeLanes = Specs.findLowestFreeLanes(2, WaveSize);
+  if (FreeLanes.size() < 2)
+    return false;
+
+  llvm::MCRegister Sub0 = TRI->getSubReg(Reg, llvm::AMDGPU::sub0);
+  llvm::MCRegister Sub1 = TRI->getSubReg(Reg, llvm::AMDGPU::sub1);
+  if (!Sub0 || !Sub1)
+    return false;
+
+  // Courier VGPR:
+  //   - VGPR SVS: the SVA VGPR itself. emitCodeToLoadSVA/StoreSVA are
+  //     no-ops; the WRITELANE / READLANE run directly against the live
+  //     SVA VGPR.
+  //   - Spilled / AGPR SVS: V0 by convention. emitCodeToLoadSVA spills
+  //     V0's app contents to the emergency VGPR slot (SP-8) and loads
+  //     the SVA into V0. emitCodeToStoreSVA on the reload side stores
+  //     V0 (SVA) back to its permanent storage and restores V0's app
+  //     contents from SP-8.
+  llvm::MCRegister Courier;
+  {
+    llvm::MCRegister SReg = SVS.getStateValueStorageReg();
+    if (SReg && llvm::AMDGPU::VGPR_32RegClass.contains(SReg))
+      Courier = SReg;
+    else
+      Courier = llvm::AMDGPU::VGPR0;
+  }
+
+  // Liveness on SpillMBB: MachineVerifier needs the SVS storage regs
+  // and the courier live-in for the WRITELANE tied-def read.
+  // SpillMBB (BranchBB) had its liveins seeded by the relaxer from
+  // the source MBB's successors' liveins, which does not include
+  // these. Reload-side liveness is handled by fixupUnconditionalBranch
+  // after we return.
+  llvm::SmallVector<llvm::MCRegister, 4> SVSStorageRegs;
+  SVS.getAllStorageRegisters(SVSStorageRegs);
+  for (llvm::MCRegister R : SVSStorageRegs)
+    if (!SpillMBB.isLiveIn(R))
+      SpillMBB.addLiveIn(R);
+  if (!SpillMBB.isLiveIn(Courier))
+    SpillMBB.addLiveIn(Courier);
+
+  llvm::DebugLoc DL;
+
+  // ---------- SPILL SIDE ----------
+  // emitCodeToLoadSVA inserts BEFORE its anchor MI. SpillBefore is
+  // the S_GETPC that emitLongBranch already placed at the top of
+  // BranchBB, so *SpillBefore is safe to dereference. Insertion
+  // order at the anchor position gives the final layout:
+  // [load-SVA]  [WRITELANEs]  [S_GETPC...].
+  {
+    llvm::MachineInstr &Anchor = *SpillBefore;
+    SVS.emitCodeToLoadSVA(Anchor, Courier);
+    (void)llvm::BuildMI(SpillMBB, SpillBefore, DL,
+                        TII->get(llvm::AMDGPU::V_WRITELANE_B32), Courier)
+        .addReg(Sub0)
+        .addImm(FreeLanes[0])
+        .addReg(Courier);
+    (void)llvm::BuildMI(SpillMBB, SpillBefore, DL,
+                        TII->get(llvm::AMDGPU::V_WRITELANE_B32), Courier)
+        .addReg(Sub1)
+        .addImm(FreeLanes[1])
+        .addReg(Courier);
+  }
+
+  // ---------- RELOAD SIDE ----------
+  // ReloadMBB is either DestBB itself (single-pred case; ReloadBefore
+  // points at DestBB's first original MI) or a fresh block spliced in
+  // front of DestBB (multi-pred case; ReloadBefore == ReloadMBB.begin()
+  // on an empty block). In the multi-pred case *ReloadBefore is
+  // undefined; for VGPR schemes this is fine because emitCodeToStoreSVA
+  // is a no-op and we just BuildMI the V_READLANEs directly. For
+  // non-VGPR schemes we synthesize a placeholder S_NOP as an anchor,
+  // run emitCodeToStoreSVA against it, then erase the placeholder.
+  //
+  // Final layout: [READLANEs] [store-SVA] [original ReloadMBB contents
+  // if any].
+  auto EmitReadlanes = [&](llvm::MachineBasicBlock::iterator Before) {
+    (void)llvm::BuildMI(ReloadMBB, Before, DL,
+                        TII->get(llvm::AMDGPU::V_READLANE_B32), Sub0)
+        .addReg(Courier)
+        .addImm(FreeLanes[0]);
+    (void)llvm::BuildMI(ReloadMBB, Before, DL,
+                        TII->get(llvm::AMDGPU::V_READLANE_B32), Sub1)
+        .addReg(Courier)
+        .addImm(FreeLanes[1]);
+  };
+
+  if (SVS.requiresLoadAndStoreBeforeUse()) {
+    auto *Placeholder = llvm::BuildMI(ReloadMBB, ReloadBefore, DL,
+                                      TII->get(llvm::AMDGPU::S_NOP))
+                            .addImm(0)
+                            .getInstr();
+    EmitReadlanes(Placeholder->getIterator());
+    SVS.emitCodeToStoreSVA(*Placeholder, Courier);
+    Placeholder->eraseFromParent();
+  } else {
+    EmitReadlanes(ReloadBefore);
+  }
+  return true;
+}
+
+void TargetModuleBranchRelaxationWorker::emitLongBranch(
+    llvm::MachineBasicBlock &MBB, llvm::MachineBasicBlock &DestBB,
+    llvm::MachineBasicBlock &ReloadMBB, const llvm::DebugLoc &DL,
+    int64_t BrOffset) {
+  assert(MBB.empty() && "trampoline MBB must start empty");
+  assert(MBB.pred_size() == 1 && "trampoline MBB must have exactly one pred");
+
+  auto &MRI = MF->getRegInfo();
+  const auto &ST = MF->getSubtarget<llvm::GCNSubtarget>();
+  const auto *MFI = MF->getInfo<llvm::SIMachineFunctionInfo>();
+  auto &MCCtx = MF->getContext();
+  auto I = MBB.end();
+
+  // FIXME (carried from stock SIInstrInfo): RegScavenger doesn't like
+  // running on an empty MBB, so we materialize PCReg as a vreg first
+  // and patch it up after scavenging.
+  llvm::Register PCReg =
+      MRI.createVirtualRegister(&llvm::AMDGPU::SReg_64RegClass);
+
+  const bool FlushSGPRWrites = (ST.isWave64() && ST.hasVALUMaskWriteHazard()) ||
+                               ST.hasVALUReadSGPRHazard();
+  auto ApplyHazardWorkarounds = [&]() {
+    if (FlushSGPRWrites)
+      llvm::BuildMI(MBB, I, DL, TII->get(llvm::AMDGPU::S_WAITCNT_DEPCTR))
+          .addImm(llvm::AMDGPU::DepCtr::encodeFieldSaSdst(0, ST));
+  };
+
+  // Build the S_GETPC / S_ADD_U32 / S_ADDC_U32 / S_SETPC_B64 sequence,
+  // tagging the points the AsmPrinter resolves the offset against.
+  llvm::MachineInstr *GetPC =
+      llvm::BuildMI(MBB, I, DL, TII->get(llvm::AMDGPU::S_GETPC_B64), PCReg);
+  ApplyHazardWorkarounds();
+
+  auto *PostGetPCLabel =
+      MCCtx.createTempSymbol("luthier_post_getpc", /*AlwaysAddSuffix=*/true);
+  GetPC->setPostInstrSymbol(*MF, PostGetPCLabel);
+
+  auto *OffsetLo =
+      MCCtx.createTempSymbol("luthier_offset_lo", /*AlwaysAddSuffix=*/true);
+  auto *OffsetHi =
+      MCCtx.createTempSymbol("luthier_offset_hi", /*AlwaysAddSuffix=*/true);
+  llvm::BuildMI(MBB, I, DL, TII->get(llvm::AMDGPU::S_ADD_U32))
+      .addReg(PCReg, llvm::RegState::Define, llvm::AMDGPU::sub0)
+      .addReg(PCReg, llvm::RegState::NoFlags, llvm::AMDGPU::sub0)
+      .addSym(OffsetLo, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
+  llvm::BuildMI(MBB, I, DL, TII->get(llvm::AMDGPU::S_ADDC_U32))
+      .addReg(PCReg, llvm::RegState::Define, llvm::AMDGPU::sub1)
+      .addReg(PCReg, llvm::RegState::NoFlags, llvm::AMDGPU::sub1)
+      .addSym(OffsetHi, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
+  ApplyHazardWorkarounds();
+
+  (void)llvm::BuildMI(&MBB, DL, TII->get(llvm::AMDGPU::S_SETPC_B64))
+      .addReg(PCReg);
+
+  // Scavenge an SReg_64 to replace PCReg. If none available, fall
+  // through to the SVA-lane spill of a fixed pair (SGPR0_SGPR1).
+  llvm::Register LongBranchReservedReg = MFI->getLongBranchReservedReg();
+  llvm::Register Scav;
+  bool ScavengerSpilled = false;
+  if (LongBranchReservedReg) {
+    RS.enterBasicBlock(MBB);
+    Scav = LongBranchReservedReg;
+  } else {
+    RS.enterBasicBlockEnd(MBB);
+    Scav = RS.scavengeRegisterBackwards(
+        llvm::AMDGPU::SReg_64RegClass, llvm::MachineBasicBlock::iterator(GetPC),
+        /*RestoreAfter=*/false, /*SPAdj=*/0, /*AllowSpill=*/false);
+    if (!Scav) {
+      Scav = llvm::AMDGPU::SGPR0_SGPR1;
+      ScavengerSpilled = true;
+      if (!emitSVALaneSpillForLongBranch(MBB, GetPC->getIterator(), ReloadMBB,
+                                         ReloadMBB.begin(), Scav)) {
+        llvm::report_fatal_error(
+            "TargetModuleBranchRelaxation: no free SReg_64 and SVA-lane "
+            "spill could not be emitted (missing SVS segment or fewer than "
+            "two free SVA lanes); cannot relax long branch",
+            /*GenCrashDiag=*/false);
+      }
+    }
+  }
+
+  RS.setRegUsed(Scav);
+  MRI.replaceRegWith(PCReg, Scav);
+  MRI.clearVirtRegs();
+
+  auto *DestLabel =
+      !ScavengerSpilled ? DestBB.getSymbol() : ReloadMBB.getSymbol();
+  auto *Offset = llvm::MCBinaryExpr::createSub(
+      llvm::MCSymbolRefExpr::create(DestLabel, MCCtx),
+      llvm::MCSymbolRefExpr::create(PostGetPCLabel, MCCtx), MCCtx);
+  auto *Mask = llvm::MCConstantExpr::create(0xFFFFFFFFULL, MCCtx);
+  OffsetLo->setVariableValue(
+      llvm::MCBinaryExpr::createAnd(Offset, Mask, MCCtx));
+  auto *ShAmt = llvm::MCConstantExpr::create(32, MCCtx);
+  OffsetHi->setVariableValue(
+      llvm::MCBinaryExpr::createAShr(Offset, ShAmt, MCCtx));
+  (void)BrOffset;
+}
 
 void TargetModuleBranchRelaxationWorker::scanFunction() {
   BlockInfo.clear();
@@ -458,6 +651,16 @@ bool TargetModuleBranchRelaxationWorker::fixupUnconditionalBranch(
                           : DestOffset - SrcOffset));
   BlockInfo[MBB->getNumber()].Size -= OldBrSize;
 
+  // Install the SVS-storage regs active at THIS branch as the
+  // scavenger's reserved set — narrower than a union over every
+  // segment in the MF. The source MBB is an original MBB carried in
+  // \c SVStorageAndLoadLocations; the branch is a terminator so its
+  // enclosing segment is the MBB's last one. Trampoline MBBs
+  // (BranchBB, RestoreBB) that the relaxer creates below inherit
+  // this reserved set for the duration of \c emitLongBranch — the
+  // scavenger call it makes runs against these regs.
+  RS.setReservedRegs(getSVSReservedRegsAtBranch(*MBB));
+
   llvm::MachineBasicBlock *BranchBB = MBB;
   if (!MBB->empty()) {
     BranchBB = createNewBlockAfter(*MBB);
@@ -475,21 +678,51 @@ bool TargetModuleBranchRelaxationWorker::fixupUnconditionalBranch(
   llvm::DebugLoc DL = MI.getDebugLoc();
   MI.eraseFromParent();
 
-  auto *RestoreBB = createNewBlockAfter(MF->back(), DestBB->getBasicBlock());
-  std::prev(RestoreBB->getIterator())
-      ->setIsEndSection(RestoreBB->isEndSection());
-  RestoreBB->setIsEndSection(false);
+  // Choose reload-site placement.
+  //
+  //   Single-pred: DestBB's only predecessor (after the
+  //   replaceSuccessor above) is our BranchBB. It's safe to prepend
+  //   the reload code directly to DestBB — no other flow reaches it.
+  //   No RestoreBB is created; the long jump lands directly at
+  //   DestBB.
+  //
+  //   Multi-pred: prepending to DestBB would corrupt the SGPRs for
+  //   every other predecessor's fall-through/branch. Create a fresh
+  //   ReloadMBB adjacent to DestBB, route the long jump to it, put
+  //   the reload code there, and fall through to DestBB.
+  const bool SinglePred = DestBB->pred_size() == 1;
+  llvm::MachineBasicBlock *ReloadMBB;
+  if (SinglePred) {
+    ReloadMBB = DestBB;
+  } else {
+    ReloadMBB = createNewBlockAfter(MF->back(), DestBB->getBasicBlock());
+    std::prev(ReloadMBB->getIterator())
+        ->setIsEndSection(ReloadMBB->isEndSection());
+    ReloadMBB->setIsEndSection(false);
+  }
 
-  emitLongBranch(*BranchBB, *DestBB, *RestoreBB, DL,
-                        BranchBB->getSectionID() != DestBB->getSectionID()
-                            ? TM->getMaxCodeSize()
-                            : DestOffset - SrcOffset,
-                        RS);
+  emitLongBranch(*BranchBB, *DestBB, *ReloadMBB, DL,
+                 BranchBB->getSectionID() != DestBB->getSectionID()
+                     ? TM->getMaxCodeSize()
+                     : DestOffset - SrcOffset);
 
   BlockInfo[BranchBB->getNumber()].Size = computeBlockSize(*BranchBB);
   adjustBlockOffsets(*MBB, std::next(BranchBB->getIterator()));
 
-  if (!RestoreBB->empty()) {
+  if (SinglePred) {
+    // Reload code (if any) was prepended to DestBB. Update its size
+    // and re-thread offsets across it. DestBB.liveins() already has
+    // whatever the original CFG made live; the SpillSink added the
+    // courier VGPR / SVA storage regs to SpillMBB's liveins but not
+    // ours — computeAndAddLiveIns can't run here (asserts empty
+    // livein list). Instead let the outer fixed-point loop's next
+    // relaxBranchInstructions call see any stale-but-safe live-in
+    // state; a subsequent full-MF liveness recompute (if any) will
+    // reconcile.
+    BlockInfo[DestBB->getNumber()].Size = computeBlockSize(*DestBB);
+    adjustBlockOffsets(*DestBB, std::next(DestBB->getIterator()));
+    RelaxedUnconditionals.insert({BranchBB, DestBB});
+  } else if (!ReloadMBB->empty()) {
     if (MBB->getSectionID() == llvm::MBBSectionID::ColdSectionID &&
         DestBB->getSectionID() != llvm::MBBSectionID::ColdSectionID) {
       auto *NewBB = createNewBlockAfter(*TrampolineInsertionPoint);
@@ -510,19 +743,19 @@ bool TargetModuleBranchRelaxationWorker::fixupUnconditionalBranch(
       TII->insertUnconditionalBranch(*PrevBB, DestBB, llvm::DebugLoc());
       BlockInfo[PrevBB->getNumber()].Size = computeBlockSize(*PrevBB);
     }
-    MF->splice(DestBB->getIterator(), RestoreBB->getIterator());
-    RestoreBB->addSuccessor(DestBB);
-    BranchBB->replaceSuccessor(DestBB, RestoreBB);
+    MF->splice(DestBB->getIterator(), ReloadMBB->getIterator());
+    ReloadMBB->addSuccessor(DestBB);
+    BranchBB->replaceSuccessor(DestBB, ReloadMBB);
     if (TRI->trackLivenessAfterRegAlloc(*MF))
-      computeAndAddLiveIns(LiveRegs, *RestoreBB);
-    BlockInfo[RestoreBB->getNumber()].Size = computeBlockSize(*RestoreBB);
+      computeAndAddLiveIns(LiveRegs, *ReloadMBB);
+    BlockInfo[ReloadMBB->getNumber()].Size = computeBlockSize(*ReloadMBB);
     adjustBlockOffsets(*PrevBB, DestBB->getIterator());
-    RestoreBB->setSectionID(DestBB->getSectionID());
-    RestoreBB->setIsBeginSection(DestBB->isBeginSection());
+    ReloadMBB->setSectionID(DestBB->getSectionID());
+    ReloadMBB->setIsBeginSection(DestBB->isBeginSection());
     DestBB->setIsBeginSection(false);
-    RelaxedUnconditionals.insert({BranchBB, RestoreBB});
+    RelaxedUnconditionals.insert({BranchBB, ReloadMBB});
   } else {
-    MF->erase(RestoreBB);
+    MF->erase(ReloadMBB);
     RelaxedUnconditionals.insert({BranchBB, DestBB});
   }
   return true;
@@ -621,8 +854,7 @@ bool TargetModuleBranchRelaxationWorker::run(llvm::MachineFunction &mf) {
 } // namespace
 
 bool TargetModuleBranchRelaxation::run(llvm::MachineFunction &MF) {
-  TargetModuleBranchRelaxationWorker Worker(IPCFG, IPLiveness, ReservedRegs,
-                                       SpillSink);
+  TargetModuleBranchRelaxationWorker Worker(IPCFG, IPLiveness, SVLoc, Specs);
   return Worker.run(MF);
 }
 

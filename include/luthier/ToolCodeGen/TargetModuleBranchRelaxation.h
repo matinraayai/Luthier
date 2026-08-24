@@ -35,26 +35,26 @@ namespace luthier {
 class IPPredicatedCFG;
 class IPPredicatedLiveness;
 class SVStorageAndLoadLocations;
+class StateValueArraySpecs;
 
 class TargetModuleBranchRelaxation {
 public:
 
-  TargetModuleBranchRelaxation(
-      const IPPredicatedCFG &IPCFG, const IPPredicatedLiveness &IPLiveness,
-      const SVStorageAndLoadLocations &SVLoc,
-      TargetModuleScavenger::SVASpillCallback SpillSink = nullptr)
-      : SpillSink(std::move(SpillSink)),
-        IPCFG(IPCFG), IPLiveness(IPLiveness), SVLoc(SVLoc) {}
+  TargetModuleBranchRelaxation(const IPPredicatedCFG &IPCFG,
+                               const IPPredicatedLiveness &IPLiveness,
+                               const SVStorageAndLoadLocations &SVLoc,
+                               const StateValueArraySpecs &Specs)
+      : IPCFG(IPCFG), IPLiveness(IPLiveness), SVLoc(SVLoc), Specs(Specs) {}
 
   /// Run branch relaxation on \p MF. Returns true if any branch was
   /// relaxed. Mirrors \c llvm::BranchRelaxation::run.
   bool run(llvm::MachineFunction &MF);
 
 private:
-  TargetModuleScavenger::SVASpillCallback SpillSink;
   const IPPredicatedCFG &IPCFG;
   const IPPredicatedLiveness &IPLiveness;
   const SVStorageAndLoadLocations &SVLoc;
+  const StateValueArraySpecs &Specs;
 };
 
 } // namespace luthier
