@@ -12,7 +12,7 @@ namespace luthier::test {
 
 InstrDescriptor::InstrDescriptor(const llvm::TargetMachine &TM) {
   MCII = TM.getMCInstrInfo();
-  MRI = TM.getMCRegisterInfo();
+  MRI = &TM.getMCRegisterInfo();
 }
 
 unsigned InstrDescriptor::getNumOpcodes() const {
@@ -59,14 +59,18 @@ InstrProfile InstrDescriptor::analyze(unsigned Opcode) const {
     OperandInfo OI;
     OI.Idx = I;
     OI.IsDef = I < NumDefs;
-    OI.IsReg = OpInfo.OperandType == llvm::MCOI::OPERAND_REGISTER;
-    OI.IsImm = OpInfo.OperandType == llvm::MCOI::OPERAND_IMMEDIATE;
+    // AMDGPU gives most VALU source operands a target-specific operand type
+    // (AMDGPU::OPERAND_REG_IMM_*, OPERAND_REG_INLINE_C_*), so the generic
+    // MCOI::OPERAND_REGISTER check misses them. Whether an operand can hold a
+    // register is decided by it having a register class instead.
+    OI.IsReg = OpInfo.RegClass != -1;
+    OI.IsImm = !OI.IsReg;
     OI.IsSGPR = false;
     OI.IsVGPR = false;
     OI.SizeBits = 32;
     OI.RegClassID = OpInfo.RegClass;
 
-    if (OI.IsReg && OpInfo.RegClass != static_cast<unsigned>(-1)) {
+    if (OI.IsReg) {
       const llvm::MCRegisterClass &RC = MRI->getRegClass(OpInfo.RegClass);
       OI.SizeBits = MRI->getRegClass(OpInfo.RegClass).getSizeInBits();
 
@@ -84,14 +88,10 @@ InstrProfile InstrDescriptor::analyze(unsigned Opcode) const {
   }
 
   // --- Implicit defs and uses ---
-  if (const llvm::MCPhysReg *ImpDefs = Desc.implicit_defs()) {
-    for (; *ImpDefs; ++ImpDefs)
-      P.ImplicitDefs.push_back(llvm::MCRegister(*ImpDefs));
-  }
-  if (const llvm::MCPhysReg *ImpUses = Desc.implicit_uses()) {
-    for (; *ImpUses; ++ImpUses)
-      P.ImplicitUses.push_back(llvm::MCRegister(*ImpUses));
-  }
+  for (llvm::MCPhysReg Reg : Desc.implicit_defs())
+    P.ImplicitDefs.push_back(llvm::MCRegister(Reg));
+  for (llvm::MCPhysReg Reg : Desc.implicit_uses())
+    P.ImplicitUses.push_back(llvm::MCRegister(Reg));
 
   // --- Memory access detection ---
   P.Mem.MemKind = MemAccessInfo::None;
