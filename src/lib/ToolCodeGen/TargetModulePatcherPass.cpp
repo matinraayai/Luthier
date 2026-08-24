@@ -1729,103 +1729,7 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
                << "[TargetModulePatcherPass]   relaxer for function '"
                << F.getName() << "' (" << MF.size() << " MBB(s))\n");
 
-    // SVA-lane spill sink: We spill the chosen
-    // pair into the two lowest free SVA lanes via V_WRITELANE_B32 at
-    // SpillBefore and reload via V_READLANE_B32 at ReloadBefore. The
-    // SVA storage VGPR is read from the MF's entry MBB's first segment;
-    // this is correct for the common case where SVA storage stays in
-    // one VGPR for the whole function. For schemes that switch storage
-    // mid-function, the segment covering the actual spill point would
-    // be more precise — but the trampoline MBBs created by the relaxer
-    // aren't in `SVLocations` (post-analysis MBBs), so entry-segment
-    // is the conservative pick that always resolves.
-    llvm::MachineFunction *MFPtr = &MF;
-    const StateValueArraySpecs *SpecsPtr = &SVASpecs;
-    const SVStorageAndLoadLocations *SVLocPtr = &SVLocations;
-    auto SpillSink = [MFPtr, SpecsPtr,
-                      SVLocPtr](llvm::MachineBasicBlock &SpillMBB,
-                                llvm::MachineBasicBlock::iterator SpillBefore,
-                                llvm::MachineBasicBlock &ReloadMBB,
-                                llvm::MachineBasicBlock::iterator ReloadBefore,
-                                llvm::MCRegister Reg,
-                                const llvm::TargetRegisterClass &RC) -> bool {
-      // Only the SReg_64 case is supported (the only class the
-      // long-branch scavenger ever asks for).
-      if (&RC != &llvm::AMDGPU::SReg_64RegClass)
-        return false;
-
-      // Resolve SVA VGPR from the MF's entry MBB's first segment.
-      if (MFPtr->empty())
-        return false;
-      auto EntrySegs = SVLocPtr->getStorageIntervals(MFPtr->front());
-      if (EntrySegs.empty())
-        return false;
-      llvm::MCRegister SVAVGPR =
-          EntrySegs.front().getSVS().getStateValueStorageReg();
-      if (!SVAVGPR)
-        return false;
-
-      const auto &ST = MFPtr->getSubtarget<llvm::GCNSubtarget>();
-      unsigned WaveSize = ST.getWavefrontSize();
-      auto FreeLanes = SpecsPtr->findLowestFreeLanes(2, WaveSize);
-      if (FreeLanes.size() < 2)
-        return false;
-
-      const auto *TII = ST.getInstrInfo();
-      const auto *TRI = ST.getRegisterInfo();
-      llvm::MCRegister Sub0 = TRI->getSubReg(Reg, llvm::AMDGPU::sub0);
-      llvm::MCRegister Sub1 = TRI->getSubReg(Reg, llvm::AMDGPU::sub1);
-      if (!Sub0 || !Sub1)
-        return false;
-
-      // SVA VGPR is implicitly live everywhere the SVA is in
-      // scope (set up by the kernel-entry preload) but isn't in
-      // any MBB's live-in set by default. Declare it on SpillMBB
-      // explicitly — the relaxer copies BranchBB's liveins from
-      // its predecessor's successors and doesn't otherwise see
-      // the SVA reg, so MachineVerifier would complain about the
-      // V_WRITELANE's tied-def use. ReloadMBB (RestoreBB) gets
-      // its liveins recomputed by the relaxer via
-      // computeAndAddLiveIns immediately after we return; that
-      // path requires liveins to be empty as a precondition AND
-      // walks V_READLANE backward (so SVAVGPR ends up in the
-      // computed set anyway). Skip the pre-emit addLiveIn for
-      // RestoreBB.
-      if (!SpillMBB.isLiveIn(SVAVGPR))
-        SpillMBB.addLiveIn(SVAVGPR);
-
-      // Spill: write each sub-reg into its reserved SVA lane right
-      // before the long-branch arithmetic clobbers them. Note that
-      // V_WRITELANE_B32 has a tied-def operand for the destination
-      // VGPR so the read-modify-write of unrelated lanes is encoded
-      // explicitly.
-      llvm::DebugLoc DL;
-      (void)llvm::BuildMI(SpillMBB, SpillBefore, DL,
-                          TII->get(llvm::AMDGPU::V_WRITELANE_B32), SVAVGPR)
-          .addReg(Sub0)
-          .addImm(FreeLanes[0])
-          .addReg(SVAVGPR);
-      (void)llvm::BuildMI(SpillMBB, SpillBefore, DL,
-                          TII->get(llvm::AMDGPU::V_WRITELANE_B32), SVAVGPR)
-          .addReg(Sub1)
-          .addImm(FreeLanes[1])
-          .addReg(SVAVGPR);
-
-      // Reload: pull each lane back into the sub-reg in the
-      // RestoreBB that runs after the long jump lands.
-      (void)llvm::BuildMI(ReloadMBB, ReloadBefore, DL,
-                          TII->get(llvm::AMDGPU::V_READLANE_B32), Sub0)
-          .addReg(SVAVGPR)
-          .addImm(FreeLanes[0]);
-      (void)llvm::BuildMI(ReloadMBB, ReloadBefore, DL,
-                          TII->get(llvm::AMDGPU::V_READLANE_B32), Sub1)
-          .addReg(SVAVGPR)
-          .addImm(FreeLanes[1]);
-      return true;
-    };
-
-    TargetModuleBranchRelaxation BR(IPCFG, IPLiveness, SVLocations,
-                                    std::move(SpillSink));
+    TargetModuleBranchRelaxation BR(IPCFG, IPLiveness, SVLocations, SVASpecs);
     LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     running "
                                   "TargetModuleBranchRelaxation on '"
                                << F.getName() << "'\n");
@@ -1836,18 +1740,12 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   }
 
   // Sanity-check: re-run the detector and hard-error if anything
-  // remains out of range. Either the stock relaxer didn't run (e.g.,
-  // AMDGPU-specific corner case) or our offset accounting disagrees
-  // with the asm printer's.
+  // remains out of range.
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] === Phase B.5: "
                                 "post-relax out-of-range sanity check ===\n");
   llvm::SmallVector<OutOfRangeBranchRecord, 4> OutOfRange;
   for (llvm::Function &F : TargetModule) {
-    if (F.isDeclaration())
-      continue;
-    // Same kernel-only filter as the relaxer loop — `analyzeBranch`
-    // on non-kernel cloned helpers crashes on `isMBB()`.
-    if (F.getCallingConv() != llvm::CallingConv::AMDGPU_KERNEL)
+    if (F.isDeclaration() || !getFunctionEntryPoint(F).has_value())
       continue;
     detectOutOfRangeBranches(getTargetMF(F), OutOfRange);
   }
