@@ -25,7 +25,6 @@
 #define LUTHIER_TOOL_CODE_GEN_TARGET_MODULE_BRANCH_RELAXATION_H
 
 #include "luthier/ToolCodeGen/TargetModuleScavenger.h"
-#include <llvm/ADT/DenseSet.h>
 
 namespace llvm {
 class MachineFunction;
@@ -35,31 +34,27 @@ namespace luthier {
 
 class IPPredicatedCFG;
 class IPPredicatedLiveness;
+class SVStorageAndLoadLocations;
 
 class TargetModuleBranchRelaxation {
 public:
-  /// Construct with the prototype-level predicated CFG + liveness. Per-MBB
-  /// live-ins are seeded from \p IPLiveness (indexed via \p IPCFG)
-  /// The \p ReservedRegs set is propagated into the internal scavenger;
-  /// the \p SpillSink callback is invoked when the scavenger can't find a
-  /// globally-free register in the requested class.
+
   TargetModuleBranchRelaxation(
       const IPPredicatedCFG &IPCFG, const IPPredicatedLiveness &IPLiveness,
-      llvm::DenseSet<llvm::MCPhysReg> ReservedRegs = {},
+      const SVStorageAndLoadLocations &SVLoc,
       TargetModuleScavenger::SVASpillCallback SpillSink = nullptr)
-      : ReservedRegs(std::move(ReservedRegs)),
-        SpillSink(std::move(SpillSink)),
-        IPCFG(IPCFG), IPLiveness(IPLiveness) {}
+      : SpillSink(std::move(SpillSink)),
+        IPCFG(IPCFG), IPLiveness(IPLiveness), SVLoc(SVLoc) {}
 
   /// Run branch relaxation on \p MF. Returns true if any branch was
   /// relaxed. Mirrors \c llvm::BranchRelaxation::run.
   bool run(llvm::MachineFunction &MF);
 
 private:
-  llvm::DenseSet<llvm::MCPhysReg> ReservedRegs;
   TargetModuleScavenger::SVASpillCallback SpillSink;
   const IPPredicatedCFG &IPCFG;
   const IPPredicatedLiveness &IPLiveness;
+  const SVStorageAndLoadLocations &SVLoc;
 };
 
 } // namespace luthier
