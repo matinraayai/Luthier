@@ -39,22 +39,6 @@ namespace luthier {
 
 llvm::AnalysisKey InjectedPayloadSideEffectsAnalysis::Key;
 
-static constexpr llvm::StringLiteral ImplicitArgOptOutAttrList[] = {
-    "amdgpu-no-implicitarg-ptr",   "amdgpu-no-hostcall-ptr",
-    "amdgpu-no-heap-ptr",          "amdgpu-no-multigrid-sync-arg",
-    "amdgpu-no-default-queue",     "amdgpu-no-completion-action",
-};
-
-llvm::ArrayRef<llvm::StringRef>
-InjectedPayloadSideEffectsAnalysis::getAllImplicitArgOptOutAttrs() {
-  static constexpr llvm::StringRef Storage[] = {
-      ImplicitArgOptOutAttrList[0], ImplicitArgOptOutAttrList[1],
-      ImplicitArgOptOutAttrList[2], ImplicitArgOptOutAttrList[3],
-      ImplicitArgOptOutAttrList[4], ImplicitArgOptOutAttrList[5],
-  };
-  return llvm::ArrayRef<llvm::StringRef>(Storage);
-}
-
 bool InjectedPayloadSideEffects::invalidate(
     llvm::Function &, const llvm::PreservedAnalyses &PA,
     llvm::FunctionAnalysisManager::Invalidator &) {
@@ -69,11 +53,6 @@ InjectedPayloadSideEffectsAnalysis::run(llvm::Function &F,
   Result Out;
   if (!F.hasFnAttribute(InjectedPayloadAttribute))
     return Out;
-
-  // Aggregate implicit arg related attributes
-  for (llvm::StringRef Attr : ImplicitArgOptOutAttrList)
-    if (!F.hasFnAttribute(Attr))
-      Out.ImplicitArgs.insert(Attr);
 
   for (llvm::Instruction &I : llvm::instructions(F)) {
     auto *CI = llvm::dyn_cast<llvm::CallInst>(&I);
@@ -125,6 +104,26 @@ InjectedPayloadSideEffectsAnalysis::run(llvm::Function &F,
     else // readSVA
       Out.SVAs.insert(static_cast<ScalarValueArgument>(v));
   }
+
+  // Aggregate implicit arg related attributes
+  if (!Out.SVAs.contains(IMPLICIT_ARG_BUFFER)) {
+    return Out;
+  }
+
+  for (auto &[Val, Attr] : std::initializer_list<
+           std::pair<amdgpu::hsamd::ValueKind, llvm::StringRef>>{
+           {amdgpu::hsamd::ValueKind::HiddenHostcallBuffer,
+            "amdgpu-no-hostcall-ptr"},
+           {amdgpu::hsamd::ValueKind::HiddenHeapV1, "amdgpu-no-heap-ptr"},
+           {amdgpu::hsamd::ValueKind::HiddenMultiGridSyncArg,
+            "amdgpu-no-multigrid-sync-arg"},
+           {amdgpu::hsamd::ValueKind::HiddenDefaultQueue,
+            "amdgpu-no-default-queue"},
+           {amdgpu::hsamd::ValueKind::HiddenCompletionAction,
+            "amdgpu-no-completion-action"},
+           {amdgpu::hsamd::ValueKind::HiddenQueuePtr, "amdgpu-no-queue-ptr"}})
+    if (!F.hasFnAttribute(Attr))
+      Out.ImplicitArgs.insert(Val);
 
   return Out;
 }

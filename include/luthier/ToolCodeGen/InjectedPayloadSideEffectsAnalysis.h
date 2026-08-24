@@ -22,12 +22,13 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_SIDE_EFFECTS_ANALYSIS_H
 #define LUTHIER_TOOL_CODE_GEN_INJECTED_PAYLOAD_SIDE_EFFECTS_ANALYSIS_H
+#include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/ToolCodeGen/Metadata.h"
 #include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/ADT/iterator_range.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/MC/MCRegister.h>
-#include <luthier/Intrinsic/IntrinsicProcessor.h>
 
 namespace llvm {
 class Function;
@@ -43,7 +44,7 @@ class InjectedPayloadSideEffects {
 public:
   using PhysRegSetT = llvm::DenseSet<llvm::MCRegister>;
   using SVASetT = llvm::SmallDenseSet<ScalarValueArgument, 4>;
-  using ImplicitArgSetT = llvm::SmallDenseSet<llvm::StringRef, 32>;
+  using ImplicitArgSetT = llvm::SmallDenseSet<amdgpu::hsamd::ValueKind, 8>;
   using iterator = PhysRegSetT::const_iterator;
   using sva_iterator = SVASetT::const_iterator;
   using implicit_arg_iterator = ImplicitArgSetT::const_iterator;
@@ -99,7 +100,7 @@ public:
   }
   size_t implicit_args_size() const { return ImplicitArgs.size(); }
   bool implicit_args_empty() const { return ImplicitArgs.empty(); }
-  bool implicit_args_contains(llvm::StringRef A) const {
+  bool implicit_args_contains(amdgpu::hsamd::ValueKind A) const {
     return ImplicitArgs.contains(A);
   }
 
@@ -127,9 +128,6 @@ public:
 
   Result run(llvm::Function &F, llvm::FunctionAnalysisManager &FAM);
 
-  /// The \c amdgpu-no-<foo> attr names the analysis inspects on
-  /// payload functions.
-  static llvm::ArrayRef<llvm::StringRef> getAllImplicitArgOptOutAttrs();
 };
 
 /// \brief Printer pass for \c InjectedPayloadSideEffectsAnalysis used for
