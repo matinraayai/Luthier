@@ -1795,6 +1795,56 @@ llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
     GV->setInitializer(llvm::MapValue(GV->getInitializer(), VMap));
   }
 
+  // Comdat re-homing.
+  unsigned ReHomedComdats = 0;
+  auto ReHomeComdat = [&](llvm::GlobalObject *GO) {
+    const llvm::Comdat *SrcC = GO->getComdat();
+    if (!SrcC)
+      return;
+    llvm::Comdat *DstC = TargetModule.getOrInsertComdat(SrcC->getName());
+    DstC->setSelectionKind(SrcC->getSelectionKind());
+    GO->setComdat(DstC);
+    ++ReHomedComdats;
+  };
+  for (llvm::GlobalVariable *GV : MovedGVs)
+    ReHomeComdat(GV);
+  for (llvm::Function *F : FuncsToMove)
+    ReHomeComdat(F);
+
+  // Move global aliases.
+  llvm::SmallVector<llvm::GlobalAlias *, 4> MovedAliases;
+  for (llvm::GlobalAlias &GA : IModule.aliases())
+    if (!GA.getName().starts_with("llvm."))
+      MovedAliases.push_back(&GA);
+  for (llvm::GlobalAlias *GA : MovedAliases) {
+    LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   move alias '"
+                               << GA->getName() << "'\n");
+    IModule.removeAlias(GA);
+    TargetModule.insertAlias(GA);
+    VMap[GA] = GA;
+  }
+
+  // Move global ifuncs.
+  llvm::SmallVector<llvm::GlobalIFunc *, 4> MovedIFuncs;
+  for (llvm::GlobalIFunc &GI : IModule.ifuncs())
+    MovedIFuncs.push_back(&GI);
+  for (llvm::GlobalIFunc *GI : MovedIFuncs) {
+    LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   move ifunc '"
+                               << GI->getName() << "'\n");
+    IModule.removeIFunc(GI);
+    TargetModule.insertIFunc(GI);
+    VMap[GI] = GI;
+  }
+
+  // Module-level inline asm.
+  if (!IModule.getModuleInlineAsm().empty()) {
+    LLVM_DEBUG(luthier::dbgs()
+               << "[TargetModulePatcherPass]   append module inline asm ("
+               << IModule.getModuleInlineAsm().size() << " chars)\n");
+    TargetModule.appendModuleInlineAsm(IModule.getModuleInlineAsm());
+    IModule.setModuleInlineAsm("");
+  }
+
   // Pass 2 — re-home each moved definition's MIR.
   //
   // Moving the Function does not move its MachineFunction: that lives in the
@@ -1824,13 +1874,49 @@ llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
     ++ClonedMFs;
   }
 
+  // Pass 3 — move named metadata (\c llvm.module.flags,
+  // \c llvm.dbg.cu, \c llvm.ident, \c llvm.linker.options, and any
+  // custom named MD the IModule carries) into the target module.
+  unsigned MovedNamedMDs = 0;
+  unsigned MergedNamedMDs = 0;
+  llvm::SmallVector<llvm::NamedMDNode *, 8> NamedMDs;
+  for (llvm::NamedMDNode &NMD : IModule.named_metadata())
+    NamedMDs.push_back(&NMD);
+  for (llvm::NamedMDNode *SrcNMD : NamedMDs) {
+    if (llvm::NamedMDNode *ExistingDst =
+            TargetModule.getNamedMetadata(SrcNMD->getName())) {
+      LLVM_DEBUG(luthier::dbgs()
+                 << "[TargetModulePatcherPass]   merge named MD '"
+                 << SrcNMD->getName() << "' ("
+                 << SrcNMD->getNumOperands() << " operand(s))\n");
+      for (llvm::MDNode *Op : SrcNMD->operands())
+        ExistingDst->addOperand(Op);
+      ++MergedNamedMDs;
+    } else {
+      LLVM_DEBUG(luthier::dbgs()
+                 << "[TargetModulePatcherPass]   move named MD '"
+                 << SrcNMD->getName() << "' ("
+                 << SrcNMD->getNumOperands() << " operand(s))\n");
+      llvm::NamedMDNode *DstNMD =
+          TargetModule.getOrInsertNamedMetadata(SrcNMD->getName());
+      for (llvm::MDNode *Op : SrcNMD->operands())
+        DstNMD->addOperand(Op);
+      ++MovedNamedMDs;
+    }
+    IModule.eraseNamedMetadata(SrcNMD);
+  }
+
   LLVM_DEBUG(luthier::dbgs()
              << "[TargetModulePatcherPass] moveIModuleIntoTarget "
                 "done: "
              << MovedGVCount << " GV(s) moved, " << FuncsToMove.size()
              << " Fn(s) moved (" << SkippedPayloads << " payload(s) skipped, "
              << RedirectedDecls << " decl(s) redirected), " << ClonedMFs
-             << " MF(s) re-homed\n");
+             << " MF(s) re-homed, " << ReHomedComdats << " comdat(s) re-homed, "
+             << MovedAliases.size() << " alias(es) moved, "
+             << MovedIFuncs.size() << " ifunc(s) moved, " << MovedNamedMDs
+             << " named MD(s) moved, " << MergedNamedMDs
+             << " named MD(s) merged\n");
   return llvm::Error::success();
 }
 
