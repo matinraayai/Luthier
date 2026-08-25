@@ -22,6 +22,8 @@ tablegen(LuthierAMDGPUTableGen AMDGPUGenSubtargetInfo.inc -gen-subtarget EXTRA_I
         "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
 tablegen(LuthierAMDGPUTableGen AMDGPUGenSDNodeInfo.inc -gen-subtarget EXTRA_INCLUDES
         "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
+tablegen(LuthierAMDGPUTableGen AMDGPUGenDAGISel.inc -gen-subtarget EXTRA_INCLUDES
+        "${LUTHIER_LLVM_SRC_DIR}/llvm/lib/Target/AMDGPU/;${LUTHIER_LLVM_SRC_DIR}/llvm/include/")
 # Export a target for all the tablegen-ed files
 add_public_tablegen_target(LuthierAMDGPUTableGen)
 
