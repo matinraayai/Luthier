@@ -2587,29 +2587,6 @@ detectOutOfRangeBranches(const llvm::MachineFunction &MF,
 
 } // namespace
 
-// TODO: Restore the kernel descriptor's \c kernarg_preload field for kernels
-// that originally used the kernarg-preload feature.
-//
-// CodeDiscoveryPass captures the original packed field as the two attributes
-//   - \c amdgpu.kd.kernarg_preload_length  (bits 0-6, SGPR-dword count)
-//   - \c amdgpu.kd.kernarg_preload_offset  (bits 7-15, dword offset)
-// on every kernel \c Function whose subtarget has \c hasKernargPreload().
-//
-// The AMDGPU AsmPrinter (see \c AMDGPUAsmPrinter.cpp ~ line 667) only writes
-// LENGTH (derived from the recomputed \c getNumKernargPreloadedSGPRs()) and
-// hard-zeroes OFFSET. After instrumentation the recomputed LENGTH may also
-// drift from the original if the lifted kernel signature differs from the
-// source binary's. Both halves therefore need a post-AsmPrinter patch:
-//   1. Locate the kernel descriptor in the emitted relocatable (via the
-//      \c <kernel>.kd symbol).
-//   2. Read the two \c amdgpu.kd.kernarg_preload_* attributes off the
-//      lifted Function.
-//   3. Compose \c kernarg_preload = (offset << 7) | length and write to
-//      \c KERNARG_PRELOAD_OFFSET (offset 58 in the descriptor).
-//
-// Skip patching when either attribute is absent (means the subtarget didn't
-// support kernarg-preload at lift time and re-emission won't touch the slot).
-
 llvm::PreservedAnalyses
 TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   LLVM_DEBUG(luthier::dbgs() << "=== Luthier Target Module Patcher Pass ===\n");
