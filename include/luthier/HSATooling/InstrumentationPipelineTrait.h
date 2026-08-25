@@ -150,7 +150,7 @@ public:
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>>
   runInstrumentationPipelineForDispatch(
       const llvm::amdhsa::kernel_descriptor_t &KD,
-      llvm::OptimizationLevel Level = llvm::OptimizationLevel::O2) {
+      llvm::OptimizationLevel Level = llvm::OptimizationLevel::O3) {
     Derived &D = derived();
 
     std::unique_ptr<llvm::TargetMachine> TM;

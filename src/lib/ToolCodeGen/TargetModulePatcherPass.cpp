@@ -1050,9 +1050,26 @@ void emitPartialCallgraphSVSHandoffWraps(llvm::MachineFunction &MF,
                              << "handOff(s) for MF '" << MF.getName() << "'\n");
 }
 
+/// Scratch registers scavenged at a patchpoint.
+///
+/// \c Pair is the \c SReg_64 the emitted \c SI_CALL will use as both its
+/// return-address destination and its call-target source. \c SCCSave is
+/// a 32-bit SGPR reserved for holding \c $scc across the injection when
+/// \c $scc is live at the site; it is invalid (default-constructed
+/// \c MCRegister) when \c $scc is dead at the site and no save/restore
+/// is required. The two are always non-overlapping.
+struct ScavengedPatchpointRegs {
+  llvm::MCRegister Pair;
+  llvm::MCRegister SCCSave;
+};
+
 /// Pick an \c SReg_64 pair at \p MI that we can hand to the site's
 /// \c S_SWAPPC_B64 as both the return-address destination and the
-/// call-target source. The pair must satisfy three constraints:
+/// call-target source, and — when \c $scc is live at \p MI — additionally
+/// pick a 32-bit SGPR to hold \c $scc across the S_GETPC / S_ADD_U32 /
+/// S_ADDC_U32 sequence the site expands to (all three of those defs
+/// clobber \c $scc, and the S_ADD_U64 gfx12 path does the same). Every
+/// picked register must satisfy three constraints:
 ///   1. Dead at \p MI — otherwise the swap clobbers a live app value.
 ///      We seed \c LivePhysRegs from the enclosing MBB's stock live-outs
 ///      (populated upstream via \c IPPredicatedLiveness / \c IPPredCFG)
@@ -1066,11 +1083,11 @@ void emitPartialCallgraphSVSHandoffWraps(llvm::MachineFunction &MF,
 ///   3. Not reserved by \c MRI — the \c LivePhysRegs::available check
 ///      subsumes this.
 ///
-/// Returns the picked \c MCRegister on success, or an error
-static llvm::Expected<llvm::MCRegister>
-scavengeSGPRPairAtSite(const llvm::MachineInstr &MI,
-                       const SVStorageAndLoadLocations &SVLocations,
-                       const llvm::SlotIndexes &SI) {
+/// \c SCCSave must additionally not overlap the picked \c Pair.
+static llvm::Expected<ScavengedPatchpointRegs>
+scavengeSGPRsAtSite(const llvm::MachineInstr &MI,
+                    const SVStorageAndLoadLocations &SVLocations,
+                    const llvm::SlotIndexes &SI) {
   const llvm::MachineFunction &MF = *MI.getMF();
   const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
   const auto &TRI = *ST.getRegisterInfo();
@@ -1106,18 +1123,47 @@ scavengeSGPRPairAtSite(const llvm::MachineInstr &MI,
     return false;
   };
 
+  ScavengedPatchpointRegs Out;
   for (llvm::MCPhysReg Reg : llvm::AMDGPU::SReg_64RegClass) {
     if (OverlapsSVA(Reg))
       continue;
     if (!Live.available(MRI, Reg))
       continue;
-    return llvm::MCRegister(Reg);
+    Out.Pair = llvm::MCRegister(Reg);
+    break;
   }
-  return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-      "TargetModulePatcherPass: could not scavenge SReg_64 for SI_CALL at "
-      "PATCHPOINT in MF '{0}' MBB {1}: no pair is simultaneously dead at "
-      "the site and free of SVA-storage overlap.",
-      MF.getName(), MBB.getNumber()));
+  if (!Out.Pair)
+    return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+        "TargetModulePatcherPass: could not scavenge SReg_64 for SI_CALL at "
+        "PATCHPOINT in MF '{0}' MBB {1}: no pair is simultaneously dead at "
+        "the site and free of SVA-storage overlap.",
+        MF.getName(), MBB.getNumber()));
+
+  // If $scc is live across the patchpoint, the S_GETPC + S_ADD_U32 /
+  // S_ADDC_U32 sequence (or the S_ADD_U64 on gfx12) will clobber it, so
+  // we need a 32-bit SGPR to spill $scc into via S_CSELECT_B32 and
+  // restore it via S_CMP_LG_U32.
+  if (Live.contains(llvm::AMDGPU::SCC)) {
+    for (llvm::MCPhysReg Reg : llvm::AMDGPU::SGPR_32RegClass) {
+      if (OverlapsSVA(Reg))
+        continue;
+      if (TRI.regsOverlap(Reg, Out.Pair))
+        continue;
+      if (!Live.available(MRI, Reg))
+        continue;
+      Out.SCCSave = llvm::MCRegister(Reg);
+      break;
+    }
+    if (!Out.SCCSave)
+      return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "TargetModulePatcherPass: $scc is live at the PATCHPOINT in MF "
+          "'{0}' MBB {1} but no free SGPR_32 could be scavenged for the "
+          "SCC save slot (disjoint from the SReg_64 pair {2} and any "
+          "SVA-storage regs at the site).",
+          MF.getName(), MBB.getNumber(),
+          llvm::printReg(Out.Pair, &TRI)));
+  }
+  return Out;
 }
 
 /// Replace \p PatchpointMI with an outlined-payload call sequence:
@@ -1140,7 +1186,8 @@ scavengeSGPRPairAtSite(const llvm::MachineInstr &MI,
 static llvm::MCSymbol *emitSICallAtPatchpoint(llvm::MachineInstr &PatchpointMI,
                                               llvm::Function &PayloadFn,
                                               llvm::Function &ExternHandle,
-                                              llvm::MCRegister ScavengedPair) {
+                                              llvm::MCRegister ScavengedPair,
+                                              llvm::MCRegister SCCSaveSGPR) {
   assert(PatchpointMI.getOpcode() == llvm::TargetOpcode::PATCHPOINT &&
          "emitSICallAtPatchpoint expects a PATCHPOINT MI");
   auto &MBB = *PatchpointMI.getParent();
@@ -1149,6 +1196,17 @@ static llvm::MCSymbol *emitSICallAtPatchpoint(llvm::MachineInstr &PatchpointMI,
   const auto *TII = ST.getInstrInfo();
   const auto *TRI = ST.getRegisterInfo();
   const llvm::DebugLoc DL;
+
+  // If $scc is live across the patchpoint, snapshot it into SCCSaveSGPR
+  // before the S_ADD(C) sequence clobbers it. S_CSELECT_B32 reads $scc
+  // but does not modify it, so this is a pure spill:
+  //   SCCSaveSGPR = ($scc ? 1 : 0)
+  if (SCCSaveSGPR) {
+    (void)llvm::BuildMI(MBB, PatchpointMI, DL,
+                        TII->get(llvm::AMDGPU::S_CSELECT_B32), SCCSaveSGPR)
+        .addImm(1)
+        .addImm(0);
+  }
 
   // Materialize the callee address into ScavengedPair. Emitted as
   // top-level MIs (not a bundle) so any post-instr symbols added later
@@ -1175,6 +1233,14 @@ static llvm::MCSymbol *emitSICallAtPatchpoint(llvm::MachineInstr &PatchpointMI,
                         TII->get(llvm::AMDGPU::S_ADDC_U32), Sub1)
         .addReg(Sub1)
         .addGlobalAddress(&PayloadFn, 0, llvm::SIInstrInfo::MO_REL32 + 1);
+  }
+
+  // Restore $scc from SCCSaveSGPR before the SI_CALL.
+  if (SCCSaveSGPR) {
+    (void)llvm::BuildMI(MBB, PatchpointMI, DL,
+                        TII->get(llvm::AMDGPU::S_CMP_LG_U32))
+        .addReg(SCCSaveSGPR)
+        .addImm(0);
   }
 
   // SI_CALL — same pair as dst and src, so post-swap the pair holds
@@ -1280,10 +1346,12 @@ llvm::Error movePayloadMFIntoTarget(llvm::Function &PayloadFn,
 ///     \c S_GETPC_B64 + \c S_ADD_U32 / \c S_ADDC_U32 pattern
 llvm::Error rewritePayloadReturn(llvm::MachineFunction &PayloadMF,
                                  llvm::MCRegister ScavengedPair,
-                                 llvm::MCSymbol *ContSym) {
+                                 llvm::MCSymbol *ContSym,
+                                 bool PreserveSCCInCaseB) {
   const auto &ST = PayloadMF.getSubtarget<llvm::GCNSubtarget>();
   const auto *TII = ST.getInstrInfo();
   const auto *TRI = ST.getRegisterInfo();
+  const auto &MRI = PayloadMF.getRegInfo();
   auto &MCCtx = PayloadMF.getContext();
   const llvm::MCRegister Sub0 =
       TRI->getSubReg(ScavengedPair, llvm::AMDGPU::sub0);
@@ -1354,6 +1422,55 @@ llvm::Error rewritePayloadReturn(llvm::MachineFunction &PayloadMF,
     // SIInstrInfo::insertIndirectBranch emits this same triple unbundled.
     const bool Has64BitLiterals =
         PayloadMF.getSubtarget<llvm::GCNSubtarget>().has64BitLiterals();
+
+    // If the caller had $scc live across the patchpoint,
+    // InjectedPayloadPreserveLiveRegsPass has already emitted a
+    //   $scc = COPY vregN
+    // right before RetMI to restore the caller's SCC value into $scc.
+    // Our S_ADD_U32 / S_ADDC_U32 (or S_ADD_U64) below will then clobber
+    // that just-restored SCC, so we need to spill $scc into a scratch
+    // SGPR right before the trampoline and re-prime it right before
+    // RetMI. Scavenge a dead SGPR at the return point: nothing except
+    // the payload's live-out set is live here, and the pair itself is
+    // being fully redefined by S_GETPC.
+    llvm::MCRegister SCCTrampSave;
+    if (PreserveSCCInCaseB) {
+      // We step backward THROUGH RetMI so \c Live picks up the
+      // terminator's implicit uses. InjectedPayloadPreserveLiveRegsPass
+      // attaches an implicit-use of every payload-preserved physreg to
+      // the return terminator (see
+      // InjectedPayloadPreserveLiveRegsPass.cpp:266) so RA sees them
+      // as live-out; without stepping into RetMI here we would miss
+      // exactly those regs and could clobber a caller-visible value.
+      llvm::LivePhysRegs Live(*TRI);
+      Live.addLiveOuts(MBB);
+      for (auto It = MBB.rbegin(); It != MBB.rend(); ++It) {
+        Live.stepBackward(*It);
+        if (&*It == RetMI)
+          break;
+      }
+      for (llvm::MCPhysReg Reg : llvm::AMDGPU::SGPR_32RegClass) {
+        if (TRI->regsOverlap(Reg, ScavengedPair))
+          continue;
+        if (!Live.available(MRI, Reg))
+          continue;
+        SCCTrampSave = llvm::MCRegister(Reg);
+        break;
+      }
+      if (!SCCTrampSave)
+        return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+            "TargetModulePatcherPass: could not scavenge a free SGPR_32 in "
+            "payload '{0}' MBB {1} to preserve $scc across the Case B "
+            "return trampoline.",
+            PayloadMF.getName(), MBB.getNumber()));
+      // Spill $scc into SCCTrampSave: SCCTrampSave = ($scc ? 1 : 0).
+      // S_CSELECT_B32 reads $scc without modifying it.
+      (void)llvm::BuildMI(MBB, RetMI, DL,
+                          TII->get(llvm::AMDGPU::S_CSELECT_B32), SCCTrampSave)
+          .addImm(1)
+          .addImm(0);
+    }
+
     llvm::MCSymbol *PostGetPCLabel = MCCtx.createTempSymbol(
         "luthier_payload_ret_getpc", /*AlwaysAddSuffix=*/true);
     llvm::MachineInstr *GetPCMI =
@@ -1396,6 +1513,18 @@ llvm::Error rewritePayloadReturn(llvm::MachineFunction &PayloadMF,
           llvm::MCBinaryExpr::createAnd(OffsetExpr, Mask, MCCtx));
       OffsetHi->setVariableValue(llvm::MCBinaryExpr::createAShr(
           OffsetExpr, llvm::MCConstantExpr::create(32, MCCtx), MCCtx));
+    }
+
+    // Restore $scc right before the return terminator, after the
+    // trampoline's S_ADD(C) has finished clobbering it. S_CMP_LG_U32
+    // sets $scc = (SCCTrampSave != 0), the exact round-trip of the
+    // S_CSELECT_B32 save above. S_SETPC_B64_return does not read $scc,
+    // so this becomes the live value the caller sees at ContSym.
+    if (SCCTrampSave) {
+      (void)llvm::BuildMI(MBB, RetMI, DL,
+                          TII->get(llvm::AMDGPU::S_CMP_LG_U32))
+          .addReg(SCCTrampSave)
+          .addImm(0);
     }
 
     llvm::MachineOperand &RAOp = RetMI->getOperand(0);
@@ -2630,15 +2759,19 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
     }
   }
 
-  // 3b. Scavenge SGPR pairs. Snapshotted into `ScavengedByPayload` before
+  // 3b. Scavenge SGPRs. Snapshotted into `ScavengedByPayload` before
   // any orchestration mutation so a scavenge failure aborts cleanly.
-  llvm::MapVector<llvm::Function *, llvm::MCRegister> ScavengedByPayload;
+  // Each entry captures the SReg_64 pair the SI_CALL will use plus,
+  // when $scc is live across the patchpoint, an extra SGPR_32 to spill
+  // $scc into for the duration of the call-setup sequence.
+  llvm::MapVector<llvm::Function *, ScavengedPatchpointRegs>
+      ScavengedByPayload;
   for (const auto &[InjectedPayloadFunc, InsertionPointMI] :
        IPIP.payload_mi()) {
     const llvm::MachineFunction &TargetHostMF = *InsertionPointMI->getMF();
     const auto &SI = TargetMFAM.getResult<llvm::SlotIndexesAnalysis>(
         const_cast<llvm::MachineFunction &>(TargetHostMF));
-    auto ScavOrErr = scavengeSGPRPairAtSite(*InsertionPointMI, SVLocations, SI);
+    auto ScavOrErr = scavengeSGPRsAtSite(*InsertionPointMI, SVLocations, SI);
     if (!ScavOrErr) {
       Ctx.emitError(llvm::toString(ScavOrErr.takeError()));
       return llvm::PreservedAnalyses::none();
@@ -2651,7 +2784,10 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   for (const auto &[InjectedPayloadFunc, InsertionPointMI] :
        IPIP.payload_mi()) {
     ++PayloadCount;
-    const llvm::MCRegister Scav = ScavengedByPayload[InjectedPayloadFunc];
+    const ScavengedPatchpointRegs &Regs =
+        ScavengedByPayload[InjectedPayloadFunc];
+    const llvm::MCRegister Scav = Regs.Pair;
+    const llvm::MCRegister SCCSave = Regs.SCCSave;
 
     auto *InjectedPayloadMFRes =
         IFAM.getCachedResult<llvm::MachineFunctionAnalysis>(
@@ -2673,7 +2809,8 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
         IPIP.getExternHandleFromInjectedPayload(*InjectedPayloadFunc);
     assert(ExternHandle && "every PATCHPOINT must have an associated payload");
     llvm::MCSymbol *ContSym = emitSICallAtPatchpoint(
-        *InsertionPointMI, *InjectedPayloadFunc, *ExternHandle, Scav);
+        *InsertionPointMI, *InjectedPayloadFunc, *ExternHandle, Scav,
+        SCCSave);
 
     // Move the payload MF from IFAM to TargetFAM (and the IR Function
     // from IModule to TargetModule). After this call, PayloadMF is
@@ -2687,7 +2824,8 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
     }
 
     // Rewrite payload returns to land back at ContSym via Scav.
-    if (auto Err = rewritePayloadReturn(PayloadMF, Scav, ContSym)) {
+    if (auto Err = rewritePayloadReturn(PayloadMF, Scav, ContSym,
+                                        /*PreserveSCCInCaseB=*/bool(SCCSave))) {
       Ctx.emitError(llvm::toString(std::move(Err)));
       return llvm::PreservedAnalyses::none();
     }
