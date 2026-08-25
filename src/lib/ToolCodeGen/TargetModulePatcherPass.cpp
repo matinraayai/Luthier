@@ -272,17 +272,22 @@ void forcePrivateSegmentSize(llvm::GCNUserSGPRUsageInfo &Info) {
 /// so the payload prologue can pick it up on entry. SGPR0 is used as the
 /// scratch register to materialize the value; it is spilled to the
 /// frame-pointer spill lane before use and restored from it after the
-/// V_WRITELANE that stores the SP:
-///   * app static: SP = \p AppPrivateSegmentFixedSize (compile-time
-///     constant, top of the app's static frame). Materialized with
-///     \c S_MOV_B32 SGPR0, AppPrivateSegmentFixedSize.
-///   * app dynamic: SP = PRIVATE_SEGMENT_SIZE - Reservation. Queried
-///     at runtime via the preloaded PSS SGPR and materialized with
-///     \c S_SUB_U32 SGPR0, PSS_reg, Reservation. Reservation is
+/// V_WRITELANE that stores the SP.
+///
+/// The instrumentation frame reserves 8 bytes immediately below the
+/// initial SP for two 32-bit slots used by the partial-callgraph V0
+/// handoff protocol: emergency VGPR spill at SP-8 and SVA spill at
+/// SP-4. This carve-out is applied in both paths:
+///   * app static: SP = \p AppPrivateSegmentFixedSize + 8 (top of the
+///     app's static frame, plus the 8-byte slot region). Materialized
+///     with \c S_MOV_B32 SGPR0, SP.
+///   * app dynamic: SP = PRIVATE_SEGMENT_SIZE - Reservation where
+///     Reservation = payload budget + 8. Queried at runtime via the
+///     preloaded PSS SGPR (force-enabled here if the app didn't
+///     already request it) and materialized with
+///     \c S_SUB_U32 SGPR0, PSS_reg, Reservation. Payload budget is
 ///     \p PayloadMaxFixedStackSize for static payloads and
 ///     \p LuthierInstrumentationStackSize for dynamic payloads.
-///     Reserves the payload region at the top of the pool; the app
-///     grows from 0 upward, bounded by the pool size.
 llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
                                    llvm::MCRegister SVSStorageVGPR,
                                    bool AppUsesDynamicStack,
@@ -423,23 +428,36 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
   }
 
   // Compute the instrumentation SP and stash it in the SVA's
-  // StackPointerStoreLane:
+  // StackPointerStoreLane. The instrumentation frame reserves two
+  // 32-bit slots immediately below SP for the partial-callgraph V0
+  // handoff protocol:
+  //   * [SP-8, SP-4) — emergency VGPR spill slot (holds V0's app
+  //     value while the SVA is loaded into V0 across an unresolved-
+  //     edge call).
+  //   * [SP-4, SP)   — SVA spill slot (used by the spilled SVS
+  //     schemes to hold the SVA itself when V0 must be repurposed).
+  // \c SVSSlotsReservation captures that 8-byte carve-out; the
+  // initial SP is always \c Base + SVSSlotsReservation so the two
+  // slots live below SP at fixed offsets and the payload's own
+  // growth region begins at SP itself.
+  //
+  // Setup steps:
   //   1. Spill SGPR0 to the frame-pointer spill lane of the SVA
   //      (SGPR0 is the scratch register we use to materialize the SP
   //      value; we restore it at the end).
   //   2. Materialize the instrumentation SP value in SGPR0:
-  //        * app static:  SGPR0 = AppPrivateSegmentFixedSize
-  //          (compile-time constant; top of the app's static frame).
+  //        * app static:  SGPR0 = AppPrivateSegmentFixedSize +
+  //                                 SVSSlotsReservation.
   //        * app dynamic: SGPR0 = PRIVATE_SEGMENT_SIZE - Reservation
   //          (queried at runtime via the preloaded PSS SGPR;
-  //          Reservation is PayloadMaxFixedStackSize for static
-  //          payloads and LuthierInstrumentationStackSize for
-  //          dynamic payloads). Force-enable the PSS preload if the
-  //          app didn't request it.
+  //          Reservation = payload budget + SVSSlotsReservation).
+  //          Force-enable the PSS preload if the app didn't request
+  //          it.
   //   3. Save SGPR0 (the instrumentation SP) into the SVA's
   //      StackPointerStoreLane — this is where the payload prologue
   //      picks it up on entry.
   //   4. Restore SGPR0 from the frame-pointer spill lane.
+  static constexpr unsigned SVSSlotsReservation = 8;
 
   // 1. Spill SGPR0 to the FP spill lane.
   (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
@@ -450,13 +468,16 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
 
   // 2. Materialize the SP value in SGPR0.
   if (!AppUsesDynamicStack) {
+    const unsigned SP = AppPrivateSegmentFixedSize + SVSSlotsReservation;
     LLVM_DEBUG(luthier::dbgs()
                << "[TargetModulePatcherPass]     "
                   "InstrumentationStackStart(static)="
-               << AppPrivateSegmentFixedSize << "\n");
+               << SP << " (= AppPrivateSegmentFixedSize("
+               << AppPrivateSegmentFixedSize << ") + SVSSlotsReservation("
+               << SVSSlotsReservation << "))\n");
     (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                         TII.get(llvm::AMDGPU::S_MOV_B32), llvm::AMDGPU::SGPR0)
-        .addImm(AppPrivateSegmentFixedSize);
+        .addImm(SP);
   } else {
     // Force-enable the PRIVATE_SEGMENT_SIZE preload if the app didn't
     // already request it, so AMDGPUAsmPrinter emits the
@@ -483,15 +504,18 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
           "ArgInfo.",
           MF.getName()));
 
-    const unsigned Reservation =
+    const unsigned PayloadBudget =
         PayloadUsesDynamicStack
             ? static_cast<unsigned>(LuthierInstrumentationStackSize)
             : PayloadMaxFixedStackSize;
+    const unsigned Reservation = PayloadBudget + SVSSlotsReservation;
     LLVM_DEBUG(luthier::dbgs()
                << "[TargetModulePatcherPass]     "
                   "InstrumentationStackStart(dynamic)= PSS("
-               << llvm::printReg(PSS, &TRI) << ") - " << Reservation << "\n");
-    // SGPR0 = PSS - Reservation.
+               << llvm::printReg(PSS, &TRI) << ") - " << Reservation
+               << " (= PayloadBudget(" << PayloadBudget
+               << ") + SVSSlotsReservation(" << SVSSlotsReservation << "))\n");
+    // SGPR0 = PSS - (PayloadBudget + SVSSlotsReservation).
     (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                         TII.get(llvm::AMDGPU::S_SUB_U32), llvm::AMDGPU::SGPR0)
         .addReg(PSS)
@@ -791,7 +815,198 @@ void emitSVSSwitchesForMF(llvm::MachineFunction &MF,
   }
   LLVM_DEBUG(luthier::dbgs()
              << "[TargetModulePatcherPass]   emitted " << SwitchesEmitted
-             << " SVS switch(es) for MF '" << MF.getName() << "'\n");
+             << " within-MBB SVS switch(es) for MF '" << MF.getName() << "'\n");
+
+  // Cross-MBB SVS join reconciliation. The analysis threads a single
+  // \c SVS in program-iteration order, so at CFG joins two predecessors
+  // may have different tail-SVSes reaching a common successor. Walk
+  // every MBB M, and for each predecessor P of M whose tail SVS != M's
+  // head SVS, emit \c TailSVS.emitCodeToSwitchSVS(<anchor>, HeadSVS)
+  // to migrate the SVA on the P → M edge. Anchor selection:
+  //   * If P has one successor (M), emit at P's terminator — the
+  //     switch runs on every P → M traversal because P has no other
+  //     successors to disturb.
+  //   * Else if M has one predecessor (P), emit at M's first MI —
+  //     safe because M is only entered via P.
+  //   * Else the edge is critical. Split it by creating a fresh MBB
+  //     \c Split under P: rewrite P's terminator to reference \c Split
+  //     instead of M (or append an explicit S_BRANCH if M was P's
+  //     fall-through), route \c Split to M via an unconditional
+  //     S_BRANCH, and emit the SVS switch inside \c Split before its
+  //     terminator. This preserves the branch's condition while
+  //     interposing the switch on that single edge only.
+  //
+  // Both loops snapshot their targets first because splitting mutates
+  // MBB/CFG state (MF's MBB list, M's predecessor list).
+  const auto &TII = *MF.getSubtarget().getInstrInfo();
+  llvm::SmallVector<llvm::MachineBasicBlock *, 32> MBBSnapshot;
+  for (llvm::MachineBasicBlock &MBB : MF)
+    MBBSnapshot.push_back(&MBB);
+  unsigned CrossMBBJoins = 0;
+  unsigned CriticalEdgeSplits = 0;
+  for (llvm::MachineBasicBlock *MBBPtr : MBBSnapshot) {
+    llvm::MachineBasicBlock &MBB = *MBBPtr;
+    auto Segs = SVLocations.getStorageIntervals(MBB);
+    if (Segs.empty())
+      continue;
+    const StateValueArrayStorage &HeadSVS = Segs.front().getSVS();
+    llvm::SmallVector<llvm::MachineBasicBlock *, 4> Preds(
+        MBB.predecessors().begin(), MBB.predecessors().end());
+    for (llvm::MachineBasicBlock *Pred : Preds) {
+      auto PredSegs = SVLocations.getStorageIntervals(*Pred);
+      if (PredSegs.empty())
+        continue;
+      const StateValueArrayStorage &TailSVS = PredSegs.back().getSVS();
+      if (TailSVS == HeadSVS)
+        continue;
+      if (Pred->succ_size() == 1) {
+        LLVM_DEBUG(luthier::dbgs()
+                   << "[TargetModulePatcherPass]     "
+                      "cross-MBB SVS reconcile at pred-terminator "
+                   << llvm::printMBBReference(*Pred) << " -> "
+                   << llvm::printMBBReference(MBB) << "\n");
+        TailSVS.emitCodeToSwitchSVS(Pred->getFirstTerminator(), HeadSVS, Specs);
+        ++CrossMBBJoins;
+      } else if (MBB.pred_size() == 1) {
+        LLVM_DEBUG(luthier::dbgs()
+                   << "[TargetModulePatcherPass]     "
+                      "cross-MBB SVS reconcile at succ-head "
+                   << llvm::printMBBReference(*Pred) << " -> "
+                   << llvm::printMBBReference(MBB) << "\n");
+        TailSVS.emitCodeToSwitchSVS(MBB.begin(), HeadSVS, Specs);
+        ++CrossMBBJoins;
+      } else {
+        // Critical edge: interpose a fresh MBB on the P → M edge.
+        auto *Split = MF.CreateMachineBasicBlock();
+        MF.insert(MF.end(), Split);
+        // Rewrite any explicit reference to M in P's terminators to
+        // Split. If M was P's fall-through (no explicit operand),
+        // append an unconditional S_BRANCH to Split so control flows
+        // into Split whenever P would have fallen through to M.
+        bool Rewrote = false;
+        for (auto &Term : Pred->terminators()) {
+          for (auto &MO : Term.operands()) {
+            if (MO.isMBB() && MO.getMBB() == &MBB) {
+              MO.setMBB(Split);
+              Rewrote = true;
+            }
+          }
+        }
+        if (!Rewrote) {
+          llvm::BuildMI(*Pred, Pred->end(), llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::S_BRANCH))
+              .addMBB(Split);
+        }
+        Pred->replaceSuccessor(&MBB, Split);
+        Split->addSuccessor(&MBB);
+        for (const auto &LI : MBB.liveins())
+          Split->addLiveIn(LI.PhysReg, LI.LaneMask);
+        // Emit the SVS switch inside Split, then close with an
+        // unconditional branch to M.
+        TailSVS.emitCodeToSwitchSVS(Split->end(), HeadSVS, Specs);
+        llvm::BuildMI(*Split, Split->end(), llvm::DebugLoc(),
+                      TII.get(llvm::AMDGPU::S_BRANCH))
+            .addMBB(&MBB);
+        LLVM_DEBUG(luthier::dbgs()
+                   << "[TargetModulePatcherPass]     "
+                      "cross-MBB SVS reconcile via critical-edge split "
+                   << llvm::printMBBReference(*Pred) << " -> "
+                   << llvm::printMBBReference(*Split) << " -> "
+                   << llvm::printMBBReference(MBB) << "\n");
+        ++CrossMBBJoins;
+        ++CriticalEdgeSplits;
+      }
+    }
+  }
+  LLVM_DEBUG(luthier::dbgs()
+             << "[TargetModulePatcherPass]   emitted " << CrossMBBJoins
+             << " cross-MBB SVS reconciliation(s) (" << CriticalEdgeSplits
+             << " via critical-edge split) for MF '" << MF.getName()
+             << "'\n");
+}
+
+/// Emit the partial-callgraph V0-courier handoff for a target MF:
+///
+///  1. Fast path — if \c SVLoc reports a single fixed SVS across every
+///     target MF, no handoff is needed.
+///
+///  2. Callee side — at the entry of a device function (non-kernel),
+///     emit \c EntrySVS.pickOffSVA(firstMI, Specs). \c V0 arrives
+///     holding the SVA (from the caller's \c handOffSVA); pickOff
+///     stores it into the entry-block SVS and restores \c V0's app
+///     value from the SVS's emergency slot.
+///
+///  3. Caller side — every MBB whose \c PMBB has unresolved edges
+///     may cross into an unknown callee. Find the last call or
+///     indirect-branch MI in the MBB and emit
+///     \c BlockSVS.handOffSVA(MI, Specs) before it. handOff spills
+///     \c V0's app value to the SVS's emergency slot and loads the
+///     SVA into \c V0 so the callee sees \c V0 == SVA.
+void emitPartialCallgraphSVSHandoffWraps(
+    llvm::MachineFunction &MF, const IPPredicatedCFG &IPCFG,
+    const SVStorageAndLoadLocations &SVLoc,
+    const StateValueArraySpecs &Specs) {
+  LLVM_DEBUG(luthier::dbgs()
+             << "[TargetModulePatcherPass]   "
+                "emitPartialCallgraphSVSHandoffWraps MF='"
+             << MF.getName() << "'\n");
+  if (SVLoc.hasFixedStorageAcrossAllFunctions()) {
+    LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
+                                  "SVS is fixed across all functions; "
+                                  "skipping handoff for MF '"
+                               << MF.getName() << "'\n");
+    return;
+  }
+
+  const llvm::Function &F = MF.getFunction();
+  // 2. Callee side: pickOffSVA at entry of every device function.
+  if (F.getCallingConv() != llvm::CallingConv::AMDGPU_KERNEL && !MF.empty()) {
+    llvm::MachineBasicBlock &EntryMBB = MF.front();
+    if (!EntryMBB.empty()) {
+      auto Segs = SVLoc.getStorageIntervals(EntryMBB);
+      if (!Segs.empty()) {
+        const StateValueArrayStorage &EntrySVS = Segs.front().getSVS();
+        LLVM_DEBUG(luthier::dbgs()
+                   << "[TargetModulePatcherPass]     "
+                      "pickOffSVA at entry of device fn '"
+                   << MF.getName() << "'\n");
+        EntrySVS.pickOffSVA(EntryMBB.front(), Specs);
+      }
+    }
+  }
+
+  // 3. Caller side: handOffSVA before the last call/indirect-branch MI
+  //    in every MBB whose PMBB has unresolved edges.
+  unsigned HandOffsEmitted = 0;
+  for (llvm::MachineBasicBlock &MBB : MF) {
+    llvm::MachineInstr *TargetMI = nullptr;
+    for (auto It = MBB.rbegin(), End = MBB.rend(); It != End; ++It) {
+      if (It->isCall() || It->isIndirectBranch()) {
+        TargetMI = &*It;
+        break;
+      }
+    }
+    if (!TargetMI) {
+      LLVM_DEBUG(luthier::dbgs()
+                 << "[TargetModulePatcherPass]     "
+                    "MBB has no call/indirect-branch "
+                 << llvm::printMBBReference(MBB) << "; skipping\n");
+      continue;
+    }
+    auto Segs = SVLoc.getStorageIntervals(MBB);
+    assert(!Segs.empty() && "Empty SVStorage Segment");
+
+    const StateValueArrayStorage &BlockSVS = Segs.back().getSVS();
+    LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
+                                  "handOffSVA before call/indirect-branch in "
+                               << llvm::printMBBReference(MBB) << "\n");
+    BlockSVS.handOffSVA(*TargetMI, Specs);
+    ++HandOffsEmitted;
+  }
+  LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   emitted "
+                             << HandOffsEmitted << " partial-callgraph SVS "
+                             << "handOff(s) for MF '" << MF.getName()
+                             << "'\n");
 }
 
 /// Pick an \c SReg_64 pair at \p MI that we can hand to the site's
@@ -2071,6 +2286,23 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
         TargetFAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
     emitSVSSwitchesForMF(MF, SVLocations, SVASpecs,
                          TargetMFAM.getResult<llvm::SlotIndexesAnalysis>(MF));
+  }
+
+  /// Partial-callgraph SVS handoff. Wrap the last call in every MBB
+  /// whose PMBB.hasUnresolvedEdges() with the V0-courier protocol
+  /// (BlockSVS.emitCodeToLoadSVA / emitCodeToStoreSVA around the call
+  /// site into a VGPRStateValueArrayStorage(V0)). Depends on the SVS
+  /// switches being in place first — this pass reads the last segment
+  /// of the MBB's storage intervals to pick the right BlockSVS at the
+  /// call site.
+  LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] === "
+                                "Emit Partial-Callgraph SVS Handoff Wraps ===\n");
+  for (llvm::Function &F : TargetModule) {
+    if (F.isDeclaration())
+      continue;
+    llvm::MachineFunction &MF =
+        TargetFAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
+    emitPartialCallgraphSVSHandoffWraps(MF, IPCFG, SVLocations, SVASpecs);
   }
 
   // Emit the SVA preload setup (scratch + kernarg spills into
