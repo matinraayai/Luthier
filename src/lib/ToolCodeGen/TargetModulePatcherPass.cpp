@@ -137,6 +137,14 @@ struct NumUsedUserSGPRsTag {
 template struct PrivateAccessor<NumUsedUserSGPRsTag,
                              &llvm::GCNUserSGPRUsageInfo::NumUsedUserSGPRs>;
 
+struct NumKernargPreloadSGPRsTag {
+  using MemberT = unsigned llvm::GCNUserSGPRUsageInfo::*;
+  friend MemberT get(NumKernargPreloadSGPRsTag);
+};
+template struct PrivateAccessor<
+    NumKernargPreloadSGPRsTag,
+    &llvm::GCNUserSGPRUsageInfo::NumKernargPreloadSGPRs>;
+
 // The MFI's add{PrivateSegmentBuffer,FlatScratchInit} routines call
 // getNextUserSGPR, which asserts NumSystemSGPRs == 0. By the time we run
 // (post-codegen, pre-AsmPrinter), system SGPRs have already been added. We
@@ -147,6 +155,13 @@ struct NumSystemSGPRsTag {
 };
 template struct PrivateAccessor<NumSystemSGPRsTag,
                              &llvm::SIMachineFunctionInfo::NumSystemSGPRs>;
+
+struct SIMFI_NumUserSGPRsTag {
+  using MemberT = unsigned llvm::SIMachineFunctionInfo::*;
+  friend MemberT get(SIMFI_NumUserSGPRsTag);
+};
+template struct PrivateAccessor<SIMFI_NumUserSGPRsTag,
+                             &llvm::SIMachineFunctionInfo::NumUserSGPRs>;
 
 // Reach into \c llvm::AnalysisManager<Function>'s private results storage
 // so we can splice a cached \c MachineFunctionAnalysis::Result from the
@@ -251,6 +266,23 @@ void forcePrivateSegmentSize(llvm::GCNUserSGPRUsageInfo &Info) {
   Info.*get(NumUsedUserSGPRsTag{}) +=
       llvm::GCNUserSGPRUsageInfo::getNumUserSGPRForField(
           llvm::GCNUserSGPRUsageInfo::PrivateSegmentSizeID);
+}
+
+/// Turn off the kernel-argument preload feature on the instrumented
+/// kernel. Zeroes \c NumKernargPreloadSGPRs in \c GCNUserSGPRUsageInfo
+/// so \c AMDGPUAsmPrinter emits \c kernarg_preload_length=0 in the KD,
+/// and decrements \c SIMachineFunctionInfo::NumUserSGPRs by the
+/// original preload length so the KD's user-SGPR count drops back to
+/// just the system-user-SGPR count (avoiding a HW-limit violation
+/// when the force-enabled system SGPRs plus preload would exceed the
+/// 16-user-SGPR ceiling).
+void disableKernargPreload(llvm::SIMachineFunctionInfo &MFI,
+                           unsigned OrigPreloadLength) {
+  MFI.getUserSGPRInfo().*get(NumKernargPreloadSGPRsTag{}) = 0;
+  unsigned &NumUserSGPRs = MFI.*get(SIMFI_NumUserSGPRsTag{});
+  assert(NumUserSGPRs >= OrigPreloadLength &&
+         "NumUserSGPRs must include the preload region we're removing");
+  NumUserSGPRs -= OrigPreloadLength;
 }
 
 /// Emits the per-wave scratch setup at the kernel entry: spills the
@@ -942,7 +974,8 @@ void emitSVSSwitchesForMF(llvm::MachineFunction &MF,
 /// Emit the partial-callgraph V0-courier handoff for a target MF:
 ///
 ///  1. Fast path — if \c SVLoc reports a single fixed SVS across every
-///     target MF, no handoff is needed.
+///     target MF, no handoff is needed (the SVA VGPR is unused by all
+///     functions and survives across calls). Skip.
 ///
 ///  2. Callee side — at the entry of a device function (non-kernel),
 ///     emit \c EntrySVS.pickOffSVA(firstMI, Specs). \c V0 arrives
@@ -1625,7 +1658,7 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
   // each force-enable calls into \c getNextUserSGPR and shifts every
   // subsequent preloaded arg one SGPR pair (or one SGPR for the
   // single-slot ones).
-  const auto &SIMFI = *KernelMF.getInfo<llvm::SIMachineFunctionInfo>();
+  auto &SIMFI = *KernelMF.getInfo<llvm::SIMachineFunctionInfo>();
   llvm::SmallVector<
       std::pair<llvm::AMDGPUFunctionArgInfo::PreloadedValue, llvm::MCRegister>,
       16>
@@ -1635,6 +1668,12 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
     if (llvm::MCRegister R = SIMFI.getPreloadedReg(PV))
       PreloadedArgSnapshot.push_back({PV, R});
   }
+
+  /// Snapshot the kernarg-preload state.
+  const unsigned OrigNumUsedUserSGPRs =
+      SIMFI.getUserSGPRInfo().getNumUsedUserSGPRs();
+  const unsigned OrigPreloadLength =
+      SIMFI.getUserSGPRInfo().getNumKernargPreloadSGPRs();
 
   if (KernelInfo.RequiresScratchAndStackSetup) {
     const llvm::MachineFrameInfo &MFI = KernelMF.getFrameInfo();
@@ -1857,6 +1896,99 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
       (void)llvm::BuildMI(EntryMBB, EntryInstr, llvm::DebugLoc(),
                           TII.get(MoveOpc), OldSub)
           .addReg(NewSub);
+    }
+  }
+
+  // Kernarg-preload handling. If the original kernel had preloaded
+  // kernargs, force-enabling additional system SGPRs may have either
+  //   (a) pushed the total user SGPRs above the AMDGPU 16-SGPR
+  //       ceiling — so disable preload and emit manual S_LOAD_DWORD ops 
+  //       that populate the original SGPR positions from the kernarg buffer; or
+  //   (b) shifted the HW preload destination to a later SGPR range
+  //       (SGPR(NewNumUsedUserSGPRs) .. + PreloadLen - 1) while the
+  //       lifted app still reads them from the original range
+  //       (SGPR(OrigNumUsedUserSGPRs) .. + PreloadLen - 1) — emit an
+  //       S_MOV_B32 shuffle from the new HW positions to the
+  //       originals.
+  // Emitted at the very end of the SGPR/VGPR position-correcting
+  // section so any downstream KERNARG_SEGMENT_PTR shuffle above has
+  // already put the base pointer at its final position.
+  if (OrigPreloadLength > 0) {
+    const unsigned NewNumUsedUserSGPRs =
+        SIMFI.getUserSGPRInfo().getNumUsedUserSGPRs();
+    const llvm::MCRegister OrigPreloadStartSGPR =
+        llvm::AMDGPU::SGPR0 + OrigNumUsedUserSGPRs;
+    llvm::Function &KernelF = KernelMF.getFunction();
+    auto & ST = KernelMF.getSubtarget<llvm::GCNSubtarget>();
+    if (NewNumUsedUserSGPRs + OrigPreloadLength > ST.getMaxNumUserSGPRs()) {
+      LLVM_DEBUG(luthier::dbgs()
+                 << "[TargetModulePatcherPass]     "
+                    "preload disabled: sys-SGPR post-force ("
+                 << NewNumUsedUserSGPRs << ") + preload (" << OrigPreloadLength
+                 << ") > " << ST.getMaxNumUserSGPRs()
+                 << "; emitting manual "
+                    "S_LOAD_DWORD for "
+                 << OrigPreloadLength << " preload dword(s)\n");
+      // Manual S_LOADs need KERNARG_SEGMENT_PTR live at kernel entry.
+      // Force-enable + populate ArgInfo if the original kernel
+      // didn't request it. (The 2-SGPR cost is within budget because
+      // disabling preload just freed \c OrigPreloadLength SGPRs.)
+      const auto &SITRI =
+          *KernelMF.getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
+      if (!SIMFI.getPreloadedReg(
+              llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR)) {
+        forceKernargSegmentPtr(SIMFI.getUserSGPRInfo());
+        unsigned &NumSystemSGPRs = SIMFI.*get(NumSystemSGPRsTag{});
+        unsigned Saved = NumSystemSGPRs;
+        NumSystemSGPRs = 0;
+        SIMFI.addKernargSegmentPtr(SITRI);
+        NumSystemSGPRs = Saved;
+      }
+      llvm::MCRegister KernargSegPtr = SIMFI.getPreloadedReg(
+          llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR);
+      // Read the original preload dword offset from the KD attr
+      // (populated by CodeDiscoveryPass). A missing attr means the
+      // original KD had offset 0.
+      unsigned PreloadOffsetDwords = 0;
+      if (KernelF.hasFnAttribute("amdgpu.kd.kernarg_preload_offset")) {
+        KernelF.getFnAttribute("amdgpu.kd.kernarg_preload_offset")
+            .getValueAsString()
+            .getAsInteger(10, PreloadOffsetDwords);
+      }
+      for (unsigned I = 0; I < OrigPreloadLength; ++I) {
+        llvm::MCRegister Dst = OrigPreloadStartSGPR + I;
+        unsigned ByteOff = (PreloadOffsetDwords + I) * 4;
+        unsigned EncOff = llvm::AMDGPU::convertSMRDOffsetUnits(ST, ByteOff);
+        (void)llvm::BuildMI(EntryMBB, EntryInstr, llvm::DebugLoc(),
+                            TII.get(llvm::AMDGPU::S_LOAD_DWORD_IMM), Dst)
+            .addReg(KernargSegPtr)
+            .addImm(EncOff)
+            .addImm(/*cpol=*/0);
+      }
+      (void)llvm::BuildMI(EntryMBB, EntryInstr, llvm::DebugLoc(),
+                          TII.get(llvm::AMDGPU::S_WAITCNT))
+          .addImm(0);
+      // Disable HW preload + strip the KD attrs so AMDGPUAsmPrinter
+      // writes kernarg_preload_length=0 into the instrumented KD.
+      disableKernargPreload(SIMFI, OrigPreloadLength);
+    } else if (NewNumUsedUserSGPRs != OrigNumUsedUserSGPRs) {
+      // System SGPRs shifted; move the HW-loaded preload block back
+      // to the original position the lifted app expects.
+      const llvm::MCRegister NewPreloadStartSGPR =
+          llvm::AMDGPU::SGPR0 + NewNumUsedUserSGPRs;
+      LLVM_DEBUG(luthier::dbgs()
+                 << "[TargetModulePatcherPass]     "
+                    "preload shuffle: "
+                 << OrigPreloadLength << " dword(s) "
+                 << llvm::printReg(NewPreloadStartSGPR, &TRIR) << " -> "
+                 << llvm::printReg(OrigPreloadStartSGPR, &TRIR) << "\n");
+      for (unsigned I = 0; I < OrigPreloadLength; ++I) {
+        llvm::MCRegister Dst = OrigPreloadStartSGPR + I;
+        llvm::MCRegister Src = NewPreloadStartSGPR + I;
+        (void)llvm::BuildMI(EntryMBB, EntryInstr, llvm::DebugLoc(),
+                            TII.get(llvm::AMDGPU::S_MOV_B32), Dst)
+            .addReg(Src);
+      }
     }
   }
 
