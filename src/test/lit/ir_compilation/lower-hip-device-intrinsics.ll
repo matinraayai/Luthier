@@ -1,9 +1,11 @@
 ; RUN: opt -load-pass-plugin=%luthier_tool_ir_compilation_plugin_path -passes=luthier-substitute-amdgcn-intrinsics -S %s | %tee_out FileCheck %s
-; Verifies that lower-hip-device-intrinsics rewrites:
-;   - llvm.amdgcn.workgroup.id.x -> luthier::workgroupIdX.i32
-;   - llvm.amdgcn.workgroup.id.y -> luthier::workgroupIdY.i32
-;   - llvm.amdgcn.workgroup.id.z -> luthier::workgroupIdZ.i32
-;   - llvm.amdgcn.implicitarg.ptr -> luthier::implicitArgPtr.<ptr-type>
+; Verifies that lower-hip-device-intrinsics rewrites each amdgcn intrinsic
+; to a call to luthier::readSVA with the matching ScalarValueArgument slot:
+;   - llvm.amdgcn.workgroup.id.x -> luthier::readSVA(i8 WORKGROUP_ID_X=10)
+;   - llvm.amdgcn.workgroup.id.y -> luthier::readSVA(i8 WORKGROUP_ID_Y=11)
+;   - llvm.amdgcn.workgroup.id.z -> luthier::readSVA(i8 WORKGROUP_ID_Z=12)
+;   - llvm.amdgcn.implicitarg.ptr -> luthier::readSVA(i8 IMPLICIT_ARG_BUFFER=9)
+;                                    followed by inttoptr to ptr addrspace(4)
 ; and removes the original intrinsic declarations.
 
 target triple = "amdgcn-amd-amdhsa"
@@ -28,7 +30,8 @@ define i32 @uses_all() {
 ; CHECK-NOT: llvm.amdgcn.workgroup.id.z
 ; CHECK-NOT: llvm.amdgcn.implicitarg.ptr
 
-; CHECK: call i32 @"luthier::workgroupIdX.i32"()
-; CHECK: call i32 @"luthier::workgroupIdY.i32"()
-; CHECK: call i32 @"luthier::workgroupIdZ.i32"()
-; CHECK: call ptr addrspace(4) @"luthier::implicitArgPtr.{{.*}}"()
+; CHECK: call i32 @"luthier::readSVA.i32.i8"(i8 10)
+; CHECK: call i32 @"luthier::readSVA.i32.i8"(i8 11)
+; CHECK: call i32 @"luthier::readSVA.i32.i8"(i8 12)
+; CHECK: call i64 @"luthier::readSVA.i64.i8"(i8 9)
+; CHECK: inttoptr i64 %{{.*}} to ptr addrspace(4)
