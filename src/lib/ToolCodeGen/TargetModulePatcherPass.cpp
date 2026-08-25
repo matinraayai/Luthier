@@ -1250,6 +1250,11 @@ static llvm::MCSymbol *emitSICallAtPatchpoint(llvm::MachineInstr &PatchpointMI,
                     .addReg(ScavengedPair)
                     .addGlobalAddress(&PayloadFn);
 
+  // Mark the caller's frame as containing calls now that we've inserted a
+  // SI_CALL. Without this, AMDGPUResourceUsageAnalysis takes its no-calls
+  // early-return path
+  MF.getFrameInfo().setHasCalls(true);
+
   // Continuation symbol pinned at the point control returns to. Used by
   // rewritePayloadReturn's Case-B trampoline when the payload has
   // clobbered ScavengedPair before its return terminator.

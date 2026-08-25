@@ -118,6 +118,9 @@ llvm::Expected<llvm::Function *> Prototype::createInjectedPayload(
   auto *F = llvm::Function::Create(FTy, llvm::GlobalValue::InternalLinkage,
                                    "luthier.payload", *IModule);
 
+  // FIXME: Find a better way to set this
+  F->setDoesNotRecurse();
+
   if (!F->getReturnType()->isVoidTy() || F->arg_size() != 0)
     return LUTHIER_MAKE_GENERIC_ERROR(
         "Injected payload function must be void() with no arguments: '" +
