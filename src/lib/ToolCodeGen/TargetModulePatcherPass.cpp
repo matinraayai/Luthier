@@ -899,8 +899,22 @@ void emitSVSSwitchesForMF(llvm::MachineFunction &MF,
         }
         Pred->replaceSuccessor(&MBB, Split);
         Split->addSuccessor(&MBB);
+        // Seed Split's liveins with M's expected entry regs plus
+        // every storage register the source TailSVS and target
+        // HeadSVS touch — the switch code below reads from TailSVS's
+        // regs and writes to HeadSVS's regs, so both must be
+        // considered live at Split's entry.
         for (const auto &LI : MBB.liveins())
           Split->addLiveIn(LI.PhysReg, LI.LaneMask);
+        {
+          llvm::SmallVector<llvm::MCRegister, 4> SVSRegs;
+          TailSVS.getAllStorageRegisters(SVSRegs);
+          HeadSVS.getAllStorageRegisters(SVSRegs);
+          for (llvm::MCRegister R : SVSRegs)
+            if (!Split->isLiveIn(R))
+              Split->addLiveIn(R);
+        }
+        Split->sortUniqueLiveIns();
         // Emit the SVS switch inside Split, then close with an
         // unconditional branch to M.
         TailSVS.emitCodeToSwitchSVS(Split->end(), HeadSVS, Specs);

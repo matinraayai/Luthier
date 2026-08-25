@@ -215,8 +215,25 @@ llvm::DenseSet<llvm::MCPhysReg>
 TargetModuleBranchRelaxationWorker::getSVSReservedRegsAtBranch(
     const llvm::MachineBasicBlock &SourceMBB) const {
   llvm::DenseSet<llvm::MCPhysReg> Out;
-  llvm::ArrayRef<StateValueStorageSegment> Segments =
-      SVLoc.getStorageIntervals(SourceMBB);
+  // Walk up to the first MBB that SVLoc knows about. Both the
+  // cross-MBB critical-edge splits emitted from
+  // \c emitSVSSwitchesForMF and the relaxer's own \c NewBB/BranchBB
+  // trampolines are absent from SVLoc; each of them has a single
+  // predecessor that either is an original MBB (SVLoc'd) or itself
+  // has one that is, and SVS is stable across cross-MBB edges by
+  // \c emitSVSSwitchesForMF's invariant, so following the pred chain
+  // yields the correct active SVS at this branch site.
+  const llvm::MachineBasicBlock *Cur = &SourceMBB;
+  llvm::ArrayRef<StateValueStorageSegment> Segments;
+  llvm::SmallPtrSet<const llvm::MachineBasicBlock *, 4> Visited;
+  while (Cur && Visited.insert(Cur).second) {
+    Segments = SVLoc.getStorageIntervals(*Cur);
+    if (!Segments.empty())
+      break;
+    if (Cur->pred_size() != 1)
+      break;
+    Cur = *Cur->pred_begin();
+  }
   if (Segments.empty())
     return Out;
   llvm::SmallVector<llvm::MCRegister, 4> Regs;
@@ -874,6 +891,13 @@ bool TargetModuleBranchRelaxationWorker::run(llvm::MachineFunction &mf) {
   MF->getProperties().setTracksLiveness();
   for (llvm::MachineBasicBlock &MBB : *MF) {
     if (MBB.empty())
+      continue;
+    // Skip MBBs the CFG doesn't know about — MBBs synthesized by
+    // pre-relaxer passes (cross-MBB critical-edge splits from
+    // \c emitSVSSwitchesForMF, SCC-safe diamond blocks created by
+    // SVS load/store emission, etc.) don't have PMBB entries. Their
+    // liveins were populated by their creators; don't clobber them.
+    if (!IPCFG.contains(MBB))
       continue;
     const PredicatedMachineBasicBlock &PMBB =
         const_cast<IPPredicatedCFG &>(IPCFG).getPredMBB(MBB.front());
