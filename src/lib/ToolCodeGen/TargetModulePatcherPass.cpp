@@ -58,9 +58,9 @@
 #include <llvm/MC/MCContext.h>
 #include <llvm/MC/MCExpr.h>
 #include <llvm/MC/MCSymbol.h>
+#include <llvm/Support/CommandLine.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/FormatVariadic.h>
-#include <llvm/Support/CommandLine.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <llvm/Transforms/Utils/ValueMapper.h>
 
@@ -100,28 +100,28 @@ struct FlatScratchInitTag {
   friend MemberT get(FlatScratchInitTag);
 };
 template struct PrivateAccessor<FlatScratchInitTag,
-                             &llvm::GCNUserSGPRUsageInfo::FlatScratchInit>;
+                                &llvm::GCNUserSGPRUsageInfo::FlatScratchInit>;
 
 struct PrivateSegmentBufferTag {
   using MemberT = bool llvm::GCNUserSGPRUsageInfo::*;
   friend MemberT get(PrivateSegmentBufferTag);
 };
-template struct PrivateAccessor<PrivateSegmentBufferTag,
-                             &llvm::GCNUserSGPRUsageInfo::PrivateSegmentBuffer>;
+template struct PrivateAccessor<
+    PrivateSegmentBufferTag, &llvm::GCNUserSGPRUsageInfo::PrivateSegmentBuffer>;
 
 struct KernargSegmentPtrTag {
   using MemberT = bool llvm::GCNUserSGPRUsageInfo::*;
   friend MemberT get(KernargSegmentPtrTag);
 };
 template struct PrivateAccessor<KernargSegmentPtrTag,
-                             &llvm::GCNUserSGPRUsageInfo::KernargSegmentPtr>;
+                                &llvm::GCNUserSGPRUsageInfo::KernargSegmentPtr>;
 
 struct QueuePtrTag {
   using MemberT = bool llvm::GCNUserSGPRUsageInfo::*;
   friend MemberT get(QueuePtrTag);
 };
 template struct PrivateAccessor<QueuePtrTag,
-                             &llvm::GCNUserSGPRUsageInfo::QueuePtr>;
+                                &llvm::GCNUserSGPRUsageInfo::QueuePtr>;
 
 struct PrivateSegmentSizeTag {
   using MemberT = bool llvm::GCNUserSGPRUsageInfo::*;
@@ -135,7 +135,7 @@ struct NumUsedUserSGPRsTag {
   friend MemberT get(NumUsedUserSGPRsTag);
 };
 template struct PrivateAccessor<NumUsedUserSGPRsTag,
-                             &llvm::GCNUserSGPRUsageInfo::NumUsedUserSGPRs>;
+                                &llvm::GCNUserSGPRUsageInfo::NumUsedUserSGPRs>;
 
 struct NumKernargPreloadSGPRsTag {
   using MemberT = unsigned llvm::GCNUserSGPRUsageInfo::*;
@@ -154,14 +154,14 @@ struct NumSystemSGPRsTag {
   friend MemberT get(NumSystemSGPRsTag);
 };
 template struct PrivateAccessor<NumSystemSGPRsTag,
-                             &llvm::SIMachineFunctionInfo::NumSystemSGPRs>;
+                                &llvm::SIMachineFunctionInfo::NumSystemSGPRs>;
 
 struct SIMFI_NumUserSGPRsTag {
   using MemberT = unsigned llvm::SIMachineFunctionInfo::*;
   friend MemberT get(SIMFI_NumUserSGPRsTag);
 };
 template struct PrivateAccessor<SIMFI_NumUserSGPRsTag,
-                             &llvm::SIMachineFunctionInfo::NumUserSGPRs>;
+                                &llvm::SIMachineFunctionInfo::NumUserSGPRs>;
 
 // Reach into \c llvm::AnalysisManager<Function>'s private results storage
 // so we can splice a cached \c MachineFunctionAnalysis::Result from the
@@ -425,10 +425,9 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
       }
 
       // PSB initialization.
-      EmitScratchPSBInit(
-          TRI.getSubReg(PSB, llvm::AMDGPU::sub0),
-          TRI.getSubReg(PSB, llvm::AMDGPU::sub1),
-          PSBLane->second);
+      EmitScratchPSBInit(TRI.getSubReg(PSB, llvm::AMDGPU::sub0),
+                         TRI.getSubReg(PSB, llvm::AMDGPU::sub1),
+                         PSBLane->second);
 
       (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                           TII.get(llvm::AMDGPU::V_WRITELANE_B32),
@@ -437,11 +436,11 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
           .addImm(PSBLane->second + 2)
           .addReg(SVSStorageVGPR);
       (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                      TII.get(llvm::AMDGPU::V_WRITELANE_B32),
-                      SVSStorageVGPR)
-      .addReg(TRI.getSubReg(PSB, llvm::AMDGPU::sub3))
-      .addImm(PSBLane->second + 3)
-      .addReg(SVSStorageVGPR);
+                          TII.get(llvm::AMDGPU::V_WRITELANE_B32),
+                          SVSStorageVGPR)
+          .addReg(TRI.getSubReg(PSB, llvm::AMDGPU::sub3))
+          .addImm(PSBLane->second + 3)
+          .addReg(SVSStorageVGPR);
     }
 
     llvm::MCRegister FSInit =
@@ -516,8 +515,8 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
     // ENABLE_SGPR_PRIVATE_SEGMENT_SIZE bit and the HSA runtime
     // provisions the SGPR with the per-wave scratch pool size at
     // dispatch time.
-    llvm::MCRegister PSS = MFI.getPreloadedReg(
-        llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_SIZE);
+    llvm::MCRegister PSS =
+        MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_SIZE);
     if (!PSS) {
       forcePrivateSegmentSize(MFI.getUserSGPRInfo());
       unsigned &NumSystemSGPRs = MFI.*get(NumSystemSGPRsTag{});
@@ -564,7 +563,8 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
 
   // 4. Restore SGPR0 from the FP spill lane.
   (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                      TII.get(llvm::AMDGPU::V_READLANE_B32), llvm::AMDGPU::SGPR0)
+                      TII.get(llvm::AMDGPU::V_READLANE_B32),
+                      llvm::AMDGPU::SGPR0)
       .addReg(SVSStorageVGPR)
       .addImm(Specs.getFramePointerRegSpillLane());
 
@@ -900,11 +900,10 @@ void emitSVSSwitchesForMF(llvm::MachineFunction &MF,
         TailSVS.emitCodeToSwitchSVS(Pred->getFirstTerminator(), HeadSVS, Specs);
         ++CrossMBBJoins;
       } else if (MBB.pred_size() == 1) {
-        LLVM_DEBUG(luthier::dbgs()
-                   << "[TargetModulePatcherPass]     "
-                      "cross-MBB SVS reconcile at succ-head "
-                   << llvm::printMBBReference(*Pred) << " -> "
-                   << llvm::printMBBReference(MBB) << "\n");
+        LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
+                                      "cross-MBB SVS reconcile at succ-head "
+                                   << llvm::printMBBReference(*Pred) << " -> "
+                                   << llvm::printMBBReference(MBB) << "\n");
         TailSVS.emitCodeToSwitchSVS(MBB.begin(), HeadSVS, Specs);
         ++CrossMBBJoins;
       } else {
@@ -967,8 +966,7 @@ void emitSVSSwitchesForMF(llvm::MachineFunction &MF,
   LLVM_DEBUG(luthier::dbgs()
              << "[TargetModulePatcherPass]   emitted " << CrossMBBJoins
              << " cross-MBB SVS reconciliation(s) (" << CriticalEdgeSplits
-             << " via critical-edge split) for MF '" << MF.getName()
-             << "'\n");
+             << " via critical-edge split) for MF '" << MF.getName() << "'\n");
 }
 
 /// Emit the partial-callgraph V0-courier handoff for a target MF:
@@ -989,14 +987,13 @@ void emitSVSSwitchesForMF(llvm::MachineFunction &MF,
 ///     \c BlockSVS.handOffSVA(MI, Specs) before it. handOff spills
 ///     \c V0's app value to the SVS's emergency slot and loads the
 ///     SVA into \c V0 so the callee sees \c V0 == SVA.
-void emitPartialCallgraphSVSHandoffWraps(
-    llvm::MachineFunction &MF, const IPPredicatedCFG &IPCFG,
-    const SVStorageAndLoadLocations &SVLoc,
-    const StateValueArraySpecs &Specs) {
-  LLVM_DEBUG(luthier::dbgs()
-             << "[TargetModulePatcherPass]   "
-                "emitPartialCallgraphSVSHandoffWraps MF='"
-             << MF.getName() << "'\n");
+void emitPartialCallgraphSVSHandoffWraps(llvm::MachineFunction &MF,
+                                         const IPPredicatedCFG &IPCFG,
+                                         const SVStorageAndLoadLocations &SVLoc,
+                                         const StateValueArraySpecs &Specs) {
+  LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   "
+                                "emitPartialCallgraphSVSHandoffWraps MF='"
+                             << MF.getName() << "'\n");
   if (SVLoc.hasFixedStorageAcrossAllFunctions()) {
     LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
                                   "SVS is fixed across all functions; "
@@ -1013,10 +1010,9 @@ void emitPartialCallgraphSVSHandoffWraps(
       auto Segs = SVLoc.getStorageIntervals(EntryMBB);
       if (!Segs.empty()) {
         const StateValueArrayStorage &EntrySVS = Segs.front().getSVS();
-        LLVM_DEBUG(luthier::dbgs()
-                   << "[TargetModulePatcherPass]     "
-                      "pickOffSVA at entry of device fn '"
-                   << MF.getName() << "'\n");
+        LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
+                                      "pickOffSVA at entry of device fn '"
+                                   << MF.getName() << "'\n");
         EntrySVS.pickOffSVA(EntryMBB.front(), Specs);
       }
     }
@@ -1052,8 +1048,7 @@ void emitPartialCallgraphSVSHandoffWraps(
   }
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   emitted "
                              << HandOffsEmitted << " partial-callgraph SVS "
-                             << "handOff(s) for MF '" << MF.getName()
-                             << "'\n");
+                             << "handOff(s) for MF '" << MF.getName() << "'\n");
 }
 
 /// Pick an \c SReg_64 pair at \p MI that we can hand to the site's
@@ -1553,9 +1548,9 @@ computeInitialEntryKernelSVAInfo(const llvm::MachineFunction &KernelMF,
         Info.RequiresScratchAndStackSetup = true;
       if (MFI.hasVarSizedObjects())
         Info.AnyPayloadUsesDynamicStack = true;
-      Info.PayloadMaxFixedStackSize = std::max<unsigned>(
-          Info.PayloadMaxFixedStackSize,
-          static_cast<unsigned>(MFI.getStackSize()));
+      Info.PayloadMaxFixedStackSize =
+          std::max<unsigned>(Info.PayloadMaxFixedStackSize,
+                             static_cast<unsigned>(MFI.getStackSize()));
     }
 
     // Union the payload's requested SVA scalar-value arguments and
@@ -1785,6 +1780,103 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
                                     "no preloaded value (filled elsewhere)\n");
       continue; // USER_ARG_PTR / IMPLICIT_ARG_BUFFER: filled in elsewhere.
     }
+    // Force-enable the preloaded value for \c *PV if the original app
+    // kernel had it disabled.
+    {
+      const auto *TryArgDesc = std::get<0>(SIMFI.getPreloadedValue(*PV));
+      if (!TryArgDesc || !TryArgDesc->isRegister()) {
+        llvm::Function &KernelF = KernelMF.getFunction();
+        auto &Info = SIMFI.getUserSGPRInfo();
+        const auto &ST = KernelMF.getSubtarget<llvm::GCNSubtarget>();
+        const auto &SITRI = *ST.getRegisterInfo();
+        auto AddUserSGPR = [&](auto AddMemFn) {
+          unsigned &NumSystemSGPRs = SIMFI.*get(NumSystemSGPRsTag{});
+          unsigned Saved = NumSystemSGPRs;
+          NumSystemSGPRs = 0;
+          (void)(SIMFI.*AddMemFn)(SITRI);
+          NumSystemSGPRs = Saved;
+        };
+        LLVM_DEBUG(luthier::dbgs()
+                   << "[TargetModulePatcherPass]       force-enable preloaded "
+                      "value PV="
+                   << static_cast<unsigned>(*PV) << " on kernel '"
+                   << KernelF.getName() << "'\n");
+        switch (*PV) {
+        case llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER:
+          forcePrivateSegmentBuffer(Info);
+          AddUserSGPR(&llvm::SIMachineFunctionInfo::addPrivateSegmentBuffer);
+          break;
+        case llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT:
+          forceFlatScratchInit(Info);
+          AddUserSGPR(&llvm::SIMachineFunctionInfo::addFlatScratchInit);
+          break;
+        case llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR:
+          forceKernargSegmentPtr(Info);
+          AddUserSGPR(&llvm::SIMachineFunctionInfo::addKernargSegmentPtr);
+          break;
+        case llvm::AMDGPUFunctionArgInfo::QUEUE_PTR:
+          forceQueuePtr(Info);
+          AddUserSGPR(&llvm::SIMachineFunctionInfo::addQueuePtr);
+          break;
+        case llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_SIZE:
+          forcePrivateSegmentSize(Info);
+          AddUserSGPR(&llvm::SIMachineFunctionInfo::addPrivateSegmentSize);
+          break;
+        case llvm::AMDGPUFunctionArgInfo::DISPATCH_ID:
+          KernelF.removeFnAttr("amdgpu-no-dispatch-id");
+          AddUserSGPR(&llvm::SIMachineFunctionInfo::addDispatchID);
+          break;
+        case llvm::AMDGPUFunctionArgInfo::DISPATCH_PTR:
+          KernelF.removeFnAttr("amdgpu-no-dispatch-ptr");
+          AddUserSGPR(&llvm::SIMachineFunctionInfo::addDispatchPtr);
+          break;
+        case llvm::AMDGPUFunctionArgInfo::IMPLICIT_BUFFER_PTR:
+          KernelF.removeFnAttr("amdgpu-no-implicit-buffer-ptr");
+          AddUserSGPR(&llvm::SIMachineFunctionInfo::addImplicitBufferPtr);
+          break;
+        case llvm::AMDGPUFunctionArgInfo::WORKGROUP_ID_X:
+          KernelF.removeFnAttr("amdgpu-no-workgroup-id-x");
+          KernelF.removeFnAttr("amdgpu-no-cluster-id-x");
+          (void)SIMFI.addWorkGroupIDX();
+          break;
+        case llvm::AMDGPUFunctionArgInfo::WORKGROUP_ID_Y:
+          KernelF.removeFnAttr("amdgpu-no-workgroup-id-y");
+          KernelF.removeFnAttr("amdgpu-no-cluster-id-y");
+          (void)SIMFI.addWorkGroupIDY();
+          break;
+        case llvm::AMDGPUFunctionArgInfo::WORKGROUP_ID_Z:
+          KernelF.removeFnAttr("amdgpu-no-workgroup-id-z");
+          KernelF.removeFnAttr("amdgpu-no-cluster-id-z");
+          (void)SIMFI.addWorkGroupIDZ();
+          break;
+        case llvm::AMDGPUFunctionArgInfo::WORKITEM_ID_X: {
+          KernelF.removeFnAttr("amdgpu-no-workitem-id-x");
+          bool HasPacked = ST.hasFeature(llvm::AMDGPU::FeaturePackedTID);
+          SIMFI.setWorkItemIDX(llvm::ArgDescriptor::createRegister(
+              llvm::AMDGPU::VGPR0, HasPacked ? 0x3ffu : ~0u));
+          break;
+        }
+        case llvm::AMDGPUFunctionArgInfo::WORKITEM_ID_Y: {
+          KernelF.removeFnAttr("amdgpu-no-workitem-id-y");
+          bool HasPacked = ST.hasFeature(llvm::AMDGPU::FeaturePackedTID);
+          SIMFI.setWorkItemIDY(llvm::ArgDescriptor::createRegister(
+              HasPacked ? llvm::AMDGPU::VGPR0 : llvm::AMDGPU::VGPR1,
+              HasPacked ? (0x3ffu << 10) : ~0u));
+          break;
+        }
+        case llvm::AMDGPUFunctionArgInfo::WORKITEM_ID_Z: {
+          KernelF.removeFnAttr("amdgpu-no-workitem-id-z");
+          bool HasPacked = ST.hasFeature(llvm::AMDGPU::FeaturePackedTID);
+          SIMFI.setWorkItemIDZ(llvm::ArgDescriptor::createRegister(
+              HasPacked ? llvm::AMDGPU::VGPR0 : llvm::AMDGPU::VGPR2,
+              HasPacked ? (0x3ffu << 20) : ~0u));
+          break;
+        }
+        default:
+          break;
+        }
+      }
+    }
     // The ArgDescriptor carries both the physreg AND the bitmask.
     const auto *ArgDesc = std::get<0>(SIMFI.getPreloadedValue(*PV));
     if (!ArgDesc || !ArgDesc->isRegister())
@@ -1821,15 +1913,13 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
       const auto &TII = *KernelMF.getSubtarget().getInstrInfo();
       // 1. Save TempSGPR into the SP spill lane.
       (void)llvm::BuildMI(EntryMBB, EntryInstr, llvm::DebugLoc(),
-                          TII.get(llvm::AMDGPU::V_WRITELANE_B32),
-                          SVSStorageReg)
+                          TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageReg)
           .addReg(TempSGPR)
           .addImm(SPSpillLane)
           .addReg(SVSStorageReg);
       // 2. Read lane 0 of the workitem VGPR into TempSGPR.
       (void)llvm::BuildMI(EntryMBB, EntryInstr, llvm::DebugLoc(),
-                          TII.get(llvm::AMDGPU::V_READFIRSTLANE_B32),
-                          TempSGPR)
+                          TII.get(llvm::AMDGPU::V_READFIRSTLANE_B32), TempSGPR)
           .addReg(SrcReg);
       // 3. Packed-TID extraction. See comment block above.
       if (Mask != ~0u) {
@@ -1842,8 +1932,7 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
       }
       // 4. Write TempSGPR into the workitem's SVA lane.
       (void)llvm::BuildMI(EntryMBB, EntryInstr, llvm::DebugLoc(),
-                          TII.get(llvm::AMDGPU::V_WRITELANE_B32),
-                          SVSStorageReg)
+                          TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageReg)
           .addReg(TempSGPR)
           .addImm(LaneIt->second)
           .addReg(SVSStorageReg);
@@ -1902,7 +1991,7 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
   // Kernarg-preload handling. If the original kernel had preloaded
   // kernargs, force-enabling additional system SGPRs may have either
   //   (a) pushed the total user SGPRs above the AMDGPU 16-SGPR
-  //       ceiling — so disable preload and emit manual S_LOAD_DWORD ops 
+  //       ceiling — so disable preload and emit manual S_LOAD_DWORD ops
   //       that populate the original SGPR positions from the kernarg buffer; or
   //   (b) shifted the HW preload destination to a later SGPR range
   //       (SGPR(NewNumUsedUserSGPRs) .. + PreloadLen - 1) while the
@@ -1919,7 +2008,7 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
     const llvm::MCRegister OrigPreloadStartSGPR =
         llvm::AMDGPU::SGPR0 + OrigNumUsedUserSGPRs;
     llvm::Function &KernelF = KernelMF.getFunction();
-    auto & ST = KernelMF.getSubtarget<llvm::GCNSubtarget>();
+    auto &ST = KernelMF.getSubtarget<llvm::GCNSubtarget>();
     if (NewNumUsedUserSGPRs + OrigPreloadLength > ST.getMaxNumUserSGPRs()) {
       LLVM_DEBUG(luthier::dbgs()
                  << "[TargetModulePatcherPass]     "
@@ -2215,16 +2304,16 @@ llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
             TargetModule.getNamedMetadata(SrcNMD->getName())) {
       LLVM_DEBUG(luthier::dbgs()
                  << "[TargetModulePatcherPass]   merge named MD '"
-                 << SrcNMD->getName() << "' ("
-                 << SrcNMD->getNumOperands() << " operand(s))\n");
+                 << SrcNMD->getName() << "' (" << SrcNMD->getNumOperands()
+                 << " operand(s))\n");
       for (llvm::MDNode *Op : SrcNMD->operands())
         ExistingDst->addOperand(Op);
       ++MergedNamedMDs;
     } else {
       LLVM_DEBUG(luthier::dbgs()
                  << "[TargetModulePatcherPass]   move named MD '"
-                 << SrcNMD->getName() << "' ("
-                 << SrcNMD->getNumOperands() << " operand(s))\n");
+                 << SrcNMD->getName() << "' (" << SrcNMD->getNumOperands()
+                 << " operand(s))\n");
       llvm::NamedMDNode *DstNMD =
           TargetModule.getOrInsertNamedMetadata(SrcNMD->getName());
       for (llvm::MDNode *Op : SrcNMD->operands())
@@ -2441,8 +2530,9 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   /// switches being in place first — this pass reads the last segment
   /// of the MBB's storage intervals to pick the right BlockSVS at the
   /// call site.
-  LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] === "
-                                "Emit Partial-Callgraph SVS Handoff Wraps ===\n");
+  LLVM_DEBUG(luthier::dbgs()
+             << "[TargetModulePatcherPass] === "
+                "Emit Partial-Callgraph SVS Handoff Wraps ===\n");
   for (llvm::Function &F : TargetModule) {
     if (F.isDeclaration())
       continue;
