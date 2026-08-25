@@ -1225,14 +1225,37 @@ static llvm::MCSymbol *emitSICallAtPatchpoint(llvm::MachineInstr &PatchpointMI,
   } else {
     llvm::MCRegister Sub0 = TRI->getSubReg(ScavengedPair, llvm::AMDGPU::sub0);
     llvm::MCRegister Sub1 = TRI->getSubReg(ScavengedPair, llvm::AMDGPU::sub1);
+    // On hardware where S_GETPC_B64 zero-extends the 48-bit PC instead of
+    // sign-extending it, the high half comes back with bits [63:48] cleared.
+    // S_SEXT_I32_I16 re-derives them from bit 47 (i.e. bit 15 of the high
+    // word). It is a plain SOP1 that does not touch $scc, so it is safe
+    // inside the SCCSaveSGPR-protected region. Adding it also pushes the
+    // S_ADD_U32 4 bytes further from the S_GETPC, which both REL32 addends
+    // below have to absorb.
+    int64_t Adjust = 0;
+    if (ST.hasGetPCZeroExtension()) {
+      (void)llvm::BuildMI(MBB, PatchpointMI, DL,
+                          TII->get(llvm::AMDGPU::S_SEXT_I32_I16), Sub1)
+          .addReg(Sub1);
+      Adjust = 4;
+    }
+    // S_GETPC_B64 returns the address of the instruction after it, but each
+    // REL32 relocation is resolved against the address of its own literal
+    // operand: 4 bytes into the S_ADD_U32, and 12 bytes into the S_ADD_U32
+    // for the S_ADDC_U32's literal. Both halves must encode the *same*
+    // 64-bit delta, so the lo/hi addends differ. These are the same
+    // constants upstream SIInstrInfo::expandPostRAPseudo applies when it
+    // lowers SI_PC_ADD_REL_OFFSET.
     (void)llvm::BuildMI(MBB, PatchpointMI, DL,
                         TII->get(llvm::AMDGPU::S_ADD_U32), Sub0)
         .addReg(Sub0)
-        .addGlobalAddress(&PayloadFn, 0, llvm::SIInstrInfo::MO_REL32);
+        .addGlobalAddress(&PayloadFn, /*Offset=*/Adjust + 4,
+                          llvm::SIInstrInfo::MO_REL32);
     (void)llvm::BuildMI(MBB, PatchpointMI, DL,
                         TII->get(llvm::AMDGPU::S_ADDC_U32), Sub1)
         .addReg(Sub1)
-        .addGlobalAddress(&PayloadFn, 0, llvm::SIInstrInfo::MO_REL32 + 1);
+        .addGlobalAddress(&PayloadFn, /*Offset=*/Adjust + 12,
+                          llvm::SIInstrInfo::MO_REL32 + 1);
   }
 
   // Restore $scc from SCCSaveSGPR before the SI_CALL.
@@ -1481,8 +1504,8 @@ llvm::Error rewritePayloadReturn(llvm::MachineFunction &PayloadMF,
     llvm::MachineInstr *GetPCMI =
         llvm::BuildMI(MBB, RetMI, DL, TII->get(llvm::AMDGPU::S_GETPC_B64),
                       ScavengedPair);
-    // Pin PostGetPCLabel to the PC of the following S_ADD, i.e. the value
-    // S_GETPC returns.
+    // Pin PostGetPCLabel to the PC of whatever instruction follows the
+    // S_GETPC, i.e. the value S_GETPC returns.
     GetPCMI->setPostInstrSymbol(PayloadMF, PostGetPCLabel);
     if (Has64BitLiterals) {
       llvm::MCSymbol *Offset = MCCtx.createTempSymbol(
@@ -1496,6 +1519,17 @@ llvm::Error rewritePayloadReturn(llvm::MachineFunction &PayloadMF,
           llvm::MCSymbolRefExpr::create(ContSym, MCCtx),
           llvm::MCSymbolRefExpr::create(PostGetPCLabel, MCCtx), MCCtx));
     } else {
+      // Repair the high half on hardware whose S_GETPC_B64 zero-extends the
+      // 48-bit PC. Unlike the call site above, no addend shift is needed
+      // here: OffsetLo/OffsetHi below are symbol differences against
+      // PostGetPCLabel — which is pinned to the S_GETPC's return value —
+      // rather than REL32 relocations resolved against their own literal,
+      // so inserting an instruction between the S_GETPC and the S_ADD_U32
+      // does not move the reference point.
+      if (ST.hasGetPCZeroExtension())
+        (void)llvm::BuildMI(MBB, RetMI, DL,
+                            TII->get(llvm::AMDGPU::S_SEXT_I32_I16), Sub1)
+            .addReg(Sub1);
       llvm::MCSymbol *OffsetLo = MCCtx.createTempSymbol(
           "luthier_payload_ret_lo", /*AlwaysAddSuffix=*/true);
       llvm::MCSymbol *OffsetHi = MCCtx.createTempSymbol(
