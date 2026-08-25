@@ -230,12 +230,19 @@ StateValueArraySpecsAnalysis::run(Prototype &IP,
 #endif
 
   uint8_t NextLane = StateValueArraySpecs::StackPointerStoreLane;
-  if (HasFS && !IsArchitectedFS) {
-    Out.BufferRsrcOrScratchSpillLane = llvm::AMDGPU::FLAT_SCR;
-    NextLane += 2;
-  } else if (!IsArchitectedFS) {
+  if (!HasFS && !IsArchitectedFS) {
+    Out.ScalarArguments.insert(
+        {WAVEFRONT_PRIVATE_SEGMENT_BUFFER,
+         ScalarValueArgumentInfo<WAVEFRONT_PRIVATE_SEGMENT_BUFFER>::NumLanes});
     Out.BufferRsrcOrScratchSpillLane = llvm::AMDGPU::PRIVATE_RSRC_REG;
-    NextLane += 4;
+    NextLane +=
+        ScalarValueArgumentInfo<WAVEFRONT_PRIVATE_SEGMENT_BUFFER>::NumLanes;
+  }
+  if (!IsArchitectedFS) {
+    Out.ScalarArguments.insert(
+    {FLAT_SCRATCH, ScalarValueArgumentInfo<FLAT_SCRATCH>::NumLanes});
+    Out.BufferRsrcOrScratchSpillLane = llvm::AMDGPU::FLAT_SCR;
+    NextLane += ScalarValueArgumentInfo<FLAT_SCRATCH>::NumLanes;
   }
 
   using SVArgUnderlyingType = std::underlying_type_t<ScalarValueArgument>;

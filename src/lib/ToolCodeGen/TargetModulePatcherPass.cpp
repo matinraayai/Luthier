@@ -27,7 +27,6 @@
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/Prototype.h"
-#include "luthier/ToolCodeGen/SVAFrameLanes.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
@@ -61,6 +60,7 @@
 #include <llvm/MC/MCSymbol.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/FormatVariadic.h>
+#include <llvm/Support/CommandLine.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <llvm/Transforms/Utils/ValueMapper.h>
 
@@ -70,6 +70,17 @@
 namespace luthier {
 
 namespace {
+
+/// Per-wave scratch reservation (in bytes) for the injected payloads'
+/// own stack when at least one payload uses dynamic-stack (var-sized
+/// alloca / recursion / indirect calls). Used only in the
+/// (dynamic-app, dynamic-payload) case; static-payload cases use the
+/// payload MFs' actual fixed frame sizes instead.
+static llvm::cl::opt<unsigned> LuthierInstrumentationStackSize(
+    "luthier-instrumentation-stack-size", llvm::cl::init(4096),
+    llvm::cl::desc(
+        "Per-wave scratch reservation (bytes) for the injected payloads' "
+        "own stack when at least one payload uses dynamic stack."));
 
 /// Access-injection tag + explicit-instantiation trick that lets us reach
 /// through \c GCNUserSGPRUsageInfo's private data members. The private
@@ -111,6 +122,13 @@ struct QueuePtrTag {
 };
 template struct PrivateAccessor<QueuePtrTag,
                              &llvm::GCNUserSGPRUsageInfo::QueuePtr>;
+
+struct PrivateSegmentSizeTag {
+  using MemberT = bool llvm::GCNUserSGPRUsageInfo::*;
+  friend MemberT get(PrivateSegmentSizeTag);
+};
+template struct PrivateAccessor<
+    PrivateSegmentSizeTag, &llvm::GCNUserSGPRUsageInfo::PrivateSegmentSize>;
 
 struct NumUsedUserSGPRsTag {
   using MemberT = unsigned llvm::GCNUserSGPRUsageInfo::*;
@@ -219,6 +237,22 @@ void forceQueuePtr(llvm::GCNUserSGPRUsageInfo &Info) {
           llvm::GCNUserSGPRUsageInfo::QueuePtrID);
 }
 
+/// Same as \c forceFlatScratchInit for PRIVATE_SEGMENT_SIZE. Enables the
+/// preload of the per-wave private-segment-size scalar (a single 32-bit
+/// SGPR) so \c AMDGPUAsmPrinter emits the corresponding
+/// \c ENABLE_SGPR_PRIVATE_SEGMENT_SIZE bit and the runtime provisions
+/// the SGPR with the total per-wave scratch size at dispatch time.
+/// Used by the dynamic-stack branch of the SP setup to compute the
+/// instrumentation SP as \c PSS - Reservation at runtime.
+void forcePrivateSegmentSize(llvm::GCNUserSGPRUsageInfo &Info) {
+  if (Info.hasPrivateSegmentSize())
+    return;
+  Info.*get(PrivateSegmentSizeTag{}) = true;
+  Info.*get(NumUsedUserSGPRsTag{}) +=
+      llvm::GCNUserSGPRUsageInfo::getNumUserSGPRForField(
+          llvm::GCNUserSGPRUsageInfo::PrivateSegmentSizeID);
+}
+
 /// Emits the per-wave scratch setup at the kernel entry: spills the
 /// kernarg-derived PSB.sub0/sub1 and FLAT_SCRATCH_INIT lo/hi into SVA
 /// lanes, adds PRIVATE_SEGMENT_WAVE_BYTE_OFFSET to compute the wave's
@@ -226,14 +260,35 @@ void forceQueuePtr(llvm::GCNUserSGPRUsageInfo &Info) {
 /// and reads the spilled kernarg values back into SGPR0/1/FS_LO/HI so
 /// the application's prolog still sees them.
 ///
-/// \p UsesDynamicStack and \p PrivateSegmentFixedSize replaced the
-/// previous \c amdgpu::hsamd::Kernel::Metadata reference — both are the
-/// only fields the function reads. Sourcing them is the caller's job
-/// (kernel metadata, per-function attributes, etc.).
+/// The instrumentation SP is derived from four inputs:
+///   * \p AppUsesDynamicStack — the app kernel's MFI.hasVarSizedObjects().
+///   * \p AppPrivateSegmentFixedSize — the app kernel's
+///     MFI.getStackSize() (the static top of the app's stack).
+///   * \p PayloadUsesDynamicStack — set if any attached injected-payload
+///     MF has var-sized stack objects.
+///   * \p PayloadMaxFixedStackSize — the max MFI.getStackSize() across
+///     all attached payload MFs.
+/// The instrumentation SP is saved into the SVA's StackPointerStoreLane
+/// so the payload prologue can pick it up on entry. SGPR0 is used as the
+/// scratch register to materialize the value; it is spilled to the
+/// frame-pointer spill lane before use and restored from it after the
+/// V_WRITELANE that stores the SP:
+///   * app static: SP = \p AppPrivateSegmentFixedSize (compile-time
+///     constant, top of the app's static frame). Materialized with
+///     \c S_MOV_B32 SGPR0, AppPrivateSegmentFixedSize.
+///   * app dynamic: SP = PRIVATE_SEGMENT_SIZE - Reservation. Queried
+///     at runtime via the preloaded PSS SGPR and materialized with
+///     \c S_SUB_U32 SGPR0, PSS_reg, Reservation. Reservation is
+///     \p PayloadMaxFixedStackSize for static payloads and
+///     \p LuthierInstrumentationStackSize for dynamic payloads.
+///     Reserves the payload region at the top of the pool; the app
+///     grows from 0 upward, bounded by the pool size.
 llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
                                    llvm::MCRegister SVSStorageVGPR,
-                                   bool UsesDynamicStack,
-                                   unsigned PrivateSegmentFixedSize,
+                                   bool AppUsesDynamicStack,
+                                   unsigned AppPrivateSegmentFixedSize,
+                                   bool PayloadUsesDynamicStack,
+                                   unsigned PayloadMaxFixedStackSize,
                                    const StateValueArraySpecs &Specs) {
   auto &MF = *EntryInstr.getMF();
   const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
@@ -248,316 +303,214 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
   // restore step must be skipped. \c InjectedPayloadPEIPass already
   // gates its FrameSpillSlots on this same predicate.
   const bool ArchitectedFS = ST.hasArchitectedFlatScratch();
+  bool HasFS = ST.enableFlatScratch();
   LLVM_DEBUG(luthier::dbgs()
              << "[TargetModulePatcherPass]   emitCodeToSetupScratch MF='"
              << MF.getName()
              << "' SVSVGPR=" << llvm::printReg(SVSStorageVGPR, &TRI)
-             << " dynStack=" << UsesDynamicStack << " privSegFixedSize="
-             << PrivateSegmentFixedSize << " archFS=" << ArchitectedFS << "\n");
-  // Copy SGPR0, SGPR1 (and on non-architected-FS targets,
-  // FLAT_SCR_LO / FLAT_SCR_HI) into the state-value register at the
-  // lanes the StateValueArraySpecs layout reserves for them. Layout is
-  // documented in SVAFrameLanes.h.
-  auto SGPR0SpillSlot =
-      getKernelPrologFrameSpillLane(llvm::AMDGPU::SGPR0, Specs);
-  auto SGPR1SpillSlot =
-      getKernelPrologFrameSpillLane(llvm::AMDGPU::SGPR1, Specs);
-  std::optional<unsigned> SGPRFlatScrLoSpillSlot;
-  std::optional<unsigned> SGPRFlatScrHiSpillSlot;
-  if (!ArchitectedFS) {
-    SGPRFlatScrLoSpillSlot =
-        getKernelPrologFrameSpillLane(llvm::AMDGPU::FLAT_SCR_LO, Specs);
-    SGPRFlatScrHiSpillSlot =
-        getKernelPrologFrameSpillLane(llvm::AMDGPU::FLAT_SCR_HI, Specs);
-  }
-  assert(
-      SGPR0SpillSlot && SGPR1SpillSlot &&
-      (ArchitectedFS || (SGPRFlatScrLoSpillSlot && SGPRFlatScrHiSpillSlot)) &&
-      "kernel-prolog SVA lanes must exist for SGPR0/1 (+ FS_LO/HI on "
-      "non-architected-FS targets)");
-
-  // The spill/recompute/restore dance around \c PRIVATE_SEGMENT_BUFFER
-  // (PSB) and \c FLAT_SCRATCH_INIT is only meaningful on non-
-  // architected-FS targets, where (1) the kernel prolog needs the
-  // unmodified PSB.sub0/sub1 + FS_LO/HI to compute its own scratch base
-  // via PSWO, and (2) the payload's prologue reads those same SGPRs to
-  // set up its scratch. On architected-FS subtargets the hardware
-  // sets up the per-wave scratch into the architectural register
-  // automatically; PSB and FLAT_SCRATCH_INIT are not preloaded SGPRs
-  // (so calling \c getPreloadedReg on them returns the null register
-  // and any \c getSubReg below would assert), and there is no
-  // PSWO-style adjustment to apply.
-  // Preload classes whose position can shift when we force PSB and/or
-  // FS_INIT on post-hoc. Snapshotted BEFORE the addX calls and again after,
-  // so we can emit S_MOV_B32 shuffles at the tail of this function to move
-  // any shifted arg back to the SGPR the lifted kernel originally read it
-  // from.
-  static constexpr llvm::AMDGPUFunctionArgInfo::PreloadedValue
-      ShufflableClasses[] = {
-          llvm::AMDGPUFunctionArgInfo::DISPATCH_PTR,
-          llvm::AMDGPUFunctionArgInfo::QUEUE_PTR,
-          llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR,
-          llvm::AMDGPUFunctionArgInfo::DISPATCH_ID,
-          llvm::AMDGPUFunctionArgInfo::IMPLICIT_BUFFER_PTR,
-          llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_SIZE,
-      };
-  llvm::SmallVector<
-      std::pair<llvm::AMDGPUFunctionArgInfo::PreloadedValue, llvm::MCRegister>,
-      6>
-      OldArgPositions;
-  for (auto C : ShufflableClasses)
-    OldArgPositions.push_back({C, MFI.getPreloadedReg(C)});
+             << " appDynStack=" << AppUsesDynamicStack
+             << " appPrivSegFixedSize=" << AppPrivateSegmentFixedSize
+             << " payloadDynStack=" << PayloadUsesDynamicStack
+             << " payloadMaxFixedSize=" << PayloadMaxFixedStackSize
+             << " archFS=" << ArchitectedFS << "\n");
 
   if (!ArchitectedFS) {
-    // Both of these are only preloaded when the *original* kernel asked for
-    // them. A kernel that never touched scratch has neither enabled in its
-    // SIMachineFunctionInfo, so getPreloadedReg returns the null register and
-    // the getSubReg calls below trip MCSubRegIterator's isPhysical() assertion.
-    // Enable them post-hoc: flip the UserSGPRInfo flags via the ADL-inject
-    // helpers above (so AMDGPUAsmPrinter emits the corresponding
-    // kernel_code_properties enable bits on the instrumented KD), then call
-    // the matching MFI add* to populate ArgInfo with the new preload physreg.
-    // This shifts every subsequent user-SGPR arg (KERNARG_SEGMENT_PTR etc.)
-    // to later physical registers; the tail of this function issues
-    // S_MOV_B32 shuffles that move each such arg back to its original SGPR
-    // so the lifted kernel body still finds it where its compiled code
-    // reads from.
-    llvm::MCRegister PSB = MFI.getPreloadedReg(
-        llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER);
+
+    /// Get the private wave byte offset
+    llvm::MCRegister PSWO = MFI.getPreloadedReg(
+        llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_WAVE_BYTE_OFFSET);
+    if (!PSWO) {
+      PSWO = MFI.addPrivateSegmentWaveByteOffset();
+    }
+
+    auto EmitScratchPSBInit = [&](llvm::MCRegister Lo, llvm::MCRegister Hi,
+                                  uint8_t Lane) {
+      // 1. Spill orig Lo/Hi to the SP/FP spill lanes.
+      (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                          TII.get(llvm::AMDGPU::V_WRITELANE_B32),
+                          SVSStorageVGPR)
+          .addReg(Lo)
+          .addImm(Specs.getStackPointerRegSpillLane())
+          .addReg(SVSStorageVGPR);
+      (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                          TII.get(llvm::AMDGPU::V_WRITELANE_B32),
+                          SVSStorageVGPR)
+          .addReg(Hi)
+          .addImm(Specs.getFramePointerRegSpillLane())
+          .addReg(SVSStorageVGPR);
+      // 2. Compute per-wave Lo/Hi.
+      (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                          TII.get(llvm::AMDGPU::S_ADD_U32))
+          .addReg(Lo, llvm::RegState::Define)
+          .addReg(Lo, llvm::RegState::Kill)
+          .addReg(PSWO);
+      (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                          TII.get(llvm::AMDGPU::S_ADDC_U32))
+          .addReg(Hi, llvm::RegState::Define)
+          .addReg(Hi, llvm::RegState::Kill)
+          .addImm(0);
+      // 3. Save per-wave Lo/Hi to the instrumentation home lanes.
+      (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                          TII.get(llvm::AMDGPU::V_WRITELANE_B32),
+                          SVSStorageVGPR)
+          .addReg(Lo)
+          .addImm(Lane)
+          .addReg(SVSStorageVGPR);
+      (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                          TII.get(llvm::AMDGPU::V_WRITELANE_B32),
+                          SVSStorageVGPR)
+          .addReg(Hi)
+          .addImm(Lane + 1)
+          .addReg(SVSStorageVGPR);
+      // 4. Restore orig Lo/Hi from the spill lanes.
+      (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                          TII.get(llvm::AMDGPU::V_READLANE_B32), Lo)
+          .addReg(SVSStorageVGPR)
+          .addImm(Specs.getStackPointerRegSpillLane());
+      (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                          TII.get(llvm::AMDGPU::V_READLANE_B32), Hi)
+          .addReg(SVSStorageVGPR)
+          .addImm(Specs.getFramePointerRegSpillLane());
+    };
+
+    if (!HasFS) {
+      llvm::MCRegister PSB = MFI.getPreloadedReg(
+          llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER);
+      if (!PSB) {
+        PSB = MFI.addPrivateSegmentBuffer(TRI);
+      }
+
+      auto PSBLane = Specs.findArgumentLane(WAVEFRONT_PRIVATE_SEGMENT_BUFFER);
+      if (PSBLane == Specs.argument_lane_end()) {
+        return LUTHIER_MAKE_GENERIC_ERROR(
+            "Non-architected FS target with no FS enabled doesn't have private "
+            "segment enabled for scratch");
+      }
+
+      // PSB initialization.
+      EmitScratchPSBInit(
+          TRI.getSubReg(PSB, llvm::AMDGPU::sub0),
+          TRI.getSubReg(PSB, llvm::AMDGPU::sub1),
+          PSBLane->second);
+
+      (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                          TII.get(llvm::AMDGPU::V_WRITELANE_B32),
+                          SVSStorageVGPR)
+          .addReg(TRI.getSubReg(PSB, llvm::AMDGPU::sub2))
+          .addImm(PSBLane->second + 2)
+          .addReg(SVSStorageVGPR);
+      (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                      TII.get(llvm::AMDGPU::V_WRITELANE_B32),
+                      SVSStorageVGPR)
+      .addReg(TRI.getSubReg(PSB, llvm::AMDGPU::sub3))
+      .addImm(PSBLane->second + 3)
+      .addReg(SVSStorageVGPR);
+    }
+
     llvm::MCRegister FSInit =
         MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT);
-    // MFI.add{PrivateSegmentBuffer,FlatScratchInit} → getNextUserSGPR
-    // asserts NumSystemSGPRs == 0. Post-codegen that's already non-zero, so
-    // stash and zero it around each add, then restore.
-    unsigned &NumSystemSGPRs = MFI.*get(NumSystemSGPRsTag{});
-    if (!PSB) {
-      forcePrivateSegmentBuffer(MFI.getUserSGPRInfo());
-      unsigned Saved = NumSystemSGPRs;
-      NumSystemSGPRs = 0;
-      MFI.addPrivateSegmentBuffer(TRI);
-      NumSystemSGPRs = Saved;
-      PSB = MFI.getPreloadedReg(
-          llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER);
+
+    auto FSLane = Specs.findArgumentLane(FLAT_SCRATCH);
+    if (FSLane == Specs.argument_lane_end()) {
+      return LUTHIER_MAKE_GENERIC_ERROR(
+          "Non-architected FS target has not FS enabled");
     }
-    if (!FSInit) {
-      forceFlatScratchInit(MFI.getUserSGPRInfo());
-      unsigned Saved = NumSystemSGPRs;
-      NumSystemSGPRs = 0;
-      MFI.addFlatScratchInit(TRI);
-      NumSystemSGPRs = Saved;
-      FSInit =
-          MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT);
-    }
-    if (!PSB || !FSInit)
-      return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-          "TargetModulePatcherPass: kernel '{0}' failed to enable {1} preload "
-          "even after forcing the UserSGPRInfo flags; MFI.add* did not "
-          "populate ArgInfo.",
-          MF.getName(),
-          !PSB ? (!FSInit ? "PRIVATE_SEGMENT_BUFFER or FLAT_SCRATCH_INIT"
-                          : "PRIVATE_SEGMENT_BUFFER")
-               : "FLAT_SCRATCH_INIT"));
 
-    (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                        TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageVGPR)
-        .addReg(TRI.getSubReg(
-            MFI.getPreloadedReg(
-                llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
-            llvm::AMDGPU::sub0))
-        .addImm(*SGPR0SpillSlot)
-        .addReg(SVSStorageVGPR);
-
-    (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                        TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageVGPR)
-        .addReg(TRI.getSubReg(
-            MFI.getPreloadedReg(
-                llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
-            llvm::AMDGPU::sub1))
-        .addImm(*SGPR1SpillSlot)
-        .addReg(SVSStorageVGPR);
-
-    (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                        TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageVGPR)
-        .addReg(TRI.getSubReg(
-            MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-            llvm::AMDGPU::sub0))
-        .addImm(*SGPRFlatScrLoSpillSlot)
-        .addReg(SVSStorageVGPR);
-
-    (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                        TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageVGPR)
-        .addReg(TRI.getSubReg(
-            MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-            llvm::AMDGPU::sub1))
-        .addImm(*SGPRFlatScrHiSpillSlot)
-        .addReg(SVSStorageVGPR);
-
-    // Add the PSWO to SGPR0/its carry to SGPR1
-    (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                        TII.get(llvm::AMDGPU::S_ADD_U32))
-        .addReg(TRI.getSubReg(
-                    MFI.getPreloadedReg(
-                        llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
-                    llvm::AMDGPU::sub0),
-                llvm::RegState::Define)
-        .addReg(TRI.getSubReg(
-                    MFI.getPreloadedReg(
-                        llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
-                    llvm::AMDGPU::sub0),
-                llvm::RegState::Kill)
-        .addReg(MFI.getPreloadedReg(
-            llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_WAVE_BYTE_OFFSET));
-
-    (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                        TII.get(llvm::AMDGPU::S_ADDC_U32))
-        .addReg(TRI.getSubReg(
-                    MFI.getPreloadedReg(
-                        llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
-                    llvm::AMDGPU::sub1),
-                llvm::RegState::Define)
-        .addReg(TRI.getSubReg(
-                    MFI.getPreloadedReg(
-                        llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER),
-                    llvm::AMDGPU::sub1),
-                llvm::RegState::Kill)
-        .addImm(0);
-  }
-  // Add the PSWO to FS_init_lo/its carry to FS_init_hi. Only needed on
-  // non-architected-FS targets — on architected-FS the FS is set up by
-  // HW directly and FLAT_SCRATCH_INIT isn't a preloaded SGPR.
-  if (!ArchitectedFS) {
-    (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                        TII.get(llvm::AMDGPU::S_ADD_U32))
-        .addReg(
-            TRI.getSubReg(MFI.getPreloadedReg(
-                              llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-                          llvm::AMDGPU::sub0),
-            llvm::RegState::Define)
-        .addReg(
-            TRI.getSubReg(MFI.getPreloadedReg(
-                              llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-                          llvm::AMDGPU::sub0),
-            llvm::RegState::Kill)
-        .addReg(MFI.getPreloadedReg(
-            llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_WAVE_BYTE_OFFSET));
-    (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                        TII.get(llvm::AMDGPU::S_ADDC_U32))
-        .addReg(
-            TRI.getSubReg(MFI.getPreloadedReg(
-                              llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-                          llvm::AMDGPU::sub1),
-            llvm::RegState::Define)
-        .addReg(
-            TRI.getSubReg(MFI.getPreloadedReg(
-                              llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-                          llvm::AMDGPU::sub1),
-            llvm::RegState::Kill)
-        .addImm(0);
+    // FS initialization.
+    EmitScratchPSBInit(TRI.getSubReg(FSInit, llvm::AMDGPU::sub0),
+                       TRI.getSubReg(FSInit, llvm::AMDGPU::sub1),
+                       FSLane->second);
   }
 
-  unsigned int InstrumentationStackStart{0};
-  if (UsesDynamicStack)
-    llvm_unreachable("Not implemented");
-  else {
-    InstrumentationStackStart = PrivateSegmentFixedSize;
-  }
-  LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
-                                "InstrumentationStackStart="
-                             << InstrumentationStackStart << "\n");
-  // Set s32 to be the maximum amount of stack requested by the hook
+  // Compute the instrumentation SP and stash it in the SVA's
+  // StackPointerStoreLane:
+  //   1. Spill SGPR0 to the frame-pointer spill lane of the SVA
+  //      (SGPR0 is the scratch register we use to materialize the SP
+  //      value; we restore it at the end).
+  //   2. Materialize the instrumentation SP value in SGPR0:
+  //        * app static:  SGPR0 = AppPrivateSegmentFixedSize
+  //          (compile-time constant; top of the app's static frame).
+  //        * app dynamic: SGPR0 = PRIVATE_SEGMENT_SIZE - Reservation
+  //          (queried at runtime via the preloaded PSS SGPR;
+  //          Reservation is PayloadMaxFixedStackSize for static
+  //          payloads and LuthierInstrumentationStackSize for
+  //          dynamic payloads). Force-enable the PSS preload if the
+  //          app didn't request it.
+  //   3. Save SGPR0 (the instrumentation SP) into the SVA's
+  //      StackPointerStoreLane — this is where the payload prologue
+  //      picks it up on entry.
+  //   4. Restore SGPR0 from the frame-pointer spill lane.
+
+  // 1. Spill SGPR0 to the FP spill lane.
   (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                      TII.get(llvm::AMDGPU::S_MOV_B32), llvm::AMDGPU::SGPR32)
-      .addImm(InstrumentationStackStart);
+                      TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageVGPR)
+      .addReg(llvm::AMDGPU::SGPR0)
+      .addImm(Specs.getFramePointerRegSpillLane())
+      .addReg(SVSStorageVGPR);
 
-  // Store frame registers in their slots. The kernel-prolog's "store" table
-  // is the same set of lanes as the spill table (lanes 0-3); the prolog
-  // overwrites the original kernarg values with the per-wave-computed ones
-  // so the payload prologue reads the per-wave values back via the same
-  // lane indices.
-  for (const auto &[PhysReg, StoreSlot] :
-       getKernelPrologFrameStoreSlots(Specs)) {
-    LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
-                                  "frame-store "
-                               << llvm::printReg(PhysReg, &TRI) << " -> lane "
-                               << StoreSlot << "\n");
-    (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                        TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageVGPR)
-        .addReg(PhysReg)
-        .addImm(StoreSlot)
-        .addReg(SVSStorageVGPR);
-  }
-
-  // Restore S0, S1 (and FS_init_lo/hi). The restore is symmetric to the
-  // spill above — on architected-FS targets we never spilled SGPR0/1
-  // (they hold the kernarg-segment ptr, not PSB, and don't get
-  // PSWO-adjusted), so there's nothing to restore.
-  if (!ArchitectedFS) {
-    llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_READLANE_B32), llvm::AMDGPU::SGPR0)
-        .addReg(SVSStorageVGPR)
-        .addImm(*SGPR0SpillSlot);
-
-    llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_READLANE_B32), llvm::AMDGPU::SGPR1)
-        .addReg(SVSStorageVGPR)
-        .addImm(*SGPR1SpillSlot);
-
-    llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_READLANE_B32))
-        .addReg(
-            TRI.getSubReg(MFI.getPreloadedReg(
-                              llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-                          llvm::AMDGPU::sub0),
-            llvm::RegState::Define)
-        .addReg(SVSStorageVGPR)
-        .addImm(*SGPRFlatScrLoSpillSlot);
-
-    llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                  TII.get(llvm::AMDGPU::V_READLANE_B32))
-        .addReg(
-            TRI.getSubReg(MFI.getPreloadedReg(
-                              llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT),
-                          llvm::AMDGPU::sub1),
-            llvm::RegState::Define)
-        .addReg(SVSStorageVGPR)
-        .addImm(*SGPRFlatScrHiSpillSlot);
-  }
-
-  // Shuffle each shifted preload arg from its new (post-add*) SGPR back to
-  // the SGPR the lifted kernel body reads it from. If a class was not
-  // preloaded originally (OldReg is null), leave it alone — the lifted code
-  // never depended on it. If its position didn't change (equal), no move
-  // needed. Emitted last so any earlier writes to the destination (e.g.
-  // the SGPR0/1 restore above, which assumes SGPR0/1 was PSB) are the ones
-  // the shuffle overrides for kernels whose SGPR0/1 was actually kernarg.
-  for (const auto &[Class, OldReg] : OldArgPositions) {
-    if (!OldReg)
-      continue;
-    llvm::MCRegister NewReg = MFI.getPreloadedReg(Class);
-    if (!NewReg || NewReg == OldReg)
-      continue;
-    const llvm::TargetRegisterClass *RC = TRI.getPhysRegBaseClass(OldReg);
-    unsigned NumChannels = TRI.getRegSizeInBits(*RC) / 32;
+  // 2. Materialize the SP value in SGPR0.
+  if (!AppUsesDynamicStack) {
     LLVM_DEBUG(luthier::dbgs()
-               << "[TargetModulePatcherPass]     shuffle preload class "
-               << Class << ": " << llvm::printReg(NewReg, &TRI) << " -> "
-               << llvm::printReg(OldReg, &TRI) << " (" << NumChannels
-               << " x s32)\n");
-    for (unsigned I = 0; I < NumChannels; ++I) {
-      llvm::MCRegister OldSub, NewSub;
-      if (NumChannels == 1) {
-        OldSub = OldReg;
-        NewSub = NewReg;
-      } else {
-        unsigned SubIdx = llvm::SIRegisterInfo::getSubRegFromChannel(I);
-        OldSub = TRI.getSubReg(OldReg, SubIdx);
-        NewSub = TRI.getSubReg(NewReg, SubIdx);
-      }
-      (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
-                          TII.get(llvm::AMDGPU::S_MOV_B32), OldSub)
-          .addReg(NewSub);
+               << "[TargetModulePatcherPass]     "
+                  "InstrumentationStackStart(static)="
+               << AppPrivateSegmentFixedSize << "\n");
+    (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::S_MOV_B32), llvm::AMDGPU::SGPR0)
+        .addImm(AppPrivateSegmentFixedSize);
+  } else {
+    // Force-enable the PRIVATE_SEGMENT_SIZE preload if the app didn't
+    // already request it, so AMDGPUAsmPrinter emits the
+    // ENABLE_SGPR_PRIVATE_SEGMENT_SIZE bit and the HSA runtime
+    // provisions the SGPR with the per-wave scratch pool size at
+    // dispatch time.
+    llvm::MCRegister PSS = MFI.getPreloadedReg(
+        llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_SIZE);
+    if (!PSS) {
+      forcePrivateSegmentSize(MFI.getUserSGPRInfo());
+      unsigned &NumSystemSGPRs = MFI.*get(NumSystemSGPRsTag{});
+      unsigned Saved = NumSystemSGPRs;
+      NumSystemSGPRs = 0;
+      MFI.addPrivateSegmentSize(TRI);
+      NumSystemSGPRs = Saved;
+      PSS = MFI.getPreloadedReg(
+          llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_SIZE);
     }
+    if (!PSS)
+      return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "TargetModulePatcherPass: kernel '{0}' failed to enable "
+          "PRIVATE_SEGMENT_SIZE preload even after forcing the "
+          "UserSGPRInfo flag; MFI.addPrivateSegmentSize did not populate "
+          "ArgInfo.",
+          MF.getName()));
+
+    const unsigned Reservation =
+        PayloadUsesDynamicStack
+            ? static_cast<unsigned>(LuthierInstrumentationStackSize)
+            : PayloadMaxFixedStackSize;
+    LLVM_DEBUG(luthier::dbgs()
+               << "[TargetModulePatcherPass]     "
+                  "InstrumentationStackStart(dynamic)= PSS("
+               << llvm::printReg(PSS, &TRI) << ") - " << Reservation << "\n");
+    // SGPR0 = PSS - Reservation.
+    (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::S_SUB_U32), llvm::AMDGPU::SGPR0)
+        .addReg(PSS)
+        .addImm(Reservation);
   }
+
+  // 3. Save the instrumentation SP (SGPR0) into the SVA's
+  //    StackPointerStoreLane.
+  (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                      TII.get(llvm::AMDGPU::V_WRITELANE_B32), SVSStorageVGPR)
+      .addReg(llvm::AMDGPU::SGPR0)
+      .addImm(Specs.getStackPointerStoreLane())
+      .addReg(SVSStorageVGPR);
+
+  // 4. Restore SGPR0 from the FP spill lane.
+  (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                      TII.get(llvm::AMDGPU::V_READLANE_B32), llvm::AMDGPU::SGPR0)
+      .addReg(SVSStorageVGPR)
+      .addImm(Specs.getFramePointerRegSpillLane());
 
   return llvm::Error::success();
 }
@@ -1253,6 +1206,14 @@ preloadedValueForSVA(ScalarValueArgument SA) {
 /// union of ScalarValueArguments the attached payloads request.
 struct SVAScratchSetupInfo {
   bool RequiresScratchAndStackSetup{false};
+  /// Set if any attached payload MF has var-sized stack objects
+  /// (\c MachineFrameInfo::hasVarSizedObjects). Selects the
+  /// dynamic-payload branch of the SP setup logic.
+  bool AnyPayloadUsesDynamicStack{false};
+  /// Maximum static frame size across all attached payload MFs
+  /// (\c MachineFrameInfo::getStackSize). Used as the reservation for
+  /// the dynamic-app + static-payload case.
+  unsigned PayloadMaxFixedStackSize{0};
   llvm::SmallDenseSet<ScalarValueArgument, 8> RequestedKernelArguments{};
   llvm::SmallDenseSet<amdgpu::hsamd::ValueKind, 32>
       ImplicitArgsExplicitlyRequested{};
@@ -1328,6 +1289,11 @@ computeInitialEntryKernelSVAInfo(const llvm::MachineFunction &KernelMF,
       const llvm::MachineFrameInfo &MFI = MFRes->getMF().getFrameInfo();
       if (MFI.hasStackObjects() || MFI.hasCalls())
         Info.RequiresScratchAndStackSetup = true;
+      if (MFI.hasVarSizedObjects())
+        Info.AnyPayloadUsesDynamicStack = true;
+      Info.PayloadMaxFixedStackSize = std::max<unsigned>(
+          Info.PayloadMaxFixedStackSize,
+          static_cast<unsigned>(MFI.getStackSize()));
     }
 
     // Union the payload's requested SVA scalar-value arguments and
@@ -1443,14 +1409,15 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
 
   if (KernelInfo.RequiresScratchAndStackSetup) {
     const llvm::MachineFrameInfo &MFI = KernelMF.getFrameInfo();
-    bool UsesDynamicStack = MFI.hasVarSizedObjects();
-    unsigned PrivateSegmentFixedSize =
+    bool AppUsesDynamicStack = MFI.hasVarSizedObjects();
+    unsigned AppPrivateSegmentFixedSize =
         static_cast<unsigned>(MFI.getStackSize());
     LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
                                   "RequiresScratchAndStackSetup; emitting\n");
-    if (auto Err =
-            emitCodeToSetupScratch(EntryInstr, SVSStorageReg, UsesDynamicStack,
-                                   PrivateSegmentFixedSize, Specs))
+    if (auto Err = emitCodeToSetupScratch(
+            EntryInstr, SVSStorageReg, AppUsesDynamicStack,
+            AppPrivateSegmentFixedSize, KernelInfo.AnyPayloadUsesDynamicStack,
+            KernelInfo.PayloadMaxFixedStackSize, Specs))
       return Err;
   }
 

@@ -175,11 +175,12 @@ llvm::PreservedAnalyses InjectedPayloadSideEffectsPrinterPass::run(
   auto printImplicitArgs =
       [&](llvm::iterator_range<
           InjectedPayloadSideEffects::implicit_arg_iterator> Args) {
-        llvm::SmallVector<llvm::StringRef> Sorted(Args.begin(), Args.end());
+        llvm::SmallVector<amdgpu::hsamd::ValueKind> Sorted(Args.begin(),
+                                                           Args.end());
         llvm::sort(Sorted);
         OS << "    ImplicitArgs:";
-        for (llvm::StringRef A : Sorted)
-          OS << " " << A;
+        for (amdgpu::hsamd::ValueKind A : Sorted)
+          OS << " " << static_cast<unsigned>(A);
         OS << "\n";
       };
 
