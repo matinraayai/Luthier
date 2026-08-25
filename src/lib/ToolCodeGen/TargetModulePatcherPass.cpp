@@ -41,7 +41,6 @@
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
-#include <llvm/CodeGen/MachineInstrBundle.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/CodeGen/SlotIndexes.h>
@@ -1151,32 +1150,31 @@ static llvm::MCSymbol *emitSICallAtPatchpoint(llvm::MachineInstr &PatchpointMI,
   const auto *TRI = ST.getRegisterInfo();
   const llvm::DebugLoc DL;
 
-  // Materialize the callee address into ScavengedPair as a bundle
-  {
-    llvm::MIBundleBuilder Bundler(MBB, PatchpointMI);
-    Bundler.append(llvm::BuildMI(MF, DL, TII->get(llvm::AMDGPU::S_GETPC_B64),
-                                 ScavengedPair));
-    if (ST.has64BitLiterals()) {
-      // +4 compensates for S_GETPC_B64 returning PC-of-next-instr
-      Bundler.append(llvm::BuildMI(MF, DL, TII->get(llvm::AMDGPU::S_ADD_U64),
-                                   ScavengedPair)
-                         .addReg(ScavengedPair)
-                         .addGlobalAddress(&PayloadFn, /*Offset=*/4,
-                                           llvm::SIInstrInfo::MO_REL32));
-    } else {
-      llvm::MCRegister Sub0 = TRI->getSubReg(ScavengedPair, llvm::AMDGPU::sub0);
-      llvm::MCRegister Sub1 = TRI->getSubReg(ScavengedPair, llvm::AMDGPU::sub1);
-      Bundler.append(
-          llvm::BuildMI(MF, DL, TII->get(llvm::AMDGPU::S_ADD_U32), Sub0)
-              .addReg(Sub0)
-              .addGlobalAddress(&PayloadFn, 0, llvm::SIInstrInfo::MO_REL32));
-      Bundler.append(
-          llvm::BuildMI(MF, DL, TII->get(llvm::AMDGPU::S_ADDC_U32), Sub1)
-              .addReg(Sub1)
-              .addGlobalAddress(&PayloadFn, 0,
-                                llvm::SIInstrInfo::MO_REL32 + 1));
-    }
-    llvm::finalizeBundle(MBB, Bundler.begin());
+  // Materialize the callee address into ScavengedPair. Emitted as
+  // top-level MIs (not a bundle) so any post-instr symbols added later
+  // are visible to AsmPrinter's per-instruction emission loop, and to
+  // match the canonical unbundled pattern used by upstream
+  // SIInstrInfo::insertIndirectBranch.
+  llvm::BuildMI(MBB, PatchpointMI, DL, TII->get(llvm::AMDGPU::S_GETPC_B64),
+                ScavengedPair);
+  if (ST.has64BitLiterals()) {
+    // +4 compensates for S_GETPC_B64 returning PC-of-next-instr
+    (void)llvm::BuildMI(MBB, PatchpointMI, DL,
+                        TII->get(llvm::AMDGPU::S_ADD_U64), ScavengedPair)
+        .addReg(ScavengedPair)
+        .addGlobalAddress(&PayloadFn, /*Offset=*/4,
+                          llvm::SIInstrInfo::MO_REL32);
+  } else {
+    llvm::MCRegister Sub0 = TRI->getSubReg(ScavengedPair, llvm::AMDGPU::sub0);
+    llvm::MCRegister Sub1 = TRI->getSubReg(ScavengedPair, llvm::AMDGPU::sub1);
+    (void)llvm::BuildMI(MBB, PatchpointMI, DL,
+                        TII->get(llvm::AMDGPU::S_ADD_U32), Sub0)
+        .addReg(Sub0)
+        .addGlobalAddress(&PayloadFn, 0, llvm::SIInstrInfo::MO_REL32);
+    (void)llvm::BuildMI(MBB, PatchpointMI, DL,
+                        TII->get(llvm::AMDGPU::S_ADDC_U32), Sub1)
+        .addReg(Sub1)
+        .addGlobalAddress(&PayloadFn, 0, llvm::SIInstrInfo::MO_REL32 + 1);
   }
 
   // SI_CALL — same pair as dst and src, so post-swap the pair holds
@@ -1347,61 +1345,58 @@ llvm::Error rewritePayloadReturn(llvm::MachineFunction &PayloadMF,
     }
 
     // Case B: rematerialize ContSym's address into ScavengedPair.
+    // S_GETPC + S_ADD(C) are emitted as top-level MIs, not bundled: the
+    // post-instr symbol on the S_GETPC has to be a definition AsmPrinter
+    // actually emits, and MachineInstrBundleIterator hides bundle-interior
+    // MIs from the emitFunctionBody loop (AsmPrinter.cpp), so a label on a
+    // bundled MI is silently dropped and the (ContSym - PostGetPCLabel)
+    // fixup fails MC's relocatable-expression check. Upstream
+    // SIInstrInfo::insertIndirectBranch emits this same triple unbundled.
     const bool Has64BitLiterals =
         PayloadMF.getSubtarget<llvm::GCNSubtarget>().has64BitLiterals();
     llvm::MCSymbol *PostGetPCLabel = MCCtx.createTempSymbol(
         "luthier_payload_ret_getpc", /*AlwaysAddSuffix=*/true);
-    llvm::MachineInstr *GetPCMI = nullptr;
-    {
-      llvm::MIBundleBuilder Bundler(MBB, RetMI);
-      auto GetPCMIB = llvm::BuildMI(
-          PayloadMF, DL, TII->get(llvm::AMDGPU::S_GETPC_B64), ScavengedPair);
-      GetPCMI = GetPCMIB;
-      Bundler.append(GetPCMIB);
-      if (Has64BitLiterals) {
-        llvm::MCSymbol *Offset = MCCtx.createTempSymbol(
-            "luthier_payload_ret_off", /*AlwaysAddSuffix=*/true);
-        Bundler.append(
-            llvm::BuildMI(PayloadMF, DL, TII->get(llvm::AMDGPU::S_ADD_U64),
-                          ScavengedPair)
-                .addReg(ScavengedPair)
-                .addSym(Offset, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET));
-        // Bind Offset = ContSym - PostGetPCLabel (unshifted 64-bit).
-        Offset->setVariableValue(llvm::MCBinaryExpr::createSub(
-            llvm::MCSymbolRefExpr::create(ContSym, MCCtx),
-            llvm::MCSymbolRefExpr::create(PostGetPCLabel, MCCtx), MCCtx));
-      } else {
-        llvm::MCSymbol *OffsetLo = MCCtx.createTempSymbol(
-            "luthier_payload_ret_lo", /*AlwaysAddSuffix=*/true);
-        llvm::MCSymbol *OffsetHi = MCCtx.createTempSymbol(
-            "luthier_payload_ret_hi", /*AlwaysAddSuffix=*/true);
-        Bundler.append(
-            llvm::BuildMI(PayloadMF, DL, TII->get(llvm::AMDGPU::S_ADD_U32))
-                .addReg(Sub0, llvm::RegState::Define)
-                .addReg(Sub0)
-                .addSym(OffsetLo, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET));
-        Bundler.append(
-            llvm::BuildMI(PayloadMF, DL, TII->get(llvm::AMDGPU::S_ADDC_U32))
-                .addReg(Sub1, llvm::RegState::Define)
-                .addReg(Sub1)
-                .addSym(OffsetHi, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET));
-        // Bind OffsetLo/Hi to lo/hi halves of ContSym - PostGetPCLabel.
-        const llvm::MCExpr *OffsetExpr = llvm::MCBinaryExpr::createSub(
-            llvm::MCSymbolRefExpr::create(ContSym, MCCtx),
-            llvm::MCSymbolRefExpr::create(PostGetPCLabel, MCCtx), MCCtx);
-        const llvm::MCExpr *Mask =
-            llvm::MCConstantExpr::create(0xFFFFFFFFULL, MCCtx);
-        OffsetLo->setVariableValue(
-            llvm::MCBinaryExpr::createAnd(OffsetExpr, Mask, MCCtx));
-        OffsetHi->setVariableValue(llvm::MCBinaryExpr::createAShr(
-            OffsetExpr, llvm::MCConstantExpr::create(32, MCCtx), MCCtx));
-      }
-      llvm::finalizeBundle(MBB, Bundler.begin());
-    }
-    // finalizeBundle inserts a BUNDLE header MI at Bundler.begin() and
-    // marks the bundled MIs as InsideBundle. Attach PostGetPCLabel to
-    // S_GETPC_B64 after bundling so the symbol survives finalization.
+    llvm::MachineInstr *GetPCMI =
+        llvm::BuildMI(MBB, RetMI, DL, TII->get(llvm::AMDGPU::S_GETPC_B64),
+                      ScavengedPair);
+    // Pin PostGetPCLabel to the PC of the following S_ADD, i.e. the value
+    // S_GETPC returns.
     GetPCMI->setPostInstrSymbol(PayloadMF, PostGetPCLabel);
+    if (Has64BitLiterals) {
+      llvm::MCSymbol *Offset = MCCtx.createTempSymbol(
+          "luthier_payload_ret_off", /*AlwaysAddSuffix=*/true);
+      llvm::BuildMI(MBB, RetMI, DL, TII->get(llvm::AMDGPU::S_ADD_U64),
+                    ScavengedPair)
+          .addReg(ScavengedPair)
+          .addSym(Offset, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
+      // Bind Offset = ContSym - PostGetPCLabel (unshifted 64-bit).
+      Offset->setVariableValue(llvm::MCBinaryExpr::createSub(
+          llvm::MCSymbolRefExpr::create(ContSym, MCCtx),
+          llvm::MCSymbolRefExpr::create(PostGetPCLabel, MCCtx), MCCtx));
+    } else {
+      llvm::MCSymbol *OffsetLo = MCCtx.createTempSymbol(
+          "luthier_payload_ret_lo", /*AlwaysAddSuffix=*/true);
+      llvm::MCSymbol *OffsetHi = MCCtx.createTempSymbol(
+          "luthier_payload_ret_hi", /*AlwaysAddSuffix=*/true);
+      llvm::BuildMI(MBB, RetMI, DL, TII->get(llvm::AMDGPU::S_ADD_U32))
+          .addReg(Sub0, llvm::RegState::Define)
+          .addReg(Sub0)
+          .addSym(OffsetLo, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
+      llvm::BuildMI(MBB, RetMI, DL, TII->get(llvm::AMDGPU::S_ADDC_U32))
+          .addReg(Sub1, llvm::RegState::Define)
+          .addReg(Sub1)
+          .addSym(OffsetHi, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
+      // Bind OffsetLo/Hi to lo/hi halves of ContSym - PostGetPCLabel.
+      const llvm::MCExpr *OffsetExpr = llvm::MCBinaryExpr::createSub(
+          llvm::MCSymbolRefExpr::create(ContSym, MCCtx),
+          llvm::MCSymbolRefExpr::create(PostGetPCLabel, MCCtx), MCCtx);
+      const llvm::MCExpr *Mask =
+          llvm::MCConstantExpr::create(0xFFFFFFFFULL, MCCtx);
+      OffsetLo->setVariableValue(
+          llvm::MCBinaryExpr::createAnd(OffsetExpr, Mask, MCCtx));
+      OffsetHi->setVariableValue(llvm::MCBinaryExpr::createAShr(
+          OffsetExpr, llvm::MCConstantExpr::create(32, MCCtx), MCCtx));
+    }
 
     llvm::MachineOperand &RAOp = RetMI->getOperand(0);
     RAOp.setReg(ScavengedPair);
