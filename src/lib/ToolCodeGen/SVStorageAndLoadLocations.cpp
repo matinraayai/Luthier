@@ -423,6 +423,20 @@ SVStorageAndLoadLocations::getStorageIntervals(
     return It->second;
 }
 
+bool SVStorageAndLoadLocations::hasFixedStorageAcrossAllFunctions() const {
+  const StateValueArrayStorage *Ref = nullptr;
+  for (const auto &[MBBKey, Segments] : StateValueStorageIntervals) {
+    for (const auto &Seg : Segments) {
+      const StateValueArrayStorage *SVS = &Seg.getSVS();
+      if (!Ref)
+        Ref = SVS;
+      else if (SVS != Ref)
+        return false;
+    }
+  }
+  return Ref != nullptr;
+}
+
 const InstPointSVALoadPlan *
 SVStorageAndLoadLocations::getStateValueArrayLoadPlanForInstPoint(
     const llvm::MachineInstr &MI) const {

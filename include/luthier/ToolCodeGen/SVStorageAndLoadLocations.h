@@ -160,6 +160,12 @@ public:
   [[nodiscard]] const InstPointSVALoadPlan *
   getStateValueArrayLoadPlanForInstPoint(const llvm::MachineInstr &MI) const;
 
+  /// \return true if every MBB across every target-module MF resolves
+  /// to a single \c StateValueArrayStorage (Path 1 of
+  /// \c SVStorageAndLoadLocationsAnalysis::run — the fixed-location
+  /// fast path)
+  [[nodiscard]] bool hasFixedStorageAcrossAllFunctions() const;
+
   bool invalidate(Prototype &IP, const llvm::PreservedAnalyses &PA,
                   PrototypeAnalysisManager::Invalidator &Inv);
 };
