@@ -40,7 +40,9 @@ class StateValueArraySpecs {
 
   static constexpr uint8_t StackPointerStoreLane{2};
 
-  llvm::MCRegister BufferRsrcOrScratchSpillLane = llvm::MCRegister::NoRegister;
+  std::optional<uint8_t> BufferRsrcSpillLane{std::nullopt};
+
+  std::optional<uint8_t> ScratchSpillLane{std::nullopt};
 
   llvm::DenseMap<ScalarValueArgument, uint8_t> ScalarArguments{};
 
@@ -61,11 +63,12 @@ public:
     return StackPointerStoreLane;
   }
 
-  [[nodiscard]] std::optional<uint8_t>
-  getFrameRsrcOrScratchStoreLaneIfExists() const {
-    return BufferRsrcOrScratchSpillLane != llvm::MCRegister::NoRegister
-               ? std::optional{3}
-               : std::nullopt;
+  [[nodiscard]] std::optional<uint8_t> getRsrcBufferSpillLane() const {
+    return BufferRsrcSpillLane;
+  }
+
+  [[nodiscard]] std::optional<uint8_t> getScratchSpillLane() const {
+    return ScratchSpillLane;
   }
 
   using const_argument_lane_iterator =

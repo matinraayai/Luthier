@@ -57,11 +57,10 @@ StateValueArraySpecs::findLowestFreeLanes(unsigned NumLanes,
   markRange(FramePointerRegSSpillLane, 1);
   markRange(StackPointerStoreLane, 1);
 
-  if (BufferRsrcOrScratchSpillLane != llvm::MCRegister::NoRegister) {
-    unsigned BufferSize =
-        (BufferRsrcOrScratchSpillLane == llvm::AMDGPU::FLAT_SCR) ? 2 : 4;
-    markRange(/*Base=*/3, BufferSize);
-  }
+  if (BufferRsrcSpillLane)
+    markRange(*BufferRsrcSpillLane, /*PSB=*/4);
+  if (ScratchSpillLane)
+    markRange(*ScratchSpillLane, /*FLAT_SCR=*/2);
   for (const auto &[SA, Base] : ScalarArguments)
     markRange(Base, getArgumentLaneSize(SA));
 
@@ -234,14 +233,15 @@ StateValueArraySpecsAnalysis::run(Prototype &IP,
     Out.ScalarArguments.insert(
         {WAVEFRONT_PRIVATE_SEGMENT_BUFFER,
          ScalarValueArgumentInfo<WAVEFRONT_PRIVATE_SEGMENT_BUFFER>::NumLanes});
-    Out.BufferRsrcOrScratchSpillLane = llvm::AMDGPU::PRIVATE_RSRC_REG;
+    Out.BufferRsrcSpillLane =
+        ScalarValueArgumentInfo<WAVEFRONT_PRIVATE_SEGMENT_BUFFER>::NumLanes;
     NextLane +=
         ScalarValueArgumentInfo<WAVEFRONT_PRIVATE_SEGMENT_BUFFER>::NumLanes;
   }
   if (!IsArchitectedFS) {
     Out.ScalarArguments.insert(
-    {FLAT_SCRATCH, ScalarValueArgumentInfo<FLAT_SCRATCH>::NumLanes});
-    Out.BufferRsrcOrScratchSpillLane = llvm::AMDGPU::FLAT_SCR;
+        {FLAT_SCRATCH, ScalarValueArgumentInfo<FLAT_SCRATCH>::NumLanes});
+    Out.ScratchSpillLane = ScalarValueArgumentInfo<FLAT_SCRATCH>::NumLanes;
     NextLane += ScalarValueArgumentInfo<FLAT_SCRATCH>::NumLanes;
   }
 
