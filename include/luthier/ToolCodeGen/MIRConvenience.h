@@ -30,8 +30,6 @@ class MCRegister;
 
 namespace luthier {
 
-namespace llvm_fwd {} // dummy for include order
-
 /// Returns true if \p MI implicitly reads the EXEC mask — i.e. it is a
 /// VALU (excluding the uniform read/write-lane family) or any
 /// non-scalar/non-SMRD instruction. Used as the canonical predicate for
@@ -122,7 +120,9 @@ void emitStoreToEmergencySVSScratchSpillLocation(
     llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
     llvm::MCRegister SrcVGPR, bool KillSource);
 
-void emitWaitCnt(llvm::MachineBasicBlock::iterator MI);
+/// Emits an \c S_WAITCNT before \p MI with the given per-counter
+/// encoding \p Encoding.
+void emitWaitCnt(llvm::MachineBasicBlock::iterator MI, unsigned Encoding = 0);
 
 } // namespace luthier
 

@@ -177,8 +177,14 @@ llvm::MachineBasicBlock::iterator createSCCSafeSequenceOfMIs(
                                TII.get(llvm::AMDGPU::S_CBRANCH_SCC1));
   // We then split MBB into two at the newly inserted branch instruction;
   // The MBB is the entry block while the newly created block is the exit
-  // block of this code snippet
-  llvm::MachineBasicBlock &ExitBlock = *MBB.splitAt(*Builder);
+  // block of this code snippet.
+  llvm::MachineBasicBlock *ExitBlockPtr = MBB.splitAt(*Builder);
+  if (ExitBlockPtr == &MBB) {
+    ExitBlockPtr = MF.CreateMachineBasicBlock(MBB.getBasicBlock());
+    MF.insert(std::next(MBB.getIterator()), ExitBlockPtr);
+    ExitBlockPtr->transferSuccessorsAndUpdatePHIs(&MBB);
+  }
+  llvm::MachineBasicBlock &ExitBlock = *ExitBlockPtr;
   MBB.removeSuccessor(&ExitBlock);
   // Create the SCC0MBB, which will house the code for when SCC=0
   // It comes right after the entry block because the CBRANCH is not taken
@@ -267,11 +273,11 @@ void emitStoreToEmergencySVSScratchSpillLocation(
       .addImm(0);
 }
 
-void emitWaitCnt(llvm::MachineBasicBlock::iterator MI) {
+void emitWaitCnt(llvm::MachineBasicBlock::iterator MI, unsigned Encoding) {
   const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
   (void)llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
                       TII.get(llvm::AMDGPU::S_WAITCNT))
-      .addImm(0);
+      .addImm(Encoding);
 }
 
 } // namespace luthier

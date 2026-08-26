@@ -481,15 +481,16 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
   (void)createSCCSafeSequenceOfMIs(
       NextIPoint, [&](llvm::MachineBasicBlock &InsertionPointMBB,
                       const llvm::TargetInstrInfo &TII) {
-        // Read V0 back from the SrcSVS AGPR storage
+        // Read V0 (active lanes) back from SrcSVS.TempAGPR.
         emitMoveFromAGPRToVGPR(InsertionPointMBB.end(), SrcSVS.TempAGPR,
-                               llvm::AMDGPU::VGPR0, false);
-        // Flip the exec mask
+                               llvm::AMDGPU::VGPR0, /*KillSource=*/false);
+        // Flip the exec mask.
         emitExecMaskFlip(InsertionPointMBB.end());
-        // Read V0 back from the SrcSVS AGPR temp
+        // Read V0 (inactive lanes) back from SrcSVS.TempAGPR;
+        // last use — kill.
         emitMoveFromAGPRToVGPR(InsertionPointMBB.end(), SrcSVS.TempAGPR,
-                               llvm::AMDGPU::VGPR0, false);
-        // Flip the exec mask back
+                               llvm::AMDGPU::VGPR0, /*KillSource=*/true);
+        // Flip the exec mask back.
         emitExecMaskFlip(InsertionPointMBB.end());
       });
 }
@@ -998,6 +999,11 @@ bool TwoAGPRValueStorage::operator==(const StateValueArrayStorage &LHS) const {
 
 void AGPRWithThreeSGPRSValueStorage::emitCodeToLoadSVA(
     llvm::MachineInstr &MI, llvm::MCRegister DestVGPR) const {
+  assert(!MI.getMF()
+              ->getSubtarget<llvm::GCNSubtarget>()
+              .hasArchitectedFlatScratch() &&
+         "target with architected flat scratch is using "
+         "AGPRWithThreeSGPRSValueStorage");
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -1010,21 +1016,22 @@ void AGPRWithThreeSGPRSValueStorage::emitCodeToLoadSVA(
         /// Spill the DestVGPR to the emergency spill slot in the active lanes
         emitStoreToEmergencyVGPRScratchSpillLocation(
             InsertionPointMBB.end(), StackPointer, DestVGPR,
-            true);
+            /*KillSource=*/false);
         /// Restore the state value array from the storage AGPR to the dest VGPR
         /// in the active lanes
         emitMoveFromAGPRToVGPR(InsertionPointMBB.end(), StorageAGPR, DestVGPR,
-                               false);
+                               /*KillSource=*/false);
         // Flip the exec mask
         emitExecMaskFlip(InsertionPointMBB.end());
-        /// Spill the DestVGPR to the emergency spill slot in the inactive lanes
+        /// Spill the DestVGPR to the emergency spill slot in the inactive
+        /// lanes
         emitStoreToEmergencyVGPRScratchSpillLocation(
             InsertionPointMBB.end(), StackPointer, DestVGPR,
-            true);
+            /*KillSource=*/true);
         /// Restore the state value array from the storage AGPR to the dest VGPR
-        /// in the inactive lanes
+        /// in the inactive lanes; last read of StorageAGPR — kill.
         emitMoveFromAGPRToVGPR(InsertionPointMBB.end(), StorageAGPR, DestVGPR,
-                               true);
+                               /*KillSource=*/true);
         // Flip the exec mask to its original value
         emitExecMaskFlip(InsertionPointMBB.end());
         /// Swap FS_LO/HI back so the app's FLAT_SCR is restored before
@@ -1040,6 +1047,11 @@ void AGPRWithThreeSGPRSValueStorage::emitCodeToLoadSVA(
 
 void AGPRWithThreeSGPRSValueStorage::emitCodeToStoreSVA(
     llvm::MachineInstr &MI, llvm::MCRegister SrcVGPR) const {
+  assert(!MI.getMF()
+              ->getSubtarget<llvm::GCNSubtarget>()
+              .hasArchitectedFlatScratch() &&
+         "target with architected flat scratch is using "
+         "AGPRWithThreeSGPRSValueStorage");
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -1050,19 +1062,20 @@ void AGPRWithThreeSGPRSValueStorage::emitCodeToStoreSVA(
         emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_HI,
                      FlatScratchSGPRHigh);
         /// Move the SVS from the SrcVGPR back to the storage AGPR
+        /// (active lanes).
         emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcVGPR, StorageAGPR,
-                               true);
+                               /*KillSource=*/false);
 
-        /// Load the app VGPR to the SrcVGPR
+        /// Load the app VGPR to the SrcVGPR (redefs SrcVGPR active lanes)
         emitLoadFromEmergencyVGPRScratchSpillLocation(
             InsertionPointMBB.end(), StackPointer, SrcVGPR);
         // Flip the exec mask
         emitExecMaskFlip(InsertionPointMBB.end());
 
         /// Move the SVS from the SrcVGPR back to the storage AGPR in the
-        /// inactive lanes
+        /// inactive lanes; last read of SrcVGPR SVA content — kill.
         emitMoveFromVGPRToAGPR(InsertionPointMBB.end(), SrcVGPR, StorageAGPR,
-                               true);
+                               /*KillSource=*/true);
 
         /// Load the app VGPR to the SrcVGPR
         emitLoadFromEmergencyVGPRScratchSpillLocation(
@@ -1107,6 +1120,11 @@ bool AGPRWithThreeSGPRSValueStorage::operator==(
 
 void SpilledWithThreeSGPRsValueStorage::emitCodeToLoadSVA(
     llvm::MachineInstr &MI, llvm::MCRegister DestVGPR) const {
+  assert(!MI.getMF()
+              ->getSubtarget<llvm::GCNSubtarget>()
+              .hasArchitectedFlatScratch() &&
+         "target with architected flat scratch is using "
+         "SpilledWithThreeSGPRsValueStorage");
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -1116,20 +1134,22 @@ void SpilledWithThreeSGPRsValueStorage::emitCodeToLoadSVA(
                      FlatScratchSGPRLow);
         emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_HI,
                      FlatScratchSGPRHigh);
-        /// Spill the DestVGPR to the emergency spill slot in the active lanes
+        /// Spill the DestVGPR to the emergency spill slot in the active
+        /// lanes.
         emitStoreToEmergencyVGPRScratchSpillLocation(
             InsertionPointMBB.end(), StackPointer, DestVGPR,
-            true);
+            /*KillSource=*/false);
         /// Restore the state value array from its fixed storage to the dest
         /// VGPR in the active lanes
         emitLoadFromEmergencySVSScratchSpillLocation(
             InsertionPointMBB.end(), StackPointer, DestVGPR);
         // Flip the exec mask
         emitExecMaskFlip(InsertionPointMBB.end());
-        /// Spill the DestVGPR to the emergency spill slot in the inactive lanes
+        /// Spill the DestVGPR to the emergency spill slot in the inactive
+        /// lanes.
         emitStoreToEmergencyVGPRScratchSpillLocation(
             InsertionPointMBB.end(), StackPointer, DestVGPR,
-            true);
+            /*KillSource=*/true);
         /// Restore the state value array from its fixed storage to the dest
         /// VGPR in the inactive lanes
         emitLoadFromEmergencySVSScratchSpillLocation(
@@ -1149,6 +1169,11 @@ void SpilledWithThreeSGPRsValueStorage::emitCodeToLoadSVA(
 
 void SpilledWithThreeSGPRsValueStorage::emitCodeToStoreSVA(
     llvm::MachineInstr &MI, llvm::MCRegister SrcVGPR) const {
+  assert(!MI.getMF()
+              ->getSubtarget<llvm::GCNSubtarget>()
+              .hasArchitectedFlatScratch() &&
+         "target with architected flat scratch is using "
+         "SpilledWithThreeSGPRsValueStorage");
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
@@ -1160,20 +1185,23 @@ void SpilledWithThreeSGPRsValueStorage::emitCodeToStoreSVA(
                      FlatScratchSGPRLow);
         emitSGPRSwap(InsertionPointMBB.end(), llvm::AMDGPU::FLAT_SCR_HI,
                      FlatScratchSGPRHigh);
-        /// Spill the Src to the emergency spill slot in the active lanes
+        /// Spill the Src (SVA) to the SVS emergency slot on the active
+        /// lanes. KillSource=false — SrcVGPR is read again on the
+        /// inactive-lanes spill below before being redefed by the load.
         emitStoreToEmergencySVSScratchSpillLocation(
             InsertionPointMBB.end(), StackPointer, SrcVGPR,
-            true);
+            /*KillSource=*/false);
         /// Restore the app VGPR from its fixed storage to the src VGPR
         /// in the active lanes
         emitLoadFromEmergencyVGPRScratchSpillLocation(
             InsertionPointMBB.end(), StackPointer, SrcVGPR);
         // Flip the exec mask
         emitExecMaskFlip(InsertionPointMBB.end());
-        /// Spill the Src to the emergency spill slot in the inactive lanes
+        /// Spill the Src (SVA) to the SVS emergency slot on the inactive
+        /// lanes; last read of SrcVGPR SVA content — kill.
         emitStoreToEmergencySVSScratchSpillLocation(
             InsertionPointMBB.end(), StackPointer, SrcVGPR,
-            true);
+            /*KillSource=*/true);
         /// Restore the app VGPR from its fixed storage to the src VGPR
         /// in the inactive lanes
         emitLoadFromEmergencyVGPRScratchSpillLocation(
@@ -1217,22 +1245,29 @@ bool SpilledWithThreeSGPRsValueStorage::operator==(
 
 void SpilledWithOneSGPRsValueStorage::emitCodeToLoadSVA(
     llvm::MachineInstr &MI, llvm::MCRegister DestVGPR) const {
+  assert(MI.getMF()
+             ->getSubtarget<llvm::GCNSubtarget>()
+             .hasArchitectedFlatScratch() &&
+         "target without architected flat scratch is using "
+         "SpilledWithOneSGPRsValueStorage");
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
-        /// Spill the DestVGPR to the emergency spill slot in the active lanes
+        /// Spill the DestVGPR to the emergency spill slot in the active
+        /// lanes
         emitStoreToEmergencyVGPRScratchSpillLocation(
             InsertionPointMBB.end(), StackPointer, DestVGPR,
-            true);
+            /*KillSource=*/false);
         /// Load the SVS
         emitLoadFromEmergencySVSScratchSpillLocation(
             InsertionPointMBB.end(), StackPointer, DestVGPR);
         // Flip the exec mask
         emitExecMaskFlip(InsertionPointMBB.end());
-        /// Spill the DestVGPR to the emergency spill slot in the inactive lanes
+        /// Spill the DestVGPR to the emergency spill slot in the inactive
+        /// lanes
         emitStoreToEmergencyVGPRScratchSpillLocation(
             InsertionPointMBB.end(), StackPointer, DestVGPR,
-            true);
+            /*KillSource=*/true);
         /// Load the SVS
         emitLoadFromEmergencySVSScratchSpillLocation(
             InsertionPointMBB.end(), StackPointer, DestVGPR);
@@ -1245,6 +1280,11 @@ void SpilledWithOneSGPRsValueStorage::emitCodeToLoadSVA(
 
 void SpilledWithOneSGPRsValueStorage::emitCodeToStoreSVA(
     llvm::MachineInstr &MI, llvm::MCRegister SrcVGPR) const {
+  assert(MI.getMF()
+             ->getSubtarget<llvm::GCNSubtarget>()
+             .hasArchitectedFlatScratch() &&
+         "target without architected flat scratch is using "
+         "SpilledWithOneSGPRsValueStorage");
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
