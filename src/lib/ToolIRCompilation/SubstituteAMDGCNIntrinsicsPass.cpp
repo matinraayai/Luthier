@@ -54,20 +54,28 @@ llvm::Value *emitReadSVAI32(llvm::Module &M, llvm::IRBuilderBase &Builder,
                                static_cast<uint8_t>(SVA));
 }
 
-/// Emit \c call i64 @luthier::readSVA(i8 IMPLICIT_ARG_BUFFER) at the
-/// current builder position, then \c inttoptr the i64 to
-/// \c ptr addrspace(4) — the pointer type \c llvm.amdgcn.implicitarg.ptr used
-/// to return.
-llvm::Value *emitReadSVAImplicitArgPtr(llvm::Module &M,
-                                       llvm::IRBuilderBase &Builder) {
+/// Emit \c call i64 @luthier::readSVA(i8 SVA) at the current builder position
+/// and return its value. Used for 2-lane 64-bit SVAs (e.g. \c DISPATCH_ID)
+/// whose corresponding AMDGCN intrinsic returns an \c i64 directly.
+llvm::Value *emitReadSVAI64(llvm::Module &M, llvm::IRBuilderBase &Builder,
+                            ScalarValueArgument SVA) {
+  llvm::Type *Int64Ty = llvm::Type::getInt64Ty(M.getContext());
+  return insertCallToIntrinsic(M, Builder, "luthier::readSVA", *Int64Ty,
+                               static_cast<uint8_t>(SVA));
+}
+
+/// Emit \c call i64 @luthier::readSVA(i8 SVA) at the current builder position,
+/// then \c inttoptr the i64 to \c ptr addrspace(4) — the pointer type the
+/// corresponding AMDGCN \c *.ptr intrinsic (e.g. \c llvm.amdgcn.implicitarg.ptr,
+/// \c llvm.amdgcn.dispatch.ptr) returns.
+llvm::Value *emitReadSVAConstPtr(llvm::Module &M, llvm::IRBuilderBase &Builder,
+                                 ScalarValueArgument SVA,
+                                 const llvm::Twine &Name) {
   auto &Ctx = M.getContext();
-  llvm::Type *Int64Ty = llvm::Type::getInt64Ty(Ctx);
   llvm::PointerType *ConstPtrTy =
       llvm::PointerType::get(Ctx, llvm::AMDGPUAS::CONSTANT_ADDRESS);
-  llvm::CallInst *ImplicitArgPtrI64 =
-      insertCallToIntrinsic(M, Builder, "luthier::readSVA", *Int64Ty,
-                            static_cast<uint8_t>(IMPLICIT_ARG_BUFFER));
-  return Builder.CreateIntToPtr(ImplicitArgPtrI64, ConstPtrTy, "iap");
+  llvm::Value *PtrI64 = emitReadSVAI64(M, Builder, SVA);
+  return Builder.CreateIntToPtr(PtrI64, ConstPtrTy, Name);
 }
 
 /// Emit an IR sequence that computes the current lane's \c threadIdx.<Dim>
@@ -98,7 +106,8 @@ llvm::Value *expandWorkitemId(llvm::Module &M, llvm::IRBuilderBase &Builder,
   //   %iap = readSVA(IMPLICIT_ARG_BUFFER) + inttoptr
   //   %wx  = zext(load i16, %iap + 12) to i32
   //   %wy  = zext(load i16, %iap + 14) to i32
-  llvm::Value *ImplicitArgPtr = emitReadSVAImplicitArgPtr(M, Builder);
+  llvm::Value *ImplicitArgPtr =
+      emitReadSVAConstPtr(M, Builder, IMPLICIT_ARG_BUFFER, "iap");
   llvm::Value *WxPtr = Builder.CreateConstGEP1_64(
       Builder.getInt8Ty(), ImplicitArgPtr, HiddenGroupSizeXOffset, "wx.p");
   llvm::LoadInst *Wx16 =
@@ -190,7 +199,23 @@ SubstituteAMDGCNIntrinsicsPass::run(llvm::Module &M,
            }},
           {"llvm.amdgcn.implicitarg.ptr",
            [](llvm::Module &M, llvm::IRBuilderBase &B) {
-             return emitReadSVAImplicitArgPtr(M, B);
+             return emitReadSVAConstPtr(M, B, IMPLICIT_ARG_BUFFER, "iap");
+           }},
+          {"llvm.amdgcn.kernarg.segment.ptr",
+           [](llvm::Module &M, llvm::IRBuilderBase &B) {
+             return emitReadSVAConstPtr(M, B, KERNEL_ARG_PTR, "kap");
+           }},
+          {"llvm.amdgcn.dispatch.ptr",
+           [](llvm::Module &M, llvm::IRBuilderBase &B) {
+             return emitReadSVAConstPtr(M, B, DISPATCH_PTR, "dp");
+           }},
+          {"llvm.amdgcn.queue.ptr",
+           [](llvm::Module &M, llvm::IRBuilderBase &B) {
+             return emitReadSVAConstPtr(M, B, QUEUE_PTR, "qp");
+           }},
+          {"llvm.amdgcn.dispatch.id",
+           [](llvm::Module &M, llvm::IRBuilderBase &B) {
+             return emitReadSVAI64(M, B, DISPATCH_ID);
            }},
           {"llvm.amdgcn.workitem.id.x",
            [](llvm::Module &M, llvm::IRBuilderBase &B) {
