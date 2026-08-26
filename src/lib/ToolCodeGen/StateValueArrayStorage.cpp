@@ -1391,33 +1391,58 @@ void VGPRStateValueArrayStorage::pickOffSVA(
                              Specs.getFramePointerRegSpillLane(), false);
 }
 
+// ---- Callee-side scheme-SGPR bootstrap ---------------------------------
+
+/// Reads the instrumentation SP from V0's \c StackPointerStoreLane into
+/// \p StackPointer.
+static void loadStackPointerFromV0Lanes(llvm::MachineBasicBlock::iterator Iter,
+                                        llvm::MCRegister StackPointer,
+                                        const StateValueArraySpecs &Specs) {
+  emitMoveFromVGPRLaneToSGPR(Iter, llvm::AMDGPU::VGPR0, StackPointer,
+                             Specs.getStackPointerStoreLane(),
+                             /*KillSource=*/false);
+}
+
+/// Reads the wave FS_LO / FS_HI from V0's \c FLAT_SCRATCH SA lanes into
+/// \p FSLo / \p FSHi.
+static void loadFlatScratchFromV0Lanes(
+    llvm::MachineBasicBlock::iterator Iter, llvm::MCRegister FSLo,
+    llvm::MCRegister FSHi, const StateValueArraySpecs &Specs,
+    const char *SchemeName) {
+  auto FSLoLane = Specs.findArgumentLane(FLAT_SCRATCH);
+  if (FSLoLane == Specs.argument_lane_end())
+    LUTHIER_REPORT_FATAL_ON_ERROR(
+        LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+            "{0}::pickOffSVA: SVA layout has no FLAT_SCRATCH argument lane; "
+            "cannot load FS SGPRs.",
+            SchemeName)));
+  emitMoveFromVGPRLaneToSGPR(Iter, llvm::AMDGPU::VGPR0, FSLo,
+                             FSLoLane->second, /*KillSource=*/false);
+  emitMoveFromVGPRLaneToSGPR(Iter, llvm::AMDGPU::VGPR0, FSHi,
+                             FSLoLane->second + 1, /*KillSource=*/false);
+}
+
 void TwoAGPRValueStorage::handOffSVA(llvm::MachineInstr &MI,
                                      const StateValueArraySpecs &) const {
-  // TwoAGPR keeps V0's emergency spill in TempAGPR. Delegate to the
-  // existing scheme-owned load: it spills V0 (all lanes) to TempAGPR
-  // and reads the SVA (all lanes) from StorageAGPR into V0.
   emitCodeToLoadSVA(MI, llvm::AMDGPU::VGPR0);
 }
 
 void TwoAGPRValueStorage::pickOffSVA(llvm::MachineInstr &MI,
                                      const StateValueArraySpecs &) const {
-  // Symmetric: write V0 (SVA) back to StorageAGPR, restore V0 (all
-  // lanes) from TempAGPR.
   emitCodeToStoreSVA(MI, llvm::AMDGPU::VGPR0);
 }
 
 void AGPRWithThreeSGPRSValueStorage::handOffSVA(
     llvm::MachineInstr &MI, const StateValueArraySpecs &) const {
-  // The existing load already spills V0 (all lanes) to the emergency
-  // slot at [StackPointer - 8] and loads the SVA into
-  // V0 (all lanes) after swapping the instrumentation FS_LO/HI in.
   emitCodeToLoadSVA(MI, llvm::AMDGPU::VGPR0);
 }
 
 void AGPRWithThreeSGPRSValueStorage::pickOffSVA(
-    llvm::MachineInstr &MI, const StateValueArraySpecs &) const {
-  // Symmetric: store V0 (SVA) back to StorageAGPR and restore V0 (all
-  // lanes) from the emergency slot.
+    llvm::MachineInstr &MI, const StateValueArraySpecs &Specs) const {
+  llvm::MachineBasicBlock::iterator Iter = MI.getIterator();
+  loadStackPointerFromV0Lanes(Iter, StackPointer, Specs);
+  loadFlatScratchFromV0Lanes(Iter, FlatScratchSGPRLow, FlatScratchSGPRHigh,
+                             Specs, "AGPRWithThreeSGPRSValueStorage");
   emitCodeToStoreSVA(MI, llvm::AMDGPU::VGPR0);
 }
 
@@ -1427,7 +1452,12 @@ void SpilledWithThreeSGPRsValueStorage::handOffSVA(
 }
 
 void SpilledWithThreeSGPRsValueStorage::pickOffSVA(
-    llvm::MachineInstr &MI, const StateValueArraySpecs &) const {
+    llvm::MachineInstr &MI, const StateValueArraySpecs &Specs) const {
+  llvm::MachineBasicBlock::iterator Iter = MI.getIterator();
+  loadStackPointerFromV0Lanes(Iter, StackPointer, Specs);
+  loadFlatScratchFromV0Lanes(Iter, FlatScratchSGPRLow,
+                                        FlatScratchSGPRHigh, Specs,
+                                        "SpilledWithThreeSGPRsValueStorage");
   emitCodeToStoreSVA(MI, llvm::AMDGPU::VGPR0);
 }
 
@@ -1437,7 +1467,9 @@ void SpilledWithOneSGPRsValueStorage::handOffSVA(
 }
 
 void SpilledWithOneSGPRsValueStorage::pickOffSVA(
-    llvm::MachineInstr &MI, const StateValueArraySpecs &) const {
+    llvm::MachineInstr &MI, const StateValueArraySpecs &Specs) const {
+  llvm::MachineBasicBlock::iterator Iter = MI.getIterator();
+  loadStackPointerFromV0Lanes(Iter, StackPointer, Specs);
   emitCodeToStoreSVA(MI, llvm::AMDGPU::VGPR0);
 }
 
