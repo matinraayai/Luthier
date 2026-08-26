@@ -20,7 +20,6 @@
 #ifndef LUTHIER_TOOL_CODE_GEN_STATE_VALUE_ARRAY_STORAGE_H
 #define LUTHIER_TOOL_CODE_GEN_STATE_VALUE_ARRAY_STORAGE_H
 #include "luthier/HSA/LoadedCodeObject.h"
-#include "luthier/ToolCodeGen/PrePostAmbleEmitter.h"
 #include <llvm/CodeGen/SlotIndexes.h>
 
 namespace llvm {
@@ -289,9 +288,8 @@ public:
   llvm::MCRegister FlatScratchSGPRHigh{};
   /// Lower 32-bit address of the thread's flat scratch address
   llvm::MCRegister FlatScratchSGPRLow{};
-  /// An SGPR holding the offset of the instrumentation private segment's
-  /// emergency VGPR spill slot from the thread's flat scratch address
-  llvm::MCRegister EmergencyVGPRSpillSlotOffset{};
+  /// An SGPR holding the instrumentation stack pointer
+  llvm::MCRegister StackPointer{};
 
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
@@ -301,11 +299,10 @@ public:
   AGPRWithThreeSGPRSValueStorage(llvm::MCRegister StorageAGPR,
                                  llvm::MCRegister FlatScratchSGPRHigh,
                                  llvm::MCRegister FlatScratchSGPRLow,
-                                 llvm::MCRegister EmergencyVGPRSpillSlotOffset)
-      : StorageAGPR(StorageAGPR), FlatScratchSGPRHigh(FlatScratchSGPRHigh),
-        FlatScratchSGPRLow(FlatScratchSGPRLow),
-        EmergencyVGPRSpillSlotOffset(EmergencyVGPRSpillSlotOffset),
-        StateValueArrayStorage(SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908) {};
+                                 llvm::MCRegister StackPointer)
+      : StateValueArrayStorage(SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908),
+        StorageAGPR(StorageAGPR), FlatScratchSGPRHigh(FlatScratchSGPRHigh),
+        FlatScratchSGPRLow(FlatScratchSGPRLow), StackPointer(StackPointer) {};
 
   llvm::MCRegister getStateValueStorageReg() const override {
     return StorageAGPR;
@@ -337,7 +334,7 @@ public:
     Regs.push_back(StorageAGPR);
     Regs.push_back(FlatScratchSGPRHigh);
     Regs.push_back(FlatScratchSGPRLow);
-    Regs.push_back(EmergencyVGPRSpillSlotOffset);
+    Regs.push_back(StackPointer);
   }
 };
 
@@ -352,22 +349,20 @@ public:
   llvm::MCRegister FlatScratchSGPRHigh{};
   /// Lower 32-bit address of the thread's flat scratch address
   llvm::MCRegister FlatScratchSGPRLow{};
-  /// An SGPR holding the offset of the instrumentation private segment's
-  /// emergency VGPR spill slot from the thread's flat scratch address
-  llvm::MCRegister EmergencyVGPRSpillSlotOffset{};
+  /// Instrumentation stack pointer
+  llvm::MCRegister StackPointer{};
 
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
     return S->getScheme() == SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs;
   }
 
-  SpilledWithThreeSGPRsValueStorage(
-      llvm::MCRegister FlatScratchSGPRHigh, llvm::MCRegister FlatScratchSGPRLow,
-      llvm::MCRegister EmergencyVGPRSpillSlotOffset)
-      : FlatScratchSGPRHigh(FlatScratchSGPRHigh),
-        FlatScratchSGPRLow(FlatScratchSGPRLow),
-        EmergencyVGPRSpillSlotOffset(EmergencyVGPRSpillSlotOffset),
-        StateValueArrayStorage(SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs) {};
+  SpilledWithThreeSGPRsValueStorage(llvm::MCRegister FlatScratchSGPRHigh,
+                                    llvm::MCRegister FlatScratchSGPRLow,
+                                    llvm::MCRegister StackPointer)
+      : StateValueArrayStorage(SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs),
+        FlatScratchSGPRHigh(FlatScratchSGPRHigh),
+        FlatScratchSGPRLow(FlatScratchSGPRLow), StackPointer(StackPointer) {};
 
   llvm::MCRegister getStateValueStorageReg() const override { return {}; }
 
@@ -396,7 +391,7 @@ public:
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
     Regs.push_back(FlatScratchSGPRHigh);
     Regs.push_back(FlatScratchSGPRLow);
-    Regs.push_back(EmergencyVGPRSpillSlotOffset);
+    Regs.push_back(StackPointer);
   }
 };
 
@@ -407,19 +402,17 @@ public:
 /// loading the state value array in its place
 struct SpilledWithOneSGPRsValueStorage : public StateValueArrayStorage {
 public:
-  /// An SGPR holding the offset of the instrumentation private segment's
-  /// emergency VGPR spill slot from the thread's flat scratch address
-  llvm::MCRegister EmergencyVGPRSpillSlotOffset{};
+  /// Instrumentation Stack Pointer
+  llvm::MCRegister StackPointer{};
 
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
     return S->getScheme() == SVS_SPILLED_WITH_ONE_SGPR_architected_fs;
   }
 
-  explicit SpilledWithOneSGPRsValueStorage(
-      llvm::MCRegister EmergencyVGPRSpillSlotOffset)
-      : EmergencyVGPRSpillSlotOffset(EmergencyVGPRSpillSlotOffset),
-        StateValueArrayStorage(SVS_SPILLED_WITH_ONE_SGPR_architected_fs) {};
+  explicit SpilledWithOneSGPRsValueStorage(llvm::MCRegister StackPointer)
+      : StateValueArrayStorage(SVS_SPILLED_WITH_ONE_SGPR_architected_fs),
+        StackPointer(StackPointer) {};
 
   llvm::MCRegister getStateValueStorageReg() const override { return {}; }
 
@@ -446,7 +439,7 @@ public:
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
-    Regs.push_back(EmergencyVGPRSpillSlotOffset);
+    Regs.push_back(StackPointer);
   }
 };
 
