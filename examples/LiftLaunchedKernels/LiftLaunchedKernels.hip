@@ -45,7 +45,6 @@
 #include <luthier/ToolCodeGen/InstrumentationPassBuilder.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
-#include <luthier/ToolCodeGen/PrePostAmbleEmitter.h>
 #include <luthier/ToolCodeGen/Prototype.h>
 #include <luthier/ToolCodeGen/PrototypeCallGraph.h>
 #include <mutex>

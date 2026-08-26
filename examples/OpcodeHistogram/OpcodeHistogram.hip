@@ -57,7 +57,6 @@
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/NewPMAsmPrinter.h>
-#include <luthier/ToolCodeGen/PrePostAmbleEmitter.h>
 #include <luthier/ToolCodeGen/PrototypeCallGraph.h>
 #include <memory>
 #include <mutex>
