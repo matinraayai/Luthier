@@ -139,6 +139,19 @@ StateValueArrayStorage::createSVAStorage(
   llvm_unreachable("Invalid SVA storage Enum value.");
 }
 
+static void
+loadStackPointerFromSVALanes(llvm::MachineBasicBlock::iterator Iter,
+                             llvm::MCRegister SrcVGPR,
+                             llvm::MCRegister StackPointer,
+                             const StateValueArraySpecs &Specs);
+
+static void loadFlatScratchFromSVALanes(llvm::MachineBasicBlock::iterator Iter,
+                                        llvm::MCRegister SrcVGPR,
+                                        llvm::MCRegister FSLo,
+                                        llvm::MCRegister FSHi,
+                                        const StateValueArraySpecs &Specs,
+                                        const char *Context);
+
 //===----------------------------------------------------------------------===//
 // VGPRStateValueArrayStorage Switch logic
 //===----------------------------------------------------------------------===//
@@ -208,24 +221,13 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const VGPRStateValueArrayStorage &SrcSVS,
                     const SpilledWithThreeSGPRsValueStorage &TargetSVS,
                     const StateValueArraySpecs &Specs) {
-  // Read FS_hi, FS_lo and the instrumentation SP from the SVA lanes
-  // the StackPointerStoreLane by design of the SVA layout.
-  if (auto FSLoLane = Specs.findArgumentLane(FLAT_SCRATCH);
-      FSLoLane != Specs.argument_lane_end()) {
-    emitMoveFromVGPRLaneToSGPR(MI, SrcSVS.StorageVGPR,
-                               TargetSVS.FlatScratchSGPRLow, FSLoLane->second,
-                               false);
-    emitMoveFromVGPRLaneToSGPR(MI, SrcSVS.StorageVGPR,
-                               TargetSVS.FlatScratchSGPRHigh,
-                               FSLoLane->second + 1, false);
-  } else {
-    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_MAKE_GENERIC_ERROR(
-        "StateValueArrayStorage: SVA layout has no FrameRsrcOrScratch lane, "
-        "but VGPR→SpilledWithThreeSGPRs SVS switch needs it for FS_HI."));
-  }
-  emitMoveFromVGPRLaneToSGPR(MI, SrcSVS.StorageVGPR,
-                             TargetSVS.StackPointer,
-                             Specs.getStackPointerStoreLane(), false);
+  // Do SCC-uniform work here
+  loadFlatScratchFromSVALanes(MI, SrcSVS.StorageVGPR,
+                              TargetSVS.FlatScratchSGPRLow,
+                              TargetSVS.FlatScratchSGPRHigh, Specs,
+                              "emitCodeToSwitchSVS(VGPR->SpilledWithThree)");
+  loadStackPointerFromSVALanes(MI, SrcSVS.StorageVGPR, TargetSVS.StackPointer,
+                               Specs);
 
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
@@ -263,17 +265,13 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
                     const VGPRStateValueArrayStorage &SrcSVS,
                     const SpilledWithOneSGPRsValueStorage &TargetSVS,
                     const StateValueArraySpecs &Specs) {
-  // Store the instrumentation stack pointer read out of the SVA's
-  // StackPointerStoreLane (where TargetModulePatcher wrote it).
+  // Do SCC-uniform work here
   emitMoveFromVGPRLaneToSGPR(MI, SrcSVS.StorageVGPR,
                              TargetSVS.StackPointer,
                              Specs.getStackPointerStoreLane(), false);
   auto NextIPoint = createSCCSafeSequenceOfMIs(
       MI, [&](llvm::MachineBasicBlock &InsertionPointMBB,
               const llvm::TargetInstrInfo &TII) {
-        emitMoveFromVGPRLaneToSGPR(MI, SrcSVS.StorageVGPR,
-                                   TargetSVS.StackPointer,
-                                   Specs.getStackPointerStoreLane(), false);
         // Spill the SVA on the active lanes
         emitStoreToEmergencySVSScratchSpillLocation(
             InsertionPointMBB.end(), TargetSVS.StackPointer,
@@ -441,25 +439,12 @@ emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator &MI,
         // Flip the exec mask
         emitExecMaskFlip(InsertionPointMBB.end());
       });
-  // Read FS_hi, FS_lo and the instrumentation SP from the SVA lanes
-  // the StackPointerStoreLane by design of the SVA layout.
-  if (auto FSLoLane = Specs.findArgumentLane(FLAT_SCRATCH);
-      FSLoLane != Specs.argument_lane_end()) {
-    emitMoveFromVGPRLaneToSGPR(MI, llvm::AMDGPU::VGPR0,
-                               TargetSVS.FlatScratchSGPRLow, FSLoLane->second,
-                               false);
-    emitMoveFromVGPRLaneToSGPR(MI, llvm::AMDGPU::VGPR0,
-                               TargetSVS.FlatScratchSGPRHigh,
-                               FSLoLane->second + 1, false);
-  } else {
-    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_MAKE_GENERIC_ERROR(
-        "StateValueArrayStorage: SVA layout has no FrameRsrcOrScratch lane, "
-        "but VGPR→SpilledWithThreeSGPRs SVS switch needs it for FS_HI."));
-  }
-
-  emitMoveFromVGPRLaneToSGPR(NextIPoint, llvm::AMDGPU::VGPR0,
-                             TargetSVS.StackPointer,
-                             Specs.getStackPointerStoreLane(), false);
+  loadFlatScratchFromSVALanes(NextIPoint, llvm::AMDGPU::VGPR0,
+                              TargetSVS.FlatScratchSGPRLow,
+                              TargetSVS.FlatScratchSGPRHigh, Specs,
+                              "emitCodeToSwitchSVS(TwoAGPR->SpilledWithThree)");
+  loadStackPointerFromSVALanes(NextIPoint, llvm::AMDGPU::VGPR0,
+                               TargetSVS.StackPointer, Specs);
 
   NextIPoint = createSCCSafeSequenceOfMIs(
       NextIPoint, [&](llvm::MachineBasicBlock &InsertionPointMBB,
@@ -1391,35 +1376,46 @@ void VGPRStateValueArrayStorage::pickOffSVA(
                              Specs.getFramePointerRegSpillLane(), false);
 }
 
-// ---- Callee-side scheme-SGPR bootstrap ---------------------------------
+// ---- SVA-lane reads for scheme SGPR bootstrap -------------------------------
 
-/// Reads the instrumentation SP from V0's \c StackPointerStoreLane into
-/// \p StackPointer.
-static void loadStackPointerFromV0Lanes(llvm::MachineBasicBlock::iterator Iter,
-                                        llvm::MCRegister StackPointer,
-                                        const StateValueArraySpecs &Specs) {
-  emitMoveFromVGPRLaneToSGPR(Iter, llvm::AMDGPU::VGPR0, StackPointer,
+/// Read the instrumentation SP from \p SrcVGPR 's
+/// \c StackPointerStoreLane into \p StackPointer .
+static void
+loadStackPointerFromSVALanes(llvm::MachineBasicBlock::iterator Iter,
+                             llvm::MCRegister SrcVGPR,
+                             llvm::MCRegister StackPointer,
+                             const StateValueArraySpecs &Specs) {
+  emitMoveFromVGPRLaneToSGPR(Iter, SrcVGPR, StackPointer,
                              Specs.getStackPointerStoreLane(),
                              /*KillSource=*/false);
 }
 
-/// Reads the wave FS_LO / FS_HI from V0's \c FLAT_SCRATCH SA lanes into
-/// \p FSLo / \p FSHi.
-static void loadFlatScratchFromV0Lanes(
-    llvm::MachineBasicBlock::iterator Iter, llvm::MCRegister FSLo,
-    llvm::MCRegister FSHi, const StateValueArraySpecs &Specs,
-    const char *SchemeName) {
+/// Read the wave FS_LO / FS_HI from \p SrcVGPR 's \c FLAT_SCRATCH SA lanes
+/// into \p FSLo / \p FSHi.
+static void loadFlatScratchFromSVALanes(llvm::MachineBasicBlock::iterator Iter,
+                                        llvm::MCRegister SrcVGPR,
+                                        llvm::MCRegister FSLo,
+                                        llvm::MCRegister FSHi,
+                                        const StateValueArraySpecs &Specs,
+                                        const char *Context) {
   auto FSLoLane = Specs.findArgumentLane(FLAT_SCRATCH);
   if (FSLoLane == Specs.argument_lane_end())
-    LUTHIER_REPORT_FATAL_ON_ERROR(
-        LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-            "{0}::pickOffSVA: SVA layout has no FLAT_SCRATCH argument lane; "
-            "cannot load FS SGPRs.",
-            SchemeName)));
-  emitMoveFromVGPRLaneToSGPR(Iter, llvm::AMDGPU::VGPR0, FSLo,
-                             FSLoLane->second, /*KillSource=*/false);
-  emitMoveFromVGPRLaneToSGPR(Iter, llvm::AMDGPU::VGPR0, FSHi,
-                             FSLoLane->second + 1, /*KillSource=*/false);
+    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+        "{0}: SVA layout has no FLAT_SCRATCH argument lane; cannot load "
+        "FS_LO / FS_HI shadow SGPRs.",
+        Context)));
+  if (StateValueArraySpecs::getArgumentLaneSize(FLAT_SCRATCH) != 2)
+    LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+        "{0}: FLAT_SCRATCH SA is expected to span exactly 2 SVA lanes; "
+        "layout reports {1}. Aborting to avoid reading a mis-aligned "
+        "FS_HI.",
+        Context,
+        StateValueArraySpecs::getArgumentLaneSize(FLAT_SCRATCH))));
+  const uint8_t Start = FSLoLane->second;
+  emitMoveFromVGPRLaneToSGPR(Iter, SrcVGPR, FSLo, Start,
+                             /*KillSource=*/false);
+  emitMoveFromVGPRLaneToSGPR(Iter, SrcVGPR, FSHi, Start + 1,
+                             /*KillSource=*/false);
 }
 
 void TwoAGPRValueStorage::handOffSVA(llvm::MachineInstr &MI,
@@ -1440,9 +1436,10 @@ void AGPRWithThreeSGPRSValueStorage::handOffSVA(
 void AGPRWithThreeSGPRSValueStorage::pickOffSVA(
     llvm::MachineInstr &MI, const StateValueArraySpecs &Specs) const {
   llvm::MachineBasicBlock::iterator Iter = MI.getIterator();
-  loadStackPointerFromV0Lanes(Iter, StackPointer, Specs);
-  loadFlatScratchFromV0Lanes(Iter, FlatScratchSGPRLow, FlatScratchSGPRHigh,
-                             Specs, "AGPRWithThreeSGPRSValueStorage");
+  loadStackPointerFromSVALanes(Iter, llvm::AMDGPU::VGPR0, StackPointer, Specs);
+  loadFlatScratchFromSVALanes(Iter, llvm::AMDGPU::VGPR0, FlatScratchSGPRLow,
+                              FlatScratchSGPRHigh, Specs,
+                              "AGPRWithThreeSGPRSValueStorage::pickOffSVA");
   emitCodeToStoreSVA(MI, llvm::AMDGPU::VGPR0);
 }
 
@@ -1454,10 +1451,10 @@ void SpilledWithThreeSGPRsValueStorage::handOffSVA(
 void SpilledWithThreeSGPRsValueStorage::pickOffSVA(
     llvm::MachineInstr &MI, const StateValueArraySpecs &Specs) const {
   llvm::MachineBasicBlock::iterator Iter = MI.getIterator();
-  loadStackPointerFromV0Lanes(Iter, StackPointer, Specs);
-  loadFlatScratchFromV0Lanes(Iter, FlatScratchSGPRLow,
-                                        FlatScratchSGPRHigh, Specs,
-                                        "SpilledWithThreeSGPRsValueStorage");
+  loadStackPointerFromSVALanes(Iter, llvm::AMDGPU::VGPR0, StackPointer, Specs);
+  loadFlatScratchFromSVALanes(Iter, llvm::AMDGPU::VGPR0, FlatScratchSGPRLow,
+                              FlatScratchSGPRHigh, Specs,
+                              "SpilledWithThreeSGPRsValueStorage::pickOffSVA");
   emitCodeToStoreSVA(MI, llvm::AMDGPU::VGPR0);
 }
 
@@ -1469,7 +1466,7 @@ void SpilledWithOneSGPRsValueStorage::handOffSVA(
 void SpilledWithOneSGPRsValueStorage::pickOffSVA(
     llvm::MachineInstr &MI, const StateValueArraySpecs &Specs) const {
   llvm::MachineBasicBlock::iterator Iter = MI.getIterator();
-  loadStackPointerFromV0Lanes(Iter, StackPointer, Specs);
+  loadStackPointerFromSVALanes(Iter, llvm::AMDGPU::VGPR0, StackPointer, Specs);
   emitCodeToStoreSVA(MI, llvm::AMDGPU::VGPR0);
 }
 
