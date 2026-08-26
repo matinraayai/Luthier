@@ -33,7 +33,6 @@ add_library(LuthierToolCodeGen OBJECT
         TargetModuleBranchRelaxation.cpp
         IntrinsicMIRLoweringPass.cpp
         InjectedPayloadPEIPass.cpp
-        PrePostAmbleEmitter.cpp
         StateValueArraySpecs.cpp
         IPPredicatedCFG.cpp
         StateValueArrayStorage.cpp
