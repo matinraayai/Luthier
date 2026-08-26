@@ -81,16 +81,12 @@ unsigned StateValueArraySpecs::getArgumentLaneSize(ScalarValueArgument SA) {
     return ScalarValueArgumentInfo<DISPATCH_ID>::NumLanes;
   case FLAT_SCRATCH:
     return ScalarValueArgumentInfo<FLAT_SCRATCH>::NumLanes;
-  case PRIVATE_SEGMENT_WAVE_BYTE_OFFSET:
-    return ScalarValueArgumentInfo<PRIVATE_SEGMENT_WAVE_BYTE_OFFSET>::NumLanes;
   case DISPATCH_PTR:
     return ScalarValueArgumentInfo<DISPATCH_PTR>::NumLanes;
   case QUEUE_PTR:
     return ScalarValueArgumentInfo<QUEUE_PTR>::NumLanes;
   case WORK_ITEM_PRIVATE_SEGMENT_SIZE:
     return ScalarValueArgumentInfo<WORK_ITEM_PRIVATE_SEGMENT_SIZE>::NumLanes;
-  case USER_ARG_PTR:
-    return ScalarValueArgumentInfo<USER_ARG_PTR>::NumLanes;
   case IMPLICIT_ARG_BUFFER:
     return ScalarValueArgumentInfo<IMPLICIT_ARG_BUFFER>::NumLanes;
   case WORKGROUP_ID_X:
@@ -250,11 +246,17 @@ StateValueArraySpecsAnalysis::run(Prototype &IP,
   // Assign per-SA lane bases in canonical enum order — the same order the
   // metadata-based factory used, so consumers see the same layout.
   auto AssignIfUsed = [&]<SVArgUnderlyingType SVArg>() {
-    if (constexpr auto CastedSVArg = static_cast<ScalarValueArgument>(SVArg);
-        SAsUsed.contains(CastedSVArg)) {
-      Out.ScalarArguments.insert({CastedSVArg, NextLane});
-      NextLane += ScalarValueArgumentInfo<CastedSVArg>::NumLanes;
+    constexpr auto CastedSVArg = static_cast<ScalarValueArgument>(SVArg);
+    if (!SAsUsed.contains(CastedSVArg))
+      return;
+    if constexpr (CastedSVArg == WAVEFRONT_PRIVATE_SEGMENT_BUFFER ||
+                  CastedSVArg == FLAT_SCRATCH) {
+      if (IsArchitectedFS) {
+        return;
+      }
     }
+    Out.ScalarArguments.insert({CastedSVArg, NextLane});
+    NextLane += ScalarValueArgumentInfo<CastedSVArg>::NumLanes;
   };
 
   // std::make_integer_sequence<T, N> produces [0, N-1]; the inclusive

@@ -1590,8 +1590,6 @@ preloadedValueForSVA(ScalarValueArgument SA) {
     return llvm::AMDGPUFunctionArgInfo::DISPATCH_ID;
   case FLAT_SCRATCH:
     return llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT;
-  case PRIVATE_SEGMENT_WAVE_BYTE_OFFSET:
-    return llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_WAVE_BYTE_OFFSET;
   case DISPATCH_PTR:
     return llvm::AMDGPUFunctionArgInfo::DISPATCH_PTR;
   case QUEUE_PTR:
@@ -1610,7 +1608,6 @@ preloadedValueForSVA(ScalarValueArgument SA) {
     return llvm::AMDGPUFunctionArgInfo::WORKITEM_ID_Y;
   case WORKITEM_ID_Z:
     return llvm::AMDGPUFunctionArgInfo::WORKITEM_ID_Z;
-  case USER_ARG_PTR:
   case IMPLICIT_ARG_BUFFER:
     return std::nullopt;
   }

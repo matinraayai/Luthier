@@ -68,7 +68,6 @@ namespace luthier {
 /// is why to ensure access to these values in instrumentation routines,
 /// Luthier must emit a prologue on top of the kernel's original code to
 /// save these values in the state value array VGPR to preserve them
-/// TODO: Optimize usage of these lanes for GFX10; We are over limit.
 enum ScalarValueArgument : uint8_t {
   /// Wavefront's private segment buffer; Only applies to targets with
   /// absolute flat scratch or offset flat scratch
@@ -81,32 +80,35 @@ enum ScalarValueArgument : uint8_t {
   DISPATCH_ID = 2,
   /// 64-bit flat scratch base address of the wavefront
   FLAT_SCRATCH = 3,
-  /// 32-bit private segment wave offset
-  PRIVATE_SEGMENT_WAVE_BYTE_OFFSET = 4,
   /// 64-bit address of the dispatch packet of the kernel being executed
-  DISPATCH_PTR = 5,
+  /// TODO: If the original kernel wants the dispatch pointer, we need to
+  /// make it point to the **"original"** packet not the instrumented one
+  DISPATCH_PTR = 4,
   /// 64-bit address of the HSA queue used to launch the kernel
-  QUEUE_PTR = 6,
+  QUEUE_PTR = 5,
   /// Size of a work-item's private segment
-  WORK_ITEM_PRIVATE_SEGMENT_SIZE = 7,
-  /// 64-bit address of the instrumentation routine's argument buffer
-  USER_ARG_PTR = 8,
+  WORK_ITEM_PRIVATE_SEGMENT_SIZE = 6,
   /// 64-bit address of the instrumentation implicit argument buffer
-  IMPLICIT_ARG_BUFFER = 9,
+  IMPLICIT_ARG_BUFFER = 7,
   /// 32-bit X component of the workgroup ID (preloaded system SGPR)
-  WORKGROUP_ID_X = 10,
+  WORKGROUP_ID_X = 8,
   /// 32-bit Y component of the workgroup ID (preloaded system SGPR)
-  WORKGROUP_ID_Y = 11,
+  WORKGROUP_ID_Y = 9,
   /// 32-bit Z component of the workgroup ID (preloaded system SGPR)
-  WORKGROUP_ID_Z = 12,
+  WORKGROUP_ID_Z = 10,
   /// 32-bit X component of lane 0's workitem ID at kernel entry
-  WORKITEM_ID_X = 13,
+  WORKITEM_ID_X = 11,
   /// 32-bit Y component of lane 0's workitem ID at kernel entry
-  WORKITEM_ID_Y = 14,
+  WORKITEM_ID_Y = 12,
   /// 32-bit Z component of lane 0's workitem ID at kernel entry
-  WORKITEM_ID_Z = 15,
+  WORKITEM_ID_Z = 13,
   /// Marks the last defined scalar value argument
   SCALAR_VALUE_ARGUMENT_LAST = WORKITEM_ID_Z
+  // TODO: Optimize usage of these lanes for GFX10; We are at the limit
+  // /// 64-bit address of the instrumentation routine's argument buffer
+  // USER_ARG_PTR = 15,
+  //   /// 32-bit private segment wave offset
+  // PRIVATE_SEGMENT_WAVE_BYTE_OFFSET = 4,
 };
 
 template <ScalarValueArgument SA> struct ScalarValueArgumentInfo;
@@ -143,10 +145,6 @@ template <> struct ScalarValueArgumentInfo<WORK_ITEM_PRIVATE_SEGMENT_SIZE> {
   static constexpr uint8_t NumLanes = 1;
 };
 
-template <> struct ScalarValueArgumentInfo<USER_ARG_PTR> {
-  static constexpr uint8_t NumLanes = 2;
-};
-
 template <> struct ScalarValueArgumentInfo<IMPLICIT_ARG_BUFFER> {
   static constexpr uint8_t NumLanes = 2;
 };
@@ -174,6 +172,10 @@ template <> struct ScalarValueArgumentInfo<WORKITEM_ID_Y> {
 template <> struct ScalarValueArgumentInfo<WORKITEM_ID_Z> {
   static constexpr uint8_t NumLanes = 1;
 };
+
+// template <> struct ScalarValueArgumentInfo<USER_ARG_PTR> {
+//   static constexpr uint8_t NumLanes = 2;
+// };
 
 /// \brief Holds the result of the IR processing stage of an intrinsic IR call
 /// instruction, including how all non-constant values used/defined by a Luthier
