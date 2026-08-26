@@ -62,12 +62,13 @@ public:
     /// two fixed SVA frame lanes that carry the target application's
     /// SP / FP: entry [i] is the FI whose framework-counter lane matches
     /// SVA lane i. Populated on first \c readReg / \c writeReg of SGPR32
-    /// or SGPR33 in an injected payload; both slots are allocated together
-    /// so \c allocateSGPRSpillToVGPRLane's monotonic counter aligns them
-    /// with \c StackPointerRegSpillLane (0) and \c FramePointerRegSSpillLane
-    /// (1) regardless of which of the two frame regs the payload actually
-    /// touched. Empty when no frame-reg access exists in this MF.
-    llvm::SmallVector<int, 2> FrameLaneFI;
+    /// or SGPR33 in an injected payload, and by the wide state regs (PSB
+    /// sub-lanes and FLAT_SCR sub-lanes) on non-architected-FS targets.
+    /// FIs are allocated lazily in SVA-lane order — \c
+    /// allocateSGPRSpillToVGPRLane 's monotonic counter aligns each FI's
+    /// VGPR lane with its SVA lane index. Indexed by SVA lane. Empty when
+    /// no frame-reg access exists in this MF.
+    llvm::SmallVector<int, 16> FrameLaneFI;
   };
 
 private:

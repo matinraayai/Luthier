@@ -8,10 +8,13 @@
 # The pass emits:
 #   * readReg  → SI_SPILL_S32_RESTORE from a TargetStackID::SGPRSpill FI
 #   * writeReg → SI_SPILL_S32_SAVE into the SAME SGPRSpill FI
-# with the lane pairing matching SVAFrameLanes::getPayloadAppFrameSpillSlots
-# (which InjectedPayloadPEIPass consumes):
-#   * SP (SGPR32) ↔ StackPointerRegSpillLane (framework lane 0)
-#   * FP (SGPR33) ↔ FramePointerRegSpillLane (framework lane 1)
+# with the lane pairing matching InjectedPayloadPEIPass's convention (which
+# reads the payload's SP/FP from SIMFI->get{StackPtr,Frame}OffsetReg() and
+# spills each to the corresponding StateValueArraySpecs lane):
+#   * SP (SIMFI->getStackPtrOffsetReg(), typically SGPR32)
+#     ↔ Specs.getStackPointerRegSpillLane() (framework lane 0)
+#   * FP (SIMFI->getFrameOffsetReg(), typically SGPR33)
+#     ↔ Specs.getFramePointerRegSpillLane() (framework lane 1)
 # SILowerSGPRSpills later lowers these to
 # SI_RESTORE_S32_FROM_VGPR / SI_SPILL_S32_TO_VGPR against the SVA VGPR
 # that SVAPhysVGPRPinPass pins the LaneVGPR to.

@@ -30,6 +30,7 @@
 #include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
 #include <AMDGPU.h>
+#include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
 #include <SIMachineFunctionInfo.h>
 #include <SIRegisterInfo.h>
@@ -91,8 +92,9 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     const IntrinsicsProcessorsAnalysis::Result &IntrinsicsProcessors,
     const StateValueArraySpecs &SVASpecs, PerFunctionSVAInfo &MFSVAInfo) {
   llvm::LLVMContext &Ctx = MF.getFunction().getContext();
-  const llvm::TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
-  const llvm::TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
+  const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
+  const llvm::TargetInstrInfo *TII = ST.getInstrInfo();
+  const llvm::TargetRegisterInfo *TRI = ST.getRegisterInfo();
   llvm::MachineRegisterInfo &MRI = MF.getRegInfo();
   llvm::MachineFrameInfo &MFI = MF.getFrameInfo();
   auto *SIMFI = MF.getInfo<llvm::SIMachineFunctionInfo>();
@@ -166,46 +168,57 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     return MFSVAInfo.SVAVGPRPlaceholder;
   };
 
-  /// Lazily allocate the two SGPRSpill FIs used to route readReg / writeReg
-  /// of SGPR32 / SGPR33 through the SVA. Both slots are allocated together
-  /// on first frame-reg access so that MFInfo->allocateSGPRSpillToVGPRLane's
-  /// monotonic NumVirtualVGPRSpillLanes counter deterministically lines them
-  /// up with SVA lanes 0 (StackPointerRegSpillLane) and 1
-  /// (FramePointerRegSSpillLane)
+  /// Lazily allocate SGPRSpill FIs used to route readReg / writeReg of
+  /// frame-related physregs through SVA lanes. The physregs handled are
+  /// the payload's SP (SVA lane 0) and FP (lane 1), plus — on
+  /// non-architected-FS targets — the PSB sub-lanes (4 lanes starting at
+  /// \c getRsrcBufferSpillLane() ) and FLAT_SCR sub-lanes (2 lanes
+  /// starting at \c getScratchSpillLane() ).
+  ///
+  /// FIs are allocated in SVA-lane order so that \c SIMachineFunctionInfo::
+  /// allocateSGPRSpillToVGPRLane 's monotonic \c NumVirtualVGPRSpillLanes
+  /// counter aligns each FI's VGPR lane with its SVA lane index. When a
+  /// caller requests lane \p Lane , we fill the range
+  /// \c FrameLaneFI[current_size .. Lane] with fresh FIs so that
+  /// \c FrameLaneFI[Lane] is the FI whose \c SI_SPILL_S32_* lowers to
+  /// \c SVAVGPR[Lane] .
   auto getOrAllocFrameLaneFI = [&](uint8_t Lane) -> int {
-    if (MFSVAInfo.FrameLaneFI.empty()) {
-      MFSVAInfo.FrameLaneFI.assign(2, /*sentinel=*/-1);
-      (void)getOrCreateSVAVGPRPlaceholder();
-      for (uint8_t L = 0; L < 2; ++L) {
-        int FI = MFI.CreateStackObject(/*Size=*/4, llvm::Align(4),
-                                       /*isSpillSlot=*/true);
-        MFI.setStackID(FI, llvm::TargetStackID::SGPRSpill);
-        if (!SIMFI->allocateSGPRSpillToVGPRLane(
-                MF, FI, /*SpillToPhysVGPRLane=*/false)) {
-          Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-              "Failed to allocate SGPR-to-VGPR-lane spill for frame-reg "
-              "SVA lane {0} in MF {1}",
-              L, MF.getName()))));
-          MFSVAInfo.FrameLaneFI.clear();
-          return -1;
-        }
-        MFSVAInfo.FrameLaneFI[L] = FI;
+    (void)getOrCreateSVAVGPRPlaceholder();
+    while (MFSVAInfo.FrameLaneFI.size() <= Lane) {
+      const uint8_t L = MFSVAInfo.FrameLaneFI.size();
+      int FI = MFI.CreateStackObject(/*Size=*/4, llvm::Align(4),
+                                     /*isSpillSlot=*/true);
+      MFI.setStackID(FI, llvm::TargetStackID::SGPRSpill);
+      if (!SIMFI->allocateSGPRSpillToVGPRLane(
+              MF, FI, /*SpillToPhysVGPRLane=*/false)) {
+        Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+            "Failed to allocate SGPR-to-VGPR-lane spill for frame-reg "
+            "SVA lane {0} in MF {1}",
+            L, MF.getName()))));
+        MFSVAInfo.FrameLaneFI.clear();
+        return -1;
       }
+      MFSVAInfo.FrameLaneFI.push_back(FI);
     }
     return MFSVAInfo.FrameLaneFI[Lane];
   };
 
   /// Returns the SVA lane for a frame reg read/written by an injected
-  /// payload, matching \c InjectedPayloadPEIPass /
-  /// \c SVAFrameLanes::getPayloadAppFrameSpillSlots convention: SGPR32
-  /// (the app's SP) is spilled to \c StackPointerRegSpillLane. \c PEI at
-  /// head does not spill SGPR33 (it uses \c FLAT_SCR_LO for the FP-analogue
-  /// on non-architected-FS targets), but readReg / writeReg on the frame
-  /// offset reg is still useful for symmetry; route it to
-  /// \c FramePointerRegSpillLane so the two frame lanes stay contiguous
-  /// and the SVA layout on that lane index is meaningful. Returns
-  /// \c std::nullopt if \p PhysReg is neither, or if this isn't an
-  /// injected payload.
+  /// payload, matching \c InjectedPayloadPEIPass 's convention:
+  ///
+  ///   SP  (from \c SIMFI->getStackPtrOffsetReg() )     → lane 0
+  ///   FP  (from \c SIMFI->getFrameOffsetReg() )        → lane 1
+  ///   PSB sub-lanes (SGPR0..3 of the preloaded
+  ///        \c PRIVATE_SEGMENT_BUFFER — 4 lanes)        → \c
+  ///        getRsrcBufferSpillLane() ..+3
+  ///   FLAT_SCR_LO / FLAT_SCR_HI                        → \c
+  ///   getScratchSpillLane() and +1
+  ///
+  /// PSB and FLAT_SCR routing only fires when the SVA layout has the
+  /// corresponding lane assignment (i.e., non-architected-FS targets;
+  /// PSB additionally requires flat-scratch not to be explicitly
+  /// enabled) . Returns \c std::nullopt if \p PhysReg is not one of the frame
+  /// regs, or if this isn't an injected payload.
   auto getFrameSVALaneForPhysReg =
       [&](llvm::MCRegister PhysReg) -> std::optional<uint8_t> {
     if (!IsInjectedPayload)
@@ -214,6 +227,30 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
       return SVASpecs.getStackPointerRegSpillLane();
     if (PhysReg == SIMFI->getFrameOffsetReg())
       return SVASpecs.getFramePointerRegSpillLane();
+    // PSB / FLAT_SCR routing is only meaningful when the target does NOT
+    // have architected flat scratch
+    if (!ST.hasArchitectedFlatScratch()) {
+      // PSB sub-regs (4 x 32-bit sub-lanes of PRIVATE_SEGMENT_BUFFER).
+      if (auto PSBLane = SVASpecs.getRsrcBufferSpillLane()) {
+        if (llvm::MCRegister PSBReg = SIMFI->getPreloadedReg(
+                llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER)) {
+          const auto *SITRI = static_cast<const llvm::SIRegisterInfo *>(TRI);
+          for (unsigned I = 0; I < 4; ++I) {
+            llvm::MCRegister Sub = SITRI->getSubReg(
+                PSBReg, llvm::SIRegisterInfo::getSubRegFromChannel(I));
+            if (Sub == PhysReg)
+              return static_cast<uint8_t>(*PSBLane + I);
+          }
+        }
+      }
+      // FLAT_SCR sub-regs (2 x 32-bit).
+      if (auto FSLane = SVASpecs.getScratchSpillLane()) {
+        if (PhysReg == llvm::AMDGPU::FLAT_SCR_LO)
+          return *FSLane;
+        if (PhysReg == llvm::AMDGPU::FLAT_SCR_HI)
+          return static_cast<uint8_t>(*FSLane + 1);
+      }
+    }
     return std::nullopt;
   };
 
