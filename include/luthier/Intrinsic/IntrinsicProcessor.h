@@ -60,25 +60,6 @@ class MDNode;
 
 namespace luthier {
 
-/// Module-level named-MDNode holding the lookup table from a Luthier
-/// intrinsic placeholder's opaque key (used as the InlineAsm template
-/// string so it survives SelectionDAG ISel as the first
-/// \c MachineOperand of the resulting \c INLINEASM \c MachineInstr) to its
-/// intrinsic name and forwarded aux metadata. Each operand is a 3-element
-/// \c MDNode of the form
-/// \code !{!"<key>", !"<intrinsic_name>", <aux MDNode or empty MDNode>}
-/// \endcode
-static constexpr llvm::StringLiteral LuthierIntrinsicNamedMDName{
-    "luthier.intrinsic.placeholders"};
-
-/// Opaque-key prefix used as the InlineAsm template string of every Luthier
-/// intrinsic placeholder; the suffix is a monotonic per-call-signature
-/// counter assigned by \c ProcessIntrinsicsAtIRLevelPass. Two calls whose
-/// (intrinsic name, return type, argument types, constant argument values,
-/// aux MDNode contents) match share a key.
-static constexpr llvm::StringLiteral LuthierIntrinsicPlaceholderKeyPrefix{
-    "luthier.placeholder."};
-
 /// \brief A set of scalar value arguments Luthier's intrinsic lowering
 /// mechanism can ensure access to
 /// \details These values are only available to the kernel as "arguments"
@@ -87,6 +68,7 @@ static constexpr llvm::StringLiteral LuthierIntrinsicPlaceholderKeyPrefix{
 /// is why to ensure access to these values in instrumentation routines,
 /// Luthier must emit a prologue on top of the kernel's original code to
 /// save these values in the state value array VGPR to preserve them
+/// TODO: Optimize usage of these lanes for GFX10; We are over limit.
 enum ScalarValueArgument : uint8_t {
   /// Wavefront's private segment buffer; Only applies to targets with
   /// absolute flat scratch or offset flat scratch
