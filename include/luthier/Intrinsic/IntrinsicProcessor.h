@@ -129,9 +129,10 @@ template <> struct ScalarValueArgumentInfo<FLAT_SCRATCH> {
   static constexpr uint8_t NumLanes = 2;
 };
 
-template <> struct ScalarValueArgumentInfo<PRIVATE_SEGMENT_WAVE_BYTE_OFFSET> {
-  static constexpr uint8_t NumLanes = 1;
-};
+// template <> struct ScalarValueArgumentInfo<PRIVATE_SEGMENT_WAVE_BYTE_OFFSET>
+// {
+//   static constexpr uint8_t NumLanes = 1;
+// };
 
 template <> struct ScalarValueArgumentInfo<QUEUE_PTR> {
   static constexpr uint8_t NumLanes = 2;

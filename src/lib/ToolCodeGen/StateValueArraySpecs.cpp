@@ -224,20 +224,19 @@ StateValueArraySpecsAnalysis::run(Prototype &IP,
   }
 #endif
 
-  uint8_t NextLane = StateValueArraySpecs::StackPointerStoreLane;
+  uint8_t NextLane = StateValueArraySpecs::StackPointerStoreLane + 1;
   if (!HasFS && !IsArchitectedFS) {
-    Out.ScalarArguments.insert(
-        {WAVEFRONT_PRIVATE_SEGMENT_BUFFER,
-         ScalarValueArgumentInfo<WAVEFRONT_PRIVATE_SEGMENT_BUFFER>::NumLanes});
-    Out.BufferRsrcSpillLane =
+    Out.ScalarArguments.insert({WAVEFRONT_PRIVATE_SEGMENT_BUFFER, NextLane});
+    NextLane +=
         ScalarValueArgumentInfo<WAVEFRONT_PRIVATE_SEGMENT_BUFFER>::NumLanes;
+    Out.BufferRsrcSpillLane = NextLane;
     NextLane +=
         ScalarValueArgumentInfo<WAVEFRONT_PRIVATE_SEGMENT_BUFFER>::NumLanes;
   }
   if (!IsArchitectedFS) {
-    Out.ScalarArguments.insert(
-        {FLAT_SCRATCH, ScalarValueArgumentInfo<FLAT_SCRATCH>::NumLanes});
-    Out.ScratchSpillLane = ScalarValueArgumentInfo<FLAT_SCRATCH>::NumLanes;
+    Out.ScalarArguments.insert({FLAT_SCRATCH, NextLane});
+    NextLane += ScalarValueArgumentInfo<FLAT_SCRATCH>::NumLanes;
+    Out.ScratchSpillLane = NextLane;
     NextLane += ScalarValueArgumentInfo<FLAT_SCRATCH>::NumLanes;
   }
 
