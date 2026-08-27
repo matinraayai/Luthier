@@ -21,6 +21,7 @@
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
+#include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <AMDGPU.h>
@@ -101,6 +102,7 @@ static void buildAllocatableSet(const llvm::MachineFunction &MF,
                                 llvm::LivePhysRegs &Out) {
   const llvm::Function &F = MF.getFunction();
   const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
+  const auto *TRI = ST.getRegisterInfo();
   const llvm::MachineRegisterInfo &MRI = MF.getRegInfo();
 
   unsigned NumSGPRs = F.getFnAttributeAsParsedInteger("amdgpu-num-sgpr");
@@ -114,6 +116,10 @@ static void buildAllocatableSet(const llvm::MachineFunction &MF,
     for (unsigned I = 0; I < NumVGPRs; ++I)
       Out.addReg(llvm::AMDGPU::AGPR0 + I);
   }
+
+  Out.addReg(llvm::AMDGPU::SCC);
+  Out.addReg(TRI->getVCC());
+  
   const llvm::BitVector &Reserved = MRI.getReservedRegs();
   for (unsigned RegId = 0, E = Reserved.size(); RegId < E; ++RegId) {
     if (!Reserved.test(RegId))
@@ -128,8 +134,7 @@ bool IPPredicatedLiveness::invalidate(
     Prototype &, const llvm::PreservedAnalyses &PA,
     PrototypeAnalysisManager::Invalidator &) {
   auto PAC = PA.getChecker<IPPredicatedLivenessAnalysis>();
-  return !PAC.preserved() &&
-         !PAC.preservedSet<llvm::AllAnalysesOn<Prototype>>();
+  return !PAC.preservedWhenStateless();
 }
 
 llvm::AnalysisKey IPPredicatedLivenessAnalysis::Key;
@@ -167,11 +172,10 @@ IPPredicatedLivenessAnalysis::run(
       *CFG.begin()->getMBB().getParent()->getSubtarget().getRegisterInfo();
 
   // ---- Initialize per-PMBB state --------------------------------------
-  // \c LivePhysRegs deletes copy and has no implicit move constructor,
-  // so it can't sit directly in a \c DenseMap value — the public result
-  // map carries each set via \c unique_ptr.
-  for (PredicatedMachineBasicBlock &PMBB : CFG)
-    Out.LiveInsByPMBB[&PMBB] = std::make_unique<llvm::LivePhysRegs>(TRI);
+  for (PredicatedMachineBasicBlock &PMBB : CFG) {
+    Out.ActiveLiveInsByPMBB[&PMBB] = std::make_unique<llvm::LivePhysRegs>(TRI);
+    Out.InactiveLiveInsByPMBB[&PMBB] = std::make_unique<llvm::LivePhysRegs>(TRI);
+  }
 
   // Local-mode: seed every exit PMBB's *live-out* with the function's
   // allocatable GPR pool. An "exit PMBB" here is any PMBB that has no
@@ -224,32 +228,54 @@ IPPredicatedLivenessAnalysis::run(
   bool AnyChange = true;
   unsigned Iter = 0;
   auto computeLiveOut = [&](const PredicatedMachineBasicBlock *PMBB,
-                            llvm::LivePhysRegs &Live) {
-    Live.clear();
+                            llvm::LivePhysRegs &ActiveOut,
+                            llvm::LivePhysRegs &InactiveOut) {
+    ActiveOut.clear();
+    InactiveOut.clear();
     auto SeedIt = ExitSeed.find(PMBB);
-    if (SeedIt != ExitSeed.end())
-      copyLivePhysRegs(Live, *SeedIt->second);
+    if (SeedIt != ExitSeed.end()) {
+      copyLivePhysRegs(ActiveOut, *SeedIt->second);
+      copyLivePhysRegs(InactiveOut, *SeedIt->second);
+    }
     for (const PredicatedMachineBasicBlock &Succ : PMBB->successors()) {
-      auto SIt = Out.LiveInsByPMBB.find(&Succ);
-      if (SIt == Out.LiveInsByPMBB.end())
-        continue;
-      unionLivePhysRegs(Live, *SIt->second);
+      if (auto SIt = Out.ActiveLiveInsByPMBB.find(&Succ);
+          SIt != Out.ActiveLiveInsByPMBB.end()) {
+        unionLivePhysRegs(ActiveOut, *SIt->second);
+        unionLivePhysRegs(InactiveOut, *SIt->second);
+      }
+      if (auto SIt = Out.InactiveLiveInsByPMBB.find(&Succ);
+          SIt != Out.InactiveLiveInsByPMBB.end()) {
+        unionLivePhysRegs(ActiveOut, *SIt->second);
+        unionLivePhysRegs(InactiveOut, *SIt->second);
+      }
     }
   };
 
-  llvm::LivePhysRegs Live(TRI);
+  llvm::LivePhysRegs ActiveLive(TRI), InactiveLive(TRI);
   while (AnyChange) {
     AnyChange = false;
     ++Iter;
     LLVM_DEBUG(luthier::dbgs() << "  iter " << Iter << "\n");
     for (PredicatedMachineBasicBlock *PMBB : POOrder) {
-      computeLiveOut(PMBB, Live);
+      computeLiveOut(PMBB, ActiveLive, InactiveLive);
       const llvm::MachineBasicBlock &MBB = PMBB->getMBB();
-      for (auto MIt = MBB.rbegin(), MEnd = MBB.rend(); MIt != MEnd; ++MIt)
-        Live.stepBackward(*MIt);
-      auto &Cur = *Out.LiveInsByPMBB[PMBB];
-      if (!livePhysRegsEqual(Cur, Live)) {
-        copyLivePhysRegs(Cur, Live);
+      // Vector blocks: only Active updates (VALU/VMEM are EXEC-predicated
+      // and cannot touch off-lane values). Scalar blocks: both Active
+      // and Inactive update (SALU/SMEM execute regardless of EXEC).
+      const bool IsVector = luthier::isVectorMBB(MBB);
+      for (auto MIt = MBB.rbegin(), MEnd = MBB.rend(); MIt != MEnd; ++MIt) {
+        ActiveLive.stepBackward(*MIt);
+        if (!IsVector)
+          InactiveLive.stepBackward(*MIt);
+      }
+      auto &CurA = *Out.ActiveLiveInsByPMBB[PMBB];
+      auto &CurI = *Out.InactiveLiveInsByPMBB[PMBB];
+      if (!livePhysRegsEqual(CurA, ActiveLive)) {
+        copyLivePhysRegs(CurA, ActiveLive);
+        AnyChange = true;
+      }
+      if (!livePhysRegsEqual(CurI, InactiveLive)) {
+        copyLivePhysRegs(CurI, InactiveLive);
         AnyChange = true;
       }
     }
@@ -266,6 +292,18 @@ IPPredicatedLivenessPrinter::run(Prototype &IP,
   const IPPredicatedCFG &CFG =
       IPAM.getResult<IPPredCFGAnalysis>(IP).getVecCFG();
 
+  auto PrintSet = [&](const llvm::LivePhysRegs *Live,
+                      const llvm::TargetRegisterInfo &TRI) {
+    OS << '{';
+    if (Live) {
+      llvm::SmallVector<llvm::MCPhysReg, 32> Sorted(Live->begin(), Live->end());
+      llvm::sort(Sorted);
+      for (llvm::MCPhysReg R : Sorted)
+        OS << ' ' << llvm::printReg(R, &TRI);
+    }
+    OS << " }";
+  };
+
   OS << "IPPredicatedLiveness for prototype '" << IP.getName() << "':\n";
   OS << "  fully-discovered: "
      << (Liveness.isFullyDiscovered() ? "true" : "false") << "\n";
@@ -274,15 +312,13 @@ IPPredicatedLivenessPrinter::run(Prototype &IP,
     const llvm::MachineFunction &MF = *MBB.getParent();
     const llvm::TargetRegisterInfo &TRI =
         *MF.getSubtarget().getRegisterInfo();
-    OS << "  " << MF.getName() << ':' << llvm::printMBBReference(MBB)
-       << "  live-ins: {";
-    if (const llvm::LivePhysRegs *Live = Liveness.getPMBBLiveIns(PMBB)) {
-      llvm::SmallVector<llvm::MCPhysReg, 32> Sorted(Live->begin(), Live->end());
-      llvm::sort(Sorted);
-      for (llvm::MCPhysReg R : Sorted)
-        OS << ' ' << llvm::printReg(R, &TRI);
-    }
-    OS << " }\n";
+    OS << "  " << MF.getName() << ':' << llvm::printMBBReference(MBB) << '\n';
+    OS << "    active   live-ins: ";
+    PrintSet(Liveness.getPMBBActiveLiveIns(PMBB), TRI);
+    OS << '\n';
+    OS << "    inactive live-ins: ";
+    PrintSet(Liveness.getPMBBInactiveLiveIns(PMBB), TRI);
+    OS << '\n';
   }
   return llvm::PreservedAnalyses::all();
 }

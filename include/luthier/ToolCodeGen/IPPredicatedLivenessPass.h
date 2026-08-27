@@ -16,7 +16,9 @@
 /// \file
 /// \c Prototype-level analysis that runs liveness analysis across
 /// the target module's inter-procedural predicated control-flow graph,
-/// tracking a single live phys-reg set at every predicated basic block.
+/// tracking two live phys-reg sets at every predicated basic block: one
+/// for lanes currently active under the EXEC mask and one for lanes
+/// currently masked off.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_LIVENESS_PASS_H
 #define LUTHIER_TOOL_CODE_GEN_IP_PREDICATED_LIVENESS_PASS_H
@@ -40,22 +42,20 @@ class IPPredicatedLivenessAnalysis;
 /// \brief Result of \c IPPredicatedLivenessAnalysis.
 ///
 /// Walks the target module's \c IPPredicatedCFG backward to fixed point,
-/// tracking a single physical-register live set.
-/// If any PMBB has unresolved inter-procedural edges, the analysis falls
-/// back to per-function local mode: every return-block live-out is
-/// initialised to the function's allocatable GPR set (per the
-/// \c amdgpu-num-{sgpr,vgpr} attributes plus reserved registers from
-/// MRI) and dataflow is intra-procedural only.
+/// tracking two physical-register live sets per PMBB:
+///   - \em Active — regs live in the currently EXEC-on lanes.
+///   - \em Inactive — regs live in the currently EXEC-off lanes.
 class IPPredicatedLiveness {
 public:
-  /// Per-PMBB converged live-in set.
+  /// Per-PMBB converged live-in set, keyed for one lane partition.
   using PMBBLiveInsMap =
       llvm::DenseMap<const PredicatedMachineBasicBlock *,
                      std::unique_ptr<llvm::LivePhysRegs>>;
 
 private:
   friend class IPPredicatedLivenessAnalysis;
-  PMBBLiveInsMap LiveInsByPMBB;
+  PMBBLiveInsMap ActiveLiveInsByPMBB;
+  PMBBLiveInsMap InactiveLiveInsByPMBB;
   /// True iff the dataflow ran in fully-discovered (inter-procedural) mode.
   /// False means it fell back to per-function local mode.
   bool ResultFullyDiscovered{false};
@@ -67,16 +67,30 @@ public:
   /// When false, results are produced by a per-function local fallback.
   [[nodiscard]] bool isFullyDiscovered() const { return ResultFullyDiscovered; }
 
-  /// \return pointer to the converged per-PMBB live-in set, or \c nullptr
-  /// if no entry was recorded for \p PMBB.
+  /// \return pointer to the converged per-PMBB live-in set for the
+  /// EXEC-on (Active) lane partition, or \c nullptr if no entry was
+  /// recorded for \p PMBB.
   [[nodiscard]] const llvm::LivePhysRegs *
-  getPMBBLiveIns(const PredicatedMachineBasicBlock &PMBB) const {
-    auto It = LiveInsByPMBB.find(&PMBB);
-    return It == LiveInsByPMBB.end() ? nullptr : It->second.get();
+  getPMBBActiveLiveIns(const PredicatedMachineBasicBlock &PMBB) const {
+    auto It = ActiveLiveInsByPMBB.find(&PMBB);
+    return It == ActiveLiveInsByPMBB.end() ? nullptr : It->second.get();
   }
 
-  [[nodiscard]] const PMBBLiveInsMap &getPMBBLiveInsMap() const {
-    return LiveInsByPMBB;
+  /// \return pointer to the converged per-PMBB live-in set for the
+  /// EXEC-off (Inactive) lane partition, or \c nullptr if no entry was
+  /// recorded for \p PMBB.
+  [[nodiscard]] const llvm::LivePhysRegs *
+  getPMBBInactiveLiveIns(const PredicatedMachineBasicBlock &PMBB) const {
+    auto It = InactiveLiveInsByPMBB.find(&PMBB);
+    return It == InactiveLiveInsByPMBB.end() ? nullptr : It->second.get();
+  }
+
+  [[nodiscard]] const PMBBLiveInsMap &getPMBBActiveLiveInsMap() const {
+    return ActiveLiveInsByPMBB;
+  }
+
+  [[nodiscard]] const PMBBLiveInsMap &getPMBBInactiveLiveInsMap() const {
+    return InactiveLiveInsByPMBB;
   }
 
   bool invalidate(Prototype &, const llvm::PreservedAnalyses &PA,
