@@ -2785,12 +2785,20 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
         continue;
       const PredicatedMachineBasicBlock &PMBB =
           const_cast<IPPredicatedCFG &>(IPCFG).getPredMBB(MBB.front());
-      const llvm::LivePhysRegs *LI = IPLiveness.getPMBBLiveIns(PMBB);
-      if (!LI)
+      // Seed liveins with the union of Active + Inactive PMBB live-ins
+      const llvm::LivePhysRegs *ActiveLI =
+          IPLiveness.getPMBBActiveLiveIns(PMBB);
+      const llvm::LivePhysRegs *InactiveLI =
+          IPLiveness.getPMBBInactiveLiveIns(PMBB);
+      if (!ActiveLI && !InactiveLI)
         continue;
       MBB.clearLiveIns();
-      for (llvm::MCPhysReg R : *LI)
-        MBB.addLiveIn(R);
+      if (ActiveLI)
+        for (llvm::MCPhysReg R : *ActiveLI)
+          MBB.addLiveIn(R);
+      if (InactiveLI)
+        for (llvm::MCPhysReg R : *InactiveLI)
+          MBB.addLiveIn(R);
       MBB.sortUniqueLiveIns();
     }
   }

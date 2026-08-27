@@ -21,8 +21,12 @@
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
+#include "luthier/ToolCodeGen/IPPredicatedCFG.h"
+#include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
+#include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
+#include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
@@ -31,6 +35,7 @@
 #include <AMDGPU.h>
 #include <GCNSubtarget.h>
 #include <SIMachineFunctionInfo.h>
+#include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
@@ -140,10 +145,6 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   // Frame regs owned by this payload
   llvm::MCRegister PayloadSPReg = SIMFI->getStackPtrOffsetReg();
   llvm::MCRegister PayloadFPReg = SIMFI->getFrameOffsetReg();
-  const bool PayloadSPUsed =
-      PayloadSPReg && MRI.isPhysRegUsed(PayloadSPReg);
-  const bool PayloadFPUsed =
-      PayloadFPReg && MRI.isPhysRegUsed(PayloadFPReg);
 
   // Wide state regs (PSB and FLAT_SCR) — same save/restore pattern as
   // SP/FP but multi-lane. Their spill lanes on the SVA are gated:
@@ -151,9 +152,6 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   //     flat scratch has NOT been explicitly enabled (i.e., buffer-scratch
   //     targets).
   //   - FS spill lane exists iff target is non-architected-FS.
-  // PSB's function-specific physreg is queried from SIMFI's preloaded
-  // arg info rather than hardcoded to SGPR0_SGPR1_SGPR2_SGPR3, so a
-  // future ABI relocation stays correct.
   // Both wide regs are subtarget-gated:
   //   * PSB has no preloaded physreg on architected-FS targets (and
   //     \c getPreloadedReg returns \c 0 there), and even on
@@ -164,17 +162,87 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   //   * FLAT_SCR is HW-provided and read-only on architected-FS targets;
   //     the kernel prolog cannot write it to an SVA lane, so we must not
   //     act on it there.
-  llvm::MCRegister PayloadPSBReg = SIMFI->getPreloadedReg(
-      llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER);
+  const bool PSBAvailable =
+      !ST.hasArchitectedFlatScratch() && !ST.enableFlatScratch();
+  const bool FSAvailable = !ST.hasArchitectedFlatScratch();
+  // The payload's own SIMFI does not carry the PSB the app was preloaded
+  // with; PSB is a KERNEL-only preloaded reg and its physical assignment
+  // lives on the target MF's SIMFI. Pull it from there below (see the
+  // TargetMF lookup a few lines down). The convention on non-arch-FS
+  // targets that don't explicitly enable flat scratch is
+  // $sgpr0_sgpr1_sgpr2_sgpr3.
+  llvm::MCRegister PayloadPSBReg{};
   constexpr llvm::MCRegister PayloadFSReg = llvm::AMDGPU::FLAT_SCR;
-  const bool PayloadPSBUsed =
-      !ST.hasArchitectedFlatScratch() && !ST.enableFlatScratch() &&
-      PayloadPSBReg && MRI.isPhysRegUsed(PayloadPSBReg);
-  const bool PayloadFSUsed = !ST.hasArchitectedFlatScratch() &&
-                             MRI.isPhysRegUsed(PayloadFSReg);
   const std::optional<uint8_t> PSBSpillLaneOpt =
       Specs.getRsrcBufferSpillLane();
   const std::optional<uint8_t> FSSpillLaneOpt = Specs.getScratchSpillLane();
+
+  // ---- Consult IPPredicatedLivenessAnalysis for target-MI liveness ------
+  //
+  // Delegated from InjectedPayloadPreserveLiveRegsPass: PSB / FLAT_SCR /
+  // payload SP / payload FP are all skipped by preserve so PEI can decide
+  // save/restore based on whether the app has them live at the target MI.
+  const IPPredicatedLiveness *IPLiveness =
+      PAMProxy.getCachedResult<IPPredicatedLivenessAnalysis>(*P);
+  const IPPredCFGAnalysis::Result *IPCFGResult =
+      PAMProxy.getCachedResult<IPPredCFGAnalysis>(*P);
+  if (!IPLiveness || !IPCFGResult) {
+    Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
+        "IPPredicatedLivenessAnalysis / IPPredCFGAnalysis not cached; "
+        "InjectedPayloadPEIPass cannot compute target-MI liveness.")));
+    return llvm::PreservedAnalyses::all();
+  }
+  const IPPredicatedCFG &IPCFG = IPCFGResult->getVecCFG();
+
+  const llvm::MachineBasicBlock &TargetMBB = *TargetMI->getParent();
+  const llvm::MachineFunction &TargetMF = *TargetMBB.getParent();
+  const llvm::TargetRegisterInfo &TargetTRI =
+      *TargetMF.getSubtarget().getRegisterInfo();
+  const auto *TargetSIMFI = TargetMF.getInfo<llvm::SIMachineFunctionInfo>();
+  llvm::MCRegister TargetPSBReg = TargetSIMFI->getPreloadedReg(
+      llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER);
+  PayloadPSBReg = TargetPSBReg;
+  llvm::MCRegister TargetSPReg = TargetSIMFI->getStackPtrOffsetReg();
+  llvm::MCRegister TargetFPReg = TargetSIMFI->getFrameOffsetReg();
+
+  llvm::LivePhysRegs LiveAtTargetMI(TargetTRI);
+  if (IPCFG.contains(TargetMBB)) {
+    const PredicatedMachineBasicBlock &TargetPMBB = IPCFG.at(TargetMBB);
+    // Boundary seed: both partitions unioned across all successors.
+    for (const PredicatedMachineBasicBlock &Succ : TargetPMBB.successors()) {
+      if (const llvm::LivePhysRegs *SL =
+              IPLiveness->getPMBBActiveLiveIns(Succ))
+        for (llvm::MCPhysReg R : *SL)
+          LiveAtTargetMI.addReg(R);
+      if (const llvm::LivePhysRegs *SL =
+              IPLiveness->getPMBBInactiveLiveIns(Succ))
+        for (llvm::MCPhysReg R : *SL)
+          LiveAtTargetMI.addReg(R);
+    }
+    // Backward walk of the Active partition to the target MI. Every MI
+    // steps Active — even inside a vector MBB, since we're modelling
+    // just the Active partition here; the Inactive partition is preserved
+    // implicitly by the payload's inability to touch off-lane values.
+    for (auto MIt = TargetMBB.rbegin(), MEnd = TargetMBB.rend();
+         MIt != MEnd; ++MIt) {
+      if (&*MIt == TargetMI)
+        break;
+      LiveAtTargetMI.stepBackward(*MIt);
+    }
+  }
+
+  auto anyLiveAtTargetMI = [&](llvm::MCRegister Reg) {
+    return Reg && LiveAtTargetMI.contains(Reg);
+  };
+
+  // Save/restore each frame-owned reg when the app has it live at the
+  // target MI. Preserve does NOT cover these — see the FrameOwnedRegs
+  // filter in InjectedPayloadPreserveLiveRegsPass.
+  const bool PayloadPSBUsed =
+      PSBAvailable && anyLiveAtTargetMI(PayloadPSBReg);
+  const bool PayloadFSUsed = FSAvailable && anyLiveAtTargetMI(PayloadFSReg);
+  const bool PayloadSPUsed = anyLiveAtTargetMI(TargetSPReg);
+  const bool PayloadFPUsed = anyLiveAtTargetMI(TargetFPReg);
 
   // ---- Decide whether this payload actually uses the SVA -----------------
   //
@@ -286,11 +354,11 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
         .addImm(Lane)
         .addReg(SVAVGPR);
   };
-  if (PayloadSPUsed || RequiresAccessToStack) {
+  if (PayloadSPUsed) {
     emitSpillPhysRegToLane(EntryMBB, EntryInsertPt, PayloadSPReg,
                            Specs.getStackPointerRegSpillLane());
   }
-  if (PayloadFPUsed || NeedsFPSetup) {
+  if (PayloadFPUsed) {
     emitSpillPhysRegToLane(EntryMBB, EntryInsertPt, PayloadFPReg,
                            Specs.getFramePointerRegSpillLane());
   }
@@ -332,9 +400,22 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
               .addReg(SVAVGPR);
         }
       };
-  // PSB
-  if (PSBSpillLaneOpt && PayloadPSBReg &&
-      (PayloadPSBUsed || RequiresAccessToStack)) {
+  // PSB. Split into two independent concerns:
+  //   - Save app PSB into the spill lane iff the app has PSB live at the
+  //     target MI (per IPPredicatedLivenessAnalysis) — needed so RA's
+  //     use of $sgpr0..$sgpr3 as payload temps doesn't clobber the app's
+  //     preloaded PSB value. Symmetrical restore emitted below.
+  //   - Load the instrumentation's PSB from the SA source lane iff the
+  //     payload actually needs scratch access — the loaded value is what
+  //     the payload's memory ops depend on.
+  const bool NeedPSBSave =
+      PSBSpillLaneOpt && PayloadPSBReg && PayloadPSBUsed;
+  const bool NeedInstPSBLoad =
+      PSBSpillLaneOpt && PayloadPSBReg && RequiresAccessToStack;
+  if (NeedPSBSave)
+    emitSaveWideRegToSpillLane(EntryMBB, EntryInsertPt, PayloadPSBReg,
+                               *PSBSpillLaneOpt, /*NumSubLanes=*/4);
+  if (NeedInstPSBLoad) {
     auto PSBSAIt =
         Specs.findArgumentLane(WAVEFRONT_PRIVATE_SEGMENT_BUFFER);
     if (PSBSAIt == Specs.argument_lane_end()) {
@@ -344,13 +425,16 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
           F.getName()))));
       return llvm::PreservedAnalyses::all();
     }
-    emitSaveWideRegToSpillLane(EntryMBB, EntryInsertPt, PayloadPSBReg,
-                               *PSBSpillLaneOpt, /*NumSubLanes=*/4);
     emitLoadInstrValueFromSALane(EntryMBB, EntryInsertPt, PayloadPSBReg,
                                  PSBSAIt->second, /*NumSubLanes=*/4);
   }
-  // FLAT_SCR
-  if (FSSpillLaneOpt && (PayloadFSUsed || RequiresAccessToStack)) {
+  // FLAT_SCR — same split as PSB.
+  const bool NeedFSSave = FSSpillLaneOpt && PayloadFSUsed;
+  const bool NeedInstFSLoad = FSSpillLaneOpt && RequiresAccessToStack;
+  if (NeedFSSave)
+    emitSaveWideRegToSpillLane(EntryMBB, EntryInsertPt, PayloadFSReg,
+                               *FSSpillLaneOpt, /*NumSubLanes=*/2);
+  if (NeedInstFSLoad) {
     auto FSSAIt = Specs.findArgumentLane(FLAT_SCRATCH);
     if (FSSAIt == Specs.argument_lane_end()) {
       Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
@@ -359,8 +443,6 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
           F.getName()))));
       return llvm::PreservedAnalyses::all();
     }
-    emitSaveWideRegToSpillLane(EntryMBB, EntryInsertPt, PayloadFSReg,
-                               *FSSpillLaneOpt, /*NumSubLanes=*/2);
     emitLoadInstrValueFromSALane(EntryMBB, EntryInsertPt, PayloadFSReg,
                                  FSSAIt->second, /*NumSubLanes=*/2);
   }
@@ -406,12 +488,13 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
       }
     };
     // Mirror the prologue's spill conditions: restore whichever of app SP /
-    // app FP we saved on entry.
-    if (PayloadSPUsed || RequiresAccessToStack) {
+    // app FP we saved on entry. Only saved when the app has them live at
+    // the target MI.
+    if (PayloadSPUsed) {
       emitRestorePhysRegFromLane(PayloadSPReg,
                                  Specs.getStackPointerRegSpillLane());
     }
-    if (PayloadFPUsed || NeedsFPSetup) {
+    if (PayloadFPUsed) {
       emitRestorePhysRegFromLane(PayloadFPReg,
                                  Specs.getFramePointerRegSpillLane());
     }
@@ -437,14 +520,13 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
         }
       }
     };
-    if (PSBSpillLaneOpt && PayloadPSBReg &&
-        (PayloadPSBUsed || RequiresAccessToStack)) {
+    // Mirror the prologue's PSB / FS save conditions — restore only if
+    // saved on entry (i.e., the app has the reg live at the target MI).
+    if (NeedPSBSave)
       emitRestoreWideReg(PayloadPSBReg, *PSBSpillLaneOpt,
                          /*NumSubLanes=*/4);
-    }
-    if (FSSpillLaneOpt && (PayloadFSUsed || RequiresAccessToStack)) {
+    if (NeedFSSave)
       emitRestoreWideReg(PayloadFSReg, *FSSpillLaneOpt, /*NumSubLanes=*/2);
-    }
     if (StateValueStorage.requiresLoadAndStoreBeforeUse()) {
       // Emit at FirstTerm of THIS return block, not at the entry point
       if (FirstTerm != MBB.end()) {

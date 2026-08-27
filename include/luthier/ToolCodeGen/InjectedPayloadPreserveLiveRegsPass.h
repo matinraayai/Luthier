@@ -32,15 +32,17 @@ namespace luthier {
 /// instrumentation point but neither read nor written by the payload.
 ///
 /// For each payload \c F with insertion point \c AppMI:
-///   - \c Preserve = Active(F-pre) \ (F.Reads U F.Writes)
+///   - \c Preserve = (Active(F-pre) U Inactive(F-pre)) \ (F.Reads U F.Writes)
 ///   - For each \c R in \c Preserve:
 ///     - In F's entry MBB: \c %vreg_R = COPY \c $R, mark \c $R as live-in.
 ///     - In every return MBB of F: \c $R = COPY \c %vreg_R before the
 ///       terminator; add \c implicit-use \c $R on the terminator so RA
 ///       treats it as live-out.
 ///
-/// Depends on \c IPPredicatedLivenessAnalysis (for Active) and
-/// \c InjectedPayloadSideEffectsAnalysis (for Reads/Writes).
+/// Depends on \c IPPredicatedLivenessAnalysis (for both the Active and
+/// Inactive lane partitions — the payload must preserve any reg live on
+/// either partition) and \c InjectedPayloadSideEffectsAnalysis (for
+/// Reads/Writes).
 class InjectedPayloadPreserveLiveRegsPass
     : public llvm::PassInfoMixin<InjectedPayloadPreserveLiveRegsPass> {
 public:

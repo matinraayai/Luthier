@@ -631,6 +631,10 @@ Error AMDGPUCodeGenPassBuilder::buildPipeline(PrototypePassManager &PPM) const {
   // the cache. Materialize what they need here rather than earlier: every
   // Prototype pass above reports PreservedAnalyses::none(), which drops any
   // Prototype-level result computed before it.
+  PPM.addPass(llvm::RequireAnalysisPass<IPPredCFGAnalysis, Prototype,
+                                        PrototypeAnalysisManager>());
+  PPM.addPass(llvm::RequireAnalysisPass<IPPredicatedLivenessAnalysis,
+                                        Prototype, PrototypeAnalysisManager>());
   PPM.addPass(llvm::RequireAnalysisPass<SVStorageAndLoadLocationsAnalysis,
                                         Prototype, PrototypeAnalysisManager>());
   PPM.addPass(llvm::RequireAnalysisPass<StateValueArraySpecsAnalysis, Prototype,

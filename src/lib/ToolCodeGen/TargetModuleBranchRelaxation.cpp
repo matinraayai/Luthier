@@ -882,9 +882,10 @@ bool TargetModuleBranchRelaxationWorker::run(llvm::MachineFunction &mf) {
   MF->RenumberBlocks();
 
   // Seed per-MBB live-ins from the cached prototype-level predicated
-  // liveness (per-PMBB live-in sets from `IPPredicatedLivenessAnalysis`,
-  // indexed via `IPPredicatedCFG`) — one source of truth for liveness
-  // across the whole target module, no second full backward dataflow.
+  // liveness (union of the Active and Inactive per-PMBB live-in sets from
+  // `IPPredicatedLivenessAnalysis`, indexed via `IPPredicatedCFG`) — one
+  // source of truth for liveness across the whole target module, no
+  // second full backward dataflow.
   // `TracksLiveness` must be set before seeding: `MBB::livein_begin`
   // asserts on it, and the scavenger reads it downstream via
   // `enterBasicBlockEnd` → `LiveUnits.addLiveOuts`.
@@ -901,16 +902,26 @@ bool TargetModuleBranchRelaxationWorker::run(llvm::MachineFunction &mf) {
       continue;
     const PredicatedMachineBasicBlock &PMBB =
         const_cast<IPPredicatedCFG &>(IPCFG).getPredMBB(MBB.front());
-    const llvm::LivePhysRegs *LI = IPLiveness.getPMBBLiveIns(PMBB);
-    if (!LI)
+    const llvm::LivePhysRegs *ActiveLI =
+        IPLiveness.getPMBBActiveLiveIns(PMBB);
+    const llvm::LivePhysRegs *InactiveLI =
+        IPLiveness.getPMBBInactiveLiveIns(PMBB);
+    if (!ActiveLI && !InactiveLI)
       continue;
-    // Clear any stale live-ins from prior runs, then seed from the
-    // PMBB live-in set. LiveInVector uses per-lane masks — we can't
-    // recover finer information from LivePhysRegs, so grant every
-    // seeded reg the full lane mask (MBB::addLiveIn's default).
+    // Clear any stale live-ins from prior runs, then seed from the union
+    // of both Active and Inactive PMBB live-in sets — the scavenger must
+    // treat regs live on either lane partition as live so it never picks
+    // a reg that still holds an off-lane app value. LiveInVector uses
+    // per-lane masks — we can't recover finer information from
+    // LivePhysRegs, so grant every seeded reg the full lane mask
+    // (MBB::addLiveIn's default).
     MBB.clearLiveIns();
-    for (llvm::MCPhysReg R : *LI)
-      MBB.addLiveIn(R);
+    if (ActiveLI)
+      for (llvm::MCPhysReg R : *ActiveLI)
+        MBB.addLiveIn(R);
+    if (InactiveLI)
+      for (llvm::MCPhysReg R : *InactiveLI)
+        MBB.addLiveIn(R);
     MBB.sortUniqueLiveIns();
   }
 

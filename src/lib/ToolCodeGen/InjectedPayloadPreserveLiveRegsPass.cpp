@@ -22,9 +22,12 @@
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
+#include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
 #include <AMDGPU.h>
+#include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
+#include <SIMachineFunctionInfo.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFunction.h>
@@ -79,8 +82,8 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
   // Iterate PATCHPOINT markers in the target module directly (no
   // precomputed per-payload map). For each, compute the live-out at the
   // PATCHPOINT — that is the set the payload must preserve — by unioning
-  // successor PMBBs' live-ins and stepping backward through the parent
-  // MBB up to (but not including) the PATCHPOINT itself.
+  // successor PMBBs' Active live-ins and stepping backward through the
+  // parent MBB up to (but not including) the PATCHPOINT itself.
   for (llvm::Function &TF : TargetModule) {
     llvm::MachineFunctionAnalysis::Result *MFRes =
         TargetFAM.getCachedResult<llvm::MachineFunctionAnalysis>(TF);
@@ -89,19 +92,45 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
     llvm::MachineFunction &TMF = MFRes->getMF();
     const llvm::TargetRegisterInfo &TargetTRI =
         *TMF.getSubtarget().getRegisterInfo();
+    const auto &TargetST = TMF.getSubtarget<llvm::GCNSubtarget>();
+    const auto *TargetSIMFI = TMF.getInfo<llvm::SIMachineFunctionInfo>();
+
+    // Build the target-MF-specific set of registers the preserve pass
+    // deliberately skips.
+    llvm::LivePhysRegs FrameOwnedRegs(TargetTRI);
+    if (!TargetST.hasArchitectedFlatScratch() &&
+        !TargetST.enableFlatScratch()) {
+      if (llvm::MCRegister PSB = TargetSIMFI->getPreloadedReg(
+              llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER))
+        FrameOwnedRegs.addReg(PSB);
+    }
+    if (!TargetST.hasArchitectedFlatScratch())
+      FrameOwnedRegs.addReg(llvm::AMDGPU::FLAT_SCR);
+    if (llvm::MCRegister SP = TargetSIMFI->getStackPtrOffsetReg())
+      FrameOwnedRegs.addReg(SP);
+    if (llvm::MCRegister FP = TargetSIMFI->getFrameOffsetReg())
+      FrameOwnedRegs.addReg(FP);
 
     for (llvm::MachineBasicBlock &MBB : TMF) {
       if (!CFG.contains(MBB))
         continue;
       const PredicatedMachineBasicBlock &PMBB = CFG.at(MBB);
 
-      // MBB live-out = union of successor PMBBs' live-ins.
+      // MBB live-out (Active partition) = union of successor PMBBs' Active
+      // and Inactive live-ins. Boundary semantics: control flow may converge
+      // from paths whose EXEC-on/off partitions have swapped, so Active_out
+      // gets both partitions of each successor.
       llvm::LivePhysRegs Live(TargetTRI);
-      for (const PredicatedMachineBasicBlock &Succ : PMBB.successors())
+      for (const PredicatedMachineBasicBlock &Succ : PMBB.successors()) {
         if (const llvm::LivePhysRegs *SuccLive =
-                Liveness.getPMBBLiveIns(Succ))
+                Liveness.getPMBBActiveLiveIns(Succ))
           for (llvm::MCPhysReg R : *SuccLive)
             Live.addReg(R);
+        if (const llvm::LivePhysRegs *SuccLive =
+                Liveness.getPMBBInactiveLiveIns(Succ))
+          for (llvm::MCPhysReg R : *SuccLive)
+            Live.addReg(R);
+      }
 
       for (auto MIt = MBB.rbegin(), MEnd = MBB.rend(); MIt != MEnd; ++MIt) {
         llvm::MachineInstr &MI = *MIt;
@@ -154,6 +183,12 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
         llvm::SmallVector<llvm::MCPhysReg, 16> Preserve;
         for (llvm::MCPhysReg R : Live) {
           if (Acc.reads_contains(R) || Acc.writes_contains(R))
+            continue;
+          // Skip frame-owned regs (PSB, FLAT_SCR, payload SP/FP): their
+          // save/restore is delegated to InjectedPayloadPEIPass so it can
+          // decide based on whether the payload actually needs
+          // scratch/frame setup.
+          if (FrameOwnedRegs.contains(R))
             continue;
           bool HasSuperLive = false;
           for (llvm::MCPhysReg Super : TargetTRI.superregs(R)) {
@@ -243,8 +278,8 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
       }
       llvm::Register SaveVReg = MRI.createVirtualRegister(CrossCopyRC);
       // Entry: %savevreg = COPY $physreg ; mark $physreg live-in.
-      llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
-                    TII->get(llvm::AMDGPU::COPY))
+      (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
+                          TII->get(llvm::AMDGPU::COPY))
           .addReg(SaveVReg, llvm::RegState::Define)
           .addReg(PhysReg);
       if (!EntryMBB.isLiveIn(PhysReg))
@@ -256,8 +291,8 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
         if (!MBB.isReturnBlock())
           continue;
         auto FirstTerm = MBB.getFirstTerminator();
-        llvm::BuildMI(MBB, FirstTerm, llvm::DebugLoc(),
-                      TII->get(llvm::AMDGPU::COPY))
+        (void)llvm::BuildMI(MBB, FirstTerm, llvm::DebugLoc(),
+                            TII->get(llvm::AMDGPU::COPY))
             .addReg(PhysReg, llvm::RegState::Define)
             .addReg(SaveVReg);
         // Add implicit use of $physreg on the terminator so the live-out

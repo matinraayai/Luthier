@@ -124,11 +124,13 @@ public:
   /// calculates the storage and load locations of the state value array.
   ///
   /// Registers that must be preserved at each MI are derived from
-  /// \p IPLiveness — the per-PMBB live-in sets from
-  /// \c IPPredicatedLivenessAnalysis, propagated backward through each
-  /// block to obtain a per-MI live set. The relocation of the SVA storage
-  /// is triggered when the current storage register overlaps that live
-  /// set at some MI.
+  /// \p IPLiveness — the per-PMBB Active and Inactive live-in sets from
+  /// \c IPPredicatedLivenessAnalysis, unioned per successor and
+  /// propagated backward through each block to obtain a per-MI "live on
+  /// any lane" set. The relocation of the SVA storage is triggered when
+  /// the current storage register overlaps that live set at some MI,
+  /// which guarantees the SVA never sits in a register still holding an
+  /// application value on either the EXEC-on or EXEC-off lane partition.
   ///
   /// Intended to be driven from \c SVStorageAndLoadLocationsAnalysis::run;
   /// external callers should consume the analysis result rather than

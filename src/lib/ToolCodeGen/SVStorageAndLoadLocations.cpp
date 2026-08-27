@@ -25,6 +25,7 @@
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
+#include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
 #include <AMDGPU.h>
@@ -54,7 +55,7 @@ namespace luthier {
 /// declared here because the scavenger is the only consumer; the
 /// driver re-exports its current value via a thin getter for diagnostics.
 static llvm::cl::opt<bool> ExceedNumRegs(
-    "luthier-exceed-num-regs", llvm::cl::init(false),
+    "luthier-exceed-num-regs", llvm::cl::init(true),
     llvm::cl::desc("Allow SVA storage scavenging to pick V/SGPRs above the "
                    "target function's amdgpu-num-{vgpr,sgpr} attribute."));
 
@@ -112,29 +113,57 @@ bool isWithinDeclaredCap(llvm::ArrayRef<llvm::MachineFunction *> Functions,
   return true;
 }
 
-/// Walk \p MBB backward from its live-out (union of successor PMBBs'
-/// live-ins in \p IPLiveness) and record, for every MI in \p MBB, the
-/// physical registers live immediately before that MI. The recorded
-/// set is what the SVA storage must not step on: if any current SVS
-/// storage register appears here, the SVA must be relocated before the
-/// MI executes. \c LivePhysRegs is not copyable, so entries are owned
-/// via \c unique_ptr in the map.
+/// Walk \p MBB backward from its live-out (union of every successor PMBB's
+/// Active and Inactive live-ins in \p IPLiveness) and record, for every MI
+/// in \p MBB, the physical registers live on any lane immediately before
+/// that MI. The SVA scavenger needs regs dead on *all* lanes, so this
+/// tracks two internal partitions and returns their union per MI:
+///   - Active: regs live on lanes currently under EXEC. Steps backward
+///     through every MI (VALU/VMEM defs kill on active lanes).
+///   - Inactive: regs live on lanes currently masked off. In a vector
+///     PMBB it does not step backward — EXEC-off lanes are untouched by
+///     vector instructions, so a VALU def cannot kill an Inactive value.
+///     In a scalar PMBB it steps backward like Active (SALU/SMEM defs
+///     execute regardless of EXEC).
+/// If any current SVS storage register appears in the returned union at
+/// some MI, the SVA must be relocated before the MI executes. \c
+/// LivePhysRegs is not copyable, so entries are owned via \c unique_ptr
+/// in the map.
 void computePerMILiveBefore(
     const llvm::MachineBasicBlock &MBB, const PredicatedMachineBasicBlock &PMBB,
     const IPPredicatedLiveness &IPLiveness, const llvm::TargetRegisterInfo &TRI,
     llvm::DenseMap<const llvm::MachineInstr *,
                    std::unique_ptr<llvm::LivePhysRegs>> &LiveBefore) {
-  llvm::LivePhysRegs Live(TRI);
+  // At the block-out boundary, both partitions are seeded with the union
+  // of every successor's Active + Inactive live-ins — control flow may
+  // converge from paths whose EXEC-on/off partitions have swapped.
+  llvm::LivePhysRegs ActiveLive(TRI);
+  llvm::LivePhysRegs InactiveLive(TRI);
   for (const PredicatedMachineBasicBlock &Succ : PMBB.successors()) {
-    if (const llvm::LivePhysRegs *SuccLive = IPLiveness.getPMBBLiveIns(Succ)) {
-      for (llvm::MCPhysReg R : *SuccLive)
-        Live.addReg(R);
+    if (const llvm::LivePhysRegs *SuccLive =
+            IPLiveness.getPMBBActiveLiveIns(Succ)) {
+      for (llvm::MCPhysReg R : *SuccLive) {
+        ActiveLive.addReg(R);
+        InactiveLive.addReg(R);
+      }
+    }
+    if (const llvm::LivePhysRegs *SuccLive =
+            IPLiveness.getPMBBInactiveLiveIns(Succ)) {
+      for (llvm::MCPhysReg R : *SuccLive) {
+        ActiveLive.addReg(R);
+        InactiveLive.addReg(R);
+      }
     }
   }
+  const bool IsVector = luthier::isVectorMBB(MBB);
   for (auto MIt = MBB.rbegin(), MEnd = MBB.rend(); MIt != MEnd; ++MIt) {
-    Live.stepBackward(*MIt);
+    ActiveLive.stepBackward(*MIt);
+    if (!IsVector)
+      InactiveLive.stepBackward(*MIt);
     auto Snap = std::make_unique<llvm::LivePhysRegs>(TRI);
-    for (llvm::MCPhysReg R : Live)
+    for (llvm::MCPhysReg R : ActiveLive)
+      Snap->addReg(R);
+    for (llvm::MCPhysReg R : InactiveLive)
       Snap->addReg(R);
     LiveBefore[&*MIt] = std::move(Snap);
   }

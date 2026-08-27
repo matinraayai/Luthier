@@ -203,9 +203,12 @@ llvm::AnalysisKey IPPredCFGAnalysis::Key;
 bool IPPredCFGAnalysis::Result::invalidate(
     Prototype &, const llvm::PreservedAnalyses &PA,
     PrototypeAnalysisManager::Invalidator &) {
+  // Modelled as a stateless outer analysis so machine-level consumers
+  // (InjectedPayloadPEIPass) can access the cached result via
+  // \c OuterAnalysisManagerProxy::getCachedResult without tripping
+  // \c AnalysisManager::verifyNotInvalidated.
   auto PAC = PA.getChecker<IPPredCFGAnalysis>();
-  return !PAC.preserved() &&
-         !PAC.preservedSet<llvm::AllAnalysesOn<Prototype>>();
+  return !PAC.preservedWhenStateless();
 }
 
 IPPredCFGAnalysis::Result
