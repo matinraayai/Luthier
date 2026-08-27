@@ -20,6 +20,9 @@
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/Intrinsic/ReadReg.h"
+#include "luthier/Intrinsic/ReadSVA.h"
+#include "luthier/Intrinsic/WriteReg.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
@@ -64,14 +67,27 @@ luthier::ProcessIntrinsicsAtIRLevelPass::run(llvm::Module &IModule,
       // Find the processor for this intrinsic
       auto IntrinsicName =
           F.getFnAttribute(IntrinsicAttribute).getValueAsString();
-      // Ensure the processor is indeed registered with the Code Generator
-      std::optional<IntrinsicProcessor> Processor =
-          IntrinsicsProcessors.getProcessorIfRegistered(IntrinsicName);
-      if (!Processor.has_value()) {
-        IModule.getContext().emitError(
-            llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-                "Intrinsic {0} is not registered", IntrinsicName))));
-        return llvm::PreservedAnalyses::all();
+
+
+      // Built processors not registered with the intrinsic processor
+      IntrinsicIRProcessorFunc IRProcessor;
+      if (IntrinsicName == "luthier::readReg") {
+        IRProcessor = readRegIRProcessor;
+      } else if (IntrinsicName == "luthier::writeReg") {
+        IRProcessor = writeRegIRProcessor;
+      } else if (IntrinsicName == "luthier::readSVA") {
+        IRProcessor = readSVAIRProcessor;
+      } else {
+        // Every other intrinsic in the registry
+        std::optional<IntrinsicProcessor> Processor =
+            IntrinsicsProcessors.getProcessorIfRegistered(IntrinsicName);
+        if (!Processor.has_value()) {
+          IModule.getContext().emitError(
+              llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+                  "Intrinsic {0} is not registered", IntrinsicName))));
+          return llvm::PreservedAnalyses::all();
+        }
+        IRProcessor = Processor->IRProcessor;
       }
 
       LLVM_DEBUG({
@@ -103,7 +119,7 @@ luthier::ProcessIntrinsicsAtIRLevelPass::run(llvm::Module &IModule,
 
         // Call the IR processor of the intrinsic on the user
         llvm::Expected<IntrinsicIRLoweringInfo> IRLoweringInfoOrErr =
-            Processor->IRProcessor(F, *CallInst, TM);
+            IRProcessor(F, *CallInst, TM);
         if (auto Err = IRLoweringInfoOrErr.takeError()) {
           IModule.getContext().emitError(CallInst,
                                          llvm::toString(std::move(Err)));
