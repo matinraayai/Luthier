@@ -36,64 +36,26 @@ namespace luthier {
 
 class StateValueArraySpecs;
 
+class InjectedPayloadAndInstPoint;
+class SVStorageAndLoadLocations;
+
 class IntrinsicMIRLoweringPass
     : public llvm::PassInfoMixin<IntrinsicMIRLoweringPass> {
-public:
-  /// Describes one pending V_READLANE_B32 to be emitted in phase 2, replacing
-  /// an IMPLICIT_DEF SGPR_32 placeholder created during intrinsic lowering.
-  struct PendingSVAReadlane {
-    /// The IMPLICIT_DEF SGPR_32 virtual register to be replaced
-    llvm::Register SGPRPlaceholder;
-    /// Which scalar argument this lane belongs to
-    ScalarValueArgument SA;
-    /// 0-based lane index within the SA's total lane count
-    uint8_t LaneWithinSA;
-  };
-
-  /// SVA placeholder state collected per MachineFunction during
-  /// \c lowerIntrinsics, consumed by phase 2 in \c run.
-  struct PerFunctionSVAInfo {
-    /// IMPLICIT_DEF VGPR_32 marked with pcsections !"luthier.sva_vgpr_placeholder";
-    /// a later pass resolves this to the actual SVA VGPR.
-    llvm::Register SVAVGPRPlaceholder{0};
-    /// SGPR_32 placeholders waiting to be replaced by V_READLANE_B32
-    llvm::SmallVector<PendingSVAReadlane> Readlanes;
-    /// SGPRSpill frame indices reserved (eagerly, together) for the
-    /// two fixed SVA frame lanes that carry the target application's
-    /// SP / FP: entry [i] is the FI whose framework-counter lane matches
-    /// SVA lane i. Populated on first \c readReg / \c writeReg of SGPR32
-    /// or SGPR33 in an injected payload, and by the wide state regs (PSB
-    /// sub-lanes and FLAT_SCR sub-lanes) on non-architected-FS targets.
-    /// FIs are allocated lazily in SVA-lane order — \c
-    /// allocateSGPRSpillToVGPRLane 's monotonic counter aligns each FI's
-    /// VGPR lane with its SVA lane index. Indexed by SVA lane. Empty when
-    /// no frame-reg access exists in this MF.
-    llvm::SmallVector<int, 16> FrameLaneFI;
-  };
-
 private:
-
   bool processMachineFunction(
       llvm::MachineFunction &MF, bool IsInjectedPayload,
       const IntrinsicsProcessorsAnalysis::Result &IntrinsicsProcessors,
-      const StateValueArraySpecs &SVASpecs, PerFunctionSVAInfo &MFSVAInfo);
+      const StateValueArraySpecs &SVASpecs, llvm::MCRegister SVAVGPR);
 
-  void materializeReadlanes(
-      llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo> &SVAInfoByMF,
-      const StateValueArraySpecs &SVASpecs, bool &Changed);
-
-  bool
-  lowerIntrinsics(Prototype &IP,
-                  PrototypeAnalysisManager &IPAM,
-                  const StateValueArraySpecs &SVASpecs,
-                  llvm::DenseMap<llvm::MachineFunction *, PerFunctionSVAInfo>
-                      &SVAInfoByMF);
+  bool lowerIntrinsics(Prototype &IP, PrototypeAnalysisManager &IPAM,
+                       const StateValueArraySpecs &SVASpecs,
+                       const InjectedPayloadAndInstPoint &IPIP,
+                       const SVStorageAndLoadLocations &SVLocations);
 
 public:
   IntrinsicMIRLoweringPass() = default;
 
-  llvm::PreservedAnalyses run(Prototype &IP,
-                              PrototypeAnalysisManager &IPAM);
+  llvm::PreservedAnalyses run(Prototype &IP, PrototypeAnalysisManager &IPAM);
 };
 
 } // namespace luthier
