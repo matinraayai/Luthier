@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file InjectedPayloadPreserveLiveRegsPass.cpp
+/// \file
 /// Implements \c InjectedPayloadPreserveLiveRegsPass.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/InjectedPayloadPreserveLiveRegsPass.h"
@@ -21,6 +21,7 @@
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
+#include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
@@ -28,6 +29,7 @@
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
 #include <SIMachineFunctionInfo.h>
+#include <llvm/ADT/BitVector.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFunction.h>
@@ -48,16 +50,15 @@
 
 namespace luthier {
 
-llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
-    Prototype &IP, PrototypeAnalysisManager &IPAM) {
+llvm::PreservedAnalyses
+InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
+                                         PrototypeAnalysisManager &IPAM) {
   LLVM_DEBUG(luthier::dbgs()
              << "=== Luthier Injected Payload Preserve Live Regs Pass ===\n");
 
   llvm::Module &IModule = IP.getInstrumentationModule();
   llvm::Module &TargetModule = IP.getTargetModule();
 
-  // This pass only reads the instrumentation module, so it goes through that
-  // module's own managers.
   llvm::ModuleAnalysisManager &MAM =
       IPAM.getResult<IModuleAnalysisManagerPrototypeProxy>(IP).getManager();
 
@@ -65,25 +66,20 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
       MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(IModule)
           .getManager();
 
-  // Target-side FAM is where the target module's MachineFunctionAnalysis
-  // results live (populated by CodeDiscoveryPass); we walk it to iterate
-  // every PATCHPOINT MI in the target module.
   llvm::FunctionAnalysisManager &TargetFAM =
       IPAM.getResult<TargetFunctionAnalysisManagerPrototypeProxy>(IP)
           .getManager();
 
   const IPPredicatedLiveness &Liveness =
       IPAM.getResult<IPPredicatedLivenessAnalysis>(IP);
-  IPPredicatedCFG &CFG =
-      IPAM.getResult<IPPredCFGAnalysis>(IP).getVecCFG();
+  IPPredicatedCFG &CFG = IPAM.getResult<IPPredCFGAnalysis>(IP).getVecCFG();
 
   bool Changed = false;
 
-  // Iterate PATCHPOINT markers in the target module directly (no
-  // precomputed per-payload map). For each, compute the live-out at the
-  // PATCHPOINT — that is the set the payload must preserve — by unioning
-  // successor PMBBs' Active live-ins and stepping backward through the
-  // parent MBB up to (but not including) the PATCHPOINT itself.
+  // Iterate PATCHPOINT markers in the target module directly. For each, compute
+  // the live-out at the PATCHPOINT — that is the set the payload must preserve
+  // — by unioning successor PMBBs' Active live-ins and stepping backward
+  // through the parent MBB up to (but not including) the PATCHPOINT itself.
   for (llvm::Function &TF : TargetModule) {
     llvm::MachineFunctionAnalysis::Result *MFRes =
         TargetFAM.getCachedResult<llvm::MachineFunctionAnalysis>(TF);
@@ -148,8 +144,10 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
                "PATCHPOINT target operand must be a GlobalAddress");
         const auto *ExternHandle =
             llvm::cast<llvm::Function>(TargetOp.getGlobal());
-        llvm::Function *PayloadDef = IModule.getFunction(ExternHandle->getName());
-        if (!PayloadDef || !PayloadDef->hasFnAttribute(InjectedPayloadAttribute)) {
+        llvm::Function *PayloadDef =
+            IModule.getFunction(ExternHandle->getName());
+        if (!PayloadDef ||
+            !PayloadDef->hasFnAttribute(InjectedPayloadAttribute)) {
           Live.stepBackward(MI);
           continue;
         }
@@ -169,37 +167,74 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
           luthier::dbgs() << " }\n";
         });
 
-        // Compute Preserve = LiveOut(PATCHPOINT) \ (Reads U Writes),
-        // restricted to the widest live reg at each unit. \c LivePhysRegs
-        // stores subregs_inclusive, so a live 64-bit pair like
-        // \c $sgpr12_sgpr13 also carries $sgpr12, $sgpr13, and their 16-bit
-        // halves. Preserving all of them is redundant, and preserving the
-        // 16-bit halves in particular produces ill-formed SDWA-style COPYs
-        // (SGPR_LO16/HI16 have an allocatable cross-copy class but no valid
-        // whole-lane COPY expansion). Emitting one save/restore for the
-        // widest live reg containing the unit covers the entire live range.
+        // Compute Preserve at regunit granularity:
+        //   preserveUnits = regunits(LiveOut(PATCHPOINT))
+        //                 \ regunits(payload reads U writes)
+        // then coalesce those regunits back into phys regs of at most
+        // 64 bits, preferring the widest super-reg whose regunits all
+        // remain in preserveUnits. Working at unit granularity avoids
+        // preserving a live 64-bit pair whose halves the payload just
+        // wrote, and deduplicates the subregs_inclusive expansion that
+        // \c LivePhysRegs hands back (a live 64-bit pair also carries
+        // its 32-bit halves and their 16-bit slices).
         const InjectedPayloadSideEffects &Acc =
             FAM.getResult<InjectedPayloadSideEffectsAnalysis>(*PayloadDef);
+        llvm::BitVector LiveUnits(TargetTRI.getNumRegUnits());
+        for (llvm::MCPhysReg R : Live)
+          for (llvm::MCRegUnit U : TargetTRI.regunits(R))
+            LiveUnits.set(static_cast<unsigned>(U));
+        llvm::BitVector AccessedUnits(TargetTRI.getNumRegUnits());
+        for (llvm::MCRegister R : Acc.reads())
+          for (llvm::MCRegUnit U : TargetTRI.regunits(R))
+            AccessedUnits.set(static_cast<unsigned>(U));
+        for (llvm::MCRegister R : Acc.writes())
+          for (llvm::MCRegUnit U : TargetTRI.regunits(R))
+            AccessedUnits.set(static_cast<unsigned>(U));
+        llvm::BitVector PreserveUnits = LiveUnits;
+        PreserveUnits.reset(AccessedUnits);
+
         llvm::SmallVector<llvm::MCPhysReg, 16> Preserve;
-        for (llvm::MCPhysReg R : Live) {
-          if (Acc.reads_contains(R) || Acc.writes_contains(R))
+        while (PreserveUnits.any()) {
+          int UnitIdx = PreserveUnits.find_first();
+          llvm::MCRegUnitRootIterator Roots(
+              static_cast<llvm::MCRegUnit>(UnitIdx), &TargetTRI);
+          if (!Roots.isValid()) {
+            PreserveUnits.reset(static_cast<unsigned>(UnitIdx));
             continue;
+          }
+          llvm::MCPhysReg Chosen = *Roots;
+          const llvm::TargetRegisterClass *ChosenRC =
+              TargetTRI.getMinimalPhysRegClass(Chosen);
+          unsigned ChosenBits =
+              ChosenRC ? TargetTRI.getRegSizeInBits(*ChosenRC) : 0;
+          for (llvm::MCPhysReg Super : TargetTRI.superregs(Chosen)) {
+            const llvm::TargetRegisterClass *SuperRC =
+                TargetTRI.getMinimalPhysRegClass(Super);
+            if (!SuperRC)
+              continue;
+            unsigned SuperBits = TargetTRI.getRegSizeInBits(*SuperRC);
+            if (SuperBits > 64 || SuperBits <= ChosenBits)
+              continue;
+            bool AllInPreserve = true;
+            for (llvm::MCRegUnit U : TargetTRI.regunits(Super)) {
+              if (!PreserveUnits.test(static_cast<unsigned>(U))) {
+                AllInPreserve = false;
+                break;
+              }
+            }
+            if (AllInPreserve) {
+              Chosen = Super;
+              ChosenBits = SuperBits;
+            }
+          }
           // Skip frame-owned regs (PSB, FLAT_SCR, payload SP/FP): their
           // save/restore is delegated to InjectedPayloadPEIPass so it can
           // decide based on whether the payload actually needs
           // scratch/frame setup.
-          if (FrameOwnedRegs.contains(R))
-            continue;
-          bool HasSuperLive = false;
-          for (llvm::MCPhysReg Super : TargetTRI.superregs(R)) {
-            if (Live.contains(Super)) {
-              HasSuperLive = true;
-              break;
-            }
-          }
-          if (HasSuperLive)
-            continue;
-          Preserve.push_back(R);
+          if (!FrameOwnedRegs.contains(Chosen))
+            Preserve.push_back(Chosen);
+          for (llvm::MCRegUnit U : TargetTRI.regunits(Chosen))
+            PreserveUnits.reset(static_cast<unsigned>(U));
         }
 
         // Advance the walk past the PATCHPOINT itself so that a later
@@ -215,96 +250,101 @@ llvm::PreservedAnalyses InjectedPayloadPreserveLiveRegsPass::run(
             MF->getSubtarget().getRegisterInfo();
         llvm::MachineRegisterInfo &MRI = MF->getRegInfo();
 
-    llvm::MachineBasicBlock &EntryMBB = MF->front();
-    auto EntryInsertPt = EntryMBB.SkipPHIsAndLabels(EntryMBB.begin());
+        llvm::MachineBasicBlock &EntryMBB = MF->front();
+        // Insert before the fresh entry's terminator (\c S_BRANCH) so
+        // COPYs land inside the block, ahead of the branch to the old
+        // entry.
+        auto EntryInsertPt = EntryMBB.getFirstTerminator();
 
-    // For each preserved phys-reg, emit an entry-block COPY into a fresh
-    // virtual register, and at every return block, emit a COPY back to
-    // the phys-reg before the terminator + add an implicit-use of the
-    // phys-reg on the terminator so the register allocator treats it as
-    // a live-out of the function.
-    for (llvm::MCPhysReg PhysReg : Preserve) {
-      const llvm::TargetRegisterClass *RC = TRI->getPhysRegBaseClass(PhysReg);
-      if (!RC) {
-        LLVM_DEBUG(luthier::dbgs()
-                   << "  skipping " << llvm::printReg(PhysReg, TRI)
-                   << ": no reg class\n");
-        continue;
-      }
-      // EXEC / FLAT_SCR / XNACK_MASK are wave/context registers the payload's
-      // own PEI (InjectedPayloadPEIPass) and the atomic-optimizer-emitted
-      // wave-scan handle by construction — the app doesn't expect them to
-      // survive the instrumentation boundary. Everything else — including VCC
-      // and SCC — is genuine app state and has to be saved/restored: AMDGPU
-      // ISel routinely picks vcc as the carry of v_add_co_u32/v_addc_u32_e64
-      // and scc as the flag of every scalar arithmetic op, so an app-uniform
-      // atomicAdd payload that lands v_cmp/vcc_lo across a live carry (very
-      // common for 64-bit pointer arithmetic) will corrupt the following
-      // address computation and page-fault the wave. SIRegisterInfo lowers
-      // COPY $vcc via s_mov_b32/s_mov_b64 and COPY $scc via the
-      // S_CSELECT_B32 / S_CMP_LG_U32 pair (see SIRegisterInfo::copyPhysReg).
-      bool IsUnpreservableArchReg = false;
-      for (llvm::MCPhysReg ArchReg : {llvm::AMDGPU::EXEC,
-                                       llvm::AMDGPU::FLAT_SCR,
-                                       llvm::AMDGPU::XNACK_MASK}) {
-        if (TRI->regsOverlap(PhysReg, ArchReg)) {
-          IsUnpreservableArchReg = true;
-          break;
-        }
-      }
-      if (IsUnpreservableArchReg) {
-        LLVM_DEBUG(luthier::dbgs()
-                   << "  skipping " << llvm::printReg(PhysReg, TRI)
-                   << ": architectural register (not preserved)\n");
-        continue;
-      }
-      const llvm::TargetRegisterClass *CrossCopyRC =
-          TRI->getCrossCopyRegClass(RC);
-      if (!CrossCopyRC) {
-        LLVM_DEBUG(luthier::dbgs()
-                   << "  skipping " << llvm::printReg(PhysReg, TRI)
-                   << ": no cross-copy class\n");
-        continue;
-      }
-      // A non-allocatable cross-copy class means the target has no way to
-      // materialize this reg into a vreg. VCC / SCC do NOT hit this branch on
-      // AMDGPU: SIRegisterInfo::getCrossCopyRegClass returns SReg_32 for SCC
-      // and passes VCC through as SReg_64, both of which are allocatable.
-      if (!CrossCopyRC->isAllocatable()) {
-        LLVM_DEBUG(luthier::dbgs()
-                   << "  skipping " << llvm::printReg(PhysReg, TRI)
-                   << ": cross-copy class not allocatable\n");
-        continue;
-      }
-      llvm::Register SaveVReg = MRI.createVirtualRegister(CrossCopyRC);
-      // Entry: %savevreg = COPY $physreg ; mark $physreg live-in.
-      (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
-                          TII->get(llvm::AMDGPU::COPY))
-          .addReg(SaveVReg, llvm::RegState::Define)
-          .addReg(PhysReg);
-      if (!EntryMBB.isLiveIn(PhysReg))
-        EntryMBB.addLiveIn(PhysReg);
+        // For each preserved phys-reg, emit an entry-block COPY into a fresh
+        // virtual register, and at every return block, emit a COPY back to
+        // the phys-reg before the terminator + add an implicit-use of the
+        // phys-reg on the terminator so the register allocator treats it as
+        // a live-out of the function.
+        for (llvm::MCPhysReg PhysReg : Preserve) {
+          const llvm::TargetRegisterClass *RC =
+              TRI->getPhysRegBaseClass(PhysReg);
+          if (!RC) {
+            LLVM_DEBUG(luthier::dbgs()
+                       << "  skipping " << llvm::printReg(PhysReg, TRI)
+                       << ": no reg class\n");
+            continue;
+          }
+          bool IsUnpreservableArchReg = false;
+          for (llvm::MCPhysReg ArchReg :
+               {llvm::AMDGPU::EXEC, llvm::AMDGPU::XNACK_MASK}) {
+            if (TRI->regsOverlap(PhysReg, ArchReg)) {
+              IsUnpreservableArchReg = true;
+              break;
+            }
+          }
+          if (IsUnpreservableArchReg) {
+            LLVM_DEBUG(luthier::dbgs()
+                       << "  skipping " << llvm::printReg(PhysReg, TRI)
+                       << ": architectural register (not preserved)\n");
+            continue;
+          }
+          /// Only preserve flat scratch if the target doesn't have architected
+          /// flat scratch
+          if (TargetST.hasArchitectedFlatScratch() &&
+              TRI->regsOverlap(PhysReg, llvm::AMDGPU::FLAT_SCR)) {
+            continue;
+          }
 
-      // Return blocks: emit restore COPY before the first terminator and
-      // tag the terminator with an implicit-use of the physreg.
-      for (llvm::MachineBasicBlock &MBB : *MF) {
-        if (!MBB.isReturnBlock())
-          continue;
-        auto FirstTerm = MBB.getFirstTerminator();
-        (void)llvm::BuildMI(MBB, FirstTerm, llvm::DebugLoc(),
-                            TII->get(llvm::AMDGPU::COPY))
-            .addReg(PhysReg, llvm::RegState::Define)
-            .addReg(SaveVReg);
-        // Add implicit use of $physreg on the terminator so the live-out
-        // is visible to RA.
-        if (FirstTerm != MBB.end()) {
-          FirstTerm->addOperand(llvm::MachineOperand::CreateReg(
-              PhysReg, /*isDef=*/false, /*isImp=*/true));
+          const llvm::TargetRegisterClass *CrossCopyRC =
+              TRI->getCrossCopyRegClass(RC);
+          if (!CrossCopyRC) {
+            LLVM_DEBUG(luthier::dbgs()
+                       << "  skipping " << llvm::printReg(PhysReg, TRI)
+                       << ": no cross-copy class\n");
+            continue;
+          }
+          // A non-allocatable cross-copy class means the target has no way to
+          // materialize this reg into a vreg. VCC / SCC do NOT hit this branch
+          // on AMDGPU: SIRegisterInfo::getCrossCopyRegClass returns SReg_32 for
+          // SCC and passes VCC through as SReg_64, both of which are
+          // allocatable.
+          if (!CrossCopyRC->isAllocatable()) {
+            LLVM_DEBUG(luthier::dbgs()
+                       << "  skipping " << llvm::printReg(PhysReg, TRI)
+                       << ": cross-copy class not allocatable\n");
+            continue;
+          }
+          llvm::Register SaveVReg = MRI.createVirtualRegister(CrossCopyRC);
+          // Entry:
+          // %physreg = IMPLICIT_DEF ; Introduce a dummy def besides the live-in
+          // decl to keep the live intervals happy
+          // %savevreg = COPY $physreg ; mark $physreg live-in.
+          (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
+                              TII->get(llvm::AMDGPU::IMPLICIT_DEF))
+              .addReg(PhysReg, llvm::RegState::Define);
+          (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
+                              TII->get(llvm::AMDGPU::COPY))
+              .addReg(SaveVReg, llvm::RegState::Define)
+              .addReg(PhysReg);
+          // if (!EntryMBB.isLiveIn(PhysReg))
+          //   EntryMBB.addLiveIn(PhysReg);
+
+          // Return blocks: emit restore COPY before the first terminator and
+          // tag the terminator with an implicit-use of the physreg.
+          for (llvm::MachineBasicBlock &MBB : *MF) {
+            if (!MBB.isReturnBlock())
+              continue;
+            auto FirstTerm = MBB.getFirstTerminator();
+            (void)llvm::BuildMI(MBB, FirstTerm, llvm::DebugLoc(),
+                                TII->get(llvm::AMDGPU::COPY))
+                .addReg(PhysReg, llvm::RegState::Define)
+                .addReg(SaveVReg);
+            // Add implicit use of $physreg on the terminator so the live-out
+            // is visible to RA.
+            if (FirstTerm != MBB.end()) {
+              FirstTerm->addOperand(llvm::MachineOperand::CreateReg(
+                  PhysReg, /*isDef=*/false, /*isImp=*/true));
+            }
+          }
+          Changed = true;
         }
-      }
-      Changed = true;
-    }
-    EntryMBB.sortUniqueLiveIns();
+        EntryMBB.sortUniqueLiveIns();
       } // end for each PATCHPOINT MI in reverse
     } // end for each MBB in TMF
   } // end for each target function
