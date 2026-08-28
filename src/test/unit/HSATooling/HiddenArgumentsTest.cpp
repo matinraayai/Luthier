@@ -54,6 +54,7 @@ struct LauncherAccess : InstrumentedKernelLoaderAndLauncher {
   using LoadedKernelInfo =
       InstrumentedKernelLoaderAndLauncher::LoadedKernelInfo;
   using InstrumentedKernelLoaderAndLauncher::declaresHiddenArg;
+  using InstrumentedKernelLoaderAndLauncher::fillExtendedKernargBuffer;
   using InstrumentedKernelLoaderAndLauncher::writeHiddenKernelArguments;
 };
 
@@ -355,6 +356,134 @@ TEST(HiddenArguments, DetectsWhichArgumentsAKernelDeclares) {
       LauncherAccess::declaresHiddenArg(Kernel, ValueKind::HiddenHeapV1));
   EXPECT_FALSE(LauncherAccess::declaresHiddenArg(
       Kernel, ValueKind::HiddenPrintfBuffer));
+}
+
+//===----------------------------------------------------------------------===//
+// Extended kernarg buffer composition
+//===----------------------------------------------------------------------===//
+//
+// The extended kernarg buffer is what the launcher stands up in front of an
+// instrumented dispatch when the patcher's kernarg expansion applies. Its
+// shape is a per-kernel flag away from the shape writeHiddenKernelArguments
+// already handles: either an 8-byte app-kernarg pointer prefixes the hidden
+// block, or the hidden block starts at offset 0. These tests exercise both
+// shapes against the composition helper.
+
+TEST(ExtendedKernargBuffer, CopiesTheAppKernargPointerIntoTheFirstEightBytes) {
+  std::vector<uint8_t> Kernarg(256, 0);
+  const auto Packet = makeSingleWorkItemPacket();
+  TestQueue Queue;
+  const auto *AppKernarg = reinterpret_cast<const void *>(uintptr_t{0xCAFED00Du});
+
+  llvm::Error Err = LauncherAccess::fillExtendedKernargBuffer(
+      Kernarg, /*HasAppKernargPrefix=*/true, AppKernarg, /*HiddenArgs=*/{},
+      Packet, Queue.get(), {});
+  ASSERT_FALSE(static_cast<bool>(Err)) << llvm::toString(std::move(Err));
+  llvm::consumeError(std::move(Err));
+
+  EXPECT_EQ(read64(Kernarg, 0), reinterpret_cast<uint64_t>(AppKernarg));
+}
+
+TEST(ExtendedKernargBuffer, LeavesTheFirstEightBytesUntouchedWithoutAPrefix) {
+  std::vector<uint8_t> Kernarg(256, 0);
+  const auto Packet = makeSingleWorkItemPacket();
+  TestQueue Queue;
+  const auto *AppKernarg = reinterpret_cast<const void *>(uintptr_t{0xCAFED00Du});
+
+  // Even with a non-null app kernarg address handed in, HasAppKernargPrefix
+  // == false means the extended buffer has no prefix slot; nothing must
+  // land in bytes [0, 8).
+  llvm::Error Err = LauncherAccess::fillExtendedKernargBuffer(
+      Kernarg, /*HasAppKernargPrefix=*/false, AppKernarg, /*HiddenArgs=*/{},
+      Packet, Queue.get(), {});
+  ASSERT_FALSE(static_cast<bool>(Err)) << llvm::toString(std::move(Err));
+  llvm::consumeError(std::move(Err));
+
+  EXPECT_EQ(read64(Kernarg, 0), 0u);
+}
+
+TEST(ExtendedKernargBuffer, WritesHiddenArgsAfterThePrefix) {
+  std::vector<uint8_t> Kernarg(256, 0);
+  const auto Packet = makeSingleWorkItemPacket();
+  TestQueue Queue;
+  const auto *AppKernarg = reinterpret_cast<const void *>(uintptr_t{0xDEADBEEFu});
+  const HiddenArgInfo Hidden[] = {
+      {ValueKind::HiddenBlockCountX, /*Offset=*/8, /*Size=*/4}};
+
+  llvm::Error Err = LauncherAccess::fillExtendedKernargBuffer(
+      Kernarg, /*HasAppKernargPrefix=*/true, AppKernarg, Hidden, Packet,
+      Queue.get(), {});
+  ASSERT_FALSE(static_cast<bool>(Err)) << llvm::toString(std::move(Err));
+  llvm::consumeError(std::move(Err));
+
+  EXPECT_EQ(read64(Kernarg, 0), reinterpret_cast<uint64_t>(AppKernarg))
+      << "prefix must still be there after the hidden fill";
+  EXPECT_EQ(read32(Kernarg, 8), 1u)
+      << "single-workgroup dispatch means BlockCountX == 1";
+}
+
+TEST(ExtendedKernargBuffer, WritesHiddenArgsAtOffsetZeroWithoutAPrefix) {
+  std::vector<uint8_t> Kernarg(256, 0);
+  const auto Packet = makeSingleWorkItemPacket();
+  TestQueue Queue;
+  const HiddenArgInfo Hidden[] = {
+      {ValueKind::HiddenBlockCountX, /*Offset=*/0, /*Size=*/4}};
+
+  llvm::Error Err = LauncherAccess::fillExtendedKernargBuffer(
+      Kernarg, /*HasAppKernargPrefix=*/false, /*AppKernargPtr=*/nullptr,
+      Hidden, Packet, Queue.get(), {});
+  ASSERT_FALSE(static_cast<bool>(Err)) << llvm::toString(std::move(Err));
+  llvm::consumeError(std::move(Err));
+
+  EXPECT_EQ(read32(Kernarg, 0), 1u);
+}
+
+TEST(ExtendedKernargBuffer, WritesTheAppKernargBufferPointerCorrectlyWhenNull) {
+  // A null app kernarg pointer is legal — the app may dispatch a kernel that
+  // takes only implicit args. The prefix slot has to hold that null exactly,
+  // not silently pick up whatever the buffer was previously initialized to.
+  std::vector<uint8_t> Kernarg(256, 0xAB);
+  const auto Packet = makeSingleWorkItemPacket();
+  TestQueue Queue;
+
+  llvm::Error Err = LauncherAccess::fillExtendedKernargBuffer(
+      Kernarg, /*HasAppKernargPrefix=*/true, /*AppKernargPtr=*/nullptr,
+      /*HiddenArgs=*/{}, Packet, Queue.get(), {});
+  ASSERT_FALSE(static_cast<bool>(Err)) << llvm::toString(std::move(Err));
+  llvm::consumeError(std::move(Err));
+
+  EXPECT_EQ(read64(Kernarg, 0), 0u);
+}
+
+TEST(ExtendedKernargBuffer, RejectsAPrefixThatWouldNotFitTheBuffer) {
+  std::vector<uint8_t> Kernarg(4, 0);
+  const auto Packet = makeSingleWorkItemPacket();
+  TestQueue Queue;
+  const auto *AppKernarg = reinterpret_cast<const void *>(uintptr_t{0x1000u});
+
+  llvm::Error Err = LauncherAccess::fillExtendedKernargBuffer(
+      Kernarg, /*HasAppKernargPrefix=*/true, AppKernarg, /*HiddenArgs=*/{},
+      Packet, Queue.get(), {});
+  EXPECT_TRUE(static_cast<bool>(Err))
+      << "a 4-byte buffer cannot hold the 8-byte prefix";
+  llvm::consumeError(std::move(Err));
+}
+
+TEST(ExtendedKernargBuffer, SurfacesErrorsFromTheHiddenArgFill) {
+  // If the composition wrote the prefix and then swallowed a downstream
+  // hidden-arg error, the launcher would install a buffer whose implicit
+  // args are partially filled. Verify the error propagates instead.
+  std::vector<uint8_t> Kernarg(32, 0);
+  const auto Packet = makeSingleWorkItemPacket();
+  TestQueue Queue;
+  const HiddenArgInfo Hidden[] = {
+      {ValueKind::HiddenBlockCountX, /*Offset=*/64, /*Size=*/4}};
+
+  llvm::Error Err = LauncherAccess::fillExtendedKernargBuffer(
+      Kernarg, /*HasAppKernargPrefix=*/false, /*AppKernargPtr=*/nullptr,
+      Hidden, Packet, Queue.get(), {});
+  EXPECT_TRUE(static_cast<bool>(Err));
+  llvm::consumeError(std::move(Err));
 }
 
 //===----------------------------------------------------------------------===//

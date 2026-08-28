@@ -129,6 +129,27 @@ struct PrivateSegmentSizeTag {
 template struct PrivateAccessor<
     PrivateSegmentSizeTag, &llvm::GCNUserSGPRUsageInfo::PrivateSegmentSize>;
 
+struct DispatchPtrTag {
+  using MemberT = bool llvm::GCNUserSGPRUsageInfo::*;
+  friend MemberT get(DispatchPtrTag);
+};
+template struct PrivateAccessor<DispatchPtrTag,
+                                &llvm::GCNUserSGPRUsageInfo::DispatchPtr>;
+
+struct DispatchIDTag {
+  using MemberT = bool llvm::GCNUserSGPRUsageInfo::*;
+  friend MemberT get(DispatchIDTag);
+};
+template struct PrivateAccessor<DispatchIDTag,
+                                &llvm::GCNUserSGPRUsageInfo::DispatchID>;
+
+struct ImplicitBufferPtrTag {
+  using MemberT = bool llvm::GCNUserSGPRUsageInfo::*;
+  friend MemberT get(ImplicitBufferPtrTag);
+};
+template struct PrivateAccessor<ImplicitBufferPtrTag,
+                                &llvm::GCNUserSGPRUsageInfo::ImplicitBufferPtr>;
+
 struct NumUsedUserSGPRsTag {
   using MemberT = unsigned llvm::GCNUserSGPRUsageInfo::*;
   friend MemberT get(NumUsedUserSGPRsTag);
@@ -267,6 +288,403 @@ void forcePrivateSegmentSize(llvm::GCNUserSGPRUsageInfo &Info) {
           llvm::GCNUserSGPRUsageInfo::PrivateSegmentSizeID);
 }
 
+/// Same as \c forceFlatScratchInit for DISPATCH_PTR.
+void forceDispatchPtr(llvm::GCNUserSGPRUsageInfo &Info) {
+  if (Info.hasDispatchPtr())
+    return;
+  Info.*get(DispatchPtrTag{}) = true;
+  Info.*get(NumUsedUserSGPRsTag{}) +=
+      llvm::GCNUserSGPRUsageInfo::getNumUserSGPRForField(
+          llvm::GCNUserSGPRUsageInfo::DispatchPtrID);
+}
+
+/// Same as \c forceFlatScratchInit for DISPATCH_ID.
+void forceDispatchID(llvm::GCNUserSGPRUsageInfo &Info) {
+  if (Info.hasDispatchID())
+    return;
+  Info.*get(DispatchIDTag{}) = true;
+  Info.*get(NumUsedUserSGPRsTag{}) +=
+      llvm::GCNUserSGPRUsageInfo::getNumUserSGPRForField(
+          llvm::GCNUserSGPRUsageInfo::DispatchIdID);
+}
+
+/// Same as \c forceFlatScratchInit for IMPLICIT_BUFFER_PTR.
+void forceImplicitBufferPtr(llvm::GCNUserSGPRUsageInfo &Info) {
+  if (Info.hasImplicitBufferPtr())
+    return;
+  Info.*get(ImplicitBufferPtrTag{}) = true;
+  Info.*get(NumUsedUserSGPRsTag{}) +=
+      llvm::GCNUserSGPRUsageInfo::getNumUserSGPRForField(
+          llvm::GCNUserSGPRUsageInfo::ImplicitBufferPtrID);
+}
+
+/// Map a Luthier \c ScalarValueArgument (the thing the instrumentation
+/// pipeline records as "this payload wanted X") to the AMDGPU user-SGPR
+/// preload it corresponds to, when there is one. Returns \c nullopt for
+/// SVs backed by system SGPRs (workgroup ids), VGPRs (workitem ids), or
+/// non-preload sources.
+static std::optional<llvm::AMDGPUFunctionArgInfo::PreloadedValue>
+userSGPRPreloadForSV(ScalarValueArgument SV) {
+  using PV = llvm::AMDGPUFunctionArgInfo::PreloadedValue;
+  switch (SV) {
+  case WAVEFRONT_PRIVATE_SEGMENT_BUFFER:
+    return PV::PRIVATE_SEGMENT_BUFFER;
+  case KERNEL_ARG_PTR:
+  case IMPLICIT_ARG_BUFFER:
+    return PV::KERNARG_SEGMENT_PTR;
+  case DISPATCH_ID:
+    return PV::DISPATCH_ID;
+  case FLAT_SCRATCH:
+    return PV::FLAT_SCRATCH_INIT;
+  case DISPATCH_PTR:
+    return PV::DISPATCH_PTR;
+  case QUEUE_PTR:
+    return PV::QUEUE_PTR;
+  case WORK_ITEM_PRIVATE_SEGMENT_SIZE:
+    return PV::PRIVATE_SEGMENT_SIZE;
+  default:
+    return std::nullopt;
+  }
+}
+
+/// For a given user-SGPR preload, the pair of (flag-flip helper,
+/// \c SIMachineFunctionInfo add method) needed to force-enable it.
+/// Returns a pair of null functions for preloads that aren't user
+/// SGPRs (system SGPRs, preloaded VGPRs, spilled values) — the caller
+/// falls through and dispatches those separately.
+static std::pair<void (*)(llvm::GCNUserSGPRUsageInfo &),
+                 llvm::Register (llvm::SIMachineFunctionInfo::*)(
+                     const llvm::SIRegisterInfo &)>
+userSGPRPreloadForceOps(llvm::AMDGPUFunctionArgInfo::PreloadedValue PV) {
+  using AMDPV = llvm::AMDGPUFunctionArgInfo;
+  switch (PV) {
+  case AMDPV::PRIVATE_SEGMENT_BUFFER:
+    return {&forcePrivateSegmentBuffer,
+            &llvm::SIMachineFunctionInfo::addPrivateSegmentBuffer};
+  case AMDPV::DISPATCH_PTR:
+    return {&forceDispatchPtr, &llvm::SIMachineFunctionInfo::addDispatchPtr};
+  case AMDPV::QUEUE_PTR:
+    return {&forceQueuePtr, &llvm::SIMachineFunctionInfo::addQueuePtr};
+  case AMDPV::KERNARG_SEGMENT_PTR:
+    return {&forceKernargSegmentPtr,
+            &llvm::SIMachineFunctionInfo::addKernargSegmentPtr};
+  case AMDPV::DISPATCH_ID:
+    return {&forceDispatchID, &llvm::SIMachineFunctionInfo::addDispatchID};
+  case AMDPV::FLAT_SCRATCH_INIT:
+    return {&forceFlatScratchInit,
+            &llvm::SIMachineFunctionInfo::addFlatScratchInit};
+  case AMDPV::PRIVATE_SEGMENT_SIZE:
+    return {&forcePrivateSegmentSize,
+            &llvm::SIMachineFunctionInfo::addPrivateSegmentSize};
+  case AMDPV::IMPLICIT_BUFFER_PTR:
+    return {&forceImplicitBufferPtr,
+            &llvm::SIMachineFunctionInfo::addImplicitBufferPtr};
+  default:
+    return {nullptr, nullptr};
+  }
+}
+
+/// Every AMDGPU \c PreloadedValue the aggregator knows how to clear and
+/// re-materialize. Used both for the pre-clear snapshot in
+/// \c emitInitialEntryKernelSetup and for the deterministic iteration
+/// order that \c forceEnableRequestedUserSGPRPreloads walks when adding
+/// preloads back and when reporting \c NewPositions to the caller.
+static constexpr llvm::AMDGPUFunctionArgInfo::PreloadedValue
+    AllPreloadedValues[] = {
+        llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER,
+        llvm::AMDGPUFunctionArgInfo::DISPATCH_PTR,
+        llvm::AMDGPUFunctionArgInfo::QUEUE_PTR,
+        llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR,
+        llvm::AMDGPUFunctionArgInfo::DISPATCH_ID,
+        llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT,
+        llvm::AMDGPUFunctionArgInfo::WORKGROUP_ID_X,
+        llvm::AMDGPUFunctionArgInfo::WORKGROUP_ID_Y,
+        llvm::AMDGPUFunctionArgInfo::WORKGROUP_ID_Z,
+        llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_WAVE_BYTE_OFFSET,
+        llvm::AMDGPUFunctionArgInfo::IMPLICIT_BUFFER_PTR,
+        llvm::AMDGPUFunctionArgInfo::IMPLICIT_ARG_PTR,
+        llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_SIZE,
+        llvm::AMDGPUFunctionArgInfo::WORKITEM_ID_X,
+        llvm::AMDGPUFunctionArgInfo::WORKITEM_ID_Y,
+        llvm::AMDGPUFunctionArgInfo::WORKITEM_ID_Z,
+    };
+
+/// True if \p PV lives in the user-SGPR block (the SGPRs the HW
+/// preloads into \c s[0 .. NumUserSGPRs-1]).
+static bool isUserSGPRPreload(llvm::AMDGPUFunctionArgInfo::PreloadedValue PV) {
+  using AMDPV = llvm::AMDGPUFunctionArgInfo;
+  switch (PV) {
+  case AMDPV::PRIVATE_SEGMENT_BUFFER:
+  case AMDPV::DISPATCH_PTR:
+  case AMDPV::QUEUE_PTR:
+  case AMDPV::KERNARG_SEGMENT_PTR:
+  case AMDPV::DISPATCH_ID:
+  case AMDPV::FLAT_SCRATCH_INIT:
+  case AMDPV::IMPLICIT_BUFFER_PTR:
+  case AMDPV::PRIVATE_SEGMENT_SIZE:
+    return true;
+  default:
+    return false;
+  }
+}
+
+/// Result of \c forceEnableRequestedUserSGPRPreloads. \c NewPositions
+/// records the physreg each enabled \c PreloadedValue landed on after
+/// the aggregator cleared and re-added everything in the union of
+/// (instrumentation-required, already-preloaded). The caller drives the
+/// restore-move loop off of this map instead of re-querying
+/// \c SIMFI.getPreloadedReg after the fact. The kernarg-preload anchors
+/// and \c KernargPreloadDisabled flag control the two branches of the
+/// kernarg handling step (see \c emitInitialEntryKernelSetup).
+struct ForceEnableResult {
+  llvm::SmallVector<
+      std::pair<llvm::AMDGPUFunctionArgInfo::PreloadedValue, llvm::MCRegister>,
+      16>
+      NewPositions;
+
+  /// The original SGPR range \c [OrigPreloadStartSGPR .. OrigPreloadEndSGPR]
+  /// where the app kernel's kernarg-preload block sat before the
+  /// aggregator ran. Zero when \c OrigPreloadLength was 0. Used by the
+  /// caller both to emit the \c S_LOAD_DWORD_IMM fallback (writing into
+  /// this range) and to emit the S_MOV shuffle when preload stays
+  /// enabled.
+  llvm::MCRegister OrigPreloadStartSGPR;
+  llvm::MCRegister OrigPreloadEndSGPR;
+
+  /// True iff \c ST.hasKernargPreload() is true, \c OrigPreloadLength
+  /// was > 0, and the aggregator determined the (new fixed user SGPRs)
+  /// + (preload) total exceeded \c ST.getMaxNumUserSGPRs(). The
+  /// aggregator has already zeroed \c NumKernargPreloadSGPRs — the
+  /// caller must emit the \c S_LOAD_DWORD_IMM fallback.
+  bool KernargPreloadDisabled = false;
+};
+
+/// Aggregator that collapses the four historical preload force-enable
+/// sites (top-level user-SGPR walker, \c emitCodeToSetupScratch,
+/// per-SVA inline switch, kernarg-preload ceiling branch) into one
+/// pass. Clears every \c ArgDescriptor field on \c SIMFI.ArgInfo, zeros
+/// every relevant \c GCNUserSGPRUsageInfo bool + the \c NumUsedUserSGPRs
+/// / \c NumUserSGPRs / \c NumSystemSGPRs counters (preserving
+/// \c NumKernargPreloadSGPRs), then re-materializes the union of
+/// (\p RequiredPreloads, \p PreloadedArgSnapshot) at canonical physreg
+/// positions in \c AllPreloadedValues order.
+///
+/// Ordering guarantees:
+///   * All user SGPRs are added first, with \c NumSystemSGPRs == 0
+///     (the \c getNextUserSGPR precondition holds trivially post-clear).
+///   * The kernarg preload block is either re-applied (bumping
+///     \c NumUserSGPRs / \c NumUsedUserSGPRs) or disabled BEFORE any
+///     system SGPRs are added, so system SGPRs land at
+///     \c s[FixedAfterForce + PreloadLen + N_sys].
+///   * System SGPRs (\c WORKGROUP_ID_X/Y/Z, PSWO) are added next.
+///   * Preloaded VGPRs (\c WORKITEM_ID_X/Y/Z) are set last.
+///
+/// \c amdgpu-no-* fn-attrs on \p KernelF are stripped for every
+/// PreloadedValue in the union that has such an attr — the
+/// AMDGPUAsmPrinter reads those attrs to decide which KD enable-bits
+/// and metadata records to emit.
+static ForceEnableResult forceEnableRequestedUserSGPRPreloads(
+    llvm::SIMachineFunctionInfo &SIMFI, const llvm::GCNSubtarget &ST,
+    const llvm::SIRegisterInfo &TRI, llvm::Function &KernelF,
+    const llvm::SmallSet<llvm::AMDGPUFunctionArgInfo::PreloadedValue, 16>
+        &RequiredPreloads,
+    llvm::ArrayRef<std::pair<llvm::AMDGPUFunctionArgInfo::PreloadedValue,
+                             llvm::MCRegister>>
+        PreloadedArgSnapshot,
+    unsigned OrigPreloadLength) {
+  using AMDPV = llvm::AMDGPUFunctionArgInfo;
+  ForceEnableResult FR;
+
+  // 1. Aggregate the union of instrumentation-required preloads and
+  //    the app kernel's already-preloaded set.
+  llvm::SmallSet<AMDPV::PreloadedValue, 16> Union;
+  for (AMDPV::PreloadedValue PV : RequiredPreloads)
+    Union.insert(PV);
+  for (const auto &[PV, Reg] : PreloadedArgSnapshot)
+    Union.insert(PV);
+
+  // 2. Snapshot the preloaded kernarg block anchors BEFORE we mutate
+  //    any SIMFI state. The block sits at the tail of the app kernel's
+  //    used user SGPRs.
+  auto &Info = SIMFI.getUserSGPRInfo();
+  const unsigned OrigNumUsedUserSGPRs = Info.getNumUsedUserSGPRs();
+  if (OrigPreloadLength > 0 && OrigNumUsedUserSGPRs >= OrigPreloadLength) {
+    FR.OrigPreloadStartSGPR = llvm::MCRegister::from(
+        llvm::AMDGPU::SGPR0 + OrigNumUsedUserSGPRs - OrigPreloadLength);
+    FR.OrigPreloadEndSGPR = llvm::MCRegister::from(
+        FR.OrigPreloadStartSGPR.id() + OrigPreloadLength - 1);
+  }
+
+  // 3. Clear ArgInfo + SIMFI counters (preserve NumKernargPreloadSGPRs).
+  llvm::AMDGPUFunctionArgInfo &ArgInfo = SIMFI.getArgInfo();
+  ArgInfo.PrivateSegmentBuffer = llvm::ArgDescriptor{};
+  ArgInfo.DispatchPtr = llvm::ArgDescriptor{};
+  ArgInfo.QueuePtr = llvm::ArgDescriptor{};
+  ArgInfo.KernargSegmentPtr = llvm::ArgDescriptor{};
+  ArgInfo.DispatchID = llvm::ArgDescriptor{};
+  ArgInfo.FlatScratchInit = llvm::ArgDescriptor{};
+  ArgInfo.PrivateSegmentSize = llvm::ArgDescriptor{};
+  ArgInfo.ImplicitBufferPtr = llvm::ArgDescriptor{};
+  ArgInfo.WorkGroupIDX = llvm::ArgDescriptor{};
+  ArgInfo.WorkGroupIDY = llvm::ArgDescriptor{};
+  ArgInfo.WorkGroupIDZ = llvm::ArgDescriptor{};
+  ArgInfo.WorkGroupInfo = llvm::ArgDescriptor{};
+  ArgInfo.PrivateSegmentWaveByteOffset = llvm::ArgDescriptor{};
+  ArgInfo.WorkItemIDX = llvm::ArgDescriptor{};
+  ArgInfo.WorkItemIDY = llvm::ArgDescriptor{};
+  ArgInfo.WorkItemIDZ = llvm::ArgDescriptor{};
+  ArgInfo.ImplicitArgPtr = llvm::ArgDescriptor{};
+
+  Info.*get(PrivateSegmentBufferTag{}) = false;
+  Info.*get(DispatchPtrTag{}) = false;
+  Info.*get(QueuePtrTag{}) = false;
+  Info.*get(KernargSegmentPtrTag{}) = false;
+  Info.*get(DispatchIDTag{}) = false;
+  Info.*get(FlatScratchInitTag{}) = false;
+  Info.*get(PrivateSegmentSizeTag{}) = false;
+  Info.*get(ImplicitBufferPtrTag{}) = false;
+  Info.*get(NumUsedUserSGPRsTag{}) = 0;
+  SIMFI.*get(SIMFI_NumUserSGPRsTag{}) = 0;
+  SIMFI.*get(NumSystemSGPRsTag{}) = 0;
+
+  // 4. Strip amdgpu-no-* fn-attrs on \p KernelF for anything in the
+  //    Union whose enablement is gated by such an attr. Metadata-only
+  //    attrs (e.g. amdgpu-no-implicitarg-ptr) are left to the
+  //    kernarg-buffer expansion step.
+  for (AMDPV::PreloadedValue PV : AllPreloadedValues) {
+    if (!Union.contains(PV))
+      continue;
+    switch (PV) {
+    case AMDPV::DISPATCH_PTR:
+      KernelF.removeFnAttr("amdgpu-no-dispatch-ptr");
+      break;
+    case AMDPV::DISPATCH_ID:
+      KernelF.removeFnAttr("amdgpu-no-dispatch-id");
+      break;
+    case AMDPV::IMPLICIT_BUFFER_PTR:
+      KernelF.removeFnAttr("amdgpu-no-implicit-buffer-ptr");
+      break;
+    case AMDPV::WORKGROUP_ID_X:
+      KernelF.removeFnAttr("amdgpu-no-workgroup-id-x");
+      KernelF.removeFnAttr("amdgpu-no-cluster-id-x");
+      break;
+    case AMDPV::WORKGROUP_ID_Y:
+      KernelF.removeFnAttr("amdgpu-no-workgroup-id-y");
+      KernelF.removeFnAttr("amdgpu-no-cluster-id-y");
+      break;
+    case AMDPV::WORKGROUP_ID_Z:
+      KernelF.removeFnAttr("amdgpu-no-workgroup-id-z");
+      KernelF.removeFnAttr("amdgpu-no-cluster-id-z");
+      break;
+    case AMDPV::WORKITEM_ID_X:
+      KernelF.removeFnAttr("amdgpu-no-workitem-id-x");
+      break;
+    case AMDPV::WORKITEM_ID_Y:
+      KernelF.removeFnAttr("amdgpu-no-workitem-id-y");
+      break;
+    case AMDPV::WORKITEM_ID_Z:
+      KernelF.removeFnAttr("amdgpu-no-workitem-id-z");
+      break;
+    default:
+      break;
+    }
+  }
+
+  // 5a. Re-add all user SGPRs first (canonical AMDGPU sub-order via
+  //     \c AllPreloadedValues). The clear guarantees \c NumSystemSGPRs
+  //     == 0, so the \c getNextUserSGPR precondition holds and no
+  //     save/zero/restore workaround is needed.
+  for (AMDPV::PreloadedValue PV : AllPreloadedValues) {
+    if (!Union.contains(PV) || !isUserSGPRPreload(PV))
+      continue;
+    auto [Force, Add] = userSGPRPreloadForceOps(PV);
+    if (!Force || !Add)
+      continue;
+    Force(Info);
+    (SIMFI.*Add)(TRI);
+  }
+
+  // 6. Kernarg-preload ceiling check. Only meaningful on subtargets
+  //    that support kernarg preload and when the app kernel had a
+  //    non-empty preload block. If the new fixed-user-SGPR count plus
+  //    the original preload length exceeds the HW ceiling, drop the
+  //    preload block entirely (\c AMDGPUAsmPrinter will emit
+  //    \c kernarg_preload_length=0 in the KD and the caller falls
+  //    back to \c S_LOAD_DWORD_IMM). Otherwise, re-apply the block by
+  //    bumping the user-SGPR counters — this MUST happen before system
+  //    SGPRs are added below so the system SGPRs land at
+  //    \c s[FixedAfterForce + OrigPreloadLength ..], matching the KD's
+  //    dispatch-time layout.
+  if (ST.hasKernargPreload() && OrigPreloadLength > 0) {
+    const unsigned NewFixedUserSGPRs = Info.getNumUsedUserSGPRs();
+    if (NewFixedUserSGPRs + OrigPreloadLength > ST.getMaxNumUserSGPRs()) {
+      Info.*get(NumKernargPreloadSGPRsTag{}) = 0;
+      FR.KernargPreloadDisabled = true;
+    } else {
+      SIMFI.*get(SIMFI_NumUserSGPRsTag{}) += OrigPreloadLength;
+      Info.*get(NumUsedUserSGPRsTag{}) += OrigPreloadLength;
+    }
+  }
+
+  // 5b. Re-add system SGPRs (WorkGroupIDs, PSWO).
+  for (AMDPV::PreloadedValue PV : AllPreloadedValues) {
+    if (!Union.contains(PV))
+      continue;
+    switch (PV) {
+    case AMDPV::WORKGROUP_ID_X:
+      (void)SIMFI.addWorkGroupIDX();
+      break;
+    case AMDPV::WORKGROUP_ID_Y:
+      (void)SIMFI.addWorkGroupIDY();
+      break;
+    case AMDPV::WORKGROUP_ID_Z:
+      (void)SIMFI.addWorkGroupIDZ();
+      break;
+    case AMDPV::PRIVATE_SEGMENT_WAVE_BYTE_OFFSET:
+      (void)SIMFI.addPrivateSegmentWaveByteOffset();
+      break;
+    default:
+      break;
+    }
+  }
+
+  // 5c. Set preloaded VGPRs (WorkItemIDs). Mirrors the packed-TID mask
+  //     branch of the previous inline switch.
+  const bool HasPacked = ST.hasFeature(llvm::AMDGPU::FeaturePackedTID);
+  for (AMDPV::PreloadedValue PV : AllPreloadedValues) {
+    if (!Union.contains(PV))
+      continue;
+    switch (PV) {
+    case AMDPV::WORKITEM_ID_X:
+      SIMFI.setWorkItemIDX(llvm::ArgDescriptor::createRegister(
+          llvm::AMDGPU::VGPR0, HasPacked ? 0x3ffu : ~0u));
+      break;
+    case AMDPV::WORKITEM_ID_Y:
+      SIMFI.setWorkItemIDY(llvm::ArgDescriptor::createRegister(
+          HasPacked ? llvm::AMDGPU::VGPR0 : llvm::AMDGPU::VGPR1,
+          HasPacked ? (0x3ffu << 10) : ~0u));
+      break;
+    case AMDPV::WORKITEM_ID_Z:
+      SIMFI.setWorkItemIDZ(llvm::ArgDescriptor::createRegister(
+          HasPacked ? llvm::AMDGPU::VGPR0 : llvm::AMDGPU::VGPR2,
+          HasPacked ? (0x3ffu << 20) : ~0u));
+      break;
+    default:
+      break;
+    }
+  }
+
+  // 7. Record NewPositions in \c AllPreloadedValues order.
+  for (AMDPV::PreloadedValue PV : AllPreloadedValues) {
+    if (!Union.contains(PV))
+      continue;
+    if (llvm::MCRegister R = SIMFI.getPreloadedReg(PV))
+      FR.NewPositions.push_back({PV, R});
+  }
+
+  return FR;
+}
+
 /// Turn off the kernel-argument preload feature on the instrumented
 /// kernel. Zeroes \c NumKernargPreloadSGPRs in \c GCNUserSGPRUsageInfo
 /// so \c AMDGPUAsmPrinter emits \c kernarg_preload_length=0 in the KD,
@@ -352,12 +770,20 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
 
   if (!ArchitectedFS) {
 
-    /// Get the private wave byte offset
+    /// Get the private wave byte offset. The aggregator in
+    /// \c emitInitialEntryKernelSetup installs PSWO up front whenever
+    /// \c RequiresScratchAndStackSetup is true on a non-arch-FS target;
+    /// its absence here is a bug in the caller's \c RequiredPreloads
+    /// computation, not an operating condition to paper over.
     llvm::MCRegister PSWO = MFI.getPreloadedReg(
         llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_WAVE_BYTE_OFFSET);
-    if (!PSWO) {
-      PSWO = MFI.addPrivateSegmentWaveByteOffset();
-    }
+    if (!PSWO)
+      return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "TargetModulePatcherPass: kernel '{0}' requires scratch/stack "
+          "setup on a non-architected-FS target but "
+          "PRIVATE_SEGMENT_WAVE_BYTE_OFFSET was not force-enabled by the "
+          "preload aggregator",
+          MF.getName()));
 
     auto EmitScratchPSBInit = [&](llvm::MCRegister Lo, llvm::MCRegister Hi,
                                   uint8_t Lane) {
@@ -410,11 +836,15 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
     };
 
     if (!HasFS) {
+      // PSB was force-enabled up front in \c emitInitialEntryKernelSetup 's
+      // post-snapshot user-SGPR block when the scratch-and-stack setup
+      // requires it.
       llvm::MCRegister PSB = MFI.getPreloadedReg(
           llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER);
-      if (!PSB) {
-        PSB = MFI.addPrivateSegmentBuffer(TRI);
-      }
+      if (!PSB)
+        return LUTHIER_MAKE_GENERIC_ERROR(
+            "PRIVATE_SEGMENT_BUFFER preload was not enabled for the "
+            "non-arch-FS buffer-scratch path");
 
       auto PSBLane = Specs.findArgumentLane(WAVEFRONT_PRIVATE_SEGMENT_BUFFER);
       if (PSBLane == Specs.argument_lane_end()) {
@@ -442,8 +872,15 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
           .addReg(SVSStorageVGPR);
     }
 
+    // FS_INIT was force-enabled up front in the post-snapshot user-SGPR
+    // block when RequiresScratchAndStackSetup was true on a non-arch-FS
+    // target — so it should be available here.
     llvm::MCRegister FSInit =
         MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT);
+    if (!FSInit)
+      return LUTHIER_MAKE_GENERIC_ERROR(
+          "FLAT_SCRATCH_INIT preload was not enabled for the non-arch-FS "
+          "target");
 
     auto FSLane = Specs.findArgumentLane(FLAT_SCRATCH);
     if (FSLane == Specs.argument_lane_end()) {
@@ -509,29 +946,17 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
                         TII.get(llvm::AMDGPU::S_MOV_B32), llvm::AMDGPU::SGPR0)
         .addImm(SP);
   } else {
-    // Force-enable the PRIVATE_SEGMENT_SIZE preload if the app didn't
-    // already request it, so AMDGPUAsmPrinter emits the
-    // ENABLE_SGPR_PRIVATE_SEGMENT_SIZE bit and the HSA runtime
-    // provisions the SGPR with the per-wave scratch pool size at
-    // dispatch time.
+    // The PRIVATE_SEGMENT_SIZE preload is installed up front by the
+    // aggregator in \c emitInitialEntryKernelSetup whenever the app
+    // kernel uses dynamic stack; its absence here is a bug in the
+    // caller's \c RequiredPreloads computation.
     llvm::MCRegister PSS =
         MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_SIZE);
-    if (!PSS) {
-      forcePrivateSegmentSize(MFI.getUserSGPRInfo());
-      unsigned &NumSystemSGPRs = MFI.*get(NumSystemSGPRsTag{});
-      unsigned Saved = NumSystemSGPRs;
-      NumSystemSGPRs = 0;
-      MFI.addPrivateSegmentSize(TRI);
-      NumSystemSGPRs = Saved;
-      PSS = MFI.getPreloadedReg(
-          llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_SIZE);
-    }
     if (!PSS)
       return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-          "TargetModulePatcherPass: kernel '{0}' failed to enable "
-          "PRIVATE_SEGMENT_SIZE preload even after forcing the "
-          "UserSGPRInfo flag; MFI.addPrivateSegmentSize did not populate "
-          "ArgInfo.",
+          "TargetModulePatcherPass: kernel '{0}' uses dynamic stack but "
+          "PRIVATE_SEGMENT_SIZE was not force-enabled by the preload "
+          "aggregator",
           MF.getName()));
 
     const unsigned PayloadBudget =
@@ -655,24 +1080,12 @@ llvm::Error emitKernargBufferExpansion(llvm::MachineInstr &EntryInstr,
   const auto &TRI = *ST.getRegisterInfo();
   auto &MBB = *EntryInstr.getParent();
 
-  // Ensure KERNARG_SEGMENT_PTR is a preloaded SGPR pair. When the app
-  // kernel doesn't ask for it, force-enable it.
   llvm::MCRegister KernargPtr =
       MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR);
-  if (!KernargPtr) {
-    forceKernargSegmentPtr(MFI.getUserSGPRInfo());
-    unsigned &NumSystemSGPRs = MFI.*get(NumSystemSGPRsTag{});
-    unsigned Saved = NumSystemSGPRs;
-    NumSystemSGPRs = 0;
-    MFI.addKernargSegmentPtr(TRI);
-    NumSystemSGPRs = Saved;
-    KernargPtr =
-        MFI.getPreloadedReg(llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR);
-  }
   if (!KernargPtr)
     return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
         "TargetModulePatcherPass: kernel '{0}' needs IMPLICIT_ARG_BUFFER "
-        "kernarg expansion but KERNARG_SEGMENT_PTR could not be enabled",
+        "kernarg expansion but KERNARG_SEGMENT_PTR was not enabled",
         MF.getName()));
 
   auto ImplLane = Specs.findArgumentLane(IMPLICIT_ARG_BUFFER);
@@ -1573,7 +1986,7 @@ llvm::Error rewritePayloadReturn(llvm::MachineFunction &PayloadMF,
   return llvm::Error::success();
 }
 
-/// Map a Luthier \c ScalarValueArgument to the AMDGPU
+/// Map a \c ScalarValueArgument to the AMDGPU
 /// \c PreloadedValue that supplies its bits from the HSA kernarg preload.
 /// Returns \c std::nullopt for SVA entries that have no kernarg source
 /// (e.g., USER_ARG_PTR / IMPLICIT_ARG_BUFFER, which are filled in
@@ -1723,6 +2136,20 @@ computeInitialEntryKernelSVAInfo(const llvm::MachineFunction &KernelMF,
     for (amdgpu::hsamd::ValueKind Attr : SE.implicit_args())
       Info.ImplicitArgsExplicitlyRequested.insert(Attr);
   }
+  // The scratch/stack setup path in \c emitCodeToSetupScratch consumes
+  // PSB and FLAT_SCRATCH_INIT — one of them per branch on the target's
+  // FS mode — so record those SVs alongside the payload's own reads.
+  // This lets \c forceEnableRequestedUserSGPRPreloads make ONE pass over
+  // the SV set and force-enable every user-SGPR preload the downstream
+  // emit steps need, rather than each emit step force-enabling its own.
+  if (Info.RequiresScratchAndStackSetup) {
+    const auto &ST = KernelMF.getSubtarget<llvm::GCNSubtarget>();
+    if (!ST.hasArchitectedFlatScratch()) {
+      Info.RequestedKernelArguments.insert(FLAT_SCRATCH);
+      if (!ST.enableFlatScratch())
+        Info.RequestedKernelArguments.insert(WAVEFRONT_PRIVATE_SEGMENT_BUFFER);
+    }
+  }
   return Info;
 }
 
@@ -1806,35 +2233,75 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
                                      : " (V3; moved to final at tail)")
              << "\n");
 
-  // Snapshot every preloaded arg's physical position BEFORE any of the
-  // helpers below can shift it. \c emitCodeToSetupScratch may
-  // force-enable PRIVATE_SEGMENT_BUFFER / FLAT_SCRATCH_INIT and
-  // \c emitKernargBufferExpansion may force-enable KERNARG_SEGMENT_PTR;
-  // each force-enable calls into \c getNextUserSGPR and shifts every
-  // subsequent preloaded arg one SGPR pair (or one SGPR for the
-  // single-slot ones).
+  // Snapshot every preloaded arg's physical position BEFORE the
+  // aggregator below tears the ArgInfo down and re-materializes at
+  // canonical positions. The restore-move loop later uses this to
+  // shuffle preloaded args back to the OldReg positions the app
+  // kernel's already-codegened MIR reads.
   auto &SIMFI = *KernelMF.getInfo<llvm::SIMachineFunctionInfo>();
   llvm::SmallVector<
       std::pair<llvm::AMDGPUFunctionArgInfo::PreloadedValue, llvm::MCRegister>,
       16>
       PreloadedArgSnapshot;
-  for (unsigned I = 0; I <= llvm::AMDGPUFunctionArgInfo::WORKITEM_ID_Z; ++I) {
-    auto PV = static_cast<llvm::AMDGPUFunctionArgInfo::PreloadedValue>(I);
+  for (auto PV : AllPreloadedValues) {
     if (llvm::MCRegister R = SIMFI.getPreloadedReg(PV))
       PreloadedArgSnapshot.push_back({PV, R});
   }
 
-  /// Snapshot the kernarg-preload state.
-  const unsigned OrigNumUsedUserSGPRs =
-      SIMFI.getUserSGPRInfo().getNumUsedUserSGPRs();
+  // Compute stack setup inputs up front so we can decide whether the
+  // aggregator needs to force-enable PSS (dynamic stack) or PSWO (non-
+  // arch-FS scratch base).
+  auto &ST = KernelMF.getSubtarget<llvm::GCNSubtarget>();
+  const auto &SITRI = *ST.getRegisterInfo();
+  const llvm::MachineFrameInfo &AppMFI = KernelMF.getFrameInfo();
+  const bool AppUsesDynamicStack = AppMFI.hasVarSizedObjects();
+  const unsigned AppPrivateSegmentFixedSize =
+      static_cast<unsigned>(AppMFI.getStackSize());
+
   const unsigned OrigPreloadLength =
       SIMFI.getUserSGPRInfo().getNumKernargPreloadSGPRs();
 
+  // Build the union of preloads the instrumentation setup needs.
+  //   * Every SVA the payloads requested maps to a preload via
+  //     \c preloadedValueForSVA (IMPLICIT_ARG_BUFFER returns nullopt and
+  //     is filled by the kernarg-buffer expansion instead).
+  //   * PSWO is consumed by \c emitCodeToSetupScratch's non-arch-FS
+  //     branch.
+  //   * PSS is consumed by \c emitCodeToSetupScratch's dynamic-stack
+  //     branch.
+  //   * KERNARG_SEGMENT_PTR is consumed by the kernarg-preload fallback
+  //     ( \c S_LOAD_DWORD_IMM at kernel entry ) whenever the app kernel
+  //     had a preload block on a subtarget that supports one.
+  llvm::SmallSet<llvm::AMDGPUFunctionArgInfo::PreloadedValue, 16>
+      RequiredPreloads;
+  for (ScalarValueArgument SA : KernelInfo.RequestedKernelArguments) {
+    if (auto PV = preloadedValueForSVA(SA))
+      RequiredPreloads.insert(*PV);
+  }
+  if (KernelInfo.RequiresScratchAndStackSetup &&
+      !ST.hasArchitectedFlatScratch() && !ST.enableFlatScratch())
+    RequiredPreloads.insert(
+        llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_WAVE_BYTE_OFFSET);
+  if (KernelInfo.RequiresScratchAndStackSetup && AppUsesDynamicStack)
+    RequiredPreloads.insert(
+        llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_SIZE);
+  if (OrigPreloadLength > 0 && ST.hasKernargPreload())
+    RequiredPreloads.insert(
+        llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR);
+
+  // Single aggregated force-enable: clears the ArgInfo + counters and
+  // re-materializes (RequiredPreloads ∪ PreloadedArgSnapshot) at
+  // canonical physreg positions in \c AllPreloadedValues order. All
+  // \c amdgpu-no-* fn-attrs gating preload enable-bits are stripped in
+  // there too.
+  llvm::Function &KernelF = KernelMF.getFunction();
+  ForceEnableResult FR = forceEnableRequestedUserSGPRPreloads(
+      SIMFI, ST, SITRI, KernelF, RequiredPreloads, PreloadedArgSnapshot,
+      OrigPreloadLength);
+  llvm::DenseMap<llvm::AMDGPUFunctionArgInfo::PreloadedValue, llvm::MCRegister>
+      NewPosMap(FR.NewPositions.begin(), FR.NewPositions.end());
+
   if (KernelInfo.RequiresScratchAndStackSetup) {
-    const llvm::MachineFrameInfo &MFI = KernelMF.getFrameInfo();
-    bool AppUsesDynamicStack = MFI.hasVarSizedObjects();
-    unsigned AppPrivateSegmentFixedSize =
-        static_cast<unsigned>(MFI.getStackSize());
     LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
                                   "RequiresScratchAndStackSetup; emitting\n");
     if (auto Err = emitCodeToSetupScratch(
@@ -1862,7 +2329,13 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
     ///   \c byref  \c align-N off it so AMDGPUAsmPrinter emits it
     ///   as an address-typed record (size 8) instead of the
     ///   \c by_value inline buffer CodeDiscoveryPass initially set.
-    llvm::Function &KernelF = KernelMF.getFunction();
+
+    /// Clear implicit arg disable-ing attributes if instrumentation requested
+    /// hidden kernel args
+    if (!KernelInfo.ImplicitArgsExplicitlyRequested.empty()) {
+      KernelF.removeFnAttr("amdgpu-no-implicitarg-ptr");
+      KernelF.removeFnAttr("amdgpu-implicitarg-num-bytes");
+    }
     for (amdgpu::hsamd::ValueKind Attr :
          KernelInfo.ImplicitArgsExplicitlyRequested) {
       LLVM_DEBUG(luthier::dbgs()
@@ -1886,25 +2359,18 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
       case amdgpu::hsamd::ValueKind::HiddenCompletionAction:
         KernelF.removeFnAttr("amdgpu-no-completion-action");
         break;
-      case amdgpu::hsamd::ValueKind::HiddenQueuePtr: {
+      case amdgpu::hsamd::ValueKind::HiddenQueuePtr:
+        // \c hidden_queue_ptr is a hidden kernarg the launcher writes
+        // into the extended kernarg buffer — payloads consume it via
+        // kernarg-load at its metadata-declared offset, not via a
+        // preloaded SGPR. Force-enabling the QueuePtr HW preload here
+        // would shift every subsequent user SGPR (e.g. Kernarg from
+        // s[4:5] to s[6:7]) at dispatch time, invalidating every use
+        // of those SGPRs the app kernel's already-codegened MIR
+        // references. Only the fn-attr clear is needed so the streamer
+        // emits the metadata record.
         KernelF.removeFnAttr("amdgpu-no-queue-ptr");
-        // Enable the queue-ptr preload SGPR pair on the instrumented
-        // kernel so AMDGPUAsmPrinter emits the ENABLE_SGPR_QUEUE_PTR
-        // code_properties bit and the hidden_queue_ptr kernarg
-        // metadata record. Mirrors the PSB / FS_INIT /
-        // KERNARG_SEGMENT_PTR force-add trick — zero NumSystemSGPRs
-        // across \c addQueuePtr's \c getNextUserSGPR call (which
-        // asserts NumSystemSGPRs == 0) and restore afterwards.
-        auto &MFI = *KernelMF.getInfo<llvm::SIMachineFunctionInfo>();
-        forceQueuePtr(MFI.getUserSGPRInfo());
-        unsigned &NumSystemSGPRs = MFI.*get(NumSystemSGPRsTag{});
-        unsigned Saved = NumSystemSGPRs;
-        NumSystemSGPRs = 0;
-        MFI.addQueuePtr(*static_cast<const llvm::SIRegisterInfo *>(
-            KernelMF.getSubtarget().getRegisterInfo()));
-        NumSystemSGPRs = Saved;
         break;
-      }
       default:
         break;
       }
@@ -1940,111 +2406,23 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
                                     "no preloaded value (filled elsewhere)\n");
       continue; // USER_ARG_PTR / IMPLICIT_ARG_BUFFER: filled in elsewhere.
     }
-    // Force-enable the preloaded value for \c *PV if the original app
-    // kernel had it disabled.
-    {
-      const auto *TryArgDesc = std::get<0>(SIMFI.getPreloadedValue(*PV));
-      if (!TryArgDesc || !TryArgDesc->isRegister()) {
-        llvm::Function &KernelF = KernelMF.getFunction();
-        auto &Info = SIMFI.getUserSGPRInfo();
-        const auto &ST = KernelMF.getSubtarget<llvm::GCNSubtarget>();
-        const auto &SITRI = *ST.getRegisterInfo();
-        auto AddUserSGPR = [&](auto AddMemFn) {
-          unsigned &NumSystemSGPRs = SIMFI.*get(NumSystemSGPRsTag{});
-          unsigned Saved = NumSystemSGPRs;
-          NumSystemSGPRs = 0;
-          (void)(SIMFI.*AddMemFn)(SITRI);
-          NumSystemSGPRs = Saved;
-        };
-        LLVM_DEBUG(luthier::dbgs()
-                   << "[TargetModulePatcherPass]       force-enable preloaded "
-                      "value PV="
-                   << static_cast<unsigned>(*PV) << " on kernel '"
-                   << KernelF.getName() << "'\n");
-        switch (*PV) {
-        case llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER:
-          forcePrivateSegmentBuffer(Info);
-          AddUserSGPR(&llvm::SIMachineFunctionInfo::addPrivateSegmentBuffer);
-          break;
-        case llvm::AMDGPUFunctionArgInfo::FLAT_SCRATCH_INIT:
-          forceFlatScratchInit(Info);
-          AddUserSGPR(&llvm::SIMachineFunctionInfo::addFlatScratchInit);
-          break;
-        case llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR:
-          forceKernargSegmentPtr(Info);
-          AddUserSGPR(&llvm::SIMachineFunctionInfo::addKernargSegmentPtr);
-          break;
-        case llvm::AMDGPUFunctionArgInfo::QUEUE_PTR:
-          forceQueuePtr(Info);
-          AddUserSGPR(&llvm::SIMachineFunctionInfo::addQueuePtr);
-          break;
-        case llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_SIZE:
-          forcePrivateSegmentSize(Info);
-          AddUserSGPR(&llvm::SIMachineFunctionInfo::addPrivateSegmentSize);
-          break;
-        case llvm::AMDGPUFunctionArgInfo::DISPATCH_ID:
-          KernelF.removeFnAttr("amdgpu-no-dispatch-id");
-          AddUserSGPR(&llvm::SIMachineFunctionInfo::addDispatchID);
-          break;
-        case llvm::AMDGPUFunctionArgInfo::DISPATCH_PTR:
-          KernelF.removeFnAttr("amdgpu-no-dispatch-ptr");
-          AddUserSGPR(&llvm::SIMachineFunctionInfo::addDispatchPtr);
-          break;
-        case llvm::AMDGPUFunctionArgInfo::IMPLICIT_BUFFER_PTR:
-          KernelF.removeFnAttr("amdgpu-no-implicit-buffer-ptr");
-          AddUserSGPR(&llvm::SIMachineFunctionInfo::addImplicitBufferPtr);
-          break;
-        case llvm::AMDGPUFunctionArgInfo::WORKGROUP_ID_X:
-          KernelF.removeFnAttr("amdgpu-no-workgroup-id-x");
-          KernelF.removeFnAttr("amdgpu-no-cluster-id-x");
-          (void)SIMFI.addWorkGroupIDX();
-          break;
-        case llvm::AMDGPUFunctionArgInfo::WORKGROUP_ID_Y:
-          KernelF.removeFnAttr("amdgpu-no-workgroup-id-y");
-          KernelF.removeFnAttr("amdgpu-no-cluster-id-y");
-          (void)SIMFI.addWorkGroupIDY();
-          break;
-        case llvm::AMDGPUFunctionArgInfo::WORKGROUP_ID_Z:
-          KernelF.removeFnAttr("amdgpu-no-workgroup-id-z");
-          KernelF.removeFnAttr("amdgpu-no-cluster-id-z");
-          (void)SIMFI.addWorkGroupIDZ();
-          break;
-        case llvm::AMDGPUFunctionArgInfo::WORKITEM_ID_X: {
-          KernelF.removeFnAttr("amdgpu-no-workitem-id-x");
-          bool HasPacked = ST.hasFeature(llvm::AMDGPU::FeaturePackedTID);
-          SIMFI.setWorkItemIDX(llvm::ArgDescriptor::createRegister(
-              llvm::AMDGPU::VGPR0, HasPacked ? 0x3ffu : ~0u));
-          break;
-        }
-        case llvm::AMDGPUFunctionArgInfo::WORKITEM_ID_Y: {
-          KernelF.removeFnAttr("amdgpu-no-workitem-id-y");
-          bool HasPacked = ST.hasFeature(llvm::AMDGPU::FeaturePackedTID);
-          SIMFI.setWorkItemIDY(llvm::ArgDescriptor::createRegister(
-              HasPacked ? llvm::AMDGPU::VGPR0 : llvm::AMDGPU::VGPR1,
-              HasPacked ? (0x3ffu << 10) : ~0u));
-          break;
-        }
-        case llvm::AMDGPUFunctionArgInfo::WORKITEM_ID_Z: {
-          KernelF.removeFnAttr("amdgpu-no-workitem-id-z");
-          bool HasPacked = ST.hasFeature(llvm::AMDGPU::FeaturePackedTID);
-          SIMFI.setWorkItemIDZ(llvm::ArgDescriptor::createRegister(
-              HasPacked ? llvm::AMDGPU::VGPR0 : llvm::AMDGPU::VGPR2,
-              HasPacked ? (0x3ffu << 20) : ~0u));
-          break;
-        }
-        default:
-          break;
-        }
-      }
-    }
-    // The ArgDescriptor carries both the physreg AND the bitmask.
+    // Source physreg comes from the aggregator's returned map. If the
+    // SVA's PV isn't in the map, the caller under-populated
+    // \c RequiredPreloads — that's a bug, not a runtime condition.
+    auto NewIt = NewPosMap.find(*PV);
+    if (NewIt == NewPosMap.end())
+      return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "TargetModulePatcherPass: kernel '{0}' requests SVA arg {1} "
+          "but the preload aggregator did not install the corresponding "
+          "PreloadedValue (missing from RequiredPreloads)",
+          KernelMF.getName(), static_cast<unsigned>(SA)));
+    llvm::MCRegister SrcReg = NewIt->second;
     const auto *ArgDesc = std::get<0>(SIMFI.getPreloadedValue(*PV));
     if (!ArgDesc || !ArgDesc->isRegister())
       return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
           "TargetModulePatcherPass: kernel '{0}' requests SVA arg {1} "
           "but the source preloaded reg is not enabled on the MF",
           KernelMF.getName(), static_cast<unsigned>(SA)));
-    llvm::MCRegister SrcReg = ArgDesc->getRegister();
     unsigned Mask = ArgDesc->getMask();
     int NumSlots =
         static_cast<int>(StateValueArraySpecs::getArgumentLaneSize(SA));
@@ -2111,15 +2489,21 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
       return Err;
   }
 
-  // Restore each shifted preloaded arg from its new (post-force-add /
-  // post-kernarg-expansion) physical position back to the SGPR / VGPR
-  // the lifted kernel body reads it from. Classes not preloaded
-  // originally aren't in the snapshot and are skipped; classes whose
-  // position didn't change compare equal and are skipped.
+  // Restore each shifted preloaded arg from its new (post-aggregator)
+  // physical position back to the SGPR / VGPR the lifted kernel body
+  // reads it from. Classes not preloaded originally aren't in the
+  // snapshot and are skipped; classes whose position didn't change
+  // compare equal and are skipped. Drive off of the map the aggregator
+  // returned, not off of \c SIMFI.getPreloadedReg (both map back to the
+  // same physreg but the map is the aggregator's contract).
   const auto &TII = *KernelMF.getSubtarget().getInstrInfo();
   const auto &TRIR = *KernelMF.getSubtarget().getRegisterInfo();
   for (const auto &[Class, OldReg] : PreloadedArgSnapshot) {
-    llvm::MCRegister NewReg = SIMFI.getPreloadedReg(Class);
+    auto NewIt = NewPosMap.find(Class);
+    if (NewIt == NewPosMap.end())
+      continue; // aggregator dropped it (should not happen — snapshot
+                // is unioned in — but leaves the old reg as-is).
+    llvm::MCRegister NewReg = NewIt->second;
     if (!NewReg || NewReg == OldReg)
       continue;
     const llvm::TargetRegisterClass *RC = TRIR.getPhysRegBaseClass(OldReg);
@@ -2148,53 +2532,36 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
     }
   }
 
-  // Kernarg-preload handling. If the original kernel had preloaded
-  // kernargs, force-enabling additional system SGPRs may have either
-  //   (a) pushed the total user SGPRs above the AMDGPU 16-SGPR
-  //       ceiling — so disable preload and emit manual S_LOAD_DWORD ops
-  //       that populate the original SGPR positions from the kernarg buffer; or
-  //   (b) shifted the HW preload destination to a later SGPR range
-  //       (SGPR(NewNumUsedUserSGPRs) .. + PreloadLen - 1) while the
-  //       lifted app still reads them from the original range
-  //       (SGPR(OrigNumUsedUserSGPRs) .. + PreloadLen - 1) — emit an
-  //       S_MOV_B32 shuffle from the new HW positions to the
-  //       originals.
-  // Emitted at the very end of the SGPR/VGPR position-correcting
-  // section so any downstream KERNARG_SEGMENT_PTR shuffle above has
-  // already put the base pointer at its final position.
+  // Kernarg-preload handling. Split on \c FR.KernargPreloadDisabled:
+  //   * true  — the aggregator determined the (new fixed user SGPRs) +
+  //             (preload) total exceeded the HW 16-SGPR ceiling and
+  //             already zeroed \c NumKernargPreloadSGPRs. Emit the
+  //             manual \c S_LOAD_DWORD_IMM fallback that writes the
+  //             original preload dwords into the range the lifted app
+  //             kernel's MIR reads them from.
+  //   * false — HW preload stays enabled. If the aggregator's re-
+  //             materialization landed the preload block at a different
+  //             SGPR range than the original, emit the S_MOV shuffle
+  //             back to the range the lifted app expects.
+  // Emitted at the very end of the position-correcting section so any
+  // KERNARG_SEGMENT_PTR shuffle emitted above has already put the base
+  // pointer at its final position.
   if (OrigPreloadLength > 0) {
-    const unsigned NewNumUsedUserSGPRs =
-        SIMFI.getUserSGPRInfo().getNumUsedUserSGPRs();
-    const llvm::MCRegister OrigPreloadStartSGPR =
-        llvm::AMDGPU::SGPR0 + OrigNumUsedUserSGPRs;
-    llvm::Function &KernelF = KernelMF.getFunction();
-    auto &ST = KernelMF.getSubtarget<llvm::GCNSubtarget>();
-    if (NewNumUsedUserSGPRs + OrigPreloadLength > ST.getMaxNumUserSGPRs()) {
-      LLVM_DEBUG(luthier::dbgs()
-                 << "[TargetModulePatcherPass]     "
-                    "preload disabled: sys-SGPR post-force ("
-                 << NewNumUsedUserSGPRs << ") + preload (" << OrigPreloadLength
-                 << ") > " << ST.getMaxNumUserSGPRs()
-                 << "; emitting manual "
-                    "S_LOAD_DWORD for "
-                 << OrigPreloadLength << " preload dword(s)\n");
-      // Manual S_LOADs need KERNARG_SEGMENT_PTR live at kernel entry.
-      // Force-enable + populate ArgInfo if the original kernel
-      // didn't request it. (The 2-SGPR cost is within budget because
-      // disabling preload just freed \c OrigPreloadLength SGPRs.)
-      const auto &SITRI =
-          *KernelMF.getSubtarget<llvm::GCNSubtarget>().getRegisterInfo();
-      if (!SIMFI.getPreloadedReg(
-              llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR)) {
-        forceKernargSegmentPtr(SIMFI.getUserSGPRInfo());
-        unsigned &NumSystemSGPRs = SIMFI.*get(NumSystemSGPRsTag{});
-        unsigned Saved = NumSystemSGPRs;
-        NumSystemSGPRs = 0;
-        SIMFI.addKernargSegmentPtr(SITRI);
-        NumSystemSGPRs = Saved;
-      }
+    if (FR.KernargPreloadDisabled) {
+      LLVM_DEBUG(
+          luthier::dbgs()
+          << "[TargetModulePatcherPass]     "
+             "preload disabled: (new fixed user SGPRs) + preload > HW ceiling; "
+             "emitting manual S_LOAD_DWORD for "
+          << OrigPreloadLength << " preload dword(s)\n");
       llvm::MCRegister KernargSegPtr = SIMFI.getPreloadedReg(
           llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR);
+      if (!KernargSegPtr)
+        return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+            "TargetModulePatcherPass: kernel '{0}' needs manual kernarg "
+            "S_LOAD_DWORD fallback but KERNARG_SEGMENT_PTR was not "
+            "installed by the aggregator",
+            KernelMF.getName()));
       // Read the original preload dword offset from the KD attr
       // (populated by CodeDiscoveryPass). A missing attr means the
       // original KD had offset 0.
@@ -2205,7 +2572,8 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
             .getAsInteger(10, PreloadOffsetDwords);
       }
       for (unsigned I = 0; I < OrigPreloadLength; ++I) {
-        llvm::MCRegister Dst = OrigPreloadStartSGPR + I;
+        llvm::MCRegister Dst =
+            llvm::MCRegister::from(FR.OrigPreloadStartSGPR.id() + I);
         unsigned ByteOff = (PreloadOffsetDwords + I) * 4;
         unsigned EncOff = llvm::AMDGPU::convertSMRDOffsetUnits(ST, ByteOff);
         (void)llvm::BuildMI(EntryMBB, EntryInstr, llvm::DebugLoc(),
@@ -2217,26 +2585,35 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
       (void)llvm::BuildMI(EntryMBB, EntryInstr, llvm::DebugLoc(),
                           TII.get(llvm::AMDGPU::S_WAITCNT))
           .addImm(0);
-      // Disable HW preload + strip the KD attrs so AMDGPUAsmPrinter
-      // writes kernarg_preload_length=0 into the instrumented KD.
-      disableKernargPreload(SIMFI, OrigPreloadLength);
-    } else if (NewNumUsedUserSGPRs != OrigNumUsedUserSGPRs) {
-      // System SGPRs shifted; move the HW-loaded preload block back
-      // to the original position the lifted app expects.
-      const llvm::MCRegister NewPreloadStartSGPR =
-          llvm::AMDGPU::SGPR0 + NewNumUsedUserSGPRs;
-      LLVM_DEBUG(luthier::dbgs()
-                 << "[TargetModulePatcherPass]     "
-                    "preload shuffle: "
-                 << OrigPreloadLength << " dword(s) "
-                 << llvm::printReg(NewPreloadStartSGPR, &TRIR) << " -> "
-                 << llvm::printReg(OrigPreloadStartSGPR, &TRIR) << "\n");
-      for (unsigned I = 0; I < OrigPreloadLength; ++I) {
-        llvm::MCRegister Dst = OrigPreloadStartSGPR + I;
-        llvm::MCRegister Src = NewPreloadStartSGPR + I;
-        (void)llvm::BuildMI(EntryMBB, EntryInstr, llvm::DebugLoc(),
-                            TII.get(llvm::AMDGPU::S_MOV_B32), Dst)
-            .addReg(Src);
+    } else {
+      // HW preload stays on; compute the new destination range from
+      // the post-aggregator user-SGPR count (block sits at the tail of
+      // \c NumUsedUserSGPRs). Skip when it hasn't moved.
+      const unsigned NewNumUsedUserSGPRs =
+          SIMFI.getUserSGPRInfo().getNumUsedUserSGPRs();
+      if (NewNumUsedUserSGPRs < OrigPreloadLength)
+        return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+            "TargetModulePatcherPass: kernel '{0}' post-aggregator "
+            "NumUsedUserSGPRs ({1}) is smaller than the preload length ({2})",
+            KernelMF.getName(), NewNumUsedUserSGPRs, OrigPreloadLength));
+      const llvm::MCRegister NewPreloadStartSGPR = llvm::MCRegister::from(
+          llvm::AMDGPU::SGPR0 + NewNumUsedUserSGPRs - OrigPreloadLength);
+      if (NewPreloadStartSGPR != FR.OrigPreloadStartSGPR) {
+        LLVM_DEBUG(luthier::dbgs()
+                   << "[TargetModulePatcherPass]     "
+                      "preload shuffle: "
+                   << OrigPreloadLength << " dword(s) "
+                   << llvm::printReg(NewPreloadStartSGPR, &TRIR) << " -> "
+                   << llvm::printReg(FR.OrigPreloadStartSGPR, &TRIR) << "\n");
+        for (unsigned I = 0; I < OrigPreloadLength; ++I) {
+          llvm::MCRegister Dst =
+              llvm::MCRegister::from(FR.OrigPreloadStartSGPR.id() + I);
+          llvm::MCRegister Src =
+              llvm::MCRegister::from(NewPreloadStartSGPR.id() + I);
+          (void)llvm::BuildMI(EntryMBB, EntryInstr, llvm::DebugLoc(),
+                              TII.get(llvm::AMDGPU::S_MOV_B32), Dst)
+              .addReg(Src);
+        }
       }
     }
   }

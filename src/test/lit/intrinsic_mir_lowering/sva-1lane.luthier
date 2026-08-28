@@ -1,25 +1,28 @@
-# Verifies that a single-lane scalar-value argument (PRIVATE_SEGMENT_WAVE_BYTE_OFFSET,
-# SA enum value 4) is lowered to one V_READLANE_B32 plus the per-MF SVA VGPR
-# IMPLICIT_DEF placeholder, with no REG_SEQUENCE merge step.
+# Verifies that a readSVA on the WORKGROUP_ID_X SA (enum value 11,
+# single-lane) is lowered — with the new SVA mechanism — to a
+# \c V_READLANE_B32 reading the SA's SVASpecs-assigned lane directly
+# off the WWM SVA VGPR placeholder. No REG_SEQUENCE is emitted because
+# the SA is one lane. The placeholder itself is an \c IMPLICIT_DEF
+# tagged with the \c luthier.sva_vgpr_placeholder pcsections marker so
+# \c SVAPhysVGPRPinPass can re-pin every SVA vreg to the LoadPlan
+# physreg during WWM regalloc.
 #
-# This file is the prototype: it carries the lifted target MIR and this test's
-# payload already lowered to MIR, so the run below exercises exactly one
-# pass.
+# The stub_kernel's PATCHPOINT is what \c InjectedPayloadAndInstPoint-
+# Analysis walks to bind this payload to an instrumentation point;
+# without it, \c SVStorageAndLoadLocations wouldn't produce a LoadPlan
+# and the pass would error out on a missing plan.
+#
 # RUN: luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx908 \
 # RUN:    '-passes=luthier-intrinsic-mir-lowering' \
 # RUN:    %s -o %t.out.luthier && \
 # RUN: FileCheck %s < %t.out.luthier
 
-# Lowered MIR after mir-lowering: exactly one SI_SPILL_S32_RESTORE for the
-# 1-lane SA, loading from a TargetStackID::SGPRSpill stack slot. The
-# downstream pipeline (SILowerSGPRSpills, SIPreAllocateWWMRegs, the WWM
-# greedy regalloc + AMDGPUReserveWWMRegs) converts this to a physreg-
-# operand SI_RESTORE_S32_FROM_VGPR and reserves the LaneVGPR's physreg
-# in MFInfo->WWMReservedRegs. The SVAPhysVGPRPinPass hints the LaneVGPR
-# to the load-plan physreg so cross-MF consistency holds.
-# CHECK:     stack-id: sgpr-spill
-# CHECK:     %{{[0-9]+}}:sgpr_32 = SI_SPILL_S32_RESTORE %stack.{{[0-9]+}}
-# CHECK-NOT: SI_SPILL_S32_RESTORE %stack.{{[0-9]+}}
+# CHECK:      %{{[0-9]+}}:vgpr_32 = IMPLICIT_DEF pcsections {{.+}}
+# CHECK:      %{{[0-9]+}}:sreg_32_xm0_xexec = V_READLANE_B32 %{{[0-9]+}}, {{[0-9]+}}
+# CHECK-NOT:  V_READLANE_B32
+# CHECK-NOT:  REG_SEQUENCE
+# CHECK-NOT:  SI_SPILL_S32_RESTORE
+# CHECK:      SI_RETURN
 ---
 TargetModule:     |
   --- |
@@ -30,7 +33,15 @@ TargetModule:     |
       call void @llvm.amdgcn.endpgm(), !pcsections !7
       unreachable, !pcsections !7
     }
-    
+
+    ; Extern handle whose name matches the payload defined in the
+    ; instrumentation module below. The PATCHPOINT MI in stub_kernel's
+    ; body uses this as its target-global operand;
+    ; InjectedPayloadAndInstPointAnalysis walks the target-module MIR
+    ; for PATCHPOINTs and matches each extern to its IModule payload by
+    ; name.
+    declare void @luthier.payload.sva1()
+
     ; Function Attrs: nocallback nofree nosync nounwind speculatable willreturn memory(none)
     declare noundef i32 @llvm.amdgcn.workgroup.id.x() #1
     
@@ -156,6 +167,7 @@ TargetModule:     |
     minNumAGPRs:     4294967295
   body:             |
     bb.0 (%ir-block.0):
+      PATCHPOINT 0, 0, target-flags(amdgpu-gotprel) @luthier.payload.sva1, 0, 0, implicit-def $sgpr0_sgpr1, pcsections !7
       S_ENDPGM 0, pcsections !7
   ...
 InstrumentationModule:  |
@@ -167,7 +179,7 @@ InstrumentationModule:  |
 
     ; Function Attrs: noinline
     define void @luthier.payload.sva1() #0 {
-      %1 = call i32 asm sideeffect "luthier::readSVA", "=s,i"(i32 4)
+      %1 = call i32 asm sideeffect "luthier::readSVA", "=s,i"(i32 8)
       ret void
     }
 
@@ -289,7 +301,7 @@ InstrumentationModule:  |
     minNumAGPRs:     4294967295
   body:             |
     bb.0 (%ir-block.0):
-      INLINEASM &"luthier::readSVA", sideeffect attdialect, regdef:SReg_32, def %8, imm, 4
+      INLINEASM &"luthier::readSVA", sideeffect attdialect, regdef:SReg_32, def %8, imm, 8
       SI_RETURN
   ...
 InstrumentationModuleFormat: MIR

@@ -270,8 +270,10 @@ InstrumentedKernelLoaderAndLauncher::lookupGlobalVariable(
 // overrideWithInstrumented + custom kernarg
 //===----------------------------------------------------------------------===//
 
-llvm::Error InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented(
-    hsa_kernel_dispatch_packet_t &Packet, uint64_t Preset) {
+llvm::Expected<ExtendedKernargBuffer>
+InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented(
+    hsa_kernel_dispatch_packet_t &Packet, const hsa_queue_t &Queue,
+    uint64_t Preset) {
   llvm::sys::ScopedWriter W(Mutex);
   const auto *KD = reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
       Packet.kernel_object);
@@ -290,12 +292,101 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented(
       llvm::formatv("The instrumented variant cached for kernel_object {0:x} "
                     "preset {1} carries no kernel",
                     Packet.kernel_object, Preset)));
-  Packet.kernel_object = Rec.Kernel->KDDeviceAddress;
+  const LoadedKernelInfo &K = *Rec.Kernel;
+
+  // Snapshot the app's kernarg pointer before overwriting Packet.kernarg_address
+  // below; it is what goes into the extended buffer's app-kernarg prefix slot
+  // when the instrumented kernel expects one.
+  const void *AppKernargPtr = Packet.kernarg_address;
+
+  Packet.kernel_object = K.KDDeviceAddress;
   Packet.private_segment_size =
       std::max<uint32_t>(Packet.private_segment_size,
-                         Rec.Kernel->KDHostAddress->private_segment_fixed_size);
+                         K.KDHostAddress->private_segment_fixed_size);
 
-  return llvm::Error::success();
+  const uint32_t KernargSize = K.KDHostAddress->kernarg_size;
+  // An instrumented kernel with a zero-byte kernarg segment has neither an
+  // app-kernarg prefix nor any hidden args, so there is nothing to build and
+  // nothing to install. Leave Packet.kernarg_address alone (a caller that
+  // reused a stale AQL packet from a prior dispatch would still hold whatever
+  // the app had put there; that is the app's business).
+  if (KernargSize == 0)
+    return ExtendedKernargBuffer{};
+
+  // The patcher only expands the kernarg layout when a payload uses
+  // \c IMPLICIT_ARG_BUFFER (see the docstring on this method and
+  // \ref extended_kernarg_abi). When it did not expand, the instrumented
+  // kernel's metadata still matches the app's kernarg layout, and the
+  // dispatch runs off \c Packet.kernarg_address as the app filled it in.
+  // Rewriting it here would hand the kernel a mis-shaped buffer whose
+  // "app args" slots contain nothing.
+  if (!K.HasAppKernargPrefix)
+    return ExtendedKernargBuffer{};
+
+  const auto Core = CoreApi.getTable();
+  auto KernargRegionOrErr = hsa::agentFindKernargRegion(Core, Rec.Agent);
+  LUTHIER_RETURN_ON_ERROR(KernargRegionOrErr.takeError());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      KernargRegionOrErr->has_value(),
+      llvm::formatv("No kernarg region on agent {0:x} to back the {1}-byte "
+                    "extended kernarg for kernel_object {2:x}",
+                    Rec.Agent.handle, KernargSize, Packet.kernel_object)));
+
+  auto AllocOrErr =
+      hsa::memoryAllocate(Core, **KernargRegionOrErr, KernargSize);
+  LUTHIER_RETURN_ON_ERROR(AllocOrErr.takeError());
+  void *ExtPtr = *AllocOrErr;
+  std::memset(ExtPtr, 0, KernargSize);
+
+  // Wire in the record-scoped buffers if either is present. Both were sized
+  // for a single-wave ctor/dtor dispatch; a many-wave instrumented kernel
+  // that shares them with a ctor/dtor could over-subscribe them. Hidden
+  // slots the kernel declares but which the loader has no buffer for stay
+  // null (writeHiddenKernelArguments documents the per-kind zero semantics).
+  HiddenArgBufferAddresses Buffers;
+  Buffers.HostcallBuffer =
+      Rec.HostcallBufferAlloc
+          ? Rec.HostcallBufferAlloc->getDeviceVisibleAddress()
+          : nullptr;
+  Buffers.Heap =
+      Rec.HeapBuffer ? Rec.HeapBuffer->getDeviceVisibleAddress() : nullptr;
+
+  if (auto Err = fillExtendedKernargBuffer(
+          llvm::MutableArrayRef<uint8_t>(static_cast<uint8_t *>(ExtPtr),
+                                         KernargSize),
+          K.HasAppKernargPrefix, AppKernargPtr, K.HiddenArgs, Packet, Queue,
+          Buffers)) {
+    llvm::consumeError(hsa::memoryFree(Core, ExtPtr));
+    return std::move(Err);
+  }
+
+  Packet.kernarg_address = ExtPtr;
+  return ExtendedKernargBuffer(this, ExtPtr);
+}
+
+llvm::Error InstrumentedKernelLoaderAndLauncher::releaseExtendedKernargBuffer(
+    void *Ptr) {
+  if (Ptr == nullptr)
+    return llvm::Error::success();
+  return hsa::memoryFree(CoreApi.getTable(), Ptr);
+}
+
+llvm::Error InstrumentedKernelLoaderAndLauncher::fillExtendedKernargBuffer(
+    llvm::MutableArrayRef<uint8_t> Kernarg, bool HasAppKernargPrefix,
+    const void *AppKernargPtr, llvm::ArrayRef<HiddenArgInfo> HiddenArgs,
+    const hsa_kernel_dispatch_packet_t &Packet, const hsa_queue_t &Queue,
+    const HiddenArgBufferAddresses &Buffers) {
+  if (HasAppKernargPrefix) {
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        Kernarg.size() >= sizeof(void *),
+        llvm::formatv(
+            "Extended kernarg buffer is {0} byte(s), too small to hold the "
+            "{1}-byte app kernarg prefix the instrumented kernel expects",
+            Kernarg.size(), sizeof(void *))));
+    std::memcpy(Kernarg.data(), &AppKernargPtr, sizeof(void *));
+  }
+  return writeHiddenKernelArguments(Kernarg, HiddenArgs, Packet, Queue,
+                                    Buffers);
 }
 
 //===----------------------------------------------------------------------===//
@@ -811,19 +902,22 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   Rec.DtorKernel = std::move(*DtorKernelOrErr);
   Rec.PrintfFormatStrings = std::move(PrintfFormatStrings);
 
-  // Stand up the record-scoped buffers if either of the constructor and
-  // destructor kernels can reach them. They belong to the record rather than
-  // to a single dispatch: memory the constructor allocates has to survive
-  // until the destructor releases it, and both the hostcall service and the
-  // heap track those allocations.
-  auto EitherCtorDtorDeclares =
+  // Stand up the record-scoped buffers if the constructor, destructor,
+  // OR the instrumented kernel itself can reach them. They belong to the
+  // record rather than to a single dispatch: memory the constructor
+  // allocates has to survive until the destructor releases it, and the
+  // instrumented kernel — including its injected payloads — may reference
+  // the same buffers on every dispatch (a printf-carrying payload keeps
+  // asking the hostcall service for slots for the record's whole life).
+  auto AnyRecordKernelDeclares =
       [&](amdgpu::hsamd::ValueKind Kind) {
         return (CtorKernelOrErr->has_value() &&
                 declaresHiddenArg(**CtorKernelOrErr, Kind)) ||
-               (Rec.DtorKernel && declaresHiddenArg(*Rec.DtorKernel, Kind));
+               (Rec.DtorKernel && declaresHiddenArg(*Rec.DtorKernel, Kind)) ||
+               (Rec.Kernel && declaresHiddenArg(*Rec.Kernel, Kind));
       };
 
-  if (EitherCtorDtorDeclares(
+  if (AnyRecordKernelDeclares(
           amdgpu::hsamd::ValueKind::HiddenHostcallBuffer)) {
     auto HostcallBufferOrErr = createAndRegisterHostcallBuffer(Agent);
     if (!HostcallBufferOrErr)
@@ -842,7 +936,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
     return Fail(std::move(E));
   };
 
-  if (EitherCtorDtorDeclares(amdgpu::hsamd::ValueKind::HiddenHeapV1)) {
+  if (AnyRecordKernelDeclares(amdgpu::hsamd::ValueKind::HiddenHeapV1)) {
     auto HeapOrErr = DeviceHeapBuffer::create(AmdExt.getTable(), Agent);
     if (!HeapOrErr)
       return FailWithRecord(HeapOrErr.takeError());
@@ -966,11 +1060,29 @@ InstrumentedKernelLoaderAndLauncher::findKernelIfPresent(
                     "'{0}' but has no amdhsa.kernels metadata entry for it",
                     KDName)));
   if ((*KernelMDOrErr)->Args) {
+    // Detect the patcher's extended-kernarg shape via arg0's metadata. The
+    // patcher only expands the layout when a payload uses
+    // \c IMPLICIT_ARG_BUFFER; when it does, it strips \c ByRef / \c align off
+    // the first explicit arg (see \c TargetModulePatcherPass.cpp:1918-1919),
+    // which \c AMDGPUAsmPrinter emits as a \c global_buffer record of size 8
+    // at offset 0. Anything else — a \c by_value ByRef struct (the HIP
+    // default wrapping) or a non-zero offset — means the patcher did not
+    // expand, and \c Packet.kernarg_address must be left pointing at the
+    // app's own kernarg buffer. \c overrideWithInstrumented uses this flag
+    // as the guard for whether to build an extended buffer at all.
+    bool FirstExplicit = true;
     for (const amdgpu::hsamd::Kernel::Arg::Metadata &Arg :
          *(*KernelMDOrErr)->Args) {
       if (Arg.ValKind < amdgpu::hsamd::ValueKind::HiddenArgKindBegin ||
-          Arg.ValKind > amdgpu::hsamd::ValueKind::HiddenArgKindEnd)
+          Arg.ValKind > amdgpu::hsamd::ValueKind::HiddenArgKindEnd) {
+        if (FirstExplicit) {
+          Info.HasAppKernargPrefix =
+              Arg.ValKind == amdgpu::hsamd::ValueKind::GlobalBuffer &&
+              Arg.Offset == 0 && Arg.Size == sizeof(void *);
+          FirstExplicit = false;
+        }
         continue;
+      }
       Info.HiddenArgs.push_back(
           HiddenArgInfo{Arg.ValKind, Arg.Offset, Arg.Size});
     }
@@ -978,11 +1090,12 @@ InstrumentedKernelLoaderAndLauncher::findKernelIfPresent(
 
   LLVM_DEBUG(luthier::dbgs()
              << "[InstrumentedKernelLoaderAndLauncher]   found kernel "
-             << llvm::formatv("{0}: KD at {1:x} on the device, {2} on the "
-                              "host, {3} hidden arg(s)\n",
-                              KernelName, Info.KDDeviceAddress,
-                              static_cast<const void *>(Info.KDHostAddress),
-                              Info.HiddenArgs.size()));
+             << llvm::formatv(
+                    "{0}: KD at {1:x} on the device, {2} on the host, {3} "
+                    "hidden arg(s), app-kernarg-prefix={4}\n",
+                    KernelName, Info.KDDeviceAddress,
+                    static_cast<const void *>(Info.KDHostAddress),
+                    Info.HiddenArgs.size(), Info.HasAppKernargPrefix));
   return Info;
 }
 

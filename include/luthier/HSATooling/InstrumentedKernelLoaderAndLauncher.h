@@ -19,6 +19,44 @@
 /// \c InstrumentedKernelLoaderAndLauncherTrait, which provides its
 /// \c Derived with the loader functionality, as well as HSA callbacks to
 /// invalidate the instrumented kernel cache.
+///
+/// \anchor extended_kernarg_abi
+/// # Extended kernarg buffer ABI
+///
+/// The instrumented kernel emitted by \c TargetModulePatcherPass reads its
+/// implicit args out of an "extended kernarg buffer" the launcher stands up
+/// in front of every instrumented dispatch. This is the launcher-side
+/// statement of that ABI; the emitter side lives in
+/// \c TargetModulePatcherPass::emitKernargBufferExpansion.
+///
+/// Two shapes, decided per kernel by
+/// \c LoadedKernelInfo::HasAppKernargPrefix, which the launcher reads off
+/// the code object's \c amdhsa.kernels metadata at load time:
+///
+/// \li \c HasAppKernargPrefix == \c true — the instrumented kernel expects the
+///     original app kernarg address at bytes \c [0,8) and its COV5 hidden-arg
+///     block right after it: <tt>[ app_kernarg_ptr : 64 ][ hidden args ... ]</tt>.
+///     The app's own explicit args are still read through
+///     \c app_kernarg_ptr, so no bytes of them appear in the extended buffer
+///     itself.
+///
+/// \li \c HasAppKernargPrefix == \c false — the instrumented kernel takes no
+///     explicit kernarg. The extended buffer is just the COV5 hidden block
+///     starting at offset 0: <tt>[ hidden args ... ]</tt>.
+///
+/// The total buffer size is the instrumented kernel's
+/// \c kernel_descriptor_t::kernarg_size. Each hidden slot is placed at the
+/// \c .offset and \c .size the code object's \c amdhsa.kernels metadata
+/// declares for it, using the values \c writeHiddenKernelArguments derives
+/// from the dispatch packet + queue.
+///
+/// \c overrideWithInstrumented builds the buffer, points the dispatch
+/// packet's \c kernarg_address at it, and hands back an
+/// \c ExtendedKernargBuffer handle. The caller MUST keep that handle alive
+/// until the dispatch completes; releasing early frees memory the device may
+/// still be reading. The typical pattern is to move the handle into the
+/// completion callback keyed on \c hsa_kernel_dispatch_packet_t::completion_signal
+/// and drop it there.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_TOOLING_INSTRUMENTED_KERNEL_LOADER_AND_LAUNCHER_H
 #define LUTHIER_HSA_TOOLING_INSTRUMENTED_KERNEL_LOADER_AND_LAUNCHER_H
@@ -62,6 +100,8 @@ namespace luthier {
 namespace object {
 class AMDGCNObjectFile;
 } // namespace object
+
+class ExtendedKernargBuffer;
 
 /// \brief Loader for loading and caching instrumented copies of kernels
 class InstrumentedKernelLoaderAndLauncher {
@@ -152,15 +192,38 @@ public:
   llvm::Error unloadInstrumentedIfExists(
       const llvm::amdhsa::kernel_descriptor_t *OriginalKD, uint64_t Preset = 0);
 
-  /// Rewrite \p Packet 's <tt>kernel_object</tt> to the cached
-  /// instrumented variant for <tt>(Packet.kernel_object, Preset)</tt>,
-  /// and bump <tt>private_segment_size</tt> to at least the cached
-  /// value. The variant is the kernel of the *first* code object loaded under
-  /// the key; code objects added by later \c loadInstrumented calls never
-  /// change what a dispatch runs. Returns an error if no such cached variant
-  /// exists.
-  llvm::Error overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
-                                       uint64_t Preset = 0);
+  /// Rewrite \p Packet 's <tt>kernel_object</tt> to the cached instrumented
+  /// variant for <tt>(Packet.kernel_object, Preset)</tt>, bump
+  /// <tt>private_segment_size</tt> to at least the cached value, allocate +
+  /// fill the extended kernarg buffer the instrumented kernel expects (see
+  /// \ref extended_kernarg_abi "Extended kernarg buffer ABI"), and point
+  /// \c Packet.kernarg_address at it.
+  ///
+  /// The returned handle owns the extended kernarg buffer. The caller MUST
+  /// keep it alive until the dispatch completes; releasing while the device
+  /// may still be reading the buffer is undefined behaviour. Typical pattern:
+  /// move the handle into the completion callback for
+  /// \c Packet.completion_signal.
+  ///
+  /// \p Queue is the queue the dispatch is being pushed onto; the extended
+  /// buffer's \c HiddenPrivateBase and \c HiddenSharedBase slots are read
+  /// out of the queue's AMD extension apertures.
+  ///
+  /// The variant is the kernel of the *first* code object loaded under the
+  /// key; code objects added by later \c loadInstrumented calls never change
+  /// what a dispatch runs. Errors if no such cached variant exists.
+  ///
+  /// The extended buffer inherits the record's hostcall and heap buffers
+  /// (if either was stood up for a constructor/destructor kernel and the
+  /// instrumented kernel also declares them). The record's buffers are sized
+  /// for a single wave; a many-wave instrumented dispatch that shares them
+  /// with a ctor/dtor kernel would over-subscribe. Hidden slots the
+  /// instrumented kernel declares but which the loader has not stood up a
+  /// buffer for are left zeroed — writeHiddenKernelArguments documents the
+  /// per-kind zero semantics.
+  llvm::Expected<ExtendedKernargBuffer>
+  overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
+                           const hsa_queue_t &Queue, uint64_t Preset = 0);
 
   /// Resolve a device-global variable \p Name to its
   /// \c hsa_executable_symbol_t inside the code objects cached under
@@ -210,8 +273,11 @@ protected:
   const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
       &Loader;
 
-  /// Reader/writer lock: \c overrideWithInstrumented takes the reader
-  /// lock; every cache mutation path takes the writer lock.
+  /// Reader/writer lock: \c lookupGlobalVariable takes the reader lock;
+  /// every cache mutation path takes the writer lock. \c overrideWithInstrumented
+  /// takes the writer lock because it allocates the extended kernarg buffer
+  /// out of an HSA kernarg region and needs a consistent view of the record
+  /// while it does so.
   mutable llvm::sys::RWMutex Mutex;
 
   /// Result of one managed-variable storage allocation. Captures everything
@@ -258,6 +324,15 @@ protected:
     const llvm::amdhsa::kernel_descriptor_t *KDHostAddress{nullptr};
     /// The kernel's hidden arguments, in metadata order.
     llvm::SmallVector<HiddenArgInfo, 8> HiddenArgs;
+    /// True iff the kernel expects the original app kernarg pointer at the
+    /// first 8 bytes of the extended kernarg buffer. Derived from
+    /// \c amdhsa.kernels metadata: the patcher restages the app kernel's
+    /// first kernarg as an 8-byte address record at offset 0 (see
+    /// \c TargetModulePatcherPass::emitKernargBufferExpansion), so the
+    /// prefix's presence is exactly whether the metadata declares any
+    /// non-hidden argument. See
+    /// \ref extended_kernarg_abi "Extended kernarg buffer ABI".
+    bool HasAppKernargPrefix{false};
   };
 
   /// One code object loaded under a <tt>(OriginalKD, Preset)</tt> entry. The
@@ -487,6 +562,25 @@ protected:
       const hsa_kernel_dispatch_packet_t &Packet, const hsa_queue_t &Queue,
       const HiddenArgBufferAddresses &Buffers);
 
+  /// Populate the extended kernarg buffer \p Kernarg per
+  /// \ref extended_kernarg_abi "Extended kernarg buffer ABI": prefix
+  /// \p AppKernargPtr into bytes \c [0,8) when \p HasAppKernargPrefix is
+  /// true, then run \c writeHiddenKernelArguments over the same buffer to
+  /// fill the trailing hidden-arg block. \p Kernarg is assumed
+  /// zero-initialized; the prefix write skips zero-fill and every hidden
+  /// slot is written at its metadata-declared offset.
+  ///
+  /// Extracted as its own static so tests can exercise the composition
+  /// without an HSA runtime. The extra buffer-size checks it does are
+  /// redundant against the runtime path (which sizes the buffer from
+  /// \c kernarg_size), but they let a caller-side test provide any buffer
+  /// it wants and still catch invalid layouts.
+  static llvm::Error fillExtendedKernargBuffer(
+      llvm::MutableArrayRef<uint8_t> Kernarg, bool HasAppKernargPrefix,
+      const void *AppKernargPtr, llvm::ArrayRef<HiddenArgInfo> HiddenArgs,
+      const hsa_kernel_dispatch_packet_t &Packet, const hsa_queue_t &Queue,
+      const HiddenArgBufferAddresses &Buffers);
+
   /// Returns the loader's hostcall listener, starting it (and its thread) if
   /// this is the first kernel that needs one. Caller must hold the writer
   /// lock.
@@ -530,6 +624,81 @@ protected:
   llvm::Error
   launchSingleWorkItemKernelAndWait(const InstrumentedRecord &Rec,
                                     const LoadedKernelInfo &Kernel);
+
+  /// Free an extended kernarg buffer previously handed out by
+  /// \c overrideWithInstrumented. \p Ptr must have been allocated from an
+  /// agent kernarg region via \c hsa_memory_allocate; freeing something
+  /// else is undefined behaviour. A null \p Ptr is a no-op. Thread-safe
+  /// because \c hsa_memory_free is; called by \c ExtendedKernargBuffer 's
+  /// destructor / \c release without any lock on the loader.
+  llvm::Error releaseExtendedKernargBuffer(void *Ptr);
+
+  friend class ExtendedKernargBuffer;
+};
+
+/// Owns an extended kernarg buffer built by
+/// \c InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented (see
+/// \ref extended_kernarg_abi "Extended kernarg buffer ABI"). Move-only. On
+/// destruction — or on an explicit \c release call — the buffer is returned
+/// to HSA. Idempotent: a default-constructed or already-released handle
+/// releases nothing.
+///
+/// The caller MUST keep this handle alive until the dispatch it backs has
+/// completed. Releasing while the device is still reading the buffer is
+/// undefined behaviour, and one that HSA cannot detect for the loader.
+class ExtendedKernargBuffer {
+public:
+  ExtendedKernargBuffer() = default;
+  ExtendedKernargBuffer(const ExtendedKernargBuffer &) = delete;
+  ExtendedKernargBuffer &operator=(const ExtendedKernargBuffer &) = delete;
+
+  ExtendedKernargBuffer(ExtendedKernargBuffer &&Other) noexcept
+      : Owner(Other.Owner), Ptr(Other.Ptr) {
+    Other.Owner = nullptr;
+    Other.Ptr = nullptr;
+  }
+  ExtendedKernargBuffer &operator=(ExtendedKernargBuffer &&Other) noexcept {
+    if (this != &Other) {
+      llvm::consumeError(release());
+      Owner = Other.Owner;
+      Ptr = Other.Ptr;
+      Other.Owner = nullptr;
+      Other.Ptr = nullptr;
+    }
+    return *this;
+  }
+
+  ~ExtendedKernargBuffer() { llvm::consumeError(release()); }
+
+  /// Device-visible pointer that was written to
+  /// \c hsa_kernel_dispatch_packet_t::kernarg_address. Null when this
+  /// handle is empty (either default-constructed or the instrumented
+  /// kernel had a zero-byte kernarg segment).
+  void *getKernargAddress() const { return Ptr; }
+
+  /// True iff this handle owns no buffer.
+  bool empty() const { return Ptr == nullptr; }
+
+  /// Return the buffer to HSA now. Idempotent; the handle is emptied
+  /// whether the underlying free succeeded or not, so a leftover error
+  /// from a failed free is surfaced once and only once.
+  llvm::Error release() {
+    if (Ptr == nullptr)
+      return llvm::Error::success();
+    void *P = Ptr;
+    InstrumentedKernelLoaderAndLauncher *O = Owner;
+    Ptr = nullptr;
+    Owner = nullptr;
+    return O->releaseExtendedKernargBuffer(P);
+  }
+
+private:
+  friend class InstrumentedKernelLoaderAndLauncher;
+  ExtendedKernargBuffer(InstrumentedKernelLoaderAndLauncher *Owner, void *Ptr)
+      : Owner(Owner), Ptr(Ptr) {}
+
+  InstrumentedKernelLoaderAndLauncher *Owner{nullptr};
+  void *Ptr{nullptr};
 };
 
 /// \brief CRTP trait that adds an \c hsa_executable_destroy interceptor

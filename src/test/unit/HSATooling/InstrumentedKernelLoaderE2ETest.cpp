@@ -39,6 +39,7 @@
 #include "luthier/HSA/ISA.h"
 #include "luthier/HSA/Memory.h"
 #include "luthier/HSA/MemoryPool.h"
+#include "luthier/HSA/Queue.h"
 #include "luthier/HSATooling/InstrumentedKernelLoaderAndLauncher.h"
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
 
@@ -218,6 +219,61 @@ protected:
   std::unique_ptr<llvm::MemoryBuffer> addendumNoKernelCopy() const {
     return llvm::MemoryBuffer::getMemBufferCopy(
         AddendumNoKernel->getBuffer(), "luthier-test-addendum-no-kernel");
+  }
+
+  /// Owns an \c hsa_queue_t for the duration of a test scope. Every
+  /// dispatch-packet-override case needs a queue to hand to the loader —
+  /// the loader reads the aperture bases out of its AMD extension struct
+  /// while filling the hidden args — but never actually pushes the packet
+  /// onto it, so a single-slot queue is enough.
+  class OwnedQueue {
+  public:
+    OwnedQueue(const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &Core,
+               hsa_agent_t Agent) {
+      auto MinSizeOrErr = hsa::agentGetQueueMinSize(Core.getTable(), Agent);
+      if (!MinSizeOrErr) {
+        Err = MinSizeOrErr.takeError();
+        return;
+      }
+      auto QueueOrErr = hsa::queueCreate(Core.getTable(), Agent, *MinSizeOrErr);
+      if (!QueueOrErr) {
+        Err = QueueOrErr.takeError();
+        return;
+      }
+      CoreRef = &Core;
+      Queue = *QueueOrErr;
+    }
+    ~OwnedQueue() {
+      if (Queue != nullptr && CoreRef != nullptr)
+        llvm::consumeError(hsa::queueDestroy(CoreRef->getTable(), Queue));
+      llvm::consumeError(std::move(Err));
+    }
+    OwnedQueue(const OwnedQueue &) = delete;
+    OwnedQueue &operator=(const OwnedQueue &) = delete;
+
+    llvm::Error takeError() { return std::move(Err); }
+    hsa_queue_t &operator*() { return *Queue; }
+    const hsa_queue_t &operator*() const { return *Queue; }
+
+  private:
+    const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> *CoreRef{nullptr};
+    hsa_queue_t *Queue{nullptr};
+    llvm::Error Err = llvm::Error::success();
+  };
+
+  /// A dispatch packet valid enough for the hidden-argument fill to succeed:
+  /// non-zero workgroup and grid dimensions, and a 1-D setup. Tests point
+  /// \c kernel_object at whatever the current case demands.
+  static hsa_kernel_dispatch_packet_t makeDispatchPacket() {
+    hsa_kernel_dispatch_packet_t Packet{};
+    Packet.setup = 1u << HSA_KERNEL_DISPATCH_PACKET_SETUP_DIMENSIONS;
+    Packet.workgroup_size_x = 1;
+    Packet.workgroup_size_y = 1;
+    Packet.workgroup_size_z = 1;
+    Packet.grid_size_x = 1;
+    Packet.grid_size_y = 1;
+    Packet.grid_size_z = 1;
+    return Packet;
   }
 
   /// Reads an \c int device global out of the loaded instrumented copy.
@@ -577,11 +633,13 @@ TEST_F(InstrumentedKernelLoaderE2E, AdditionsDoNotChangeTheDispatchedKernel) {
   ASSERT_TRUE(static_cast<bool>(SecondOrErr))
       << llvm::toString(SecondOrErr.takeError());
 
-  hsa_kernel_dispatch_packet_t Packet{};
+  OwnedQueue Queue(*CoreSnapshot, Agent);
+  ASSERT_FALSE(static_cast<bool>(Queue.takeError()));
+  hsa_kernel_dispatch_packet_t Packet = makeDispatchPacket();
   Packet.kernel_object = reinterpret_cast<uint64_t>(originalKD());
-  llvm::Error Err = Loader->overrideWithInstrumented(Packet);
-  EXPECT_FALSE(static_cast<bool>(Err)) << llvm::toString(std::move(Err));
-  llvm::consumeError(std::move(Err));
+  auto BufOrErr = Loader->overrideWithInstrumented(Packet, *Queue);
+  ASSERT_TRUE(static_cast<bool>(BufOrErr))
+      << llvm::toString(BufOrErr.takeError());
   EXPECT_EQ(Packet.kernel_object, *FirstKOOrErr)
       << "the first code object's kernel stays the instrumented one";
 }
@@ -677,13 +735,15 @@ TEST_F(InstrumentedKernelLoaderE2E, OverridesTheDispatchPacketsKernelObject) {
   ASSERT_TRUE(static_cast<bool>(InstrumentedKOOrErr))
       << llvm::toString(InstrumentedKOOrErr.takeError());
 
-  hsa_kernel_dispatch_packet_t Packet{};
+  OwnedQueue Queue(*CoreSnapshot, Agent);
+  ASSERT_FALSE(static_cast<bool>(Queue.takeError()));
+  hsa_kernel_dispatch_packet_t Packet = makeDispatchPacket();
   Packet.kernel_object = reinterpret_cast<uint64_t>(originalKD());
   Packet.private_segment_size = 0;
 
-  llvm::Error Err = Loader->overrideWithInstrumented(Packet);
-  ASSERT_FALSE(static_cast<bool>(Err)) << llvm::toString(std::move(Err));
-  llvm::consumeError(std::move(Err));
+  auto BufOrErr = Loader->overrideWithInstrumented(Packet, *Queue);
+  ASSERT_TRUE(static_cast<bool>(BufOrErr))
+      << llvm::toString(BufOrErr.takeError());
 
   EXPECT_EQ(Packet.kernel_object, *InstrumentedKOOrErr);
 }
@@ -694,25 +754,102 @@ TEST_F(InstrumentedKernelLoaderE2E, OverrideNeverLowersTheScratchRequest) {
       << llvm::toString(LoadedOrErr.takeError());
 
   constexpr uint32_t CallerRequest = 1u << 20;
-  hsa_kernel_dispatch_packet_t Packet{};
+  OwnedQueue Queue(*CoreSnapshot, Agent);
+  ASSERT_FALSE(static_cast<bool>(Queue.takeError()));
+  hsa_kernel_dispatch_packet_t Packet = makeDispatchPacket();
   Packet.kernel_object = reinterpret_cast<uint64_t>(originalKD());
   Packet.private_segment_size = CallerRequest;
 
-  llvm::Error Err = Loader->overrideWithInstrumented(Packet);
-  ASSERT_FALSE(static_cast<bool>(Err)) << llvm::toString(std::move(Err));
-  llvm::consumeError(std::move(Err));
+  auto BufOrErr = Loader->overrideWithInstrumented(Packet, *Queue);
+  ASSERT_TRUE(static_cast<bool>(BufOrErr))
+      << llvm::toString(BufOrErr.takeError());
 
   EXPECT_GE(Packet.private_segment_size, CallerRequest)
       << "the override must not shrink what the caller already reserved";
 }
 
-TEST_F(InstrumentedKernelLoaderE2E, OverrideRejectsAnUnloadedKernelObject) {
-  hsa_kernel_dispatch_packet_t Packet{};
+// The instrumented kernel expects an extended kernarg buffer: an 8-byte app
+// kernarg prefix followed by the COV5 hidden block. Verify the loader stands
+// one up, points the packet at it, and copies the original kernarg pointer
+// into the prefix.
+TEST_F(InstrumentedKernelLoaderE2E, OverrideBuildsAnExtendedKernargBuffer) {
+  auto LoadedOrErr = Loader->loadInstrumented(relocatableCopy(), originalKD());
+  ASSERT_TRUE(static_cast<bool>(LoadedOrErr))
+      << llvm::toString(LoadedOrErr.takeError());
+
+  // The address the app dispatch would have carried. Only its value is
+  // asserted; the loader does not dereference it.
+  const auto AppKernargAddress =
+      reinterpret_cast<void *>(uintptr_t{0xF00DFACEu});
+
+  OwnedQueue Queue(*CoreSnapshot, Agent);
+  ASSERT_FALSE(static_cast<bool>(Queue.takeError()));
+  hsa_kernel_dispatch_packet_t Packet = makeDispatchPacket();
+  Packet.kernel_object = reinterpret_cast<uint64_t>(originalKD());
+  Packet.kernarg_address = AppKernargAddress;
+
+  auto BufOrErr = Loader->overrideWithInstrumented(Packet, *Queue);
+  ASSERT_TRUE(static_cast<bool>(BufOrErr))
+      << llvm::toString(BufOrErr.takeError());
+  ExtendedKernargBuffer Buf = std::move(*BufOrErr);
+
+  ASSERT_FALSE(Buf.empty());
+  ASSERT_NE(Buf.getKernargAddress(), nullptr);
+  EXPECT_EQ(Packet.kernarg_address, Buf.getKernargAddress())
+      << "the packet must point at the extended buffer, not the app's kernarg";
+
+  const void *Prefix = nullptr;
+  ASSERT_FALSE(static_cast<bool>(
+      hsa::memoryCopy(CoreSnapshot->getTable(), &Prefix,
+                      Buf.getKernargAddress(), sizeof(Prefix))));
+  EXPECT_EQ(Prefix, AppKernargAddress)
+      << "the extended buffer's prefix must hold the original kernarg address";
+
+  // Explicit release is what the caller uses in a completion callback; verify
+  // it succeeds and empties the handle.
+  llvm::Error Rel = Buf.release();
+  EXPECT_FALSE(static_cast<bool>(Rel)) << llvm::toString(std::move(Rel));
+  llvm::consumeError(std::move(Rel));
+  EXPECT_TRUE(Buf.empty());
+}
+
+// A second release from the same handle is a no-op — the RAII destructor
+// relies on this to not double-free when a caller has already released
+// explicitly in a completion callback.
+TEST_F(InstrumentedKernelLoaderE2E, ExtendedKernargBufferReleaseIsIdempotent) {
+  auto LoadedOrErr = Loader->loadInstrumented(relocatableCopy(), originalKD());
+  ASSERT_TRUE(static_cast<bool>(LoadedOrErr))
+      << llvm::toString(LoadedOrErr.takeError());
+
+  OwnedQueue Queue(*CoreSnapshot, Agent);
+  ASSERT_FALSE(static_cast<bool>(Queue.takeError()));
+  hsa_kernel_dispatch_packet_t Packet = makeDispatchPacket();
   Packet.kernel_object = reinterpret_cast<uint64_t>(originalKD());
 
-  llvm::Error Err = Loader->overrideWithInstrumented(Packet);
-  EXPECT_TRUE(static_cast<bool>(Err));
-  llvm::consumeError(std::move(Err));
+  auto BufOrErr = Loader->overrideWithInstrumented(Packet, *Queue);
+  ASSERT_TRUE(static_cast<bool>(BufOrErr))
+      << llvm::toString(BufOrErr.takeError());
+  ExtendedKernargBuffer Buf = std::move(*BufOrErr);
+
+  llvm::Error First = Buf.release();
+  ASSERT_FALSE(static_cast<bool>(First)) << llvm::toString(std::move(First));
+  llvm::consumeError(std::move(First));
+
+  llvm::Error Second = Buf.release();
+  EXPECT_FALSE(static_cast<bool>(Second))
+      << "a second release must be a no-op";
+  llvm::consumeError(std::move(Second));
+}
+
+TEST_F(InstrumentedKernelLoaderE2E, OverrideRejectsAnUnloadedKernelObject) {
+  OwnedQueue Queue(*CoreSnapshot, Agent);
+  ASSERT_FALSE(static_cast<bool>(Queue.takeError()));
+  hsa_kernel_dispatch_packet_t Packet = makeDispatchPacket();
+  Packet.kernel_object = reinterpret_cast<uint64_t>(originalKD());
+
+  auto BufOrErr = Loader->overrideWithInstrumented(Packet, *Queue);
+  EXPECT_FALSE(static_cast<bool>(BufOrErr));
+  llvm::consumeError(BufOrErr.takeError());
 }
 
 } // namespace

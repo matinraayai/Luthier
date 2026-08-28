@@ -106,7 +106,14 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
   /// MF.
   llvm::DenseMap<ScalarValueArgument, llvm::Register> SAResultCache;
 
-  /// Fixed insertion point for SVA-related instructions in the entry block.
+  /// Fixed insertion point for SVA-related instructions in the entry
+  /// block. Initially points to the first non-PHI/label/debug MI (often
+  /// a \c luthier::readSVA \c INLINEASM). After the SVA VGPR placeholder
+  /// IMPLICIT_DEF gets emitted below, this iterator is re-anchored to
+  /// \c std::next(SVAImplDef) so subsequent BuildMI insertions land in a
+  /// stable position — the intrinsic-lowering loop erases INLINEASM MIs
+  /// as it processes them, and holding an iterator to an erased MI
+  /// crashes the next BuildMI (e.g. on multi-readSVA payloads).
   llvm::MachineBasicBlock::iterator SVAInsertPt =
       MF.front().SkipPHIsLabelsAndDebug(MF.front().begin());
 
@@ -150,36 +157,34 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
 
   bool Changed = false;
 
-  if (!SVAVGPR) {
-    Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-        "luthier::readSVA in MF {0}: no SVA VGPR resolved from the "
-        "instrumentation point's load plan; readSVA can only be used "
-        "inside an injected payload with a valid LoadPlan.",
-        MF.getName()))));
-    return  false;
-  }
-
-  /// Reserve a virtual VGPR_32 placeholder for the SVA VGPR that the
-  /// register allocator resolves to \c SVAVGPR via a simple register
-  /// hint plus the WWM_REG virtual-reg flag. Downstream:
-  ///
-  ///   * Every \c V_READLANE_B32 the intrinsic-lowering emits below reads
-  ///     from this placeholder
-  ///   * The IMPLICIT_DEF at \c SVAInsertPt gives the placeholder a
-  ///     dominating def that all reads inside the payload see, keeping
-  ///     the def-use chain SSA-clean.
-  ///   * \c setFlag(WWM_REG) puts the vreg through the WWM regalloc pool
-  ///     so cross-lane operations behave correctly.
-  ///   * \c luthier.sva_vgpr_placeholder pcsections metadata lets later
-  ///     passes find this IMPLICIT_DEF if they need to.
-  llvm::Register SVAVGPRPlaceholder =
-      MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
-  MRI.setSimpleHint(SVAVGPRPlaceholder, SVAVGPR);
-  SIMFI->setFlag(SVAVGPRPlaceholder, llvm::AMDGPU::VirtRegFlag::WWM_REG);
-  {
+  // Reserve a virtual VGPR_32 placeholder for the SVA VGPR that the
+  // register allocator resolves to \c SVAVGPR via a simple register
+  // hint plus the WWM_REG virtual-reg flag. Only set up when there is
+  // a valid \c SVAVGPR from the payload's LoadPlan; MFs without one
+  // (e.g. non-injected-payload utility functions, or payloads whose
+  // target module doesn't yet carry a PATCHPOINT binding) run through
+  // the non-SVA \c readReg / \c writeReg SSA-updater path only. The
+  // frame-lane read/write and readSVA branches below explicitly error
+  // out when they need the placeholder but \c SVAVGPR is invalid.
+  llvm::Register SVAVGPRPlaceholder;
+  llvm::MachineInstr *SVAImplDef = nullptr;
+  auto svaInsertPt = [&]() -> llvm::MachineBasicBlock::iterator {
+    // Recompute freshly each time — the initial \c SVAInsertPt often
+    // pointed at a \c luthier::readSVA \c INLINEASM the intrinsic
+    // lowering loop later erases, which invalidates any captured
+    // iterator. Anchoring on \c SVAImplDef (never erased) and using
+    // \c std::next keeps SVA-related MIs right after the placeholder
+    // def, in dominator order, with a stable in-MBB anchor.
+    return std::next(SVAImplDef->getIterator());
+  };
+  if (SVAVGPR) {
+    SVAVGPRPlaceholder =
+        MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+    MRI.setSimpleHint(SVAVGPRPlaceholder, SVAVGPR);
+    SIMFI->setFlag(SVAVGPRPlaceholder, llvm::AMDGPU::VirtRegFlag::WWM_REG);
     llvm::MDNode *MarkerNode = llvm::MDNode::get(
         Ctx, {llvm::MDString::get(Ctx, "luthier.sva_vgpr_placeholder")});
-    auto *SVAImplDef =
+    SVAImplDef =
         llvm::BuildMI(MF.front(), SVAInsertPt, llvm::MIMetadata(),
                       TII->get(llvm::AMDGPU::IMPLICIT_DEF), SVAVGPRPlaceholder)
             .getInstr();
@@ -187,7 +192,7 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
   }
 
   // Reserve the SVA lane region on the WWM LaneVGPR in lane order.
-  {
+  if (SVAVGPR) {
     llvm::MachineFrameInfo &MFI = MF.getFrameInfo();
     llvm::SmallVector<uint8_t, 32> ReservedLanes;
     ReservedLanes.push_back(SVASpecs.getStackPointerRegSpillLane());
@@ -281,6 +286,15 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     if (CacheIt != SAResultCache.end())
       return CacheIt->second;
 
+    if (!SVAVGPR) {
+      Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "luthier::readSVA in MF {0}: no SVA VGPR resolved from the "
+          "instrumentation point's load plan; readSVA can only be used "
+          "inside an injected payload with a valid LoadPlan.",
+          MF.getName()))));
+      return llvm::Register();
+    }
+
     unsigned NumLanes = StateValueArraySpecs::getArgumentLaneSize(SA);
     static const unsigned SubRegForLane[] = {
         llvm::AMDGPU::sub0, llvm::AMDGPU::sub1, llvm::AMDGPU::sub2,
@@ -302,7 +316,7 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     for (uint8_t Lane = 0; Lane < NumLanes; ++Lane) {
       llvm::Register LaneReg =
           MRI.createVirtualRegister(&llvm::AMDGPU::SReg_32_XM0_XEXECRegClass);
-      (void)llvm::BuildMI(MF.front(), SVAInsertPt, llvm::MIMetadata(),
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
                           TII->get(llvm::AMDGPU::V_READLANE_B32), LaneReg)
           .addReg(SVAVGPRPlaceholder)
           .addImm(LaneBase + Lane);
@@ -325,7 +339,7 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     }
     llvm::Register MergedReg = MRI.createVirtualRegister(MergedRC);
     auto RSBuilder =
-        llvm::BuildMI(MF.front(), SVAInsertPt, llvm::MIMetadata(),
+        llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
                       TII->get(llvm::AMDGPU::REG_SEQUENCE), MergedReg);
     for (uint8_t Lane = 0; Lane < NumLanes; ++Lane)
       (void)RSBuilder.addReg(LaneRegs[Lane]).addImm(SubRegForLane[Lane]);
@@ -562,13 +576,22 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
         // for the same physreg.
         std::optional<uint8_t> FrameSVALane = getFrameSVALaneForPhysReg(PhysReg);
         if (FrameSVALane) {
+          if (!SVAVGPR) {
+            Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
+                llvm::formatv("Frame-reg readReg / writeReg in MF {0}: no SVA "
+                              "VGPR resolved from the instrumentation point's "
+                              "load plan; frame-reg SVA access requires an "
+                              "injected payload with a valid LoadPlan.",
+                              MF.getName()))));
+            return Changed;
+          }
           if (isReadReg) {
             // Constrain to SReg_32_XM0_XEXEC (matches what the removed
             // loadRegFromStackSlot path was constraining to, and what
             // readRegMIRProcessor's single-channel COPY expects).
             llvm::Register FrameVReg = MRI.createVirtualRegister(
                 &llvm::AMDGPU::SReg_32_XM0_XEXECRegClass);
-            llvm::BuildMI(MF.front(), SVAInsertPt, llvm::MIMetadata(),
+            llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
                           TII->get(llvm::AMDGPU::V_READLANE_B32), FrameVReg)
                 .addReg(SVAVGPRPlaceholder)
                 .addImm(*FrameSVALane);
@@ -642,7 +665,7 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
                 // consume it there.
                 llvm::Register InitVReg = MRI.createVirtualRegister(
                     &llvm::AMDGPU::SReg_32RegClass);
-                llvm::BuildMI(MF.front(), SVAInsertPt, llvm::MIMetadata(),
+                llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
                               TII->get(llvm::AMDGPU::IMPLICIT_DEF), InitVReg);
                 Updater->Initialize(InitVReg);
                 Updater->AddAvailableValue(&MF.front(), InitVReg);
@@ -761,6 +784,8 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
       if (!RetMBB.isReturnBlock())
         continue;
       auto FirstTerm = RetMBB.getFirstTerminator();
+      llvm::MDNode *SVAVGPRMarker = llvm::MDNode::get(
+          Ctx, {llvm::MDString::get(Ctx, "luthier.sva_vgpr_placeholder")});
       for (uint8_t Lane : LanesInOrder) {
         llvm::MachineSSAUpdater &Updater =
             *FrameSVAWriteUpdaters.find(Lane)->second;
@@ -769,12 +794,20 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
             MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
         MRI.setSimpleHint(NextSVAVReg, SVAVGPR);
         SIMFI->setFlag(NextSVAVReg, llvm::AMDGPU::VirtRegFlag::WWM_REG);
-        (void)llvm::BuildMI(RetMBB, FirstTerm, llvm::MIMetadata(),
-                            TII->get(llvm::AMDGPU::V_WRITELANE_B32),
-                            NextSVAVReg)
-            .addReg(ValueToWrite)
-            .addImm(Lane)
-            .addReg(CurrentSVAVReg);
+        auto *WriteMI =
+            llvm::BuildMI(RetMBB, FirstTerm, llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_WRITELANE_B32), NextSVAVReg)
+                .addReg(ValueToWrite)
+                .addImm(Lane)
+                .addReg(CurrentSVAVReg)
+                .getInstr();
+        // Tag each chain-link def with the same pcsections marker as the
+        // initial IMPLICIT_DEF placeholder so \c SVAPhysVGPRPinPass picks
+        // up every SVA-VGPR virtual register and re-pins it to the
+        // LoadPlan physreg — otherwise RA could split the write chain
+        // across multiple WWM VGPRs and the caller would only see a
+        // partial update.
+        WriteMI->setPCSections(MF, SVAVGPRMarker);
         CurrentSVAVReg = NextSVAVReg;
       }
     }

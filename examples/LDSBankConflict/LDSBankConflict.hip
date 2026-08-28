@@ -375,7 +375,7 @@ LDSBankConflictTool::run(luthier::Prototype &P,
 }
 
 void LDSBankConflictTool::onPackets(
-    const hsa_queue_t &, uint64_t,
+    const hsa_queue_t &Queue, uint64_t,
     llvm::ArrayRef<luthier::hsa::AqlPacket> Packets,
     hsa_amd_queue_intercept_packet_writer PacketWriter) {
   std::vector<luthier::hsa::AqlPacket> AppPackets(Packets.begin(),
@@ -404,20 +404,27 @@ void LDSBankConflictTool::onPackets(
         Core.callFunction<&::CoreApiTable::hsa_signal_load_scacquire_fn>(
             DispatchPacket->completion_signal);
 
+    luthier::ExtendedKernargBuffer KernargBuf;
     if (ActiveRegion) {
       luthier::errs() << "Kernel is being instrumented.\n";
       const auto *KD =
           reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
               DispatchPacket->kernel_object);
-      if (auto MissErr = this->overrideWithInstrumented(*DispatchPacket, 0)) {
-        llvm::consumeError(std::move(MissErr));
+      auto FirstTry =
+          this->overrideWithInstrumented(*DispatchPacket, Queue, 0);
+      if (!FirstTry) {
+        llvm::consumeError(FirstTry.takeError());
         std::unique_ptr<llvm::MemoryBuffer> ObjBuf;
         LUTHIER_REPORT_FATAL_ON_ERROR(
             this->runInstrumentationPipelineForDispatch(*KD).moveInto(ObjBuf));
         LUTHIER_REPORT_FATAL_ON_ERROR(
             this->loadInstrumented(std::move(ObjBuf), KD, 0).takeError());
-        LUTHIER_REPORT_FATAL_ON_ERROR(
-            this->overrideWithInstrumented(*DispatchPacket, 0));
+        auto Retry =
+            this->overrideWithInstrumented(*DispatchPacket, Queue, 0);
+        LUTHIER_REPORT_FATAL_ON_ERROR(Retry.takeError());
+        KernargBuf = std::move(*Retry);
+      } else {
+        KernargBuf = std::move(*FirstTry);
       }
     }
 
