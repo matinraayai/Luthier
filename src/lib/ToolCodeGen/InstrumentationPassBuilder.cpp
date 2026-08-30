@@ -1433,6 +1433,15 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
       return PatcherErr;
   }
 
+  // Prime both cross-level analysis-manager proxies on the IModule's MAM
+  // right after `PatchPCUsagesPass`. TODO: Figure out how to remove this
+  addInstrumentationModulePass(
+      PPM, llvm::RequireAnalysisPass<llvm::FunctionAnalysisManagerModuleProxy,
+                                     llvm::Module>());
+  addInstrumentationModulePass(
+      PPM, llvm::RequireAnalysisPass<llvm::CGSCCAnalysisManagerModuleProxy,
+                                     llvm::Module>());
+
   /// Invoke pre-IR optimization callbacks
   for (auto &CB : PreInstrumentationOptimizationCallbacks) {
     CB(PPM, Level);
