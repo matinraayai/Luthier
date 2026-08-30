@@ -63,6 +63,16 @@ struct KernelInstrumentTool
     : public luthier::HSATool<KernelInstrumentTool, llvm::MachineFunction> {
   using HSATool::HSATool;
 
+  static void patchPCUsagesHostCallback(std::uint64_t Out[2],
+                                                const std::uint64_t /*In*/[7]) {
+    Out[0] = 0;
+    Out[1] = 0;
+  }
+  luthier::PatchPCUsagesPass::TargetAddressHostResolverFn
+  getPatchPCUsagesHostCallback() const {
+    return &KernelInstrumentTool::patchPCUsagesHostCallback;
+  }
+
   __attribute__((managed)) static uint64_t WaveID;
   __attribute__((managed)) static hsa_dim3_t GroupIDs;
   __attribute__((managed)) static uint64_t PositionInGroup;

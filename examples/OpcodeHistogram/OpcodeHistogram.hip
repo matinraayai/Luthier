@@ -68,6 +68,16 @@ struct OpcodeHistogramTool
     : public luthier::HSATool<OpcodeHistogramTool, llvm::MachineFunction> {
   using HSATool::HSATool;
 
+  static void patchPCUsagesHostCallback(std::uint64_t Out[2],
+                                               const std::uint64_t /*In*/[7]) {
+    Out[0] = 0;
+    Out[1] = 0;
+  }
+  luthier::PatchPCUsagesPass::TargetAddressHostResolverFn
+  getPatchPCUsagesHostCallback() const {
+    return &OpcodeHistogramTool::patchPCUsagesHostCallback;
+  }
+
   /// Per-opcode kernel-execution counter (one slot per AMDGPU opcode).
   __attribute__((device)) static uint64_t
       KernelHistogram[llvm::AMDGPU::INSTRUCTION_LIST_END];

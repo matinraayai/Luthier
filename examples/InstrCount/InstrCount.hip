@@ -83,6 +83,16 @@ struct InstrCountTool
     : public luthier::HSATool<InstrCountTool, llvm::MachineFunction> {
   using HSATool::HSATool;
 
+  static void patchPCUsagesHostCallback(std::uint64_t Out[2],
+                                               const std::uint64_t /*In*/[7]) {
+    Out[0] = 0;
+    Out[1] = 0;
+  }
+  luthier::PatchPCUsagesPass::TargetAddressHostResolverFn
+  getPatchPCUsagesHostCallback() const {
+    return &InstrCountTool::patchPCUsagesHostCallback;
+  }
+
   //===---------------------------------------------------------------===//
   // Device-side state. Hooks and device globals live as static members
   // of the tool class so the host shadow handles are addressable as

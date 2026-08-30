@@ -62,6 +62,16 @@ struct KernelArgumentIntrinsicTool
                               llvm::MachineFunction> {
   using HSATool::HSATool;
 
+  static void patchPCUsagesHostCallback(std::uint64_t Out[2],
+                                                const std::uint64_t /*In*/[7]) {
+    Out[0] = 0;
+    Out[1] = 0;
+  }
+  luthier::PatchPCUsagesPass::TargetAddressHostResolverFn
+  getPatchPCUsagesHostCallback() const {
+    return &KernelArgumentIntrinsicTool::patchPCUsagesHostCallback;
+  }
+
   /// Host-coherent kernel-arg sink populated by the hook.
   __attribute__((managed)) static dim3 BlockCount;
 

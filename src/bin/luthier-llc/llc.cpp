@@ -22,6 +22,7 @@
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPassBuilder.h"
+#include "luthier/ToolCodeGen/PatchPCUsagesPass.h"
 #include "luthier/ToolCodeGen/LuthierFile.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 #include "luthier/ToolCodeGen/MockAMDGPULoader.h"
@@ -922,6 +923,13 @@ static int compileModule(char **argv,
       return false;
     if (Name.trim() == "prototype-callgraph-printer") {
       PPM.addPass(luthier::PrototypeCallGraphPrinter(llvm::outs()));
+      return true;
+    }
+    if (Name.trim() == "luthier-patch-pc-usages") {
+      /// TODO: Replace the nullptr of the host callback
+      llvm::Error PatcherErr = llvm::Error::success();
+      PPM.addPass(luthier::PatchPCUsagesPass(nullptr, PatcherErr));
+      LUTHIER_REPORT_FATAL_ON_ERROR(PatcherErr);
       return true;
     }
     return false;

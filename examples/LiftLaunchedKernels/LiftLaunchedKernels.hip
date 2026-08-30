@@ -57,6 +57,16 @@ struct LiftLaunchedKernelsTool
     : public luthier::HSATool<LiftLaunchedKernelsTool, llvm::MachineFunction> {
   using HSATool::HSATool;
 
+  static void patchPCUsagesHostCallback(std::uint64_t Out[2],
+                                               const std::uint64_t /*In*/[7]) {
+    Out[0] = 0;
+    Out[1] = 0;
+  }
+  luthier::PatchPCUsagesPass::TargetAddressHostResolverFn
+  getPatchPCUsagesHostCallback() const {
+    return &LiftLaunchedKernelsTool::patchPCUsagesHostCallback;
+  }
+
   struct Options {
     llvm::cl::OptionCategory Cat{"Lift Launched Kernels Tool Options"};
   } Opts;

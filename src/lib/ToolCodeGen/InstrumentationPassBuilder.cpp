@@ -1404,6 +1404,7 @@ Error InstrumentationPassBuilder::parsePipeline(PrototypePassManager &PPM,
 
 Error InstrumentationPassBuilder::buildInstrumentationPipeline(
     PrototypePassManager &PPM, PreInstrumentationCallback InstCallback,
+    PatchPCUsagesPass::TargetAddressHostResolverFn PatchPCUsagesHostCallback,
     llvm::OptimizationLevel Level, llvm::CodeGenFileType FileType,
     llvm::CGPassBuilderOption &CGPBO, llvm::raw_pwrite_stream *Out,
     llvm::PassInstrumentationCallbacks *PIC) {
@@ -1421,6 +1422,16 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
 
   /// Add the instrumentation passes
   InstCallback(PPM, Level);
+
+  /// Run Patch-PC-Usages runs immediately after the tool's payloads are
+  /// created
+  {
+    llvm::Error PatcherErr = llvm::Error::success();
+    PPM.addPass(PatchPCUsagesPass(PatchPCUsagesHostCallback,
+                                         PatcherErr));
+    if (PatcherErr)
+      return PatcherErr;
+  }
 
   /// Invoke pre-IR optimization callbacks
   for (auto &CB : PreInstrumentationOptimizationCallbacks) {

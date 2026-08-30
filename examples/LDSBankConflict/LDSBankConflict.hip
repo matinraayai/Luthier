@@ -69,6 +69,16 @@ struct LDSBankConflictTool
     : public luthier::HSATool<LDSBankConflictTool, llvm::MachineFunction> {
   using HSATool::HSATool;
 
+  static void patchPCUsagesHostCallback(std::uint64_t Out[2],
+                                               const std::uint64_t /*In*/[7]) {
+    Out[0] = 0;
+    Out[1] = 0;
+  }
+  luthier::PatchPCUsagesPass::TargetAddressHostResolverFn
+  getPatchPCUsagesHostCallback() const {
+    return &LDSBankConflictTool::patchPCUsagesHostCallback;
+  }
+
   __attribute__((device)) static float NumBankConflicts;
   __attribute__((device)) static uint64_t NumSingleAddressLDSInstructions;
   __attribute__((device)) static uint64_t NumDoubleAddressLDSInstructions;

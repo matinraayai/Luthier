@@ -22,6 +22,7 @@
 
 #include "EntryPoint.h"
 #include "luthier/ToolCodeGen/Prototype.h"
+#include "luthier/ToolCodeGen/PatchPCUsagesPass.h"
 #include <functional>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringRef.h>
@@ -172,6 +173,7 @@ public:
   /// signature keeps AMDGPU-internal types out of this header.
   llvm::Error buildInstrumentationPipeline(
       PrototypePassManager &PPM, PreInstrumentationCallback InstCallback,
+      PatchPCUsagesPass::TargetAddressHostResolverFn PatchPCUsagesHostCallback,
       llvm::OptimizationLevel Level, llvm::CodeGenFileType FileType,
       llvm::CGPassBuilderOption &CGPBO, llvm::raw_pwrite_stream *Out,
       llvm::PassInstrumentationCallbacks *PIC);

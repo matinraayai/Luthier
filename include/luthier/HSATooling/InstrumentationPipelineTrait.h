@@ -280,6 +280,7 @@ public:
                         })
             D.preIROptimizationPasses(PPM);
         },
+        D.getPatchPCUsagesHostCallback(),
         Level, llvm::CodeGenFileType::ObjectFile, CGPBO, &ObjOS, &PIC));
 
     // ParentPrototypeAnalysis is consumed via getCachedResult, so materialize
