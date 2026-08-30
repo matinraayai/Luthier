@@ -66,6 +66,7 @@ public:
   using IncompleteCallSitesSetT = llvm::DenseSet<llvm::CallInst *>;
 
 public:
+  /// TODO: FIX THIS IT SHOULD NOT BE PUBLIC
   // Populated by PrototypeCallGraphAnalysis. Direct access is used by the
   // analysis implementation (and the target-module-only helper for
   // CodeDiscoveryPass); external readers should prefer the accessor methods
@@ -79,9 +80,7 @@ public:
   bool FullyRecovered = true;
 
 
-  /// == Call targets (indirect CallInst → list of resolved Function*) =========
-  /// Only indirect calls (those without a compile-time Function* callee) appear
-  /// here; direct calls are already resolved by the IR.
+  /// == Call targets ==========================================================
 
   using call_targets_iterator = CallTargetsMapT::const_iterator;
 
