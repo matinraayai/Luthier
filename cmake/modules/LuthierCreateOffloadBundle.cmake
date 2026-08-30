@@ -74,7 +74,7 @@ endfunction()
 # - [DEVICE_OBJECT_LIBRARIES var]: list of per-slice device OBJECT libraries.
 # - [BUNDLE_TARGET <var>]: The custom target that builds the .hipfb.
 function(luthier_create_offload_bundle target source)
-  cmake_parse_arguments(OFFLOAD_BUNDLE_ARG ""
+  cmake_parse_arguments(OFFLOAD_BUNDLE_ARG "NO_SPIRV"
           "DEVICE_OBJECT_LIBRARIES;BUNDLE_TARGET"
           "TARGET_ISAS"
           ${ARGN})
@@ -210,6 +210,7 @@ function(luthier_create_offload_bundle target source)
     # FIXME: -g0: disable debug info for now
     target_compile_options(${_SLICE_TGT} PRIVATE
             --cuda-device-only -emit-llvm --no-gpu-bundle-output -g0
+            -fgpu-allow-device-init
             ${_EXTRA_FLAGS} -fpass-plugin=${_LUTHIER_IR_PLUGIN})
     add_dependencies(${_SLICE_TGT} ${_LUTHIER_IR_PLUGIN_TARGET})
 
@@ -219,8 +220,8 @@ function(luthier_create_offload_bundle target source)
     list(APPEND _REBUNDLE_TARGET_ISAS "hipv4-${_BUNDLE_KEY}")
   endforeach ()
 
-  # Add an AMD SPIR-V slice if requested
-  if (${LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND})
+  # Add an AMD SPIR-V slice if requested.
+  if (${LUTHIER_LLVM_SPIRV_TRANSLATOR_FOUND} AND NOT OFFLOAD_BUNDLE_ARG_NO_SPIRV)
     set(_SPIRV_TARGET_ISA "hip-spirv64-amd-amdhsa--amdgcnspirv")
     set(_SPIRV_TARGET "${target}-${_SPIRV_TARGET_ISA}")
     add_library(${_SPIRV_TARGET} OBJECT ${_DEV_SOURCE})
@@ -230,6 +231,7 @@ function(luthier_create_offload_bundle target source)
     # target Triple
     target_compile_options(${_SPIRV_TARGET} PRIVATE
             --cuda-device-only --no-gpu-bundle-output -g0 -B "${_SPIRV_DIR}"
+            -fgpu-allow-device-init
             -fpass-plugin=${_LUTHIER_IR_PLUGIN} -U SPIRV)
     add_dependencies(${_SPIRV_TARGET} ${_LUTHIER_IR_PLUGIN_TARGET})
 
@@ -276,6 +278,7 @@ function(luthier_create_offload_bundle target source)
 
   target_compile_options(${target} PRIVATE
           --cuda-host-only -fno-gpu-rdc -fuse-cuid=none
+          -fgpu-allow-device-init
           "SHELL:-Xclang -fcuda-include-gpubinary -Xclang ${_TARGET_FATBIN}"
           -fpass-plugin=${_LUTHIER_IR_PLUGIN}
           -fplugin=${_LUTHIER_CXX_PLUGIN}

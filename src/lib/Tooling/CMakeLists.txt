@@ -11,6 +11,7 @@ add_library(LuthierTooling SHARED
         $<TARGET_OBJECTS:LuthierPassPlugin>
         $<TARGET_OBJECTS:LuthierHSATooling>
         $<TARGET_OBJECTS:LuthierLinker>
+        $<TARGET_OBJECTS:LuthierPatchPCUsagesPassObject>
 )
 
 target_compile_definitions(LuthierTooling PUBLIC AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
