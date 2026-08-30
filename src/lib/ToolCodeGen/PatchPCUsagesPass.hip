@@ -572,14 +572,52 @@ llvm::Error handleEntryPointToTraceFunctionAddrMapCtorDtor(
 
   llvm::Module &IModule = P.getInstrumentationModule();
 
+  // Collect the four Parser globals we're about to drop so we can strip
+  // them from `@llvm.used` / `@llvm.compiler.used`
+  llvm::SmallPtrSet<llvm::Constant *, 8> ToUnpin;
+  auto CollectByShadowHandleFn = [&](auto *Handle) -> llvm::Error {
+    auto NameOrErr = OffloadParser.lookupHandleName(Handle);
+    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
+    if (llvm::Function *F = IModule.getFunction(*NameOrErr))
+      ToUnpin.insert(F);
+    return llvm::Error::success();
+  };
+  auto CollectByShadowHandleGV = [&](auto *Handle) -> llvm::Error {
+    auto GVOrErr = findGVByShadowHandle(OffloadParser, IModule, Handle);
+    LUTHIER_RETURN_ON_ERROR(GVOrErr.takeError());
+    if (llvm::GlobalVariable *GV = *GVOrErr)
+      ToUnpin.insert(GV);
+    return llvm::Error::success();
+  };
+  LUTHIER_RETURN_ON_ERROR(CollectByShadowHandleFn(
+      &PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap));
+  LUTHIER_RETURN_ON_ERROR(CollectByShadowHandleFn(
+      &PatchPCUsagesPass::Parser::finiEntryPointToTraceFunctionAddrMap));
+  LUTHIER_RETURN_ON_ERROR(CollectByShadowHandleGV(
+      &PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeed));
+  LUTHIER_RETURN_ON_ERROR(CollectByShadowHandleGV(
+      &PatchPCUsagesPass::Parser::
+          EntryPointToTraceFunctionAddrMapSeedSize));
+  llvm::removeFromUsedLists(IModule, [&](llvm::Constant *C) {
+    return C && ToUnpin.contains(C->stripPointerCasts());
+  });
+
   auto EraseByShadowHandle = [&](auto *Handle, llvm::StringRef ArrayName)
       -> llvm::Error {
     auto NameOrErr = OffloadParser.lookupHandleName(Handle);
     LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
     if (llvm::Function *F = IModule.getFunction(*NameOrErr)) {
       removeFromCtorDtorArray(IModule, ArrayName, *F);
-      if (F->use_empty())
-        F->eraseFromParent();
+      // `replaceAllUsesWith` with `nullptr` isn't valid on Functions
+      // (their pointer type is fixed), but at this point the only
+      // remaining uses are the `@llvm.global_ctors`/`@llvm.global_dtors`
+      // struct entries we just stripped, plus the `@llvm.used` /
+      // `@llvm.compiler.used` slots the sweep above dropped. Force-erase
+      // the body: it references malloc/free bodies from ROCm device
+      // libs, and leaving it in the IModule keeps those bodies alive
+      // through DCE and blows up downstream passes.
+      F->deleteBody();
+      F->eraseFromParent();
     }
     return llvm::Error::success();
   };
@@ -591,8 +629,6 @@ llvm::Error handleEntryPointToTraceFunctionAddrMapCtorDtor(
       &PatchPCUsagesPass::Parser::finiEntryPointToTraceFunctionAddrMap,
       "llvm.global_dtors"));
 
-  // The seed globals are dead code once the ctor is gone. Drop them so
-  // downstream passes don't see dangling constants.
   auto DropGVByShadowHandle = [&](auto *Handle) -> llvm::Error {
     auto GVOrErr = findGVByShadowHandle(OffloadParser, IModule, Handle);
     LUTHIER_RETURN_ON_ERROR(GVOrErr.takeError());
