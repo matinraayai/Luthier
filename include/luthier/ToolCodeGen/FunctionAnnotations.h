@@ -41,12 +41,6 @@ namespace luthier {
 #define LUTHIER_CAT(a, ...) LUTHIER_PRIMITIVE_CAT(a, __VA_ARGS__)
 #define LUTHIER_PRIMITIVE_CAT(a, ...) a##__VA_ARGS__
 
-/// Prefix appended to all host-accessible device functions' handle kernels
-#define LUTHIER_DEVICE_FUNCTION_HANDLE_PREFIX __luthier_builtin_dev_func_handle_
-
-/// All hooks in instrumentation modules must have this attribute
-#define LUTHIER_HOOK_ATTRIBUTE luthier.function.hook
-
 /// All bindings to Luthier intrinsics must have this attribute. The
 /// value of this attribute must be the base name of the intrinsic e.g.
 /// \c luthier::readReg
@@ -63,6 +57,9 @@ namespace luthier {
 /// have this attribute
 #define LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE luthier.function.injected_payload
 
+/// Parameter-level attribute marking a function argument as the SVA courier.
+#define LUTHIER_SVA_PARAM_ATTRIBUTE luthier.sva
+
 static constexpr llvm::StringLiteral DevFuncHandlePrefix{
     LUTHIER_STRINGIFY(LUTHIER_DEVICE_FUNCTION_HANDLE_PREFIX)};
 
@@ -77,6 +74,9 @@ static constexpr llvm::StringLiteral BuiltinAttribute{
 
 static constexpr llvm::StringLiteral InjectedPayloadAttribute{
     LUTHIER_STRINGIFY(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)};
+
+static constexpr llvm::StringLiteral SVAParamAttribute{
+    LUTHIER_STRINGIFY(LUTHIER_SVA_PARAM_ATTRIBUTE)};
 
 #define EntryPointAddrAttr "luthier.function.entrypoint.addr"
 
