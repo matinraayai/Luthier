@@ -2,7 +2,6 @@ add_library(LuthierToolIRCompilation OBJECT
         MarkAnnotationsPass.cpp
         FinalizeIntrinsicsPass.cpp
         SubstituteAMDGCNIntrinsicsPass.cpp
-        AddSVAToFuncArgsPass.cpp
         ToolDeviceCodeOffloadParserPass.cpp
 )
 

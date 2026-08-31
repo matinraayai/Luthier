@@ -1,7 +1,6 @@
 add_library(LuthierIntrinsic OBJECT
         ReadReg.cpp
         ReadSVA.cpp
-        LoadSVA.cpp
         WriteReg.cpp
         WriteExec.cpp
         ImplicitArgPtr.cpp
