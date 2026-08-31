@@ -57,9 +57,6 @@ namespace luthier {
 /// have this attribute
 #define LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE luthier.function.injected_payload
 
-/// Parameter-level attribute marking a function argument as the SVA courier.
-#define LUTHIER_SVA_PARAM_ATTRIBUTE luthier.sva
-
 static constexpr llvm::StringLiteral DevFuncHandlePrefix{
     LUTHIER_STRINGIFY(LUTHIER_DEVICE_FUNCTION_HANDLE_PREFIX)};
 
@@ -74,9 +71,6 @@ static constexpr llvm::StringLiteral BuiltinAttribute{
 
 static constexpr llvm::StringLiteral InjectedPayloadAttribute{
     LUTHIER_STRINGIFY(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)};
-
-static constexpr llvm::StringLiteral SVAParamAttribute{
-    LUTHIER_STRINGIFY(LUTHIER_SVA_PARAM_ATTRIBUTE)};
 
 #define EntryPointAddrAttr "luthier.function.entrypoint.addr"
 
