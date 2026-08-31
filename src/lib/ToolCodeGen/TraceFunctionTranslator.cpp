@@ -2184,7 +2184,7 @@ void TraceFunctionTranslator::raiseMachineInstr(const llvm::MachineInstr &MI,
     // Split the marker's implicit operands into use and def phys-regs.
     llvm::SmallVector<llvm::MCRegister, 4> UseRegs;
     llvm::SmallVector<llvm::MCRegister, 4> DefRegs;
-    for (const llvm::MachineOperand &Op : MI.implicit_operands()) {
+    for (const llvm::MachineOperand &Op : MI.operands()) {
       if (!Op.isReg())
         continue;
       if (Op.isDef())
