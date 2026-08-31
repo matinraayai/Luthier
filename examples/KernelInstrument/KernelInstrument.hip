@@ -143,7 +143,7 @@ runInstrumentationPipelineForDispatch(
     return luthier::MemoryAllocationAnalysis(
         std::make_unique<luthier::HsaMemoryAllocationAccessor>(
             T, *::CoreApiSnapshot, *::AmdExtSnapshot,
-            ::LoaderSnapshot->getTable()));
+            *::LoaderSnapshot));
   });
   luthier::amdgpu::hsamd::MetadataParser MetadataParserInstance;
   MAM.registerPass(

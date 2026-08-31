@@ -25,10 +25,12 @@
 #include "luthier/HSA/Agent.h"
 #include "luthier/HSA/HsaError.h"
 #include "luthier/HSA/ISA.h"
+#include "luthier/HSATooling/HsaMemoryAllocationAccessor.h"
 #include "luthier/HSATooling/InstrumentationPipelineTrait.h"
 #include "luthier/HSATooling/InstrumentedKernelLoaderAndLauncher.h"
 #include "luthier/HSATooling/LLVMUserTrait.h"
 #include "luthier/HSATooling/LoadedCodeObjectCache.h"
+#include "luthier/KFD/KfdAllocationResolver.h"
 #include "luthier/HSATooling/PacketMonitorTrait.h"
 #include "luthier/PassPlugin/LuthierPassPlugin.h"
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
@@ -46,24 +48,6 @@
 #include <llvm/TargetParser/AMDGPUTargetParser.h>
 
 namespace luthier {
-
-/// Per-tool trait that owns the \c IntrinsicProcessorRegistry the tool's
-/// instrumentation pipeline consults during IR/MIR intrinsic lowering. The
-/// registry default-constructs (its ctor auto-registers the built-in Luthier
-/// intrinsics from \c IntrinsicRegistry.def), so the trait needs no
-/// constructor arguments and never fails.
-template <typename Derived> class IntrinsicProcessorRegistryTraitBase {
-  IntrinsicProcessorRegistry Registry;
-
-public:
-  IntrinsicProcessorRegistry &getIntrinsicProcessorRegistry() {
-    return Registry;
-  }
-
-  const IntrinsicProcessorRegistry &getIntrinsicProcessorRegistry() const {
-    return Registry;
-  }
-};
 
 /// \brief CRTP base for static HSA tools. Inherits the HIP fat-binary
 /// registration slots and per-agent HSA executable state from
@@ -119,6 +103,29 @@ public:
         InstrumentedKernelLoaderAndLauncherTrait<Derived>(CoreApi, AmdExt,
                                                           VenLoader, Err),
         PacketMonitorTrait<Derived>(CoreApi, AmdExt, VenLoader, Err) {}
+
+  /// Build the accessor this tool's instrumentation pipeline should use.
+  ///
+  /// HSA first, then whatever the driver-level resolver knows. The resolver is
+  /// constructed unconditionally and reports for itself whether it has records
+  /// to serve, so an application that never touched KFD directly is unaffected
+  /// by its presence — the accessor only consults it for addresses HSA does not
+  /// manage.
+  ///
+  /// The four HSA references come off this tool and exist nowhere else, which is
+  /// why this is a member here rather than something the pipeline trait builds.
+  ///
+  /// Snapshots are passed, not the tables they wrap: reading a snapshot whose
+  /// registration callback never fired is a fatal error by design, and the
+  /// accessor has to be able to test for that before reading.
+  std::unique_ptr<MemoryAllocationAccessor> createMemoryAllocationAccessor() {
+    auto &D = static_cast<Derived &>(*this);
+    return std::make_unique<HsaMemoryAllocationAccessor>(
+        static_cast<const LoadedCodeObjectCache &>(D),
+        D.getCoreApiTableSnapshot(), D.getAmdExtTableSnapshot(),
+        D.getLoaderTableSnapshot(),
+        std::make_unique<KfdAllocationResolver>());
+  }
 
   /// \note There is no longer a single "pipeline driver" pass to hand a target
   /// module pass manager. The instrumentation pipeline now runs over a
@@ -202,84 +209,6 @@ public:
         TM != nullptr, "createTargetMachine returned nullptr."));
     TM->setOptLevel(llvm::CodeGenOptLevel::Default);
     return TM;
-  }
-
-  /// Resolve a payload function's host shadow handle to the corresponding
-  /// \c llvm::Function inside the given instrumentation module.
-  ///
-  /// \c lookupHandleName returns the device-side mangled name as
-  /// recorded by \c ToolDeviceCodeOffloadParserPass. For \c __global__ kernels
-  /// (HIP \c __hipRegisterFunction path) the recorded name is the
-  /// kernel's natural Itanium mangling; for tagged \c __device__
-  /// functions (CXX-plugin export-handle path) the IR pass already
-  /// demangles the synthesized host sibling and stores the original
-  /// device function's Itanium-mangled name. In both cases a single
-  /// \c Module::getFunction lookup against the IModule resolves the
-  /// payload.
-  ///
-  /// The handle is taken as a typed pointer so callers can pass
-  /// \c &MyTool::myHook directly; \c lookupHandleName does the cast to the
-  /// opaque key internally.
-  template <typename T>
-  llvm::Expected<llvm::Function *>
-  resolvePayloadHandle(T *HostHandle, llvm::Module &InstrumentationModule) {
-    auto &Self = static_cast<Derived &>(*this);
-    auto NameOrErr = Self.lookupHandleName(HostHandle);
-    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
-
-    if (llvm::Function *F = InstrumentationModule.getFunction(*NameOrErr))
-      return F;
-
-    return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-        "Payload function '{0}' not present in the instrumentation module.",
-        *NameOrErr));
-  }
-
-  /// Convenience overload that takes a HIP host-shadow handle (the
-  /// pointer used by HIP to reference a \c __device__ function from the
-  /// host side, e.g. \c &MyTool::myHook) instead of a pre-resolved
-  /// \c llvm::Function. Resolves the handle via \c resolvePayloadHandle,
-  /// pulls the instrumentation module's \c FunctionAnalysisManager off
-  /// \p PAM, then forwards to \c Prototype::createInjectedPayload. The
-  /// handle is taken as a typed pointer so callers need not cast to
-  /// \c void*.
-  template <typename T>
-  llvm::Error createInjectedPayload(T *HostHandle, Prototype &P,
-                                    PrototypeAnalysisManager &PAM,
-                                    llvm::MachineInstr &TargetMI,
-                                    llvm::ArrayRef<PayloadArg> Args = {}) {
-    auto FnOrErr = resolvePayloadHandle(HostHandle, P.getInstrumentationModule());
-    LUTHIER_RETURN_ON_ERROR(FnOrErr.takeError());
-    llvm::FunctionAnalysisManager &IFAM =
-        PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
-            .getManager();
-    return P.createInjectedPayload(**FnOrErr, TargetMI, IFAM, Args).takeError();
-  }
-
-  /// Lambda-taking companion of the above: resolves \p HostHandle to a
-  /// \c llvm::Function, hands both the resolved hook and an \c IRBuilder
-  /// pointing into the freshly-created payload body to \p Build. Use this
-  /// when the payload needs arguments that must be materialized inside the
-  /// payload's own function (e.g. \c luthier::readReg intrinsic calls),
-  /// which cannot be prepared before the payload's BB exists.
-  template <typename T>
-  llvm::Error createInjectedPayload(
-      T *HostHandle, Prototype &P, PrototypeAnalysisManager &PAM,
-      llvm::MachineInstr &TargetMI,
-      llvm::function_ref<llvm::Error(llvm::Function &, llvm::IRBuilderBase &)>
-          Build) {
-    auto FnOrErr = resolvePayloadHandle(HostHandle, P.getInstrumentationModule());
-    LUTHIER_RETURN_ON_ERROR(FnOrErr.takeError());
-    llvm::FunctionAnalysisManager &IFAM =
-        PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
-            .getManager();
-    llvm::Function &Hook = **FnOrErr;
-    return P.createInjectedPayload(
-                 TargetMI, IFAM,
-                 [&](llvm::IRBuilderBase &Builder) -> llvm::Error {
-                   return Build(Hook, Builder);
-                 })
-        .takeError();
   }
 
   /// Bring the launcher's name-based device-global lookup into scope alongside
