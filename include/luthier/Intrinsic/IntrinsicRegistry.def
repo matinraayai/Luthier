@@ -27,10 +27,36 @@
 #define REGISTER_INTRINSIC(NAME, IR_PROCESSOR, MIR_PROCESSOR)
 #endif
 
+// An intrinsic whose IR half goes through the registry but whose MIR half does
+// not, because its MIR processor needs arguments the generic
+// IntrinsicMIRProcessorFunc signature does not carry (a physical-register or
+// state-value-array map). IntrinsicMIRLoweringPass calls those directly, by
+// name, and never consults the registry's MIR slot for them --
+// see IntrinsicMIRLoweringPass.cpp:520-620.
+//
+// Registering the IR half is still required: the intrinsic's name only reaches
+// MIR inside inline asm that the IR processor emits, so without an entry here
+// ProcessIntrinsicsAtIRLevelPass stops the pipeline with
+// "Intrinsic <name> is not registered".
+#ifndef REGISTER_INTRINSIC_IR_ONLY
+#define REGISTER_INTRINSIC_IR_ONLY(NAME, IR_PROCESSOR)
+#endif
+
+// These three were dropped in a50db691 along with luthier::implicitArgPtr.
+// implicitArgPtr was genuinely retired afterwards -- b583d342 made the
+// substitution pass emit luthier::readSVA in its place, and nothing emits
+// implicitArgPtr any more. The three below were collateral: they are still
+// emitted by the build-time IR passes, and their headers are still included by
+// IntrinsicProcessorRegistry.cpp.
+REGISTER_INTRINSIC_IR_ONLY("luthier::readReg", readRegIRProcessor)
+REGISTER_INTRINSIC_IR_ONLY("luthier::readSVA", readSVAIRProcessor)
+REGISTER_INTRINSIC_IR_ONLY("luthier::writeReg", writeRegIRProcessor)
+
 REGISTER_INTRINSIC("luthier::writeExec",
                    writeExecIRProcessor,
                    writeExecMIRProcessor)
 REGISTER_INTRINSIC("luthier::sAtomicAdd",
                    sAtomicAddIRProcessor,
                    sAtomicAddMIRProcessor)
+#undef REGISTER_INTRINSIC_IR_ONLY
 #undef REGISTER_INTRINSIC

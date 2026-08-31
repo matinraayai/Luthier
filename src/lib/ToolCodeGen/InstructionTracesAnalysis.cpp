@@ -98,14 +98,12 @@ static llvm::Error disassembleTrace(
       break;
     }
 
-    uint64_t EntryPointHostAddr =
-        CurrentDeviceAddress -
-        reinterpret_cast<uint64_t>(AllocDesc.getDeviceAllocation().data()) +
-        reinterpret_cast<uint64_t>(AllocDesc.getDeviceAllocation().data());
-    size_t SegmentSize = AllocDesc.getSize();
-
-    uint64_t CurrentHostAddr = EntryPointHostAddr;
-    uint64_t SegmentHostEndAddr = EntryPointHostAddr + SegmentSize;
+    /// Both of these were previously computed inline here, and both were wrong
+    /// in ways no test could see -- see AllocationDescriptor::hostAddressFor and
+    /// hostEndAddress, which now own the arithmetic and are unit-tested.
+    const size_t SegmentSize = AllocDesc.getSize();
+    uint64_t CurrentHostAddr = AllocDesc.hostAddressFor(CurrentDeviceAddress);
+    const uint64_t SegmentHostEndAddr = AllocDesc.hostEndAddress();
 
     while (!WasTraceTermInstrEncountered && !StoppedByOverlap &&
            CurrentHostAddr < SegmentHostEndAddr) {

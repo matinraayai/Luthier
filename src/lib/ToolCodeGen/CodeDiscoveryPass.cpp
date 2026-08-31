@@ -1071,7 +1071,63 @@ convertAndAddMCOperandsToMI(const llvm::MCInst & RealInst,
   llvm::MCRegister ExecReg = TRI->getExec();
   const bool IsDirectBranch =
       MIBuilder->isBranch() && !MIBuilder->isIndirectBranch();
+  /// gfx10+ DPP16 carries a fetch-inactive operand the pseudo has no slot for.
+  /// It is surplus, but it is \e already dropped further down by name, so the
+  /// generic surplus handling below must leave it alone -- dropping it twice
+  /// makes that later \c removeOperand delete a legitimate operand instead.
+  const int RealFIIdx = llvm::AMDGPU::getNamedOperandIdx(
+      RealInst.getOpcode(), llvm::AMDGPU::OpName::fi);
   for (auto [MCOpIdx, MCOp] : llvm::enumerate(RealInst.getOperands())) {
+    /// Drop operands the descriptor has no slot for.
+    ///
+    /// This is the symmetric case to the \c NumMCOps \c < \c MCID.NumOperands
+    /// fixup further down, and it was missing. Two things went wrong without it,
+    /// and the less obvious one is worse:
+    ///
+    /// \li the register branch below indexes \c MCID.operands() by \c MCOpIdx
+    ///     with no bound, so a surplus operand reads past the end of the
+    ///     descriptor's operand array;
+    /// \li the surplus operand was added to the \c MachineInstr anyway, giving
+    ///     it more explicit operands than its opcode allows. Nothing here
+    ///     failed; the machine verifier rejected it much later, or nothing did,
+    ///     because LLVM only ever prints disassembled instructions rather than
+    ///     building MIR from them.
+    ///
+    /// Drop an operand the descriptor has no slot for.
+    ///
+    /// The symmetric case to the \c NumMCOps \c < \c MCID.NumOperands fixup
+    /// further down, which was missing. Two things went wrong without it, and the
+    /// less visible one is worse:
+    ///
+    /// \li the register branch below indexes \c MCID.operands() by \c MCOpIdx
+    ///     with no bound, so a surplus operand read past the end of the
+    ///     descriptor's operand array;
+    /// \li the surplus operand was added to the \c MachineInstr anyway, giving
+    ///     it more explicit operands than its opcode allows. Nothing failed
+    ///     here. The machine verifier rejected it much later -- or nothing did,
+    ///     because LLVM itself only prints disassembled instructions rather than
+    ///     building MIR from them, so the decoder has no reason to care.
+    ///
+    /// Known cause: for DS instructions on chips without GDS the AMDGPU
+    /// disassembler emits a duplicate \c gds operand. It reproduces on exactly
+    /// gfx90a and gfx942, and on gfx942 it accounted for every kernel the machine
+    /// verifier rejected after lifting -- 6 of them across a tinygrad corpus.
+    /// \c translator/ds-pk-add.s used to work around the resulting abort with
+    /// \c "|| \c true" and is now a regression test against it.
+    ///
+    /// The \c fi operand is exempt because it is surplus for a different reason
+    /// and is already dropped by name below; dropping it twice makes that later
+    /// \c removeOperand delete a legitimate operand instead, which shows up as a
+    /// missing implicit \c $exec.
+    if (!MCID.isVariadic() && MCOpIdx >= MCID.getNumOperands() &&
+        static_cast<int>(MCOpIdx) != RealFIIdx) {
+      LLVM_DEBUG(luthier::dbgs() << llvm::formatv(
+                     "[CodeDiscoveryPass] Dropping operand {0}; opcode {1} "
+                     "declares only {2} and is not variadic\n",
+                     MCOpIdx, Opcode, MCID.getNumOperands()));
+      continue;
+    }
+
     if (MCOp.isReg()) {
       LLVM_DEBUG(luthier::dbgs()
                  << "[CodeDiscoveryPass] Converting MC register operand "
@@ -1278,9 +1334,7 @@ convertAndAddMCOperandsToMI(const llvm::MCInst & RealInst,
     }
   }
 
-  if (const int RealFIIdx = llvm::AMDGPU::getNamedOperandIdx(
-          RealInst.getOpcode(), llvm::AMDGPU::OpName::fi);
-      RealFIIdx != -1) {
+  if (RealFIIdx != -1) {
     LLVM_DEBUG(luthier::dbgs()
                << "[CodeDiscoveryPass] Dropping the $fi operand, which the "
                   "pseudo opcode does not model\n");

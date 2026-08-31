@@ -1,17 +1,21 @@
 // RUN: llvm-mc --triple amdgcn-amd-amdhsa -mcpu=gfx942 -filetype=obj %s -o %t.o && \
 // RUN: ld.lld -shared --unresolved-symbols=ignore-all -o %t %t.o && \
-// RUN: (luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx942 \
+// RUN: luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx942 \
 // RUN:    '-passes=target(luthier-mock-load-amdgpu-code-objects),luthier-code-discovery,target(print)' \
 // RUN:    -code-object-paths=%t \
 // RUN:    -initial-entrypoint=0:ds_pkadd_kern.kd \
 // RUN:    -initial-execution-point=0:ds_pkadd_kern.kd \
-// RUN:    -o /dev/null 2>&1 || true) > %t.out && \
+// RUN:    -o /dev/null > %t.out 2>&1 && \
 // RUN: FileCheck %s < %t.out
 
-// Note: luthier-llc aborts in the post-translation machine verifier on
-// gfx942 due to an unrelated MC-decoder operand-mismatch for DS_PK_ADD_*
-// (extra explicit operand). The IR translation itself completes — we
-// check the stdout dump produced before the verifier kicks in.
+// This used to abort in the post-translation machine verifier on gfx942, and
+// the test worked around it with `|| true` and checked only the dump produced
+// before the abort. The cause was the AMDGPU disassembler emitting a duplicate
+// gds operand for DS instructions on chips without GDS, which convertAndAdd-
+// MCOperandsToMI then added to the MachineInstr, giving it more explicit
+// operands than its opcode allows. The surplus is now dropped, so this runs to
+// completion — and the absence of `|| true` is what makes this a regression test
+// for that rather than a record of a known failure.
 
 // Group M coverage: DS_PK_ADD_F16 / DS_PK_ADD_BF16 lower to packed fadd on
 // <2 x half> / <2 x bfloat>. gfx942 is the first arch with both
