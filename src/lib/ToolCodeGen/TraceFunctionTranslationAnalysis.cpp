@@ -107,21 +107,7 @@ bool TranslationState::isDirty() const {
 }
 
 bool TranslationState::canFlushIncrementally() const {
-  /// No translator (first flush, or the analysis was recomputed after
-  /// serialization) or untranslated function: full lift required
-  if (!Translator || MF.getFunction().empty())
-    return false;
-  /// Erased or new MBBs change the block set; full re-translation
-  if (!ErasedBodyBBs.empty())
-    return false;
-  if (llvm::any_of(MF, [](const llvm::MachineBasicBlock &MBB) {
-        return !MBB.getBasicBlock();
-      }))
-    return false;
-  /// CFG edge changes are beyond in-place body repair
-  return llvm::all_of(DirtyMBBs, [&](const llvm::MachineBasicBlock *MBB) {
-    return Translator->irSuccessorsMatchMIR(*MBB);
-  });
+  return false;
 }
 
 llvm::Error TranslationState::flushFull() {
