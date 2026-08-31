@@ -54,7 +54,6 @@ void registerToolIRCompilationPasses(llvm::PassBuilder &PB) {
                                         llvm::ThinOrFullLTOPhase) {
     MPM.addPass(luthier::MarkAnnotationsPass());
     MPM.addPass(luthier::FinalizeIntrinsicsPass());
-    MPM.addPass(luthier::SubstituteAMDGCNIntrinsicsPass());
   });
 
   PB.registerPipelineStartEPCallback(
