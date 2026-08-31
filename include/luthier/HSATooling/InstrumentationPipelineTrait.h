@@ -31,7 +31,6 @@
 #define LUTHIER_TOOLING_INSTRUMENTATION_PIPELINE_TRAIT_H
 
 #include "luthier/Common/ErrorCheck.h"
-#include "luthier/HSATooling/HsaMemoryAllocationAccessor.h"
 #include "luthier/HSATooling/LoadedCodeObjectCache.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
@@ -70,11 +69,17 @@ namespace luthier {
 
 /// \brief CRTP trait that runs Luthier's per-dispatch instrumentation pipeline.
 ///
-/// \tparam Derived the concrete tool (an \c HSATool subclass). It must provide
-/// \c buildTargetMachineForKD, \c parseModule,
-/// \c getIntrinsicProcessorRegistry, and be an \c InstrumentationPass for the
-/// payload-injection adapter cast to succeed — all of which \c HSATool already
-/// supplies.
+/// \tparam Derived the concrete tool. It must provide
+/// \c buildTargetMachineForKD, \c createMemoryAllocationAccessor,
+/// \c parseModule, \c getIntrinsicProcessorRegistry, and be an
+/// \c InstrumentationPass for the payload-injection adapter cast to succeed —
+/// all of which \c HSATool and \c KFDTool supply.
+///
+/// \note Despite living under \c HSATooling, nothing in this trait is specific
+/// to HSA. The one thing that was — constructing the memory allocation accessor
+/// — is now \c createMemoryAllocationAccessor on the tool, because that is
+/// precisely what differs between a tool attached to an HSA application and one
+/// attached to an application that drives the driver itself.
 /// \tparam TargetUnitT the instrumentation target unit (matches \c HSATool's).
 template <typename Derived, typename TargetUnitT = llvm::MachineFunction>
 class InstrumentationPipelineTrait {
@@ -116,13 +121,16 @@ public:
         [] { return luthier::TraceFunctionTranslationAnalysis(); });
     MAM.registerPass([] { return luthier::InitialEntryPointAnalysis(); });
     MAM.registerPass([] { return luthier::InitialExecutionPointAnalysis(); });
+    // The accessor comes from the tool, because what can answer "which
+    // allocation holds this address" is exactly what differs between a tool
+    // attached to an HSA application and one attached to an application that
+    // drives the driver itself. Nothing else in this pipeline differs between
+    // the two, which is why this is the only hook.
     MAM.registerPass([&] {
       return luthier::MemoryAllocationAnalysis(
-          std::make_unique<luthier::HsaMemoryAllocationAccessor>(
-              static_cast<const LoadedCodeObjectCache &>(D),
-              D.getCoreApiTableSnapshot(), D.getAmdExtTableSnapshot(),
-              D.getLoaderTableSnapshot().getTable()));
+          D.createMemoryAllocationAccessor());
     });
+
     // PrototypeCallGraphAnalysis, IPPredCFGAnalysis and
     // FunctionPreambleDescriptorAnalysis are Prototype analyses; they are
     // registered on the PrototypeAnalysisManager (see
@@ -146,6 +154,43 @@ public:
   /// intrinsic lowering, AMDGPU codegen, and finally the target-module patch
   /// plus asm printing. \p Level selects the optimization level used for the
   /// instrumentation module's IR pipeline.
+protected:
+  /// \brief Everything one dispatch's lifting stands on, handed to a body that
+  /// runs while it is all still alive.
+  ///
+  /// References throughout: every one of these lives on \c withLiftedDispatch's
+  /// frame and dies when it returns, which is why a body has to finish its work
+  /// rather than stash any of this.
+  struct LiftedDispatch {
+    luthier::Prototype &IP;
+    luthier::PrototypeAnalysisManager &IPAM;
+    luthier::InstrumentationPassBuilder &PB;
+    llvm::TargetMachine &TM;
+    /// The two module analysis managers, needed by name because
+    /// \c ParentPrototypeAnalysis is consumed through \c getCachedResult and so
+    /// has to be materialized in each one before a pipeline runs.
+    llvm::ModuleAnalysisManager &TargetMAM;
+    llvm::ModuleAnalysisManager &IMAM;
+  };
+
+private:
+  /// Stand up everything one dispatch's lifting needs, then hand it to \p Body.
+  ///
+  /// Extracted so the two entry points below cannot drift apart. That matters
+  /// more than it usually would: the declaration order of the analysis managers
+  /// here is load-bearing (see the comment on them), and a second copy of that
+  /// ordering would be a second chance to get it subtly wrong -- with the
+  /// symptom appearing as lifted MIR vanishing mid-pipeline rather than as
+  /// anything that looks like a lifetime bug.
+  ///
+  /// \param Body receives the prototype, its analysis manager, the pass builder
+  /// and the target machine, all fully registered and cross-proxied. Anything it
+  /// wants to keep must be copied out: every object here dies when this returns.
+  template <typename BodyT>
+  llvm::Error withLiftedDispatch(const llvm::amdhsa::kernel_descriptor_t &KD,
+                                 llvm::OptimizationLevel Level,
+                                 llvm::PassInstrumentationCallbacks &PIC,
+                                 BodyT Body) {
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>>
   runInstrumentationPipelineForDispatch(
       const llvm::amdhsa::kernel_descriptor_t &KD,
@@ -213,10 +258,21 @@ private:
                     Tool.createInstrumentationModule(Ctx);
                   }) {
       IModuleM = D.createInstrumentationModule(Ctx);
-    } else {
+    } else if constexpr (requires(Derived &Tool) {
+                           Tool.parseModule(ToolTriple, ToolCPU, ToolFeatures,
+                                            Ctx);
+                         }) {
       LUTHIER_RETURN_ON_ERROR(
           D.parseModule(ToolTriple, ToolCPU, ToolFeatures, Ctx)
               .moveInto(IModuleM));
+    } else {
+      // A tool with no device code of its own -- an analysis-only tool. The
+      // prototype still owns two modules, because everything downstream expects
+      // both halves to exist, but nothing will ever put anything in this one.
+      // Reaching payload injection from here would fail on an empty module, and
+      // that is the right outcome: a tool with no payload has no business in the
+      // instrumentation pipeline, only in runCodeDiscoveryForDispatch.
+      IModuleM = std::make_unique<llvm::Module>("luthier.instrumentation", Ctx);
     }
     IModuleM->setTargetTriple(ToolTriple);
     IModuleM->setDataLayout(TM->createDataLayout());
@@ -259,10 +315,11 @@ private:
     const luthier::InstrumentationPassBuilder::ModuleAnalysisManagers IAMs{
         IMAM, ICGAM, IFAM, ILAM, IMFAM};
 
-    // PIC + SI must outlive the pipeline run. StandardInstrumentations reads
+    // SI must outlive the pipeline run. StandardInstrumentations reads
     // --print-after-all / --print-before-all / --print-changed / -time-passes
-    // and registers the corresponding PassInstrumentationCallbacks.
-    llvm::PassInstrumentationCallbacks PIC;
+    // and registers the corresponding PassInstrumentationCallbacks. PIC is the
+    // caller's, because it must outlive this frame: the pass manager the body
+    // builds holds on to it.
     llvm::StandardInstrumentations SI(Ctx, /*DebugLogging=*/false);
 
     luthier::InstrumentationPassBuilder PB(*TM, llvm::PipelineTuningOptions(),
@@ -304,10 +361,29 @@ private:
       M->registerPass(
           [&ParentMap] { return luthier::ParentPrototypeAnalysis(ParentMap); });
 
-    llvm::SmallVector<char, 0> ObjBuf;
-    llvm::raw_svector_ostream ObjOS(ObjBuf);
+    return Body(LiftedDispatch{IP, IPAM, PB, *TM, TargetMAM, IMAM});
+  }
 
-    llvm::CGPassBuilderOption CGPBO = llvm::getCGPassBuilderOption();
+public:
+  llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>>
+  runInstrumentationPipelineForDispatch(
+      const llvm::amdhsa::kernel_descriptor_t &KD,
+      llvm::OptimizationLevel Level = llvm::OptimizationLevel::O3) {
+    llvm::PassInstrumentationCallbacks PIC;
+    std::unique_ptr<llvm::MemoryBuffer> Result;
+    LUTHIER_RETURN_ON_ERROR(withLiftedDispatch(
+        KD, Level, PIC,
+        [&](LiftedDispatch L) -> llvm::Error {
+          Derived &D = derived();
+          luthier::Prototype &IP = L.IP;
+          luthier::PrototypeAnalysisManager &IPAM = L.IPAM;
+          luthier::InstrumentationPassBuilder &PB = L.PB;
+          llvm::ModuleAnalysisManager &TargetMAM = L.TargetMAM;
+          llvm::ModuleAnalysisManager &IMAM = L.IMAM;
+      llvm::SmallVector<char, 0> ObjBuf;
+      llvm::raw_svector_ostream ObjOS(ObjBuf);
+
+      llvm::CGPassBuilderOption CGPBO = llvm::getCGPassBuilderOption();
 
     luthier::PrototypePassManager IPPM;
     LUTHIER_RETURN_ON_ERROR(PB.buildInstrumentationPipeline(
@@ -323,6 +399,19 @@ private:
         },
         D.getPatchPCUsagesHostCallback(),
         Level, llvm::CodeGenFileType::ObjectFile, CGPBO, &ObjOS, &PIC));
+      luthier::PrototypePassManager IPPM;
+      LUTHIER_RETURN_ON_ERROR(PB.buildInstrumentationPipeline(
+          IPPM,
+          // The instrumentation stage: the tool's own payload injection, then any
+          // extra IR-level passes it asks for.
+          [&D](luthier::PrototypePassManager &PPM, llvm::OptimizationLevel) {
+            PPM.addPass(InjectPayloadsAdapter(&D));
+            if constexpr (requires(Derived &Tool) {
+                            Tool.preIROptimizationPasses(PPM);
+                          })
+              D.preIROptimizationPasses(PPM);
+          },
+          Level, llvm::CodeGenFileType::ObjectFile, CGPBO, &ObjOS, &PIC));
 
     // ParentPrototypeAnalysis is consumed via getCachedResult, so materialize
     // it for both modules up front, each in its own manager.

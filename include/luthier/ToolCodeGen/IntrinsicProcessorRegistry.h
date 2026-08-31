@@ -63,6 +63,24 @@ public:
   }
 };
 
+/// \brief Per-tool trait that owns the \c IntrinsicProcessorRegistry the tool's
+/// instrumentation pipeline consults during IR/MIR intrinsic lowering. The
+/// registry default-constructs (its ctor auto-registers the built-in Luthier
+/// intrinsics from \c IntrinsicRegistry.def), so the trait needs no
+/// constructor arguments and never fails.
+template <typename Derived> class IntrinsicProcessorRegistryTraitBase {
+  IntrinsicProcessorRegistry Registry;
+
+public:
+  IntrinsicProcessorRegistry &getIntrinsicProcessorRegistry() {
+    return Registry;
+  }
+
+  const IntrinsicProcessorRegistry &getIntrinsicProcessorRegistry() const {
+    return Registry;
+  }
+};
+
 } // namespace luthier
 
 #endif

@@ -25,10 +25,12 @@
 #include "luthier/HSA/Agent.h"
 #include "luthier/HSA/HsaError.h"
 #include "luthier/HSA/ISA.h"
+#include "luthier/HSATooling/HsaMemoryAllocationAccessor.h"
 #include "luthier/HSATooling/InstrumentationPipelineTrait.h"
 #include "luthier/HSATooling/InstrumentedKernelLoaderAndLauncher.h"
 #include "luthier/HSATooling/LLVMUserTrait.h"
 #include "luthier/HSATooling/LoadedCodeObjectCache.h"
+#include "luthier/KFD/KfdAllocationResolver.h"
 #include "luthier/HSATooling/PacketMonitorTrait.h"
 #include "luthier/PassPlugin/LuthierPassPlugin.h"
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
@@ -46,24 +48,6 @@
 #include <llvm/TargetParser/AMDGPUTargetParser.h>
 
 namespace luthier {
-
-/// Per-tool trait that owns the \c IntrinsicProcessorRegistry the tool's
-/// instrumentation pipeline consults during IR/MIR intrinsic lowering. The
-/// registry default-constructs (its ctor auto-registers the built-in Luthier
-/// intrinsics from \c IntrinsicRegistry.def), so the trait needs no
-/// constructor arguments and never fails.
-template <typename Derived> class IntrinsicProcessorRegistryTraitBase {
-  IntrinsicProcessorRegistry Registry;
-
-public:
-  IntrinsicProcessorRegistry &getIntrinsicProcessorRegistry() {
-    return Registry;
-  }
-
-  const IntrinsicProcessorRegistry &getIntrinsicProcessorRegistry() const {
-    return Registry;
-  }
-};
 
 /// \brief CRTP base for static HSA tools. Inherits the HIP fat-binary
 /// registration slots and per-agent HSA executable state from
@@ -119,6 +103,29 @@ public:
         InstrumentedKernelLoaderAndLauncherTrait<Derived>(CoreApi, AmdExt,
                                                           VenLoader, Err),
         PacketMonitorTrait<Derived>(CoreApi, AmdExt, VenLoader, Err) {}
+
+  /// Build the accessor this tool's instrumentation pipeline should use.
+  ///
+  /// HSA first, then whatever the driver-level resolver knows. The resolver is
+  /// constructed unconditionally and reports for itself whether it has records
+  /// to serve, so an application that never touched KFD directly is unaffected
+  /// by its presence — the accessor only consults it for addresses HSA does not
+  /// manage.
+  ///
+  /// The four HSA references come off this tool and exist nowhere else, which is
+  /// why this is a member here rather than something the pipeline trait builds.
+  ///
+  /// Snapshots are passed, not the tables they wrap: reading a snapshot whose
+  /// registration callback never fired is a fatal error by design, and the
+  /// accessor has to be able to test for that before reading.
+  std::unique_ptr<MemoryAllocationAccessor> createMemoryAllocationAccessor() {
+    auto &D = static_cast<Derived &>(*this);
+    return std::make_unique<HsaMemoryAllocationAccessor>(
+        static_cast<const LoadedCodeObjectCache &>(D),
+        D.getCoreApiTableSnapshot(), D.getAmdExtTableSnapshot(),
+        D.getLoaderTableSnapshot(),
+        std::make_unique<KfdAllocationResolver>());
+  }
 
   /// \note There is no longer a single "pipeline driver" pass to hand a target
   /// module pass manager. The instrumentation pipeline now runs over a
