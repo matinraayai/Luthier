@@ -1,5 +1,6 @@
 add_subdirectory(LiftLaunchedKernels)
 add_subdirectory(InstrCount)
+add_subdirectory(InstrCountKFD)
 add_subdirectory(KernelArgumentIntrinsic)
 # add_subdirectory(KernelInstrument)
 add_subdirectory(LDSBankConflict)
