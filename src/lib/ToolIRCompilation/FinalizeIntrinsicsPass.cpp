@@ -15,6 +15,7 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolIRCompilation/FinalizeIntrinsicsPass.h"
 #include "luthier/Common/GenericLuthierError.h"
+#include "luthier/Intrinsic/IntrinsicCalls.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include <cstdlib>
 #include <cstring>
@@ -100,6 +101,8 @@ FinalizeIntrinsicsPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &) {
 
     Intrinsic->addFnAttr(IntrinsicAttribute, DemangledIntrinsicName);
     Intrinsic->setName(FormattedIntrinsicName);
+
+    addAMDGCNAttrs(*Intrinsic);
   }
 
   return llvm::PreservedAnalyses::none();

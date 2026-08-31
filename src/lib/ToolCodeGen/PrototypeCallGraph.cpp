@@ -132,10 +132,65 @@ static bool storeMatchesLoad(llvm::StoreInst *SI, llvm::LoadInst *LI,
 ///    agnostic; in practice it recovers callee addresses spilled to scratch
 ///    (private memory) and reloaded under register pressure, since that is the
 ///    only spill path on AMDGPU that keeps the value scalar/foldable.
+/// Locate the value operand of the payload's single \c luthier::writeReg call
+/// (function-call or post-\c ProcessIntrinsicsAtIRLevelPass inline-asm form),
+/// if unambiguous. The payload is scanned for any \c CallInst tagged with the
+/// \c luthier::writeReg intrinsic name; both forms carry the value as their
+/// first argument, so the pattern is uniform.  Returns \c nullptr if the
+/// payload has zero or more than one writeReg call — a single-implicit-def
+/// PATCHPOINT should have exactly one write.
+static llvm::Value *
+findSinglePayloadWriteValue(llvm::Function &Payload) {
+  llvm::Value *Val = nullptr;
+  for (llvm::Instruction &I : llvm::instructions(Payload)) {
+    auto *CI = llvm::dyn_cast<llvm::CallInst>(&I);
+    if (!CI)
+      continue;
+    llvm::Value *Callee = CI->getCalledOperand();
+    // Function-call form (before ProcessIntrinsicsAtIRLevelPass runs): the
+    // callee is a Function with the IntrinsicAttribute holding the name.
+    if (auto *Fn = llvm::dyn_cast<llvm::Function>(Callee)) {
+      if (!Fn->hasFnAttribute(IntrinsicAttribute))
+        continue;
+      if (Fn->getFnAttribute(IntrinsicAttribute).getValueAsString() !=
+          "luthier::writeReg")
+        continue;
+    } else if (auto *IA = llvm::dyn_cast<llvm::InlineAsm>(Callee)) {
+      // Inline-asm form: the intrinsic name lives in the template string.
+      if (IA->getAsmString() != "luthier::writeReg")
+        continue;
+    } else {
+      continue;
+    }
+    if (CI->arg_size() < 1)
+      continue;
+    if (Val) // ambiguous — bail
+      return nullptr;
+    Val = CI->getArgOperand(0);
+  }
+  return Val;
+}
+
+/// Try to fold a \c luthier.patchpoint call by tracing into its payload.
+/// The translator emits one \c luthier.patchpoint.N per PATCHPOINT MI whose
+/// first argument is the payload extern-handle; the call's return value is
+/// the concatenation of the marker's implicit-def register values after the
+/// payload runs (see \c TraceFunctionTranslator's PATCHPOINT case). For a
+/// single-implicit-def PATCHPOINT with a single \c writeReg into that
+/// register, the call return equals the value written.
+static llvm::Constant *
+tryEvalPatchpointCall(llvm::CallInst *CI, const ValConstMap &SubstMap,
+                      ValConstMap &Cache, const llvm::DataLayout &DL,
+                      llvm::FunctionAnalysisManager &FAM,
+                      llvm::Module &IModule,
+                      llvm::FunctionAnalysisManager &IFAM);
+
 static llvm::Constant *tryEvalConst(llvm::Value *V, const ValConstMap &SubstMap,
                                     ValConstMap &Cache,
                                     const llvm::DataLayout &DL,
-                                    llvm::FunctionAnalysisManager &FAM) {
+                                    llvm::FunctionAnalysisManager &FAM,
+                                    llvm::Module &IModule,
+                                    llvm::FunctionAnalysisManager &IFAM) {
   if (auto It = Cache.find(V); It != Cache.end())
     return It->second;
 
@@ -167,8 +222,18 @@ static llvm::Constant *tryEvalConst(llvm::Value *V, const ValConstMap &SubstMap,
     // ssa.copy is a plain SSA copy — the translator emits it for register
     // moves (e.g. v_mov). Forward through it.
     if (IID == llvm::Intrinsic::ssa_copy)
-      return cache(
-          tryEvalConst(CI->getArgOperand(0), SubstMap, Cache, DL, FAM));
+      return cache(tryEvalConst(CI->getArgOperand(0), SubstMap, Cache, DL, FAM,
+                                IModule, IFAM));
+
+    // luthier.patchpoint.N is the IR-side stand-in for a PATCHPOINT MI. The
+    // \c PrototypeCallGraph purpose is to recover call targets even when
+    // \c PatchPCUsagesPass has rewritten the direct call site into
+    // PATCHPOINT-driven register writes, so trace into the payload to
+    // recover the implicit-def register's post-payload value.
+    if (auto *Callee = CI->getCalledFunction();
+        Callee && Callee->getName().starts_with("luthier.patchpoint"))
+      return cache(tryEvalPatchpointCall(CI, SubstMap, Cache, DL, FAM, IModule,
+                                         IFAM));
 
     // TODO: cross-lane VGPR reads (readfirstlane / readlane / writelane) are
     // NOT traced. Resolving them properly needs IR-translator changes
@@ -199,7 +264,8 @@ static llvm::Constant *tryEvalConst(llvm::Value *V, const ValConstMap &SubstMap,
     // reloaded as e.g. <2 x i32>).
     Cache[V] = nullptr;
     llvm::Constant *SC =
-        tryEvalConst(SI->getValueOperand(), SubstMap, Cache, DL, FAM);
+        tryEvalConst(SI->getValueOperand(), SubstMap, Cache, DL, FAM, IModule,
+                     IFAM);
     llvm::Constant *R = nullptr;
     if (SC)
       R = SC->getType() == LI->getType()
@@ -214,12 +280,63 @@ static llvm::Constant *tryEvalConst(llvm::Value *V, const ValConstMap &SubstMap,
   llvm::SmallVector<llvm::Constant *> Ops;
   Ops.reserve(I->getNumOperands());
   for (llvm::Value *Op : I->operands()) {
-    llvm::Constant *C = tryEvalConst(Op, SubstMap, Cache, DL, FAM);
+    llvm::Constant *C = tryEvalConst(Op, SubstMap, Cache, DL, FAM, IModule,
+                                     IFAM);
     if (!C)
       return cache(nullptr);
     Ops.push_back(C);
   }
   return cache(llvm::ConstantFoldInstOperands(I, Ops, DL));
+}
+
+/// \c luthier.patchpoint.N (where \c N is the LLVM-suffix-disambiguator) is
+/// the IR stand-in for a target-side PATCHPOINT MI. Its first argument is
+/// the payload extern-handle declared in the target module; the payload's
+/// definition lives in the instrumentation module and its writeReg calls
+/// carry the constants that (post-payload) populate the PATCHPOINT's
+/// implicit-def registers. For a single-def marker with a single writeReg
+/// there is exactly one such constant, and it is the value the call
+/// returns — the same value the following S_SETPC_B64 would jump to.
+static llvm::Constant *
+tryEvalPatchpointCall(llvm::CallInst *CI, const ValConstMap &SubstMap,
+                      ValConstMap &Cache, const llvm::DataLayout &DL,
+                      llvm::FunctionAnalysisManager &FAM,
+                      llvm::Module &IModule,
+                      llvm::FunctionAnalysisManager &IFAM) {
+  if (CI->arg_size() < 1)
+    return nullptr;
+  // Arg 0 is the payload extern-handle (a Function decl in the target
+  // module — the translator sourced it from the PATCHPOINT's TargetPos
+  // operand). Look up the payload's definition in the instrumentation
+  // module by name — the extern decl and the definition share it.
+  auto *ExternHandle = llvm::dyn_cast<llvm::Function>(CI->getArgOperand(0));
+  if (!ExternHandle)
+    return nullptr;
+  llvm::Function *PayloadDef = IModule.getFunction(ExternHandle->getName());
+  if (!PayloadDef || PayloadDef->isDeclaration())
+    return nullptr;
+  llvm::Value *WriteVal = findSinglePayloadWriteValue(*PayloadDef);
+  if (!WriteVal)
+    return nullptr;
+  // Fold the writeReg value in the payload's own function-analysis context
+  // (its per-function MemorySSA/AA); reuse the parent cache since it is
+  // keyed on \c Value* which are unique across modules.
+  ValConstMap InnerCache;
+  llvm::Constant *Val = tryEvalConst(WriteVal, SubstMap, InnerCache,
+                                     IModule.getDataLayout(), IFAM, IModule,
+                                     IFAM);
+  if (!Val)
+    return nullptr;
+  // The patchpoint call's return type is a bitwise concatenation of the
+  // implicit-def registers; a single-def marker has the write's value type
+  // matching directly. Bit-reinterpret when the widths agree but types do
+  // not (e.g. i64 vs <2 x i32>).
+  if (Val->getType() == CI->getType())
+    return Val;
+  if (DL.getTypeStoreSize(Val->getType()) == DL.getTypeStoreSize(CI->getType()))
+    return llvm::ConstantFoldCastOperand(llvm::Instruction::BitCast, Val,
+                                         CI->getType(), DL);
+  return nullptr;
 }
 
 /// Set-valued companion to \c tryEvalConst for the call-site target operand.
@@ -238,6 +355,8 @@ static llvm::Constant *tryEvalConst(llvm::Value *V, const ValConstMap &SubstMap,
 static void evalConstTargets(llvm::Value *V, const ValConstMap &SubstMap,
                              const llvm::DataLayout &DL,
                              llvm::FunctionAnalysisManager &FAM,
+                             llvm::Module &IModule,
+                             llvm::FunctionAnalysisManager &IFAM,
                              llvm::SmallPtrSetImpl<llvm::Value *> &Active,
                              llvm::SmallVectorImpl<llvm::Constant *> &Out) {
   auto add = [&](llvm::Constant *C) {
@@ -249,7 +368,8 @@ static void evalConstTargets(llvm::Value *V, const ValConstMap &SubstMap,
   // getpc chains, single-store spills, fully-constant subtrees).
   {
     ValConstMap Cache;
-    if (llvm::Constant *C = tryEvalConst(V, SubstMap, Cache, DL, FAM))
+    if (llvm::Constant *C =
+            tryEvalConst(V, SubstMap, Cache, DL, FAM, IModule, IFAM))
       return add(C);
   }
 
@@ -263,17 +383,20 @@ static void evalConstTargets(llvm::Value *V, const ValConstMap &SubstMap,
 
   if (auto *P = llvm::dyn_cast<llvm::PHINode>(I)) {
     for (llvm::Value *In : P->incoming_values())
-      evalConstTargets(In, SubstMap, DL, FAM, Active, Out);
+      evalConstTargets(In, SubstMap, DL, FAM, IModule, IFAM, Active, Out);
     return;
   }
   if (auto *Sel = llvm::dyn_cast<llvm::SelectInst>(I)) {
-    evalConstTargets(Sel->getTrueValue(), SubstMap, DL, FAM, Active, Out);
-    evalConstTargets(Sel->getFalseValue(), SubstMap, DL, FAM, Active, Out);
+    evalConstTargets(Sel->getTrueValue(), SubstMap, DL, FAM, IModule, IFAM,
+                     Active, Out);
+    evalConstTargets(Sel->getFalseValue(), SubstMap, DL, FAM, IModule, IFAM,
+                     Active, Out);
     return;
   }
   if (auto *Cast = llvm::dyn_cast<llvm::CastInst>(I)) {
     llvm::SmallVector<llvm::Constant *> Ops;
-    evalConstTargets(Cast->getOperand(0), SubstMap, DL, FAM, Active, Ops);
+    evalConstTargets(Cast->getOperand(0), SubstMap, DL, FAM, IModule, IFAM,
+                     Active, Ops);
     for (llvm::Constant *C : Ops)
       add(llvm::ConstantFoldCastOperand(Cast->getOpcode(), C, Cast->getType(),
                                         DL));
@@ -306,7 +429,8 @@ static void evalConstTargets(llvm::Value *V, const ValConstMap &SubstMap,
       if (!SI || !storeMatchesLoad(SI, LI, AA, DL))
         continue;
       llvm::SmallVector<llvm::Constant *> SVals;
-      evalConstTargets(SI->getValueOperand(), SubstMap, DL, FAM, Active, SVals);
+      evalConstTargets(SI->getValueOperand(), SubstMap, DL, FAM, IModule, IFAM,
+                       Active, SVals);
       for (llvm::Constant *C : SVals)
         add(toLoadTy(C));
     }
@@ -355,6 +479,23 @@ static llvm::Function *extractFunctionHandle(llvm::Constant *C) {
     }
   }
   return nullptr;
+}
+
+/// If \p TgtFn is an extern declaration in a module other than \p TargetModule,
+/// return the matching definition inside \p TargetModule. Returns \p TgtFn
+/// unchanged when there is nothing to redirect.
+static llvm::Function *
+resolveCrossModuleDeclaration(llvm::Function *TgtFn,
+                              llvm::Module &TargetModule) {
+  if (!TgtFn || TgtFn->getParent() == &TargetModule)
+    return TgtFn;
+  if (!TgtFn->isDeclaration())
+    return TgtFn;
+  llvm::Function *Def = TargetModule.getFunction(TgtFn->getName());
+  if (Def && !Def->isDeclaration() &&
+      Def->getFunctionType() == TgtFn->getFunctionType())
+    return Def;
+  return TgtFn;
 }
 
 /// Return the physical register that the machine call \p MI uses as the
@@ -470,12 +611,13 @@ runTrace(llvm::Module &TargetModule, llvm::FunctionAnalysisManager &TargetFAM,
           llvm::SmallVector<llvm::Constant *> Cs;
           llvm::SmallPtrSet<llvm::Value *, 16> Active;
           evalConstTargets(CI->getCalledOperand(), SubstMap, DL, TargetFAM,
-                           Active, Cs);
+                           IModule, IFAM, Active, Cs);
           for (llvm::Constant *C : Cs) {
             // Prefer a direct Function-handle resolution (Constant wraps a
             // Function*): the payload path may emit ptrtoint(@fn) which is
             // reachable in the target module directly without an address.
             if (llvm::Function *TgtFn = extractFunctionHandle(C)) {
+              TgtFn = resolveCrossModuleDeclaration(TgtFn, TargetModule);
               if (TgtFn->getParent() != &TargetModule)
                 continue; // filtered by the payload-side error path
               auto &Targets = Out.CallTargets[CI];
@@ -530,7 +672,7 @@ runTrace(llvm::Module &TargetModule, llvm::FunctionAnalysisManager &TargetFAM,
               ValConstMap EmptyMap;
               if (llvm::Constant *ArgC =
                       tryEvalConst(SiteCI->getArgOperand(Idx), EmptyMap,
-                                   SiteCache, DL, TargetFAM))
+                                   SiteCache, DL, TargetFAM, IModule, IFAM))
                 SubstMap[F.getArg(Idx)] = ArgC;
             }
             if (!SubstMap.empty())
@@ -621,20 +763,41 @@ static void collectPayloadWrites(llvm::Function &Payload,
     // evalConstTargets is usually enough.
     llvm::SmallPtrSet<llvm::Value *, 16> Active;
     ValConstMap Empty;
-    evalConstTargets(CI->getArgOperand(1), Empty, IDL, IFAM, Active, W.Values);
+    evalConstTargets(CI->getArgOperand(1), Empty, IDL, IFAM,
+                     *Payload.getParent(), IFAM, Active, W.Values);
     if (!W.Values.empty())
       Out.push_back(std::move(W));
   }
 }
 
-/// Build a map from a target-module MI's trace address to the MI itself,
-/// used to go from a target IR \c CallInst's \c MD_pcsections back to the
-/// \c MachineInstr it was lifted from.
+/// Build a map from a target-module MI's trace address to the PATCHPOINT MI
+/// that hooks it, used to go from a target IR \c CallInst's \c MD_pcsections
+/// back to the \c MachineInstr the payload was attached at.
+///
+/// PATCHPOINT markers themselves are synthetic and never carry a trace
+/// address; the trace address belongs to the target-side MI the PATCHPOINT
+/// was inserted before (see \c Prototype::assignToInject). Walk forward
+/// from each PATCHPOINT to the next non-PATCHPOINT MI and index by its
+/// trace address.
 static llvm::DenseMap<uint64_t, llvm::MachineInstr *> buildTraceAddrToMIMap(
     const InjectedPayloadAndInstPointAnalysis::Result &AppMIToPayloads) {
   llvm::DenseMap<uint64_t, llvm::MachineInstr *> Out;
   for (const auto &[MI, _] : AppMIToPayloads.mi_payloads()) {
-    auto *MD = TargetMachineInstrMDNode::getInstrMDNodeIfExists(*MI);
+    llvm::MachineBasicBlock *MBB = MI->getParent();
+    if (!MBB)
+      continue;
+    llvm::MachineInstr *TargetMI = nullptr;
+    auto It = std::next(MI->getIterator());
+    auto E = MBB->end();
+    for (; It != E; ++It) {
+      if (It->getOpcode() == llvm::TargetOpcode::PATCHPOINT)
+        continue;
+      TargetMI = &*It;
+      break;
+    }
+    if (!TargetMI)
+      continue;
+    auto *MD = TargetMachineInstrMDNode::getInstrMDNodeIfExists(*TargetMI);
     if (!MD)
       continue;
     if (auto Addr = MD->getTraceInstrAddress())
@@ -707,6 +870,7 @@ static bool resolveViaPayloads(
             }
             if (!TgtFn)
               continue;
+            TgtFn = resolveCrossModuleDeclaration(TgtFn, TargetModule);
             if (TgtFn->getParent() != &TargetModule) {
               // The payload wrote a handle pointing outside the target
               // module — most likely into the IModule itself, which is

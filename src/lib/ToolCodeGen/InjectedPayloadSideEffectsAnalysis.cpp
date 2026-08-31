@@ -18,6 +18,7 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/Intrinsic/IntrinsicProcessor.h"
+#include "luthier/ToolCodeGen/AMDGPUPreloadValueMapping.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
 #include <AMDGPUTargetMachine.h>
@@ -60,13 +61,9 @@ InjectedPayloadSideEffectsAnalysis::run(llvm::Function &F,
       continue;
 
     llvm::StringRef IntrinsicName;
-    // The value carrying the phys-reg-enum / SVA-enum argument, in whichever
-    // operand position the current call form places it.
     const llvm::Value *EnumArg = nullptr;
 
     if (auto *IA = llvm::dyn_cast<llvm::InlineAsm>(CI->getCalledOperand())) {
-      // Post-IR-lowering form: the call is an inline-asm placeholder whose
-      // template string is the intrinsic name.
       IntrinsicName = IA->getAsmString();
       // readReg / readSVA: `"=s,i"(i32 enum)`         → arg 0
       // writeReg:         `"s,i"(T val, i32 enum)`    → arg 1
@@ -79,9 +76,6 @@ InjectedPayloadSideEffectsAnalysis::run(llvm::Function &F,
         continue;
     } else if (llvm::Function *Callee = CI->getCalledFunction();
                Callee && Callee->hasFnAttribute(IntrinsicAttribute)) {
-      // Pre-IR-lowering form: the call targets the intrinsic Function decl.
-      // Both readReg/readSVA (Reg) and writeReg (Reg, Val) put the phys-reg
-      // enum in operand 0.
       IntrinsicName =
           Callee->getFnAttribute(IntrinsicAttribute).getValueAsString();
       if (IntrinsicName != "luthier::readReg" &&
@@ -103,6 +97,34 @@ InjectedPayloadSideEffectsAnalysis::run(llvm::Function &F,
       Out.Writes.insert(v);
     else // readSVA
       Out.SVAs.insert(static_cast<ScalarValueArgument>(v));
+  }
+
+  // Take the payload's implicit-arg needs from its function-level
+  // `amdgpu-no-*` attributes plus whatever explicit `luthier::readSVA`
+  // calls we already collected above. Don't consult SIMFI's `ArgInfo`:
+  // its descriptor slots for the ABI-fixed preloaded values
+  // (`WORKITEM_ID_X` → `$vgpr31`, PSB → `$sgpr0_sgpr1_sgpr2_sgpr3`, …)
+  // stay populated regardless of `amdgpu-no-*` on the function, so the
+  // `Desc->isSet()` check silently over-approximates every payload to
+  // the full implicit-arg set even when the entry MBB has zero live-ins
+  // and no readSVA/readReg spelled the value out. The attribute set is
+  // what the AMDGPU calling-convention lowering itself trusts.
+  for (auto SAValue =
+           static_cast<std::underlying_type_t<ScalarValueArgument>>(
+               SCALAR_VALUE_ARGUMENT_FIRST);
+       SAValue <= static_cast<std::underlying_type_t<ScalarValueArgument>>(
+                      SCALAR_VALUE_ARGUMENT_LAST);
+       ++SAValue) {
+    auto SA = static_cast<ScalarValueArgument>(SAValue);
+    llvm::StringRef NoAttr = amdgpuNoUsageAttrForSA(SA);
+    // No dedicated amdgpu-no-* attribute — conservatively assume the
+    // payload uses this SV.
+    if (NoAttr.empty()) {
+      Out.SVAs.insert(SA);
+      continue;
+    }
+    if (!F.hasFnAttribute(NoAttr))
+      Out.SVAs.insert(SA);
   }
 
   // Aggregate implicit arg related attributes

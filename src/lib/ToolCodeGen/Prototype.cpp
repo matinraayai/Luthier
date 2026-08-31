@@ -25,8 +25,9 @@
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
 
 #include <cassert>
-#include <llvm/ADT/DenseSet.h>
 #include <llvm/ADT/SmallPtrSet.h>
+#include <llvm/Analysis/CGSCCPassManager.h>
+#include <llvm/Analysis/LazyCallGraph.h>
 #include <llvm/CodeGen/MIRPrinter.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
@@ -39,7 +40,6 @@
 #include <llvm/IR/CallingConv.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/InlineAsm.h>
-#include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/PassInstrumentation.h>
 #include <llvm/IR/PassManagerImpl.h>
@@ -60,8 +60,6 @@ static llvm::Error assignToInject(llvm::Function &PayloadFn,
         PayloadFn.getName().str() + "'");
 
   PayloadFn.addFnAttr(InjectedPayloadAttribute);
-
-  PayloadFn.addFnAttr(llvm::Attribute::Naked);
 
   llvm::appendToCompilerUsed(*PayloadFn.getParent(), {&PayloadFn});
 
@@ -217,87 +215,104 @@ void Prototype::print(llvm::raw_ostream &OS,
 
 LLVM_DUMP_METHOD void Prototype::dump() const { print(llvm::dbgs()); }
 
-/// Runs \p Pass over \p M, which is the module of \p IP selected by the caller,
-/// against \p MAM, that module's own \c llvm::ModuleAnalysisManager. Mirrors
-/// LLVM's ModuleToFunctionPassAdaptor::run / the machinery in the other LLVM
-/// Pass adaptors.
+/// Runs the sub-passes of \p MPM over \p M, which is the module of \p IP
+/// selected by the caller, against \p MAM, that module's own
+/// \c llvm::ModuleAnalysisManager. Mirrors LLVM's \c PassManager<Module>::run
+/// but drives the iteration itself so it can augment each sub-pass's
+/// \c PreservedAnalyses with proxy preservation before \c MAM.invalidate fires.
+///
+/// LLVM's own loop at \c PassManagerImpl.h:80 calls
+/// \c AM.invalidate(IR, PassPA) with each sub-pass's raw PA. When a sub-pass
+/// returns \c PreservedAnalyses::none(), that outer invalidate walks the
+/// cached \c FunctionAnalysisManagerModuleProxy on \p M and hits the
+/// <tt>!PAC.preserved() && !PAC.preservedSet<AllAnalysesOn<Module>>()</tt>
+/// branch in \c FunctionAnalysisManagerModuleProxy::Result::invalidate
+/// (\c PassManager.cpp:47-51), whose body is \c InnerAM->clear() — wiping the
+/// whole \c FunctionAnalysisManager for the module. The CGSCC and
+/// MachineFunction module proxies have the same structure. Adding those
+/// proxies to the sub-pass PA before we invalidate keeps them on the
+/// per-\c IRUnit walk branch instead.
 static llvm::PreservedAnalyses
-runModulePass(RunOnTargetModuleAdaptor::PassConceptT &Pass, llvm::Module &M,
+runModulePass(PrototypeModulePassManager &MPM, llvm::Module &M,
               llvm::ModuleAnalysisManager &MAM, Prototype &IP,
               PrototypeAnalysisManager &IPAM) {
   // Request PassInstrumentation from the *module* analysis manager; it drives
-  // the instrumenting callbacks around the pass below. Deliberately not taken
-  // from IPAM: the Prototype level runs on a separate, empty PIC because LLVM's
-  // StandardInstrumentations cannot name a Prototype IR unit (see
-  // InstrumentationPassBuilder::PrototypePIC). The pass being wrapped here is a
-  // plain module pass, so the module-level callbacks apply to it and keep
-  // -print-after-all / -time-passes working.
+  // the instrumenting callbacks around each sub-pass below. Deliberately not
+  // taken from IPAM: the Prototype level runs on a separate, empty PIC because
+  // LLVM's StandardInstrumentations cannot name a Prototype IR unit. The
+  // sub-passes are plain module passes, so the module-level callbacks apply to
+  // them and keep -print-after-all / -time-passes working.
   llvm::PassInstrumentation PI =
       MAM.getResult<llvm::PassInstrumentationAnalysis>(M);
 
-  // Check the BeforePass callbacks; if asked to skip, do not run the pass and
-  // report that everything is preserved.
-  if (!PI.runBeforePass<llvm::Module>(Pass, M))
-    return llvm::PreservedAnalyses::all();
-
-  // Which functions of M exist going in, so results belonging to any the pass
-  // deletes can be evicted below. Held as bare addresses: a deleted Function
-  // must not be dereferenced afterwards, and is only ever needed as a cache key.
-  llvm::SmallPtrSet<const llvm::Function *, 16> FunctionsBefore;
-  for (llvm::Function &F : M)
-    FunctionsBefore.insert(&F);
-
-  llvm::PreservedAnalyses PA = Pass.run(M, MAM);
-
-  // Reconcile the inner managers for M. Querying the proxy here also ensures it
-  // is cached for M, without which MAM.invalidate has nothing to descend
-  // through and M's own function analyses would silently go stale.
+  // Cache the FunctionAnalysisManagerModuleProxy on M *before* running any
+  // sub-pass. LLVM's inliner-driven CGSCC pipeline asserts that this proxy is
+  // cached on M when its inner CGSCC walk starts
+  // (\c CGSCCPassManager.cpp:683 — "The CGSCC pass manager requires that the
+  // FAM module proxy is run on the module prior to entering the CGSCC walk").
+  // The prior version of this function did the caching only after
+  // \c Pass.run returned, which was too late when \c ModuleInlinerWrapperPass
+  // was the first sub-pass. Also keep a live \c FAM reference for evicting
+  // deleted-function results below — every subsequent \c MAM.invalidate
+  // preserves the proxy so it stays cached across the loop.
   llvm::FunctionAnalysisManager &FAM =
       MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(M).getManager();
 
-  // Evict results for functions the pass deleted. Preserving the proxy below
-  // moves that duty here: LLVM's function-deleting module passes handle their
-  // own (both inliners, ArgumentPromotion, GlobalOpt, FunctionSpecialization
-  // all call FAM.clear), but GlobalDCEPass does not — it reports
-  // PreservedAnalyses::none() and leans on the blanket clear. Left alone, its
-  // deleted functions would strand results that any later Function reusing the
-  // address would pick up. AnalysisManager::clear only uses the argument's
-  // address as a key, so a freed Function is never read.
-  for (llvm::Function &F : M)
-    FunctionsBefore.erase(&F);
-  for (const llvm::Function *Dead : FunctionsBefore)
-    FAM.clear(*const_cast<llvm::Function *>(Dead),
-              "<function deleted by module pass>");
+  llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::all();
 
-  // FunctionAnalysisManagerModuleProxy is preserved deliberately, so LLVM's
-  // proxy takes its per-function invalidation branch over the functions of M
-  // rather than calling InnerAM->clear() on M's whole FunctionAnalysisManager
-  // (see PassManager.cpp). The pass's own PA still drives that walk, so nothing
-  // it really invalidated survives; what is spared is M's lifted MIR, which
-  // MachineFunctionAnalysis is built to bring through such a walk intact —
-  // "unless it is invalidated explicitly, it should remain preserved". The
-  // instrumentation module needs that: ISel and the machine-pass half of the
-  // codegen pipeline are separate wrapped pipelines, and its MIR has to survive
-  // from one to the other.
-  llvm::PreservedAnalyses ModulePA = PA;
-  ModulePA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
-  MAM.invalidate(M, ModulePA);
+  for (auto &SubPass : MPM.Passes) {
+    if (!PI.runBeforePass<llvm::Module>(*SubPass, M))
+      continue;
 
-  PI.runAfterPass(Pass, M, PA);
+    // Which functions of M exist going into this sub-pass, so results
+    // belonging to any it deletes can be evicted below. Held as bare
+    // addresses: a deleted Function must not be dereferenced afterwards, and
+    // is only ever needed as a cache key.
+    llvm::SmallPtrSet<const llvm::Function *, 16> FunctionsBefore;
+    for (llvm::Function &F : M)
+      FunctionsBefore.insert(&F);
 
-  // MAM.invalidate above already reconciled module-level analyses for M and,
-  // through MAM's own FunctionAnalysisManagerModuleProxy, the function-level
-  // ones too. So from the Prototype pass manager's point of view nothing is
-  // left to invalidate at any inner level, and keeping the proxies live is what
-  // stops it from clearing managers that were just brought up to date. The
-  // other module's three proxies are preserved for the stronger reason that a
-  // pass over M cannot have touched it at all.
+    llvm::PreservedAnalyses SubPA = SubPass->run(M, MAM);
+
+    // Evict results for functions the sub-pass deleted. Preserving the module
+    // proxies below moves that duty here: LLVM's function-deleting module
+    // passes handle their own (both inliners, ArgumentPromotion, GlobalOpt,
+    // FunctionSpecialization all call FAM.clear), but GlobalDCEPass does not
+    // — it reports PreservedAnalyses::none() and leans on the blanket clear.
+    // Left alone, its deleted functions would strand results that any later
+    // Function reusing the address would pick up. AnalysisManager::clear only
+    // uses the argument's address as a key, so a freed Function is never read.
+    for (llvm::Function &F : M)
+      FunctionsBefore.erase(&F);
+    for (const llvm::Function *Dead : FunctionsBefore)
+      FAM.clear(*const_cast<llvm::Function *>(Dead),
+                "<function deleted by module pass>");
+
+    llvm::PreservedAnalyses SubModulePA = SubPA;
+    SubModulePA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
+    SubModulePA.preserve<llvm::CGSCCAnalysisManagerModuleProxy>();
+    SubModulePA.preserve<llvm::MachineFunctionAnalysisManagerModuleProxy>();
+    SubModulePA.preserve<llvm::LazyCallGraphAnalysis>();
+    MAM.invalidate(M, SubModulePA);
+
+    PI.runAfterPass<llvm::Module>(*SubPass, M, SubPA);
+
+    PA.intersect(std::move(SubPA));
+  }
+
+  // Prototype-level augmentation: the outer PassManager<Prototype>::run walks
+  // its own cached analyses using this PA, so preserve the Prototype-level
+  // proxies (each maintains its own inner manager whose lifetime and contents
+  // we manage explicitly) and mark all module-level analyses on M as preserved
+  // — the per-sub-pass MAM.invalidate calls above already did the reconciling.
   PA.preserveSet<llvm::AllAnalysesOn<llvm::Module>>();
   PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
   PA.preserve<TargetFunctionAnalysisManagerPrototypeProxy>();
   PA.preserve<TargetMachineFunctionAnalysisManagerPrototypeProxy>();
   PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
   PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
+  PA.preserve<llvm::CGSCCAnalysisManagerModuleProxy>();
+  PA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
   PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
   return PA;
 }
@@ -306,7 +321,7 @@ llvm::PreservedAnalyses
 RunOnTargetModuleAdaptor::run(Prototype &IP,
                               PrototypeAnalysisManager &IPAM) {
   return runModulePass(
-      *Pass, IP.getTargetModule(),
+      MPM, IP.getTargetModule(),
       IPAM.getResult<TargetModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager(),
       IP, IPAM);
@@ -316,14 +331,14 @@ void RunOnTargetModuleAdaptor::printPipeline(
     llvm::raw_ostream &OS,
     llvm::function_ref<llvm::StringRef(llvm::StringRef)> MapClassName) {
   OS << "target(";
-  Pass->printPipeline(OS, MapClassName);
+  MPM.printPipeline(OS, MapClassName);
   OS << ")";
 }
 
 llvm::PreservedAnalyses RunOnInstrumentationModuleAdaptor::run(
     Prototype &IP, PrototypeAnalysisManager &IPAM) {
   return runModulePass(
-      *Pass, IP.getInstrumentationModule(),
+      MPM, IP.getInstrumentationModule(),
       IPAM.getResult<IModuleAnalysisManagerPrototypeProxy>(IP).getManager(),
       IP, IPAM);
 }
@@ -332,11 +347,12 @@ void RunOnInstrumentationModuleAdaptor::printPipeline(
     llvm::raw_ostream &OS,
     llvm::function_ref<llvm::StringRef(llvm::StringRef)> MapClassName) {
   OS << "instrumentation(";
-  Pass->printPipeline(OS, MapClassName);
+  MPM.printPipeline(OS, MapClassName);
   OS << ")";
 }
 
 } // namespace luthier
+
 
 // Explicit template instantiation for IP
 namespace llvm {

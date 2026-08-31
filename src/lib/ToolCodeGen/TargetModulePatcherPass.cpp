@@ -26,6 +26,7 @@
 #include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
+#include <MCTargetDesc/AMDGPUMCExpr.h>
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
@@ -1693,16 +1694,38 @@ static llvm::MCSymbol *emitSICallAtPatchpoint(llvm::MachineInstr &PatchpointMI,
 
   // Continuation symbol pinned at the point control returns to. Used by
   // rewritePayloadReturn's Case-B trampoline when the payload has
-  // clobbered ScavengedPair before its return terminator.
-  llvm::MCSymbol *ContSym = MF.getContext().createTempSymbol(
-      "luthier_call_ret", /*AlwaysAddSuffix=*/true);
+  // clobbered ScavengedPair before its return terminator.  Must be a
+  // *named* temp symbol: the Case-B trampoline references it via
+  // \c ContSym@rel32@lo / \c ContSym@rel32@hi (see \c rewritePayloadReturn)
+  // and MC only emits an R_AMDGPU_REL32_LO/HI relocation when the target
+  // symbol has an ELF entry — anonymous temp symbols
+  // (\c createTempSymbol under \c UseNamesOnTempLabels=false) get folded
+  // away with no name, so the reloc points at \c "" and the linker
+  // rejects the object.
+  llvm::MCSymbol *ContSym = MF.getContext().createNamedTempSymbol(
+      "luthier_call_ret");
   CallMI->setPostInstrSymbol(MF, ContSym);
 
-  // Erase the PATCHPOINT first — that drops the extern handle's last
-  // IR user, so the handle becomes safe to delete right after.
+  // Drop the MI-level use first, then rewire the surviving IR-level
+  // ones. Erasing the PATCHPOINT MI accounts for the MachineOperand
+  // reference; the extern handle can still show up as an IR use because
+  // TraceFunctionTranslator (\c TraceFunctionTranslator.cpp:2165 —
+  // PATCHPOINT case) lifted every marker into a
+  // \c call @luthier.patchpoint.N(ptr @ExternHandle, ...) inside the
+  // target-module Function's trace IR body, and those trace calls are
+  // real \c llvm::Use s that outlive the PATCHPOINT MI. RAUW them to
+  // \p PayloadFn: types match (both the extern and the definition are
+  // \c void()) and \c movePayloadMFIntoTarget is about to install
+  // \p PayloadFn in the target module under this same name, so the
+  // trace IR ends up pointing at the payload's real definition. That
+  // also matters for the move itself — leaving the extern in place
+  // would collide with \p PayloadFn 's name on the module and LLVM
+  // would auto-rename it, silently breaking the
+  // \c getGlobalAddress(&PayloadFn) references we just baked into the
+  // \c SI_CALL sequence above.
   PatchpointMI.eraseFromParent();
-  assert(ExternHandle.use_empty() &&
-         "payload extern handle still has IR users after PATCHPOINT erase");
+  if (!ExternHandle.use_empty())
+    ExternHandle.replaceAllUsesWith(&PayloadFn);
   ExternHandle.eraseFromParent();
   return ContSym;
 }
@@ -1721,7 +1744,8 @@ static llvm::MCSymbol *emitSICallAtPatchpoint(llvm::MachineInstr &PatchpointMI,
 llvm::Error movePayloadMFIntoTarget(llvm::Function &PayloadFn,
                                     llvm::Module &TargetModule,
                                     llvm::FunctionAnalysisManager &IFAM,
-                                    llvm::FunctionAnalysisManager &TargetFAM) {
+                                    llvm::FunctionAnalysisManager &TargetFAM,
+                                    const llvm::ValueToValueMapTy &VMap) {
   llvm::Module &IModule = *PayloadFn.getParent();
   LLVM_DEBUG(luthier::dbgs()
              << "[TargetModulePatcherPass]   movePayloadMFIntoTarget '"
@@ -1731,6 +1755,37 @@ llvm::Error movePayloadMFIntoTarget(llvm::Function &PayloadFn,
   // Identity is preserved — existing references remain valid.
   IModule.getFunctionList().remove(PayloadFn.getIterator());
   TargetModule.getFunctionList().push_back(&PayloadFn);
+
+  // Remap any \c MO_GlobalAddress operand in the payload's MIR that still
+  // names an IModule-side stand-in. \c moveIModuleIntoTarget's Pass 1 did
+  // an IR-level \c replaceAllUsesWith when it merged the placeholder
+  // declaration with the target-module definition and populated \p VMap
+  // with the survivor, but that only fixes IR \c Use edges — MI operands
+  // reference their \c GlobalValue directly and are invisible to IR RAUW.
+  // Left un-remapped they turn into dangling pointers the moment Pass 1
+  // erases the placeholder in \c DeclsToErase, and the assembly printer
+  // crashes in \c Mangler::getNameWithPrefix on the freed GV. The full
+  // MF-clone path already does this in \c cloneMFInto (\c Cloning.cpp:390);
+  // the splice path here has to open-code it because there's no clone
+  // pass to catch it.
+  if (auto *MFRes =
+          IFAM.getCachedResult<llvm::MachineFunctionAnalysis>(PayloadFn)) {
+    for (llvm::MachineBasicBlock &MBB : MFRes->getMF()) {
+      for (llvm::MachineInstr &MI : MBB.instrs()) {
+        for (llvm::MachineOperand &MO : MI.operands()) {
+          if (!MO.isGlobal())
+            continue;
+          auto It = VMap.find(MO.getGlobal());
+          if (It == VMap.end())
+            continue;
+          auto *NewGV = llvm::cast<llvm::GlobalValue>(It->second);
+          if (NewGV == MO.getGlobal())
+            continue;
+          MO.ChangeToGA(NewGV, MO.getOffset(), MO.getTargetFlags());
+        }
+      }
+    }
+  }
 
   // 2. Splice the MFAnalysis result entry between the two FAMs.
   llvm::AnalysisKey *const ID = llvm::MachineFunctionAnalysis::ID();
@@ -1912,60 +1967,63 @@ llvm::Error rewritePayloadReturn(llvm::MachineFunction &PayloadMF,
           .addImm(0);
     }
 
-    llvm::MCSymbol *PostGetPCLabel = MCCtx.createTempSymbol(
-        "luthier_payload_ret_getpc", /*AlwaysAddSuffix=*/true);
-    llvm::MachineInstr *GetPCMI =
-        llvm::BuildMI(MBB, RetMI, DL, TII->get(llvm::AMDGPU::S_GETPC_B64),
-                      ScavengedPair);
-    // Pin PostGetPCLabel to the PC of whatever instruction follows the
-    // S_GETPC, i.e. the value S_GETPC returns.
-    GetPCMI->setPostInstrSymbol(PayloadMF, PostGetPCLabel);
-    if (Has64BitLiterals) {
-      llvm::MCSymbol *Offset = MCCtx.createTempSymbol(
-          "luthier_payload_ret_off", /*AlwaysAddSuffix=*/true);
-      llvm::BuildMI(MBB, RetMI, DL, TII->get(llvm::AMDGPU::S_ADD_U64),
-                    ScavengedPair)
-          .addReg(ScavengedPair)
-          .addSym(Offset, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
-      // Bind Offset = ContSym - PostGetPCLabel (unshifted 64-bit).
-      Offset->setVariableValue(llvm::MCBinaryExpr::createSub(
-          llvm::MCSymbolRefExpr::create(ContSym, MCCtx),
-          llvm::MCSymbolRefExpr::create(PostGetPCLabel, MCCtx), MCCtx));
-    } else {
-      // Repair the high half on hardware whose S_GETPC_B64 zero-extends the
-      // 48-bit PC. Unlike the call site above, no addend shift is needed
-      // here: OffsetLo/OffsetHi below are symbol differences against
-      // PostGetPCLabel — which is pinned to the S_GETPC's return value —
-      // rather than REL32 relocations resolved against their own literal,
-      // so inserting an instruction between the S_GETPC and the S_ADD_U32
-      // does not move the reference point.
-      if (ST.hasGetPCZeroExtension())
-        (void)llvm::BuildMI(MBB, RetMI, DL,
-                            TII->get(llvm::AMDGPU::S_SEXT_I32_I16), Sub1)
-            .addReg(Sub1);
-      llvm::MCSymbol *OffsetLo = MCCtx.createTempSymbol(
-          "luthier_payload_ret_lo", /*AlwaysAddSuffix=*/true);
-      llvm::MCSymbol *OffsetHi = MCCtx.createTempSymbol(
-          "luthier_payload_ret_hi", /*AlwaysAddSuffix=*/true);
-      llvm::BuildMI(MBB, RetMI, DL, TII->get(llvm::AMDGPU::S_ADD_U32))
-          .addReg(Sub0, llvm::RegState::Define)
-          .addReg(Sub0)
-          .addSym(OffsetLo, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
-      llvm::BuildMI(MBB, RetMI, DL, TII->get(llvm::AMDGPU::S_ADDC_U32))
-          .addReg(Sub1, llvm::RegState::Define)
-          .addReg(Sub1)
-          .addSym(OffsetHi, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
-      // Bind OffsetLo/Hi to lo/hi halves of ContSym - PostGetPCLabel.
-      const llvm::MCExpr *OffsetExpr = llvm::MCBinaryExpr::createSub(
-          llvm::MCSymbolRefExpr::create(ContSym, MCCtx),
-          llvm::MCSymbolRefExpr::create(PostGetPCLabel, MCCtx), MCCtx);
-      const llvm::MCExpr *Mask =
-          llvm::MCConstantExpr::create(0xFFFFFFFFULL, MCCtx);
-      OffsetLo->setVariableValue(
-          llvm::MCBinaryExpr::createAnd(OffsetExpr, Mask, MCCtx));
-      OffsetHi->setVariableValue(llvm::MCBinaryExpr::createAShr(
-          OffsetExpr, llvm::MCConstantExpr::create(32, MCCtx), MCCtx));
+    // Emit the same PC-relative sequence \c SI_PC_ADD_REL_OFFSET would
+    // expand into for a direct branch to \p ContSym. Handing the offset
+    // to MC as a symbol-difference wrapped in AND/ASHR (the previous
+    // shape) fails \c MCExpr::evaluateAsRelocatable — the AMDGPU reloc
+    // set has no "low/high 32 bits of a symbol difference" primitive,
+    // and MC never gets to the point of folding the inner
+    // \c (ContSym - PostGetPCLabel) to a constant. Using
+    // \c ContSym@rel32@lo / \c ContSym@rel32@hi with the same +4/+12
+    // addends the call-site half of this pass uses (see
+    // \c emitSICallAtPatchpoint above) lowers to plain
+    // \c R_AMDGPU_REL32_LO / \c R_AMDGPU_REL32_HI relocations MC knows
+    // how to encode, and the linker resolves them against \p ContSym 's
+    // in-section address for free.
+    (void)llvm::BuildMI(MBB, RetMI, DL, TII->get(llvm::AMDGPU::S_GETPC_B64),
+                        ScavengedPair);
+    int64_t Adjust = 0;
+    if (ST.hasGetPCZeroExtension()) {
+      // Sign-extend the high half — same rationale as in the call-site
+      // sequence: hardware whose \c S_GETPC_B64 zero-extends the 48-bit
+      // PC needs the high word re-derived from bit 47 before the
+      // \c REL32_HI add.  Pushes the \c S_ADD_U32 4 bytes further from
+      // the \c S_GETPC, which both REL32 addends below absorb.
+      (void)llvm::BuildMI(MBB, RetMI, DL,
+                          TII->get(llvm::AMDGPU::S_SEXT_I32_I16), Sub1)
+          .addReg(Sub1);
+      Adjust = 4;
     }
+    // Wrapping \p ContSym in an \c MCSymbolRefExpr with the
+    // \c AMDGPUMCExpr::S_REL32_LO / \c S_REL32_HI specifier reaches
+    // \c AMDGPUELFObjectWriter as \c R_AMDGPU_REL32_LO / \c R_AMDGPU_REL32_HI
+    // (see \c AMDGPUELFObjectWriter.cpp:57-60); the +4/+12 addend is the
+    // standard offset-from-S_GETPC-return-address to each add's literal
+    // operand, matching \c SIInstrInfo::expandPostRAPseudo 's
+    // \c SI_PC_ADD_REL_OFFSET expansion.
+    auto EquateOffset = [&](llvm::StringRef Prefix,
+                            llvm::AMDGPUMCExpr::Specifier Spec,
+                            int64_t Addend) {
+      llvm::MCSymbol *Sym = MCCtx.createTempSymbol(Prefix,
+                                                   /*AlwaysAddSuffix=*/true);
+      Sym->setVariableValue(llvm::MCBinaryExpr::createAdd(
+          llvm::MCSymbolRefExpr::create(ContSym, Spec, MCCtx),
+          llvm::MCConstantExpr::create(Addend, MCCtx), MCCtx));
+      return Sym;
+    };
+    llvm::MCSymbol *OffsetLo = EquateOffset(
+        "luthier_payload_ret_lo", llvm::AMDGPUMCExpr::S_REL32_LO, Adjust + 4);
+    llvm::MCSymbol *OffsetHi = EquateOffset(
+        "luthier_payload_ret_hi", llvm::AMDGPUMCExpr::S_REL32_HI, Adjust + 12);
+    (void)llvm::BuildMI(MBB, RetMI, DL, TII->get(llvm::AMDGPU::S_ADD_U32))
+        .addReg(Sub0, llvm::RegState::Define)
+        .addReg(Sub0)
+        .addSym(OffsetLo, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
+    (void)llvm::BuildMI(MBB, RetMI, DL, TII->get(llvm::AMDGPU::S_ADDC_U32))
+        .addReg(Sub1, llvm::RegState::Define)
+        .addReg(Sub1)
+        .addSym(OffsetHi, llvm::SIInstrInfo::MO_FAR_BRANCH_OFFSET);
+    (void)Has64BitLiterals;
 
     // Restore $scc right before the return terminator, after the
     // trampoline's S_ADD(C) has finished clobbering it. S_CMP_LG_U32
@@ -2705,6 +2763,7 @@ llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
   unsigned SkippedPayloads = 0;
   unsigned RedirectedDecls = 0;
   llvm::SmallVector<llvm::Function *, 16> FuncsToMove;
+  llvm::SmallVector<llvm::Function *, 8> DeclsToErase;
   for (llvm::Function &F : IModule.functions()) {
     if (F.hasFnAttribute(InjectedPayloadAttribute)) {
       ++SkippedPayloads;
@@ -2715,14 +2774,24 @@ llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
     if (F.isDeclaration()) {
       if (llvm::Function *Existing = TargetModule.getFunction(F.getName());
           Existing && Existing->getFunctionType() == F.getFunctionType()) {
+        // Merge the IModule declaration with the TargetModule definition.
         // Redirect the IR as well as the VMap. The functions moved below keep
         // their bodies, and a body still calling a Function the IModule owns
         // leaves a cross-module edge in the target module's call graph —
         // CallGraph::getOrInsertFunction asserts on exactly that ("Function not
         // in current module!") as soon as the asm printer's legacy pipeline
         // builds one. The VMap entry alone only fixes MIR global operands.
+        //
+        // \c PatchPCUsagesPass::emitEntryPointSeed plants an extern
+        // declaration of every trace-relevant target-module Function in
+        // IModule and threads it into the seed array's initializer, keeping
+        // the initializer's Function references inside IModule so
+        // \c LazyCallGraphAnalysis on IModule does not see a cross-module
+        // Node (see \c CGSCCPassManager.cpp:683). Here is where those
+        // placeholders finally rejoin the definitions they stood in for.
         F.replaceAllUsesWith(Existing);
         VMap[&F] = Existing;
+        DeclsToErase.push_back(&F);
         ++RedirectedDecls;
         continue;
       }
@@ -2737,6 +2806,50 @@ llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
     TargetModule.getFunctionList().push_back(F);
     // Moved, not cloned: it maps to itself.
     VMap[F] = F;
+  }
+  // Rewrite MI operands in payloads (still resident in IModule/IFAM at
+  // this point — Phase B.3 is what moves them) whose \c MO_GlobalAddress
+  // names one of the placeholder declarations we're about to drop. The
+  // IR-level \c replaceAllUsesWith above only touched \c llvm::Use edges,
+  // and \c MachineOperand::getGlobal() is not one of those. Once the
+  // placeholder is freed by the erase loop below, \c ValueToValueMapTy's
+  // \c CallbackVH removes the corresponding \c VMap entry automatically,
+  // so any deferred remap (e.g. inside \c movePayloadMFIntoTarget) would
+  // look up a stale pointer that no longer maps to anything. Fixing the
+  // operands here — while both the source key and the survivor are
+  // still live — is the only correct spot.
+  for (llvm::Function &PayloadFn : IModule) {
+    if (!PayloadFn.hasFnAttribute(InjectedPayloadAttribute))
+      continue;
+    auto *MFRes =
+        IFAM.getCachedResult<llvm::MachineFunctionAnalysis>(PayloadFn);
+    if (!MFRes)
+      continue;
+    for (llvm::MachineBasicBlock &MBB : MFRes->getMF()) {
+      for (llvm::MachineInstr &MI : MBB.instrs()) {
+        for (llvm::MachineOperand &MO : MI.operands()) {
+          if (!MO.isGlobal())
+            continue;
+          auto It = VMap.find(MO.getGlobal());
+          if (It == VMap.end())
+            continue;
+          auto *NewGV = llvm::cast<llvm::GlobalValue>(It->second);
+          if (NewGV == MO.getGlobal())
+            continue;
+          MO.ChangeToGA(NewGV, MO.getOffset(), MO.getTargetFlags());
+        }
+      }
+    }
+  }
+  // Drop the now-dead extern placeholders. RAUW above stripped their only
+  // uses, so this cannot invalidate any operand of a still-live IR value —
+  // and leaving them behind would ship an IModule holding declarations of
+  // every target-module symbol that appeared in the seed.
+  for (llvm::Function *F : DeclsToErase) {
+    LLVM_DEBUG(luthier::dbgs()
+               << "[TargetModulePatcherPass]   erase merged extern decl '"
+               << F->getName() << "'\n");
+    F->eraseFromParent();
   }
 
   // A moved global brings its initializer with it, and a moved function keeps
@@ -3216,7 +3329,7 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
     // keeps the list node — and thus the Result's unique_ptr — in
     // place.
     if (auto Err = movePayloadMFIntoTarget(*InjectedPayloadFunc, TargetModule,
-                                           IFAM, TargetFAM)) {
+                                           IFAM, TargetFAM, VMap)) {
       Ctx.emitError(llvm::toString(std::move(Err)));
       return llvm::PreservedAnalyses::none();
     }

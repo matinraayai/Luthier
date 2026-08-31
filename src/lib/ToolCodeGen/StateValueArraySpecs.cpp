@@ -18,12 +18,16 @@
 /// Implements the state value array specs and its Prototype-level analysis.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
+#include "luthier/ToolCodeGen/AMDGPUPreloadValueMapping.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include <AMDGPU.h>
 #include <AMDGPUTargetMachine.h>
 #include <GCNSubtarget.h>
 #include <MCTargetDesc/AMDGPUMCTargetDesc.h>
+#include <SIMachineFunctionInfo.h>
+#include <llvm/CodeGen/MachineFunction.h>
+#include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/InlineAsm.h>
@@ -127,20 +131,13 @@ StateValueArraySpecsAnalysis::run(Prototype &IP,
   llvm::Module &IModule = IP.getInstrumentationModule();
   llvm::Module &TargetModule = IP.getTargetModule();
 
-  // Aggregate the SAs referenced by every luthier::readSVA use in the
-  // instrumentation module. Both call shapes are recognized:
-  //
-  //   1. Direct calls to the intrinsic function itself — a Function marked
-  //      with the "luthier-intrinsic" attribute whose value is
-  //      "luthier::readSVA".
-  //   2. Inline-asm placeholder CallInsts left behind by
-  //      ProcessIntrinsicsAtIRLevelPass — an InlineAsm CallInst whose
-  //      AsmString is "luthier::readSVA".
-  //
-  // In both shapes the first (and only) argument is the SA enum as a
-  // ConstantInt — see src/lib/Intrinsic/ReadSVA.cpp for the IR-processor
-  // contract, and ProcessIntrinsicsAtIRLevelPass for the shape it emits.
-  auto ExtractSAFromCall = [](const llvm::CallInst &Call)
+  llvm::FunctionAnalysisManager &IModuleFAM =
+      IPAM.getResult<IModuleAnalysisManagerPrototypeProxy>(IP)
+          .getManager()
+          .getResult<llvm::FunctionAnalysisManagerModuleProxy>(IModule)
+          .getManager();
+
+  auto ExtractSAFromReadSVACall = [](const llvm::CallInst &Call)
       -> std::optional<ScalarValueArgument> {
     if (Call.arg_size() != 1)
       return std::nullopt;
@@ -155,13 +152,10 @@ StateValueArraySpecsAnalysis::run(Prototype &IP,
   };
 
   auto IsReadSVACall = [](const llvm::CallInst &Call) -> bool {
-    // Inline-asm placeholder path.
     if (const auto *IA = llvm::dyn_cast_or_null<llvm::InlineAsm>(
             Call.getCalledOperand())) {
       return IA->getAsmString() == "luthier::readSVA";
     }
-    // Direct-call path: the callee is a Function marked with the Luthier
-    // intrinsic attribute naming "luthier::readSVA".
     if (const llvm::Function *Callee = Call.getCalledFunction()) {
       if (Callee->hasFnAttribute(IntrinsicAttribute) &&
           Callee->getFnAttribute(IntrinsicAttribute).getValueAsString() ==
@@ -171,14 +165,51 @@ StateValueArraySpecsAnalysis::run(Prototype &IP,
     return false;
   };
 
+  // Determine which SAs the payload's IR asserts it may need. Read this
+  // directly off the function's `amdgpu-no-*` attributes: those are the
+  // truth the AMDGPU calling-convention lowering itself consults. The
+  // previous SIMFI-based aggregation trusted `ArgInfo.getPreloadedValue()`
+  // whose descriptor slot for a preloaded value (e.g. `WORKITEM_ID_X`
+  // fixed to `$vgpr31`) stays populated regardless of `amdgpu-no-*`, so it
+  // over-approximated every payload up to the full implicit-arg set even
+  // when the entry MBB had zero live-ins. Any explicit `readSVA` call is
+  // handled by the separate scan below.
+  auto AggregateFromAttributes =
+      [](const llvm::Function &F,
+         llvm::SmallDenseSet<ScalarValueArgument> &Out) {
+        for (auto SAValue = static_cast<std::underlying_type_t<ScalarValueArgument>>(
+                 SCALAR_VALUE_ARGUMENT_FIRST);
+             SAValue <= static_cast<std::underlying_type_t<ScalarValueArgument>>(
+                            SCALAR_VALUE_ARGUMENT_LAST);
+             ++SAValue) {
+          auto SA = static_cast<ScalarValueArgument>(SAValue);
+          llvm::StringRef NoAttr = amdgpuNoUsageAttrForSA(SA);
+          // No dedicated amdgpu-no-* attribute — conservatively include the
+          // SV so lane assignment still reserves a slot for it.
+          if (NoAttr.empty()) {
+            Out.insert(SA);
+            continue;
+          }
+          if (!F.hasFnAttribute(NoAttr))
+            Out.insert(SA);
+        }
+      };
+
   llvm::SmallDenseSet<ScalarValueArgument> SAsUsed;
+  for (llvm::Function &F : IModule) {
+    if (!F.hasFnAttribute(InjectedPayloadAttribute))
+      continue;
+    AggregateFromAttributes(F, SAsUsed);
+  }
+  // Explicit readSVA calls in any function (payload or otherwise) still
+  // contribute to the used set.
   for (const llvm::Function &F : IModule) {
     for (const llvm::BasicBlock &BB : F) {
       for (const llvm::Instruction &I : BB) {
         const auto *Call = llvm::dyn_cast<llvm::CallInst>(&I);
         if (!Call || !IsReadSVACall(*Call))
           continue;
-        if (auto SA = ExtractSAFromCall(*Call))
+        if (auto SA = ExtractSAFromReadSVACall(*Call))
           SAsUsed.insert(*SA);
       }
     }

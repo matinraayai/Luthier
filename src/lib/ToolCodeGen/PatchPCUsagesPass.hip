@@ -31,6 +31,7 @@
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
+#include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
@@ -515,6 +516,24 @@ llvm::Error emitEntryPointSeed(
   // Walk the target module for every Function whose entry instruction
   // carries a trace address — those are the codegen-time-discovered
   // entry points.
+  //
+  // The seed's HandleC needs to end up as the address of the trace function's
+  // definition in the linked object. Naming a target-module Function directly
+  // in this IModule-owned initializer would embed a cross-module Function*
+  // reference: LazyCallGraphAnalysis walks GlobalVariable initializers when
+  // it builds the CG for a module (LazyCallGraph.cpp:192-206), so that Node
+  // would land in IModule's CG with getParent() pointing at TargetModule. The
+  // CGSCC pipeline then trips its assert that FAMProxy is cached on the SCC
+  // function's parent module (CGSCCPassManager.cpp:683) — no MAM covering
+  // TargetModule is in scope when the O3 pipeline runs on IModule.
+  //
+  // Instead, synthesize an extern-linkage declaration in IModule for each
+  // target-module Function and reference the *declaration* here. The Node
+  // stays inside IModule, and \c TargetModulePatcherPass later redirects the
+  // declaration to the target-module definition via its existing
+  // "same-name declaration ↔ definition" merge (see the loop at
+  // TargetModulePatcherPass.cpp:2708-2740), leaving the seed initializer
+  // pointing at the real function after module merge.
   llvm::SmallVector<llvm::Constant *, 8> Elts;
   for (llvm::Function &F : TM) {
     if (F.isDeclaration() || F.empty())
@@ -523,7 +542,23 @@ llvm::Error emitEntryPointSeed(
     if (!TraceAddr)
       continue;
     llvm::Constant *TraceC = llvm::ConstantInt::get(I64Ty, *TraceAddr);
-    llvm::Constant *HandleC = llvm::ConstantExpr::getPtrToInt(&F, I64Ty);
+    llvm::FunctionCallee IDecl = IModule.getOrInsertFunction(
+        F.getName(), F.getFunctionType());
+    // getOrInsertFunction returns a bitcast-wrapped Constant when the module
+    // already has a same-named GV of a different type; both branches wrap a
+    // Constant, so ptrtoint is always valid.
+    llvm::Constant *HandleCallee =
+        llvm::cast<llvm::Constant>(IDecl.getCallee());
+    // Same DSO-local rationale as \c getOrInsertIModulePlaceholder: this
+    // extern will be merged with the target-module definition of the
+    // same name by \c TargetModulePatcherPass, so the symbol is in the
+    // same DSO at link time and \c amdgpu-rel32 direct addressing is
+    // both valid and needed (GOT-relative on a now-local symbol
+    // triggers MC's "expected relocatable expression").
+    if (auto *DeclFn = llvm::dyn_cast<llvm::Function>(HandleCallee))
+      DeclFn->setDSOLocal(true);
+    llvm::Constant *HandleC =
+        llvm::ConstantExpr::getPtrToInt(HandleCallee, I64Ty);
     Elts.push_back(llvm::ConstantStruct::get(EntryTy, {TraceC, HandleC}));
   }
 
@@ -658,15 +693,52 @@ llvm::Error handleEntryPointToTraceFunctionAddrMapCtorDtor(
 /// through to the runtime \c EntryPointToTraceFunctionAddrMap + hostcall path.
 constexpr unsigned MaxMultiHookN = 5;
 
+/// Return an extern-linkage IModule declaration standing in for the
+/// target-module Function \p Target. Used when a payload's IR needs the
+/// address of a target-module Function: naming \p Target directly in
+/// IModule IR embeds a cross-module \c Function* whose \c getParent() no
+/// longer matches the module its use lives in, which \c LazyCallGraphAnalysis
+/// on IModule then materializes as an SCC-of-target-function Node and the
+/// CGSCC pipeline chokes on at \c CGSCCPassManager.cpp:683.
+///
+/// The declaration keeps IModule's own IR self-contained. \c TargetModulePatcherPass
+/// merges the two back together at the "definitions merge into TargetModule"
+/// step (\c TargetModulePatcherPass.cpp:2716-2727), replacing every use of
+/// this placeholder with \p Target and erasing the now-dead declaration.
+static llvm::Constant *
+getOrInsertIModulePlaceholder(llvm::Module &IModule, llvm::Function &Target) {
+  llvm::FunctionCallee C =
+      IModule.getOrInsertFunction(Target.getName(), Target.getFunctionType());
+  auto *Handle = llvm::cast<llvm::Constant>(C.getCallee());
+  // Mark the extern DSO-local. \c TargetModulePatcherPass will merge this
+  // declaration into the target-module definition of the same name, so
+  // by final link time the symbol is guaranteed to live in the same DSO
+  // as any use we're planting here. Without this, ISel treats every
+  // \c ptrtoint of the handle as an external reference and lowers it as
+  // \c SI_PC_ADD_REL_OFFSET target-flags(amdgpu-gotprel32-lo/hi) followed
+  // by a GOT load — a GOT-relative relocation that MC rejects at
+  // assembly time (\c "expected relocatable expression") once the symbol
+  // has become module-local after the merge. Setting \c dso_local
+  // switches ISel to \c amdgpu-rel32 direct addressing, no GOT slot, and
+  // the sequence stays valid across the merge with only the operand's
+  // \c GlobalValue* remapped (which \c moveIModuleIntoTarget already
+  // does for payload MFs).
+  if (auto *F = llvm::dyn_cast<llvm::Function>(Handle))
+    F->setDSOLocal(true);
+  return Handle;
+}
+
 /// Build the `std::vector<PayloadArg>` for `patchRegSingle(Reg, FnAddr)`.
 llvm::SmallVector<PayloadArg, 2>
-buildSingleArgs(llvm::LLVMContext &Ctx, llvm::MCRegister Reg,
+buildSingleArgs(llvm::Module &IModule, llvm::MCRegister Reg,
                 llvm::Function *Target) {
+  llvm::LLVMContext &Ctx = IModule.getContext();
   llvm::Type *I32Ty = llvm::Type::getInt32Ty(Ctx);
   llvm::Type *I64Ty = llvm::Type::getInt64Ty(Ctx);
   llvm::SmallVector<PayloadArg, 2> Args;
   Args.push_back(llvm::ConstantInt::get(I32Ty, Reg.id()));
-  Args.push_back(llvm::ConstantExpr::getPtrToInt(Target, I64Ty));
+  Args.push_back(llvm::ConstantExpr::getPtrToInt(
+      getOrInsertIModulePlaceholder(IModule, *Target), I64Ty));
   return Args;
 }
 
@@ -682,13 +754,14 @@ buildSingleArgs(llvm::LLVMContext &Ctx, llvm::MCRegister Reg,
 /// device-side check `TraceAddr == Cur`, which cannot match a legitimate
 /// non-zero trace address.
 llvm::SmallVector<PayloadArg, 8>
-buildMultiHookArgs(llvm::LLVMContext &Ctx, llvm::Function &Hook,
+buildMultiHookArgs(llvm::Module &IModule, llvm::Function &Hook,
                    llvm::MCRegister Reg,
                    llvm::ArrayRef<llvm::Function *> Targets,
                    llvm::ArrayRef<std::uint64_t> TraceAddrs,
                    std::uint64_t HostFnPtr) {
   assert(Targets.size() == TraceAddrs.size() &&
          "targets and trace addresses must be same length");
+  llvm::LLVMContext &Ctx = IModule.getContext();
   llvm::Type *I32Ty = llvm::Type::getInt32Ty(Ctx);
   llvm::Type *I64Ty = llvm::Type::getInt64Ty(Ctx);
   llvm::FunctionType *FTy = Hook.getFunctionType();
@@ -702,9 +775,12 @@ buildMultiHookArgs(llvm::LLVMContext &Ctx, llvm::Function &Hook,
     llvm::StructType *PairTy =
         llvm::cast<llvm::StructType>(FTy->getParamType(2 + I));
     llvm::Constant *TraceC = llvm::ConstantInt::get(I64Ty, TraceAddrs[I]);
+    // Same placeholder trick as buildSingleArgs — see the note there.
     llvm::Constant *HandleC =
-        Targets[I] ? llvm::ConstantExpr::getPtrToInt(Targets[I], I64Ty)
-                   : llvm::ConstantInt::get(I64Ty, 0);
+        Targets[I]
+            ? llvm::ConstantExpr::getPtrToInt(
+                  getOrInsertIModulePlaceholder(IModule, *Targets[I]), I64Ty)
+            : llvm::ConstantInt::get(I64Ty, 0);
     Args.push_back(llvm::ConstantStruct::get(PairTy, {TraceC, HandleC}));
   }
   return Args;
@@ -797,7 +873,7 @@ llvm::Error injectRegPatchPayload(RunContext &RC, llvm::MachineInstr &MI,
   // Fast path: exactly one target and the site is fully resolved. This maps
   // to the direct write in `patchRegSingle`, no fallback needed.
   if (SR.Targets.size() == 1 && !SR.IsIncomplete) {
-    auto Args = buildSingleArgs(RC.Ctx, Reg, SR.Targets.front());
+    auto Args = buildSingleArgs(RC.IModule, Reg, SR.Targets.front());
     return RC.P
         .createInjectedPayload(*RC.PatchRegSingleFn, MI, RC.IFAM, Args)
         .takeError();
@@ -845,8 +921,8 @@ llvm::Error injectRegPatchPayload(RunContext &RC, llvm::MachineInstr &MI,
   // The zero-candidate stand-in for N=1 sends `nullptr` as the Function*;
   // the args builder maps that to a `0`-valued `FnHandleAddr` field — a
   // guaranteed mismatch against every legitimate runtime trace address.
-  auto Args =
-      buildMultiHookArgs(RC.Ctx, *Hook, Reg, Targets, TraceAddrs, RC.HostFnPtr);
+  auto Args = buildMultiHookArgs(RC.IModule, *Hook, Reg, Targets, TraceAddrs,
+                                 RC.HostFnPtr);
   return RC.P.createInjectedPayload(*Hook, MI, RC.IFAM, Args).takeError();
 }
 
@@ -1178,13 +1254,16 @@ PatchPCUsagesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
     return C && HookFns.contains(C->stripPointerCasts());
   });
 
-  llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
-  PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
-  PA.preserve<TargetFunctionAnalysisManagerPrototypeProxy>();
-  PA.preserve<TargetMachineFunctionAnalysisManagerPrototypeProxy>();
-  PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
-  PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
-  PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
+  llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::all();
+  // PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
+  // PA.preserve<TargetFunctionAnalysisManagerPrototypeProxy>();
+  /// PA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
+  /// PA.preserve<llvm::CGSCCAnalysisManagerModuleProxy>();
+  /// PA.preserve<TargetMachineFunctionAnalysisManagerPrototypeProxy>();
+  /// PA.preserve<IModuleAnalysisManagerPrototypeProxy>();
+  // PA.preserve<IModuleFunctionAnalysisManagerPrototypeProxy>();
+  // PA.preserve<IModuleMachineFunctionAnalysisManagerPrototypeProxy>();
+  PA.abandon<InjectedPayloadAndInstPointAnalysis>();
   PA.abandon<PrototypeCallGraphAnalysis>();
   PA.abandon<IPPredicatedLivenessAnalysis>();
   PA.abandon<IPPredCFGAnalysis>();

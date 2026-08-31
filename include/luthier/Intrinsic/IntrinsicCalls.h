@@ -25,6 +25,37 @@
 
 namespace luthier {
 
+/// Add all the `amdgpu-no-*` attributes so that the AMDGPU attributor doesn't
+/// consider them a worst-case scenario extern function
+inline void addAMDGCNAttrs(llvm::Function &Intrinsic) {
+  static constexpr llvm::StringLiteral NoImplicitArgAttrs[] = {
+      "amdgpu-no-cluster-id-x",
+      "amdgpu-no-cluster-id-y",
+      "amdgpu-no-cluster-id-z",
+      "amdgpu-no-completion-action",
+      "amdgpu-no-default-queue",
+      "amdgpu-no-dispatch-id",
+      "amdgpu-no-dispatch-ptr",
+      "amdgpu-no-flat-scratch-init",
+      "amdgpu-no-heap-ptr",
+      "amdgpu-no-hostcall-ptr",
+      "amdgpu-no-implicitarg-ptr",
+      "amdgpu-no-lds-kernel-id",
+      "amdgpu-no-multigrid-sync-arg",
+      "amdgpu-no-queue-ptr",
+      "amdgpu-no-workgroup-id-x",
+      "amdgpu-no-workgroup-id-y",
+      "amdgpu-no-workgroup-id-z",
+      "amdgpu-no-workitem-id-x",
+      "amdgpu-no-workitem-id-y",
+      "amdgpu-no-workitem-id-z",
+      "amdgpu-no-wwm"};
+  for (llvm::StringRef A : NoImplicitArgAttrs) {
+    if (!Intrinsic.hasFnAttribute(A))
+      Intrinsic.addFnAttr(A);
+  }
+}
+
 /// Builds a \c llvm::CallInst invoking the intrinsic indicated by
 /// \p IntrinsicName at the instruction position indicated by the \p Builder
 /// with the given \p ReturnType and \p Args
@@ -52,12 +83,12 @@ inline llvm::CallInst *insertCallToIntrinsic(llvm::Module &M,
   IntrinsicFuncType->getReturnType()->print(IntrinsicNameOS);
   // Create the intrinsic function in the module, or get it if it already
   // exists
-  auto ReadRegFunc = M.getOrInsertFunction(
+  auto IntrinsicFunc = M.getOrInsertFunction(
       FormattedIntrinsicName, IntrinsicFuncType,
       llvm::AttributeList().addFnAttribute(LLVMContext, IntrinsicAttribute,
                                            IntrinsicName));
-
-  return Builder.CreateCall(ReadRegFunc);
+  addAMDGCNAttrs(*llvm::cast<llvm::Function>(IntrinsicFunc.getCallee()));
+  return Builder.CreateCall(IntrinsicFunc);
 }
 
 /// Builds a \c llvm::CallInst invoking the intrinsic indicated by
@@ -118,12 +149,14 @@ inline llvm::CallInst *insertCallToIntrinsic(llvm::Module &M,
   }
   // Create the intrinsic function in the module, or get it if it already
   // exists
-  auto ReadRegFunc = M.getOrInsertFunction(
+  auto IntrinsicFunc = M.getOrInsertFunction(
       FormattedIntrinsicName, IntrinsicFuncType,
       llvm::AttributeList().addFnAttribute(LLVMContext, IntrinsicAttribute,
                                            IntrinsicName));
 
-  return Builder.CreateCall(ReadRegFunc, IntrinsicArgValues);
+  addAMDGCNAttrs(*llvm::cast<llvm::Function>(IntrinsicFunc.getCallee()));
+
+  return Builder.CreateCall(IntrinsicFunc, IntrinsicArgValues);
 }
 
 } // namespace luthier

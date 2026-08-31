@@ -1,4 +1,4 @@
-//===-- Prototype.h -----------------------------------*- C++ -*-===//
+//===-- Prototype.h ---------------------------------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -262,12 +262,10 @@ using IModuleMachineFunctionAnalysisManagerPrototypeProxy =
 /// module's managers, and both registrations point back at the same
 /// \c PrototypeAnalysisManager.
 using PrototypeAnalysisManagerModuleProxy =
-    llvm::OuterAnalysisManagerProxy<PrototypeAnalysisManager,
-                                    llvm::Module>;
+    llvm::OuterAnalysisManagerProxy<PrototypeAnalysisManager, llvm::Module>;
 
 using PrototypeAnalysisManagerFunctionProxy =
-    llvm::OuterAnalysisManagerProxy<PrototypeAnalysisManager,
-                                    llvm::Function>;
+    llvm::OuterAnalysisManagerProxy<PrototypeAnalysisManager, llvm::Function>;
 
 using PrototypeAnalysisManagerMachineFunctionProxy =
     llvm::OuterAnalysisManagerProxy<PrototypeAnalysisManager,
@@ -282,26 +280,33 @@ using PrototypeAnalysisManagerMachineFunctionProxy =
 /// module a pass actually disturbed now leaves the other module untouched,
 /// which is the whole point of splitting them.
 
-/// \brief Adaptor that runs a single \c llvm::Module pass over the target
-/// module of an \c Prototype.
-///
-/// Modeled on LLVM's \c ModuleToFunctionPassAdaptor: instead of owning a whole
-/// pass manager, it type-erases and stores one module pass (a
-/// \c llvm::ModulePassManager is itself a valid module pass, so an entire
-/// pipeline can still be wrapped). \c run runs the pass instrumentation
-/// callbacks around the pass and reconciles the inner \c ModuleAnalysisManager
-/// before returning.
+/// Thin subclass of \c llvm::ModulePassManager that exposes the protected
+/// \c Passes vector. \c runModulePass drives the sub-passes manually so it can
+/// augment each pass's returned \c PreservedAnalyses with proxy preservation
+/// before calling \c MAM.invalidate — without which a sub-pass returning
+/// \c PreservedAnalyses::none() lets the outer
+/// \c AnalysisManager<Module>::invalidate walk the cached
+/// \c FunctionAnalysisManagerModuleProxy and hit its \c InnerAM->clear()
+/// branch, wiping every cached function analysis for the module.
+class PrototypeModulePassManager : public llvm::ModulePassManager {
+public:
+  using llvm::ModulePassManager::addPass;
+  using llvm::ModulePassManager::Passes;
+};
+
+/// \brief Adaptor that runs a pipeline of \c llvm::Module passes over the
+/// target module of a \c Prototype.
+/// Modeled on LLVM's \c ModuleToFunctionPassAdaptor. Holds a
+/// \c PrototypeModulePassManager rather than a type-erased single pass so
+/// \c runModulePass can iterate the sub-passes itself — see
+/// \c PrototypeModulePassManager for why.
 class RunOnTargetModuleAdaptor
     : public llvm::PassInfoMixin<RunOnTargetModuleAdaptor> {
 public:
-  using PassConceptT =
-      llvm::detail::PassConcept<llvm::Module, llvm::ModuleAnalysisManager>;
+  explicit RunOnTargetModuleAdaptor(PrototypeModulePassManager MPM)
+      : MPM(std::move(MPM)) {}
 
-  explicit RunOnTargetModuleAdaptor(std::unique_ptr<PassConceptT> Pass)
-      : Pass(std::move(Pass)) {}
-
-  llvm::PreservedAnalyses run(Prototype &IP,
-                              PrototypeAnalysisManager &IPAM);
+  llvm::PreservedAnalyses run(Prototype &IP, PrototypeAnalysisManager &IPAM);
 
   void printPipeline(
       llvm::raw_ostream &OS,
@@ -310,24 +315,20 @@ public:
   static bool isRequired() { return true; }
 
 private:
-  std::unique_ptr<PassConceptT> Pass;
+  PrototypeModulePassManager MPM;
 };
 
-/// \brief Adaptor that runs a single \c llvm::Module pass over the
-/// instrumentation module of an \c Prototype.
+/// \brief Adaptor that runs a pipeline of \c llvm::Module passes over the
+/// instrumentation module of a \c Prototype.
 ///
 /// See \c RunOnTargetModuleAdaptor for the design rationale.
 class RunOnInstrumentationModuleAdaptor
     : public llvm::PassInfoMixin<RunOnInstrumentationModuleAdaptor> {
 public:
-  using PassConceptT =
-      llvm::detail::PassConcept<llvm::Module, llvm::ModuleAnalysisManager>;
+  explicit RunOnInstrumentationModuleAdaptor(PrototypeModulePassManager MPM)
+      : MPM(std::move(MPM)) {}
 
-  explicit RunOnInstrumentationModuleAdaptor(std::unique_ptr<PassConceptT> Pass)
-      : Pass(std::move(Pass)) {}
-
-  llvm::PreservedAnalyses run(Prototype &IP,
-                              PrototypeAnalysisManager &IPAM);
+  llvm::PreservedAnalyses run(Prototype &IP, PrototypeAnalysisManager &IPAM);
 
   void printPipeline(
       llvm::raw_ostream &OS,
@@ -336,33 +337,31 @@ public:
   static bool isRequired() { return true; }
 
 private:
-  std::unique_ptr<PassConceptT> Pass;
+  PrototypeModulePassManager MPM;
 };
 
 /// Deduce a module pass type and wrap it in a \c RunOnTargetModuleAdaptor.
+/// If \p Pass is itself an \c llvm::ModulePassManager,
+/// \c PrototypeModulePassManager::addPass flattens its sub-passes into the
+/// adaptor's own pipeline (see LLVM's same-type \c addPass overload).
 template <typename ModulePassT>
 RunOnTargetModuleAdaptor createRunOnTargetModuleAdaptor(ModulePassT &&Pass) {
-  using PassModelT = llvm::detail::PassModel<llvm::Module, ModulePassT,
-                                             llvm::ModuleAnalysisManager>;
-  // Do not use make_unique, it causes too many template instantiations,
-  // causing terrible compile times.
-  return RunOnTargetModuleAdaptor(
-      std::unique_ptr<RunOnTargetModuleAdaptor::PassConceptT>(
-          new PassModelT(std::forward<ModulePassT>(Pass))));
+  PrototypeModulePassManager MPM;
+  MPM.addPass(std::forward<ModulePassT>(Pass));
+  return RunOnTargetModuleAdaptor(std::move(MPM));
 }
 
 /// Deduce a module pass type and wrap it in a
 /// \c RunOnInstrumentationModuleAdaptor.
+/// If \p Pass is itself an \c llvm::ModulePassManager,
+/// \c PrototypeModulePassManager::addPass flattens its sub-passes into the
+/// adaptor's own pipeline (see LLVM's same-type \c addPass overload).
 template <typename ModulePassT>
 RunOnInstrumentationModuleAdaptor
 createRunOnInstrumentationModuleAdaptor(ModulePassT &&Pass) {
-  using PassModelT = llvm::detail::PassModel<llvm::Module, ModulePassT,
-                                             llvm::ModuleAnalysisManager>;
-  // Do not use make_unique, it causes too many template instantiations,
-  // causing terrible compile times.
-  return RunOnInstrumentationModuleAdaptor(
-      std::unique_ptr<RunOnInstrumentationModuleAdaptor::PassConceptT>(
-          new PassModelT(std::forward<ModulePassT>(Pass))));
+  PrototypeModulePassManager MPM;
+  MPM.addPass(std::forward<ModulePassT>(Pass));
+  return RunOnInstrumentationModuleAdaptor(std::move(MPM));
 }
 
 } // namespace luthier

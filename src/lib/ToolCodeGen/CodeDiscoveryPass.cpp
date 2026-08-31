@@ -41,6 +41,7 @@
 #include <llvm/CodeGen/ReachingDefAnalysis.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/IntrinsicInst.h>
+#include <llvm/Transforms/Utils/ModuleUtils.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/MDBuilder.h>
 #include <llvm/IR/Module.h>
@@ -1032,6 +1033,22 @@ initLiftedDeviceFunctionEntry(uint64_t DeviceEntryPointAddr,
   llvm::Function *F = llvm::Function::Create(
       DevFuncTy, llvm::GlobalValue::PrivateLinkage, FuncName, TargetModule);
   F->setCallingConv(llvm::CallingConv::C);
+  // Pin the entry against downstream DCE. These \c xNN discovered
+  // entries are legitimate re-entry points into the kernel (each names
+  // a partial entry at offset \c NN into the original kernel), but
+  // they carry \c PrivateLinkage and — after \c TargetModulePatcherPass
+  // moves the tool-side helpers into the target module and later
+  // module-level DCE runs — nothing in the module IR is left pointing
+  // at them, so \c GlobalDCE would drop the MF wholesale. That
+  // silently strips every \c SI_CALL its PATCHPOINTs got lowered to
+  // (along with each call's \c PostInstrSymbol \c luthier_call_ret_N
+  // ContSym), while the corresponding payloads' Case-B return
+  // trampolines still reference those ContSyms — MC then errors out
+  // with "Undefined temporary symbol \c .Lluthier_call_retN" for the
+  // now-orphaned trampolines. Anchoring the function in
+  // \c @llvm.compiler.used keeps its MF around through DCE so its
+  // \c SI_CALL and \c ContSym label emissions survive.
+  llvm::appendToCompilerUsed(TargetModule, {F});
   /// Inherit \c amdgpu-num-vgpr / \c amdgpu-num-sgpr from the initial
   /// execution point handle
   assert(InitialExecutionPoint.getCallingConv() ==

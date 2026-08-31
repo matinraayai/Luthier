@@ -24,6 +24,7 @@
 #include "luthier/Intrinsic/ReadReg.h"
 #include "luthier/Intrinsic/ReadSVA.h"
 #include "luthier/Intrinsic/WriteReg.h"
+#include "luthier/ToolCodeGen/AMDGPUPreloadValueMapping.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
@@ -93,6 +94,14 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     llvm::MachineFunction &MF, bool IsInjectedPayload,
     const IntrinsicsProcessorsAnalysis::Result &IntrinsicsProcessors,
     const StateValueArraySpecs &SVASpecs, llvm::MCRegister SVAVGPR) {
+  // Non-payload MFs (device functions called from payloads, tool utility
+  // helpers) reach the SVA courier via the standard AMDGPU calling
+  // convention — the caller loaded the preloaded implicit args and the
+  // callee's SIMFI already reflects them. Rewriting them here would
+  // double-load the SVA lanes. Restrict all MIR-time SVA plumbing to
+  // functions marked \c luthier.function.injected_payload.
+  if (!IsInjectedPayload)
+    return false;
   llvm::LLVMContext &Ctx = MF.getFunction().getContext();
   const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
   const llvm::TargetInstrInfo *TII = ST.getInstrInfo();
@@ -177,13 +186,24 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     // def, in dominator order, with a stable in-MBB anchor.
     return std::next(SVAImplDef->getIterator());
   };
+
+  if (!SVAVGPR && IsInjectedPayload) {
+    Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+        "luthier::readSVA in injected payload MF {0}: no SVA VGPR resolved "
+        "from the "
+        "instrumentation point's load plan; readSVA can only be used "
+        "inside an injected payload with a valid LoadPlan.",
+        MF.getName()))));
+    return false;
+  }
+
+  SVAVGPRPlaceholder =
+      SVAVGPR ? MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass)
+              : llvm::AMDGPU::VGPR0;
   if (SVAVGPR) {
-    SVAVGPRPlaceholder =
-        MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
     MRI.setSimpleHint(SVAVGPRPlaceholder, SVAVGPR);
-    SIMFI->setFlag(SVAVGPRPlaceholder, llvm::AMDGPU::VirtRegFlag::WWM_REG);
     llvm::MDNode *MarkerNode = llvm::MDNode::get(
-        Ctx, {llvm::MDString::get(Ctx, "luthier.sva_vgpr_placeholder")});
+    Ctx, {llvm::MDString::get(Ctx, "luthier.sva_vgpr_placeholder")});
     SVAImplDef =
         llvm::BuildMI(MF.front(), SVAInsertPt, llvm::MIMetadata(),
                       TII->get(llvm::AMDGPU::IMPLICIT_DEF), SVAVGPRPlaceholder)
@@ -191,39 +211,38 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     SVAImplDef->setPCSections(MF, MarkerNode);
   }
 
+  SIMFI->setFlag(SVAVGPRPlaceholder, llvm::AMDGPU::VirtRegFlag::WWM_REG);
+
   // Reserve the SVA lane region on the WWM LaneVGPR in lane order.
-  if (SVAVGPR) {
-    llvm::MachineFrameInfo &MFI = MF.getFrameInfo();
-    llvm::SmallVector<uint8_t, 32> ReservedLanes;
-    ReservedLanes.push_back(SVASpecs.getStackPointerRegSpillLane());
-    ReservedLanes.push_back(SVASpecs.getFramePointerRegSpillLane());
-    ReservedLanes.push_back(SVASpecs.getStackPointerStoreLane());
-    if (auto PSBLane = SVASpecs.getRsrcBufferSpillLane())
-      for (uint8_t I = 0; I < 4; ++I)
-        ReservedLanes.push_back(static_cast<uint8_t>(*PSBLane + I));
-    if (auto FSLane = SVASpecs.getScratchSpillLane())
-      for (uint8_t I = 0; I < 2; ++I)
-        ReservedLanes.push_back(static_cast<uint8_t>(*FSLane + I));
-    for (auto It = SVASpecs.argument_lane_begin();
-         It != SVASpecs.argument_lane_end(); ++It) {
-      const unsigned NumLanes =
-          StateValueArraySpecs::getArgumentLaneSize(It->first);
-      for (unsigned I = 0; I < NumLanes; ++I)
-        ReservedLanes.push_back(static_cast<uint8_t>(It->second + I));
-    }
-    llvm::sort(ReservedLanes);
-    for (uint8_t Lane : ReservedLanes) {
-      (void)Lane;
-      int FI = MFI.CreateStackObject(/*Size=*/4, llvm::Align(4),
-                                     /*isSpillSlot=*/true);
-      MFI.setStackID(FI, llvm::TargetStackID::SGPRSpill);
-      if (!SIMFI->allocateSGPRSpillToVGPRLane(
-              MF, FI, /*SpillToPhysVGPRLane=*/false)) {
-        Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-            "Failed to reserve SVA lane {0} on the WWM LaneVGPR in MF {1}",
-            Lane, MF.getName()))));
-        return Changed;
-      }
+  llvm::MachineFrameInfo &MFI = MF.getFrameInfo();
+  llvm::SmallVector<uint8_t, 32> ReservedLanes;
+  ReservedLanes.push_back(SVASpecs.getStackPointerRegSpillLane());
+  ReservedLanes.push_back(SVASpecs.getFramePointerRegSpillLane());
+  ReservedLanes.push_back(SVASpecs.getStackPointerStoreLane());
+  if (auto PSBLane = SVASpecs.getRsrcBufferSpillLane())
+    for (uint8_t I = 0; I < 4; ++I)
+      ReservedLanes.push_back(static_cast<uint8_t>(*PSBLane + I));
+  if (auto FSLane = SVASpecs.getScratchSpillLane())
+    for (uint8_t I = 0; I < 2; ++I)
+      ReservedLanes.push_back(static_cast<uint8_t>(*FSLane + I));
+  for (auto It = SVASpecs.argument_lane_begin();
+       It != SVASpecs.argument_lane_end(); ++It) {
+    const unsigned NumLanes =
+        StateValueArraySpecs::getArgumentLaneSize(It->first);
+    for (unsigned I = 0; I < NumLanes; ++I)
+      ReservedLanes.push_back(static_cast<uint8_t>(It->second + I));
+  }
+  llvm::sort(ReservedLanes);
+  for (uint8_t Lane : ReservedLanes) {
+    int FI = MFI.CreateStackObject(/*Size=*/4, llvm::Align(4),
+                                   /*isSpillSlot=*/true);
+    MFI.setStackID(FI, llvm::TargetStackID::SGPRSpill);
+    if (!SIMFI->allocateSGPRSpillToVGPRLane(MF, FI,
+                                            /*SpillToPhysVGPRLane=*/false)) {
+      Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "Failed to reserve SVA lane {0} on the WWM LaneVGPR in MF {1}", Lane,
+          MF.getName()))));
+      return Changed;
     }
   }
 
@@ -285,15 +304,6 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     auto CacheIt = SAResultCache.find(SA);
     if (CacheIt != SAResultCache.end())
       return CacheIt->second;
-
-    if (!SVAVGPR) {
-      Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-          "luthier::readSVA in MF {0}: no SVA VGPR resolved from the "
-          "instrumentation point's load plan; readSVA can only be used "
-          "inside an injected payload with a valid LoadPlan.",
-          MF.getName()))));
-      return llvm::Register();
-    }
 
     unsigned NumLanes = StateValueArraySpecs::getArgumentLaneSize(SA);
     static const unsigned SubRegForLane[] = {
@@ -537,6 +547,474 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
           }
         }
       };
+
+  // === Preloaded implicit-arg → SVA-lane rewriting ===
+  //
+  // For each AMDGPU preloaded-arg kind whose backend-assigned physreg is
+  // set for this injected payload, replace the entry-block live-in of
+  // that physreg with a direct \c V_READLANE_B32 out of the SVA VGPR
+  // placeholder into the physreg. This must run BEFORE the read/write
+  // physreg materialization loop so the SSAUpdater initialization sees
+  // our V_READLANE as the physreg's entry-block def (the physreg is now
+  // "free" from the backend live-in machinery).
+  //
+  // \c WORKITEM_ID_X/Y/Z is handled with a per-lane threadIdx expansion
+  // emitted directly at MIR — mbcnt + arithmetic + integer div/rem —
+  // since the SVA only preserves lane-0's workitem IDs. See the helper
+  // \c materializePerLaneWorkitemId below (not yet implemented; stub
+  // falls back to the lane-0 value for now with a FIXME).
+  if (IsInjectedPayload && SVAVGPR) {
+    const auto &ArgInfo = SIMFI->getArgInfo();
+    const auto *SITRI = static_cast<const llvm::SIRegisterInfo *>(TRI);
+
+    auto emitReadLanesToPhysReg = [&](llvm::MCRegister PhysReg,
+                                      uint8_t LaneBase, unsigned NumLanes) {
+      if (NumLanes == 1) {
+        (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                            TII->get(llvm::AMDGPU::V_READLANE_B32))
+            .addReg(PhysReg, llvm::RegState::Define)
+            .addReg(SVAVGPRPlaceholder)
+            .addImm(LaneBase);
+        return;
+      }
+      for (unsigned I = 0; I < NumLanes; ++I) {
+        unsigned SubIdx = llvm::SIRegisterInfo::getSubRegFromChannel(I);
+        llvm::MCRegister SubReg = SITRI->getSubReg(PhysReg, SubIdx);
+        if (!SubReg)
+          continue;
+        (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                            TII->get(llvm::AMDGPU::V_READLANE_B32))
+            .addReg(SubReg, llvm::RegState::Define)
+            .addReg(SVAVGPRPlaceholder)
+            .addImm(LaneBase + I);
+      }
+    };
+
+    // === Per-lane workitem-id expansion ===
+    //
+    // The SVA only preserves lane-0's workitem IDs (X0, Y0, Z0). The
+    // per-lane workitem IDs must be reconstructed from those plus the
+    // workgroup dimensions Wx/Wy (loaded from the implicit-arg buffer at
+    // offsets 12, 14) plus the per-lane index within the wave (via
+    // mbcnt).
+    //
+    //   L    = X0 + Y0*Wx + Z0*Wx*Wy + mbcnt_lane
+    //   tidx = L % Wx
+    //   tidy = (L / Wx) % Wy
+    //   tidz = L / (Wx*Wy)
+    //
+    // All arithmetic is done in VGPRs. Integer div/rem is emitted with
+    // the standard AMDGPU reciprocal-based expansion (V_CVT_F32_U32,
+    // V_RCP_F32, magic constant, V_MUL_HI_U32, two Newton-Raphson
+    // refinements). This matches what SelectionDAG produces for a
+    // \c urem/udiv when both operands are 32-bit and the divisor is
+    // dynamic.
+    llvm::Register CachedWxV, CachedWyV, CachedWxWyV, CachedLV;
+
+    auto emitVCvtF32U32 = [&](llvm::Register Src) {
+      llvm::Register R =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_CVT_F32_U32_e64), R)
+          .addImm(0)
+          .addReg(Src)
+          .addImm(0)
+          .addImm(0);
+      return R;
+    };
+    auto emitVRcpF32 = [&](llvm::Register Src) {
+      llvm::Register R =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_RCP_F32_e64), R)
+          .addImm(0)
+          .addReg(Src)
+          .addImm(0)
+          .addImm(0);
+      return R;
+    };
+    auto emitVMulF32Imm = [&](llvm::Register A, uint32_t Imm) {
+      llvm::Register ImmR =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MOV_B32_e32), ImmR)
+          .addImm(Imm);
+      llvm::Register R =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MUL_F32_e64), R)
+          .addImm(0)
+          .addReg(A)
+          .addImm(0)
+          .addReg(ImmR)
+          .addImm(0)
+          .addImm(0);
+      return R;
+    };
+    auto emitVCvtU32F32 = [&](llvm::Register Src) {
+      llvm::Register R =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_CVT_U32_F32_e64), R)
+          .addImm(0)
+          .addReg(Src)
+          .addImm(0)
+          .addImm(0);
+      return R;
+    };
+    auto emitVMulLo = [&](llvm::Register A, llvm::Register B) {
+      llvm::Register R =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MUL_LO_U32_e64), R)
+          .addReg(A)
+          .addReg(B);
+      return R;
+    };
+    auto emitVMulHi = [&](llvm::Register A, llvm::Register B) {
+      llvm::Register R =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MUL_HI_U32_e64), R)
+          .addReg(A)
+          .addReg(B);
+      return R;
+    };
+    auto emitVAdd = [&](llvm::Register A, llvm::Register B) {
+      llvm::Register R =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_ADD_U32_e64), R)
+          .addReg(A)
+          .addReg(B)
+          .addImm(0);
+      return R;
+    };
+    auto emitVAddImm = [&](llvm::Register A, int Imm) {
+      llvm::Register ImmR =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MOV_B32_e32), ImmR)
+          .addImm(Imm);
+      return emitVAdd(A, ImmR);
+    };
+    auto emitVSub = [&](llvm::Register A, llvm::Register B) {
+      llvm::Register R =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_SUB_U32_e64), R)
+          .addReg(A)
+          .addReg(B)
+          .addImm(0);
+      return R;
+    };
+    auto emitVNeg = [&](llvm::Register A) {
+      llvm::Register Zero =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MOV_B32_e32), Zero)
+          .addImm(0);
+      return emitVSub(Zero, A);
+    };
+    auto emitVCmpGe = [&](llvm::Register A, llvm::Register B) {
+      llvm::Register R =
+          MRI.createVirtualRegister(&llvm::AMDGPU::SReg_32_XM0_XEXECRegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_CMP_GE_U32_e64), R)
+          .addReg(A)
+          .addReg(B);
+      return R;
+    };
+    auto emitVCndMask = [&](llvm::Register IfFalse, llvm::Register IfTrue,
+                            llvm::Register Cond) {
+      llvm::Register R =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_CNDMASK_B32_e64), R)
+          .addImm(0)
+          .addReg(IfFalse)
+          .addImm(0)
+          .addReg(IfTrue)
+          .addReg(Cond);
+      return R;
+    };
+
+    // Standard AMDGPU 32-bit unsigned integer div/rem via reciprocal.
+    // Returns { quotient, remainder }.
+    auto emitUnsignedDivRem =
+        [&](llvm::Register N,
+            llvm::Register D) -> std::pair<llvm::Register, llvm::Register> {
+      llvm::Register Dfp = emitVCvtF32U32(D);
+      llvm::Register Rcp = emitVRcpF32(Dfp);
+      // Magic 0x4F7FFFFE ~ 2^32-1 in f32, used to scale reciprocal so the
+      // truncated conversion gives the correct integer estimate.
+      llvm::Register Scaled = emitVMulF32Imm(Rcp, 0x4F7FFFFEu);
+      llvm::Register Q0 = emitVCvtU32F32(Scaled);
+      // Newton-Raphson refinement of Q0 via 2's-complement negation of D.
+      llvm::Register NegD = emitVNeg(D);
+      llvm::Register T = emitVMulLo(NegD, Q0);
+      llvm::Register H = emitVMulHi(Q0, T);
+      llvm::Register Q1 = emitVAdd(Q0, H);
+      // Quotient estimate for N.
+      llvm::Register QEst = emitVMulHi(N, Q1);
+      llvm::Register REstMul = emitVMulLo(QEst, D);
+      llvm::Register REst = emitVSub(N, REstMul);
+      // Up to two correction rounds — the estimate can be off by up to 2.
+      llvm::Register Cmp1 = emitVCmpGe(REst, D);
+      llvm::Register Adj1R = emitVSub(REst, D);
+      llvm::Register R1 = emitVCndMask(REst, Adj1R, Cmp1);
+      llvm::Register Adj1Q = emitVAddImm(QEst, 1);
+      llvm::Register Q2 = emitVCndMask(QEst, Adj1Q, Cmp1);
+      llvm::Register Cmp2 = emitVCmpGe(R1, D);
+      llvm::Register Adj2R = emitVSub(R1, D);
+      llvm::Register R2 = emitVCndMask(R1, Adj2R, Cmp2);
+      llvm::Register Adj2Q = emitVAddImm(Q2, 1);
+      llvm::Register QFinal = emitVCndMask(Q2, Adj2Q, Cmp2);
+      return {QFinal, R2};
+    };
+
+    auto readSVALaneToVGPR = [&](uint8_t Lane) {
+      llvm::Register S =
+          MRI.createVirtualRegister(&llvm::AMDGPU::SReg_32_XM0_XEXECRegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_READLANE_B32), S)
+          .addReg(SVAVGPRPlaceholder)
+          .addImm(Lane);
+      llvm::Register V =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MOV_B32_e32), V)
+          .addReg(S);
+      return V;
+    };
+
+    // Materialize Wx, Wy, and L once per MF the first time any of tidx/y/z
+    // is requested. Returns true on success.
+    auto materializeTidPrereqs = [&]() -> bool {
+      if (CachedLV.isValid())
+        return true;
+
+      // The workgroup dims live in the implicit-arg buffer whose base
+      // pointer is preserved in the SVA at the IMPLICIT_ARG_BUFFER lane
+      // pair. Materialize that pointer as an SGPR pair and load 4 bytes
+      // at offset 12 with a global load (Wx = low 16, Wy = high 16).
+      auto IapLaneIt = SVASpecs.findArgumentLane(IMPLICIT_ARG_BUFFER);
+      if (IapLaneIt == SVASpecs.argument_lane_end()) {
+        Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+            "Payload MF {0} needs per-lane workitem ID but SVA layout has no "
+            "IMPLICIT_ARG_BUFFER lane; StateValueArraySpecs did not detect a "
+            "consumer.",
+            MF.getName()))));
+        return false;
+      }
+      uint8_t IapLane = IapLaneIt->second;
+      llvm::Register IapLo =
+          MRI.createVirtualRegister(&llvm::AMDGPU::SReg_32_XM0_XEXECRegClass);
+      llvm::Register IapHi =
+          MRI.createVirtualRegister(&llvm::AMDGPU::SReg_32_XM0_XEXECRegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_READLANE_B32), IapLo)
+          .addReg(SVAVGPRPlaceholder)
+          .addImm(IapLane);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_READLANE_B32), IapHi)
+          .addReg(SVAVGPRPlaceholder)
+          .addImm(IapLane + 1);
+      llvm::Register IapPair =
+          MRI.createVirtualRegister(&llvm::AMDGPU::SReg_64RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::REG_SEQUENCE), IapPair)
+          .addReg(IapLo)
+          .addImm(llvm::AMDGPU::sub0)
+          .addReg(IapHi)
+          .addImm(llvm::AMDGPU::sub1);
+      // GLOBAL_LOAD_DWORD_SADDR loads 4 bytes at (saddr + voffset + imm).
+      // voffset = 0 constant vgpr, imm = 12.
+      llvm::Register ZeroV =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MOV_B32_e32), ZeroV)
+          .addImm(0);
+      llvm::Register WxWyRaw =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::GLOBAL_LOAD_DWORD_SADDR),
+                          WxWyRaw)
+          .addReg(ZeroV)
+          .addReg(IapPair)
+          .addImm(12)
+          .addImm(0);
+      // Extract Wx (low 16) and Wy (high 16) in VGPRs.
+      llvm::Register MaskLo =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MOV_B32_e32), MaskLo)
+          .addImm(0xFFFFu);
+      llvm::Register WxV =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_AND_B32_e32), WxV)
+          .addReg(MaskLo)
+          .addReg(WxWyRaw);
+      llvm::Register ShiftAmt =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MOV_B32_e32), ShiftAmt)
+          .addImm(16);
+      llvm::Register WyV =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_LSHRREV_B32_e32), WyV)
+          .addReg(ShiftAmt)
+          .addReg(WxWyRaw);
+
+      auto XLaneIt = SVASpecs.findArgumentLane(WORKITEM_ID_X);
+      auto YLaneIt = SVASpecs.findArgumentLane(WORKITEM_ID_Y);
+      auto ZLaneIt = SVASpecs.findArgumentLane(WORKITEM_ID_Z);
+      if (XLaneIt == SVASpecs.argument_lane_end() ||
+          YLaneIt == SVASpecs.argument_lane_end() ||
+          ZLaneIt == SVASpecs.argument_lane_end()) {
+        Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+            "Payload MF {0} needs per-lane workitem IDs but SVA layout is "
+            "missing X/Y/Z lane assignments.",
+            MF.getName()))));
+        return false;
+      }
+      llvm::Register X0V = readSVALaneToVGPR(XLaneIt->second);
+      llvm::Register Y0V = readSVALaneToVGPR(YLaneIt->second);
+      llvm::Register Z0V = readSVALaneToVGPR(ZLaneIt->second);
+
+      // Per-lane index within the wave via mbcnt.
+      llvm::Register NegOneV =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MOV_B32_e32), NegOneV)
+          .addImm(-1);
+      llvm::Register ZeroV2 =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MOV_B32_e32), ZeroV2)
+          .addImm(0);
+      llvm::Register LaneLoV =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MBCNT_LO_U32_B32_e64),
+                          LaneLoV)
+          .addReg(NegOneV)
+          .addReg(ZeroV2);
+      llvm::Register LaneV =
+          MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MBCNT_HI_U32_B32_e64), LaneV)
+          .addReg(NegOneV)
+          .addReg(LaneLoV);
+
+      // L = X0 + Y0*Wx + Z0*Wx*Wy + lane
+      llvm::Register YWx = emitVMulLo(Y0V, WxV);
+      llvm::Register WxWy = emitVMulLo(WxV, WyV);
+      llvm::Register ZWxWy = emitVMulLo(Z0V, WxWy);
+      llvm::Register L0a = emitVAdd(X0V, YWx);
+      llvm::Register L0 = emitVAdd(L0a, ZWxWy);
+      llvm::Register L = emitVAdd(L0, LaneV);
+
+      CachedWxV = WxV;
+      CachedWyV = WyV;
+      CachedWxWyV = WxWy;
+      CachedLV = L;
+      return true;
+    };
+
+    auto materializePerLaneWorkitemId = [&](llvm::MCRegister PhysReg,
+                                            ScalarValueArgument SA,
+                                            uint8_t /*LaneBase*/) {
+      if (!materializeTidPrereqs())
+        return;
+      llvm::Register Result;
+      if (SA == WORKITEM_ID_X) {
+        // tidx = L % Wx
+        auto [Q, R] = emitUnsignedDivRem(CachedLV, CachedWxV);
+        (void)Q;
+        Result = R;
+      } else if (SA == WORKITEM_ID_Y) {
+        // tidy = (L / Wx) % Wy
+        auto [Q1, R1] = emitUnsignedDivRem(CachedLV, CachedWxV);
+        (void)R1;
+        auto [Q2, R2] = emitUnsignedDivRem(Q1, CachedWyV);
+        (void)Q2;
+        Result = R2;
+      } else { // WORKITEM_ID_Z
+        // tidz = L / (Wx*Wy)
+        auto [Q, R] = emitUnsignedDivRem(CachedLV, CachedWxWyV);
+        (void)R;
+        Result = Q;
+      }
+      (void)llvm::BuildMI(MF.front(), svaInsertPt(), llvm::MIMetadata(),
+                          TII->get(llvm::AMDGPU::V_MOV_B32_e32))
+          .addReg(PhysReg, llvm::RegState::Define)
+          .addReg(Result);
+    };
+
+    using PV = llvm::AMDGPUFunctionArgInfo::PreloadedValue;
+    static constexpr PV Kinds[] = {PV::PRIVATE_SEGMENT_BUFFER,
+                                   PV::DISPATCH_PTR,
+                                   PV::QUEUE_PTR,
+                                   PV::KERNARG_SEGMENT_PTR,
+                                   PV::DISPATCH_ID,
+                                   PV::FLAT_SCRATCH_INIT,
+                                   PV::WORKGROUP_ID_X,
+                                   PV::WORKGROUP_ID_Y,
+                                   PV::WORKGROUP_ID_Z,
+                                   PV::IMPLICIT_ARG_PTR,
+                                   PV::PRIVATE_SEGMENT_SIZE,
+                                   PV::WORKITEM_ID_X,
+                                   PV::WORKITEM_ID_Y,
+                                   PV::WORKITEM_ID_Z};
+
+    for (PV K : Kinds) {
+      const auto *Desc = std::get<0>(ArgInfo.getPreloadedValue(K));
+      if (!Desc || !Desc->isSet() || !Desc->isRegister())
+        continue;
+      llvm::MCRegister PhysReg = Desc->getRegister();
+
+      // SIMFI's ArgInfo has a descriptor slot for every preloaded value
+      // the target ABI can supply (WORKITEM_ID_X/Y/Z always map to the
+      // last VGPR, PSB to $sgpr0_1_2_3, etc.), independent of whether
+      // the calling-convention lowering actually kept that register live
+      // for this function. When AMDGPUAttributor propagates
+      // `amdgpu-no-<slot>`, ISel drops the physreg from the entry
+      // block's live-in set but leaves the descriptor slot populated,
+      // so trusting the descriptor here (as `AggregateFromSIMFI` does
+      // upstream, and as `Desc->isSet()` implies) makes us synthesize
+      // materialization for lanes the payload never reads — inflating
+      // the payload MF enough to trip MachineCSE's ScopedHashTable on
+      // the identical-MI pairs produced by the reciprocal-divide
+      // expansion.
+      if (!MF.front().isLiveIn(PhysReg))
+        continue;
+
+      auto SAOpt = mapSVArgToAMDGPUPreload(K);
+      if (!SAOpt)
+        continue;
+      ScalarValueArgument SA = *SAOpt;
+      auto LaneIt = SVASpecs.findArgumentLane(SA);
+      if (LaneIt == SVASpecs.argument_lane_end())
+        continue;
+      uint8_t LaneBase = LaneIt->second;
+      unsigned NumLanes = StateValueArraySpecs::getArgumentLaneSize(SA);
+
+      // Free the physreg from the backend-inserted entry live-in — we
+      // are about to define it ourselves at MF entry.
+      if (MF.front().isLiveIn(PhysReg))
+        MF.front().removeLiveIn(PhysReg);
+
+      if (SA == WORKITEM_ID_X || SA == WORKITEM_ID_Y || SA == WORKITEM_ID_Z) {
+        materializePerLaneWorkitemId(PhysReg, SA, LaneBase);
+      } else {
+        emitReadLanesToPhysReg(PhysReg, LaneBase, NumLanes);
+      }
+      Changed = true;
+    }
+  }
 
   for (llvm::MachineBasicBlock &MBBRef : MF) {
     llvm::MachineBasicBlock *MBB = &MBBRef;
@@ -855,6 +1333,15 @@ bool IntrinsicMIRLoweringPass::lowerIntrinsics(
       MF = &MFRes->getMF();
     else
       continue;
+    // Restore the `naked` attribute that Prototype::createInjectedPayload
+    // intentionally leaves off (see the comment there for why): ISel and
+    // AMDGPUAttributor have already run, so the Attributor-framework skip
+    // for naked functions no longer matters, and setting it here still
+    // gets it in place before LLVM's PrologEpilogInserter sees the MF, so
+    // Luthier's InjectedPayloadPEIPass remains the sole owner of the
+    // payload's frame.
+    if (IsInjectedPayload)
+      F.addFnAttr(llvm::Attribute::Naked);
     // Resolve the caller-loaded SVA VGPR for this payload.
     llvm::MCRegister SVAVGPR{};
     if (IsInjectedPayload && IPIP.contains(F)) {
