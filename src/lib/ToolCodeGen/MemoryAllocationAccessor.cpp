@@ -19,8 +19,29 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 
+#include "luthier/Common/ErrorCheck.h"
+
 namespace luthier {
 
 llvm::AnalysisKey MemoryAllocationAnalysis::Key;
+
+llvm::Expected<MemoryAllocationAccessor::AllocationDescriptor>
+DriverOnlyMemoryAllocationAccessor::getAllocationDescriptor(
+    uint64_t DeviceAddr) const {
+  if (!hasSource())
+    return AllocationDescriptor();
+
+  llvm::Expected<DriverAllocationResolver::Allocation> AllocOrErr =
+      Resolver->resolve(DeviceAddr);
+  // Propagated, not flattened into "no allocation here": an error means the
+  // address is the resolver's and something went wrong obtaining a host view of
+  // it, which is a different situation from never having seen the address.
+  LUTHIER_RETURN_ON_ERROR(AllocOrErr.takeError());
+  if (AllocOrErr->empty())
+    return AllocationDescriptor();
+
+  return descriptorFor(*AllocOrErr);
+}
+
 
 }

@@ -20,8 +20,12 @@
 #ifndef LUTHIER_TOOL_CODE_GEN_MEMORY_ALLOCATION_ACCESSOR_H
 #define LUTHIER_TOOL_CODE_GEN_MEMORY_ALLOCATION_ACCESSOR_H
 #include "luthier/Object/AMDGCNObjectFile.h"
+#include "luthier/ToolCodeGen/DriverAllocationResolver.h"
 #include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/IR/PassManager.h>
+
+#include <memory>
 
 namespace luthier {
 
@@ -85,6 +89,35 @@ public:
       return AllocationCodeObject;
     }
 
+    /// \brief Translate a device address inside this allocation into the
+    /// corresponding address in the host-readable view.
+    ///
+    /// Exists because doing this by hand is easy to get wrong in a way nothing
+    /// catches: the two bases are equal for every accessor that reads memory the
+    /// host already owns, so an expression that subtracts the device base and adds
+    /// it back -- cancelling to the device address -- behaves correctly until an
+    /// accessor appears whose host view lives elsewhere. Allocations tracked
+    /// through KFD ioctls are exactly that case.
+    ///
+    /// \param DeviceAddr an address inside this allocation. Callers already know
+    /// it is inside, because that is how they obtained the descriptor.
+    [[nodiscard]] uint64_t hostAddressFor(uint64_t DeviceAddr) const {
+      const auto DeviceBase = reinterpret_cast<uint64_t>(DeviceAllocation);
+      const auto HostBase = reinterpret_cast<uint64_t>(HostAccessibleAllocation);
+      return HostBase + (DeviceAddr - DeviceBase);
+    }
+
+    /// \brief One past the last host-readable byte of this allocation.
+    ///
+    /// Anchored to the allocation's own host base, not to whatever address a
+    /// caller happens to be reading from. Adding \c Size to a mid-allocation
+    /// address instead overruns the end by that address's offset into the
+    /// allocation -- and a caller that started at an entry point rather than at
+    /// the base is the normal case, not the exception.
+    [[nodiscard]] uint64_t hostEndAddress() const {
+      return reinterpret_cast<uint64_t>(HostAccessibleAllocation) + Size;
+    }
+
     /// TODO: Consider adding the allocation flags (e.g., permissions)
   };
 
@@ -96,6 +129,56 @@ public:
   getAllocationDescriptor(uint64_t DeviceAddr) const = 0;
 
   virtual ~MemoryAllocationAccessor() = default;
+};
+
+/// \brief The \c MemoryAllocationAccessor for a process with no GPU runtime above
+/// the driver.
+///
+/// \par When this is the right accessor
+/// An application that issues KFD ioctls itself cannot have HSA in its process:
+/// it holds the DRM virtual address space for its GPUs, the kernel permits one
+/// per GPU per process, and \c hsa_init therefore fails there. So there is no
+/// runtime to ask, and the driver-level record is not a fallback but the only
+/// source. \c HsaMemoryAllocationAccessor would also work -- its HSA half detects
+/// that it cannot run and defers -- but it would carry three API-table snapshots
+/// and a loaded-code-object cache that can never be populated, and a reader would
+/// reasonably wonder what they were for.
+///
+/// \par What it necessarily cannot report
+/// A parsed code object, because there is no loader below the driver to have
+/// parsed one. \c CodeDiscoveryPass handles that by naming the kernel after its
+/// address (\c CodeDiscoveryPass.cpp:761) rather than by failing.
+class DriverOnlyMemoryAllocationAccessor final : public MemoryAllocationAccessor {
+  std::unique_ptr<DriverAllocationResolver> Resolver;
+
+public:
+  /// \param Resolver the driver-level source. May be null, which makes every
+  /// lookup report no allocation -- the same answer an available resolver gives
+  /// for an address it has not seen, because a caller walking a disassembly must
+  /// not be aborted either way.
+  explicit DriverOnlyMemoryAllocationAccessor(
+      std::unique_ptr<DriverAllocationResolver> Resolver)
+      : Resolver(std::move(Resolver)) {}
+
+  /// \brief Turn a driver-level allocation into a descriptor.
+  ///
+  /// The one place this conversion is written. Two accessors need it, and the
+  /// thing they must not disagree about is which of the two bases goes in which
+  /// slot: they are equal for every source that reads memory the host already
+  /// owns, so swapping them is invisible until a source appears whose host view
+  /// lives elsewhere -- which is exactly what a driver-level resolver is.
+  [[nodiscard]] static AllocationDescriptor
+  descriptorFor(const DriverAllocationResolver::Allocation &A) {
+    return AllocationDescriptor{*A.DeviceBase, *A.HostBase, A.Size, nullptr};
+  }
+
+  [[nodiscard]] llvm::Expected<AllocationDescriptor>
+  getAllocationDescriptor(uint64_t DeviceAddr) const override;
+
+  /// \brief Whether a driver-level source is present and has records.
+  [[nodiscard]] bool hasSource() const {
+    return Resolver != nullptr && Resolver->isAvailable();
+  }
 };
 
 /// \brief Provides the \c MemoryAllocationAccessor to
