@@ -295,6 +295,9 @@ static void computeRegFileSizes(
                               : llvm::AMDGPU::isGFX11Plus(ST) ? 8
                                                               : 0;
   RegFileSize[llvm::AMDGPU::SGPR0] = 2u * NumSGPRs;
+  /// Add VCC-LO and HIwto the SGPR allocation on GFX10+
+  if (llvm::AMDGPU::isGFX10Plus(ST))
+    RegFileSize[llvm::AMDGPU::SGPR0] += 4u;
   /// TTMP region has 16 registers across all targets; if a new generation
   /// comes with a different encoding, this must be updated
   RegFileSize[TTMPBaseReg] = 2u * 16;

@@ -315,15 +315,17 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
           // %physreg = IMPLICIT_DEF ; Introduce a dummy def besides the live-in
           // decl to keep the live intervals happy
           // %savevreg = COPY $physreg ; mark $physreg live-in.
-          (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
-                              TII->get(llvm::AMDGPU::IMPLICIT_DEF))
-              .addReg(PhysReg, llvm::RegState::Define);
+          // TODO: Fix this once and for all
+          if (!EntryMBB.isLiveIn(PhysReg))
+            EntryMBB.addLiveIn(PhysReg);
+          // (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
+          //                     TII->get(llvm::AMDGPU::IMPLICIT_DEF))
+          //     .addReg(PhysReg, llvm::RegState::Define);
           (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
                               TII->get(llvm::AMDGPU::COPY))
               .addReg(SaveVReg, llvm::RegState::Define)
               .addReg(PhysReg);
-          // if (!EntryMBB.isLiveIn(PhysReg))
-          //   EntryMBB.addLiveIn(PhysReg);
+
 
           // Return blocks: emit restore COPY before the first terminator and
           // tag the terminator with an implicit-use of the physreg.

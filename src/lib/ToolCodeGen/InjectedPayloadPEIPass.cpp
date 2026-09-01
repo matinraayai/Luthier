@@ -146,6 +146,22 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   llvm::MCRegister PayloadSPReg = SIMFI->getStackPtrOffsetReg();
   llvm::MCRegister PayloadFPReg = SIMFI->getFrameOffsetReg();
 
+  // \c MFI.hasStackObjects() returns true whenever ANY frame index exists,
+  // including the dead \c TargetStackID::SGPRSpill objects. Only look for the
+  // ones spilled to scratch
+  auto hasScratchObjects = [&]() {
+    for (int I = MFI.getObjectIndexBegin(), E = MFI.getObjectIndexEnd();
+         I != E; ++I) {
+      if (MFI.isDeadObjectIndex(I))
+        continue;
+      if (MFI.getStackID(I) == llvm::TargetStackID::SGPRSpill)
+        continue;
+      return true;
+         }
+    return false;
+  };
+
+
   // Wide state regs (PSB and FLAT_SCR) — same save/restore pattern as
   // SP/FP but multi-lane. Their spill lanes on the SVA are gated:
   //   - PSB spill lane exists iff target is non-architected-FS AND
@@ -272,7 +288,7 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
                << " is used\n");
     UsesSVA = true;
   }
-  if (!UsesSVA && MFI.hasStackObjects()) {
+  if (!UsesSVA && hasScratchObjects()) {
     LLVM_DEBUG(luthier::dbgs() << "  MFI has stack objects\n");
     UsesSVA = true;
   }
@@ -317,7 +333,7 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   if (StateValueStorage.getStateValueStorageReg() == 0) {
     RequiresAccessToStack = true;
   }
-  if (MFI.hasStackObjects() || MFI.hasCalls())
+  if (hasScratchObjects() || MFI.hasCalls())
     RequiresAccessToStack = true;
 
   if (NeedsFPSetup)
