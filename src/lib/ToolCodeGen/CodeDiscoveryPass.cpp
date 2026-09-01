@@ -49,12 +49,40 @@
 #include <llvm/MC/MCDisassembler/MCDisassembler.h>
 #include <llvm/MC/MCInstPrinter.h>
 #include <llvm/MC/TargetRegistry.h>
+#include <llvm/Support/CommandLine.h>
 
 #undef DEBUG_TYPE
 
 #define DEBUG_TYPE "luthier-code-discovery"
 
 namespace luthier {
+
+static llvm::cl::opt<bool> LuthierMaxNumRegsAttrs(
+    "luthier-max-num-regs-attrs", llvm::cl::init(true),
+    llvm::cl::desc(
+        "Override amdgpu-num-sgpr/amdgpu-num-vgpr on every lifted "
+        "target-module function with the subtarget's addressable maximums, "
+        "to allow instrumented kernels to use the whole SGPR/VGPR "
+        "file."));
+
+/// Overwrite \c amdgpu-num-sgpr and \c amdgpu-num-vgpr on \p F with the
+/// subtarget's addressable maximums when \c LuthierMaxNumRegsAttrs is
+/// enabled.
+static void applyMaxNumRegsAttrsIfEnabled(llvm::Function &F,
+                                          const llvm::GCNSubtarget &ST) {
+  if (!LuthierMaxNumRegsAttrs)
+    return;
+  unsigned MaxSGPRs = ST.getAddressableNumSGPRs();
+  unsigned MaxVGPRs = ST.getAddressableNumVGPRs(0);
+  F.removeFnAttr("amdgpu-num-sgpr");
+  F.removeFnAttr("amdgpu-num-vgpr");
+  F.addFnAttr("amdgpu-num-sgpr", llvm::formatv("{0}", MaxSGPRs).str());
+  F.addFnAttr("amdgpu-num-vgpr", llvm::formatv("{0}", MaxVGPRs).str());
+  LLVM_DEBUG(luthier::dbgs()
+             << "[CodeDiscoveryPass] applyMaxNumRegsAttrsIfEnabled MF='"
+             << F.getName() << "': amdgpu-num-sgpr=" << MaxSGPRs
+             << ", amdgpu-num-vgpr=" << MaxVGPRs << "\n");
+}
 
 static inline llvm::Error
 parseKDRsrc1(const llvm::amdhsa::kernel_descriptor_t &KD,
@@ -1608,6 +1636,11 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
     Builder->addOperand(llvm::MachineOperand::CreateMBB(OriginalEntry));
     NewEntry->addSuccessor(OriginalEntry);
   }
+
+  /// Optionally widen the per-function SGPR/VGPR budget attrs to the
+  /// subtarget's addressable maximums
+  applyMaxNumRegsAttrsIfEnabled(MF.getFunction(),
+                                MF.getSubtarget<llvm::GCNSubtarget>());
 
   /// Freeze the set of reserved register because we will not do any register
   /// allocations here
