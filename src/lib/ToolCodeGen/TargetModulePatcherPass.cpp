@@ -13,8 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file TargetModulePatcherPass.cpp
-/// Implements the \c TargetModuelPatcherPass class.
+/// \file
+/// Implements the \c TargetModulePatcherPass class.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/TargetModulePatcherPass.h"
 #include "luthier/Common/ErrorCheck.h"
