@@ -160,7 +160,7 @@ void LiftLaunchedKernelsTool::onPackets(
           return luthier::MemoryAllocationAnalysis(
               std::make_unique<luthier::HsaMemoryAllocationAccessor>(
                   *this, *::CoreApiSnapshot, *::AmdExtSnapshot,
-                  ::LoaderSnapshot->getTable()));
+                  *::LoaderSnapshot));
         });
         M->registerPass([&] {
           return luthier::MetadataParserAnalysis(MetadataParserInstance);

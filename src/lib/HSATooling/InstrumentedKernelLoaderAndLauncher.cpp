@@ -490,7 +490,8 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::loadManagedVarsForRecord(
 llvm::Expected<hsa_executable_symbol_t>
 InstrumentedKernelLoaderAndLauncher::loadInstrumented(
     std::unique_ptr<llvm::MemoryBuffer> Relocatable,
-    const llvm::amdhsa::kernel_descriptor_t *OriginalKD, uint64_t Preset) {
+    const llvm::amdhsa::kernel_descriptor_t *OriginalKD, uint64_t Preset,
+    std::optional<hsa_agent_t> ExplicitAgent) {
   LLVM_DEBUG(luthier::dbgs()
              << "[InstrumentedKernelLoaderAndLauncher] loadInstrumented KD="
              << OriginalKD << " preset=" << Preset << "\n");
@@ -503,25 +504,41 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
 
   const auto Core = CoreApi.getTable();
 
-  // Resolve the agent that owns the kernel-descriptor allocation via
-  // hsa_amd_pointer_info (works for loader-published and pool allocations).
+  // Which device to load onto. A caller that already knows says so, which is
+  // the only workable answer for a kernel descriptor HSA did not allocate --
+  // pointer info cannot describe one, and asking is not merely unhelpful but
+  // reports the descriptor as owned by nothing.
   auto KDAddr = reinterpret_cast<uint64_t>(OriginalKD);
-  hsa_amd_pointer_info_t PointerInfo{};
-  PointerInfo.size = sizeof(hsa_amd_pointer_info_t);
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-      AmdExt.getTable().callFunction<hsa_amd_pointer_info>(
-          const_cast<void *>(reinterpret_cast<const void *>(OriginalKD)),
-          &PointerInfo, /*alloc=*/nullptr, /*num_agents_accessible=*/nullptr,
-          /*accessible=*/nullptr),
-      llvm::formatv("Failed to query HSA pointer info for kernel "
-                    "descriptor at {0:x}",
-                    KDAddr)));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      PointerInfo.type != HSA_EXT_POINTER_TYPE_UNKNOWN,
-      llvm::formatv("Kernel descriptor at {0:x} is not owned by any HSA "
-                    "allocation",
-                    KDAddr)));
-  hsa_agent_t Agent = PointerInfo.agentOwner;
+  hsa_agent_t Agent;
+  if (ExplicitAgent) {
+    Agent = *ExplicitAgent;
+    LLVM_DEBUG(luthier::dbgs() << llvm::formatv(
+                   "[InstrumentedKernelLoaderAndLauncher] using the caller's "
+                   "agent {0:x} for KD {1:x}\n",
+                   Agent.handle, KDAddr));
+  } else {
+    // Resolve the agent that owns the kernel-descriptor allocation via
+    // hsa_amd_pointer_info (works for loader-published and pool allocations).
+    hsa_amd_pointer_info_t PointerInfo{};
+    PointerInfo.size = sizeof(hsa_amd_pointer_info_t);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+        AmdExt.getTable().callFunction<hsa_amd_pointer_info>(
+            const_cast<void *>(reinterpret_cast<const void *>(OriginalKD)),
+            &PointerInfo, /*alloc=*/nullptr, /*num_agents_accessible=*/nullptr,
+            /*accessible=*/nullptr),
+        llvm::formatv("Failed to query HSA pointer info for kernel "
+                      "descriptor at {0:x}",
+                      KDAddr)));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        PointerInfo.type != HSA_EXT_POINTER_TYPE_UNKNOWN,
+        llvm::formatv("Kernel descriptor at {0:x} is not owned by any HSA "
+                      "allocation. If this descriptor belongs to an application "
+                      "that allocated it through the driver rather than through "
+                      "HSA, pass the agent explicitly -- see "
+                      "luthier::kfd::agentForGpuId.",
+                      KDAddr)));
+    Agent = PointerInfo.agentOwner;
+  }
 
   llvm::sys::ScopedWriter W(Mutex);
 

@@ -18,6 +18,7 @@
 /// Implements Luthier's Intrinsic Processor registry.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
+#include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Intrinsic/ImplicitArgPtr.h"
 #include "luthier/Intrinsic/ReadReg.h"
 #include "luthier/Intrinsic/ReadSVA.h"
@@ -27,10 +28,34 @@
 
 namespace luthier {
 
+namespace {
+/// Spelled out so the IR-only registration macro stays readable.
+using ArgsRef = llvm::ArrayRef<
+    std::pair<llvm::InlineAsm::Flag, const llvm::MachineOperand *>>;
+using MIBuilderFn = std::function<llvm::MachineInstrBuilder(int)>;
+using VirtRegFn = std::function<llvm::Register(const llvm::TargetRegisterClass *)>;
+} // namespace
+
 IntrinsicProcessorRegistry::IntrinsicProcessorRegistry() {
   /// Register built-in Luthier intrinsics
 #define REGISTER_INTRINSIC(NAME, IR_PROCESSOR, MIR_PROCESSOR)                  \
   Processors.try_emplace(NAME, IntrinsicProcessor{IR_PROCESSOR, MIR_PROCESSOR});
+  /// The MIR slot of an IR-only intrinsic is never read -- \c
+  /// IntrinsicMIRLoweringPass dispatches those by name. Rather than leave an
+  /// empty \c std::function, which would throw if the assumption ever broke,
+  /// install one that says so.
+#define REGISTER_INTRINSIC_IR_ONLY(NAME, IR_PROCESSOR)                         \
+  Processors.try_emplace(                                                      \
+      NAME,                                                                    \
+      IntrinsicProcessor{                                                      \
+          IR_PROCESSOR,                                                        \
+          [](const llvm::MachineFunction &, ArgsRef,                           \
+             const MIBuilderFn &, const VirtRegFn &) -> llvm::Error {          \
+            return LUTHIER_MAKE_GENERIC_ERROR(                                 \
+                "The intrinsic " NAME " is lowered by a named special case in " \
+                "IntrinsicMIRLoweringPass, so its registry MIR processor is "  \
+                "not expected to be called.");                                 \
+          }});
 #include "luthier/Intrinsic/IntrinsicRegistry.def"
 }
 

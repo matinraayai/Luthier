@@ -11,6 +11,11 @@ add_library(LuthierTooling SHARED
         $<TARGET_OBJECTS:LuthierPassPlugin>
         $<TARGET_OBJECTS:LuthierHSATooling>
         $<TARGET_OBJECTS:LuthierLinker>
+        # The KFD module's LLVM-facing half: the MemoryAllocationAccessor over
+        # allocations observed at the ioctl boundary. Only this half -- LuthierKFD
+        # itself is the preloadable wrapper's logic and must stay out of here, or
+        # linking Luthier would drag in an ioctl interceptor.
+        $<TARGET_OBJECTS:LuthierKFDTooling>
 )
 
 target_compile_definitions(LuthierTooling PUBLIC AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
@@ -33,7 +38,11 @@ target_link_libraries(LuthierTooling
         PRIVATE
         LLVMSymbolize LLVMDebugInfoDWARF LLVMCodeGenTypes LLVMMC LLVMMCA LLVMMCDisassembler LLVMObject
         LLVMSupport LLVMTarget LLVMTargetParser LLVMTransformUtils LLVMBitReader LLVMAnalysis LLVMAsmPrinter
-        LLVMCore LLVMPasses LLVMCodeGen LLVMLinker LLVMIRReader)
+        LLVMCore LLVMPasses LLVMCodeGen LLVMLinker LLVMIRReader
+        # LuthierKFDTooling resolves the KFD tracker's exports with dlsym, so that a
+        # tool reads the map the preloaded wrapper actually filled rather than a
+        # second, permanently empty one of its own.
+        ${CMAKE_DL_LIBS})
 
 if (${LUTHIER_ENABLE_SPIRV})
     target_link_libraries(LuthierTooling PRIVATE Luthier::LLVMSPIRVTranslator)

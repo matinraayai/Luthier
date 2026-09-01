@@ -86,14 +86,26 @@ public:
   /// record — the HSA code-object reader keeps a pointer into it.
   ///
   /// \param OriginalKD pointer to the kernel descriptor on the device of
-  /// the original (un-instrumented) kernel. The agent that owns the KD's
-  /// allocation is queried via \c hsa_amd_pointer_info, which works
-  /// regardless of whether the KD was published through the HSA loader or
-  /// allocated directly out of an HSA memory pool.
+  /// the original (un-instrumented) kernel. When \p Agent is not given, the
+  /// agent that owns the KD's allocation is queried via
+  /// \c hsa_amd_pointer_info, which works regardless of whether the KD was
+  /// published through the HSA loader or allocated directly out of an HSA
+  /// memory pool.
+  /// \param Agent the device to load onto, for callers who already know it.
+  ///
+  /// \par Why the agent can be supplied
+  /// Because there are kernel descriptors \c hsa_amd_pointer_info cannot
+  /// describe. An application that drives the KFD driver directly allocates the
+  /// memory its descriptors live in without HSA's involvement, so pointer info
+  /// reports \c HSA_EXT_POINTER_TYPE_UNKNOWN and there is no owner to read. Such
+  /// a caller does know the device, though -- from the queue the dispatch arrived
+  /// on -- and \c luthier::kfd::agentForGpuId turns that into an agent. Omitting
+  /// this argument preserves the previous behaviour exactly.
   llvm::Expected<hsa_executable_symbol_t>
   loadInstrumented(std::unique_ptr<llvm::MemoryBuffer> Relocatable,
                    const llvm::amdhsa::kernel_descriptor_t *OriginalKD,
-                   uint64_t Preset = 0);
+                   uint64_t Preset = 0,
+                   std::optional<hsa_agent_t> Agent = std::nullopt);
 
   /// Tear down the HSA executable + reader cached under
   /// <tt>(OriginalKD, Preset)</tt> and remove the entry from the
