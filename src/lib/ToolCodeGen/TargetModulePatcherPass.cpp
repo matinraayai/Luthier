@@ -3250,6 +3250,9 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
     for (llvm::MachineBasicBlock &MBB : *MF) {
       if (MBB.empty())
         continue;
+      // Skip blocks that were introduced after IPCFG was built
+      if (!IPCFG.contains(MBB))
+        continue;
       const PredicatedMachineBasicBlock &PMBB =
           const_cast<IPPredicatedCFG &>(IPCFG).getPredMBB(MBB.front());
       // Seed liveins with the union of Active + Inactive PMBB live-ins
