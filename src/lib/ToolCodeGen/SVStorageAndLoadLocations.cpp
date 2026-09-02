@@ -28,6 +28,7 @@
 #include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
+#include "luthier/ToolCodeGen/TargetRegisterBudget.h"
 #include <AMDGPU.h>
 #include <GCNSubtarget.h>
 #include <llvm/CodeGen/LivePhysRegs.h>
@@ -107,17 +108,22 @@ void computePerMILiveBefore(
 
 } // namespace
 
-/// Scavenges \p NumRegs registers of class \p RC that are:
-///   - allocatable per \p MRI,
-///   - not already used in \p MRI (RA didn't touch them).
+/// Scavenges \p NumRegs registers of class \p RC that instrumentation may
+/// claim in \p MF.
+///
+/// Availability is decided by \c luthier::isAvailableForInstrumentation
+/// rather than by \c MachineRegisterInfo::isAllocatable : the latter folds in
+/// \c isReserved, which on a target-module function conflates "special
+/// purpose" with "outside the application's launch budget". Registers of the
+/// second kind are exactly the ones we want to hand out — the wave was never
+/// launched with them, so nothing of the application's lives there.
 static void
 scavengeFreeRegister(const llvm::MachineFunction &MF,
                      const llvm::TargetRegisterClass &RC, int NumRegs,
                      llvm::SmallVectorImpl<llvm::MCRegister> &ScavengedRegs) {
-  const auto &MRI = MF.getRegInfo();
   int NumRegsFound = 0;
   for (llvm::MCRegister Reg : reverse(RC)) {
-    if (MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg)) {
+    if (isAvailableForInstrumentation(MF, Reg)) {
       ScavengedRegs.push_back(Reg);
       NumRegsFound++;
       if (NumRegsFound == NumRegs)
@@ -127,21 +133,19 @@ scavengeFreeRegister(const llvm::MachineFunction &MF,
 }
 
 /// Single-register variant of the scavenger above. Returns the first
-/// candidate register satisfying the same predicates, or \c MCRegister{}
+/// candidate register satisfying the same predicate, or \c MCRegister{}
 /// if none is found.
 static llvm::MCRegister
 scavengeFreeRegister(const llvm::MachineFunction &MF,
                      const llvm::TargetRegisterClass &RC) {
-  const auto &MRI = MF.getRegInfo();
   for (llvm::MCRegister Reg : reverse(RC)) {
-    if (MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg)) {
+    if (isAvailableForInstrumentation(MF, Reg))
       return Reg;
-    }
   }
   return {};
 }
 
-/// Cross-MF variant. Scavenges \p NumRegs registers of class \p RC unused
+/// Cross-MF variant. Scavenges \p NumRegs registers of class \p RC available
 /// across every MachineFunction in \p Functions.
 static void
 scavengeFreeRegister(llvm::ArrayRef<llvm::MachineFunction *> Functions,
@@ -150,8 +154,7 @@ scavengeFreeRegister(llvm::ArrayRef<llvm::MachineFunction *> Functions,
   unsigned int NumRegFound = 0;
   for (llvm::MCRegister Reg : *RC) {
     bool IsUnused = llvm::all_of(Functions, [&](llvm::MachineFunction *MF) {
-      auto &MRI = MF->getRegInfo();
-      return MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg);
+      return isAvailableForInstrumentation(*MF, Reg);
     });
     if (IsUnused) {
       Regs.push_back(Reg);
@@ -168,8 +171,7 @@ scavengeFreeRegister(llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
   for (llvm::MCRegister Reg : *RC) {
     bool IsUnused =
         llvm::all_of(RelatedFunctions, [&](llvm::MachineFunction *MF) {
-          auto &MRI = MF->getRegInfo();
-          return MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg);
+          return isAvailableForInstrumentation(*MF, Reg);
         });
     if (IsUnused)
       return Reg;

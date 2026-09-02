@@ -62,6 +62,7 @@
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/Linker/Linker.h>
+#include <llvm/Transforms/Utils/Cloning.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/TargetParser/SubtargetFeature.h>
 #include <llvm/Transforms/Utils/ModuleUtils.h>
@@ -746,19 +747,35 @@ buildSingleArgs(llvm::Module &IModule, llvm::MCRegister Reg,
 /// \c Parser::patchRegMulti<EntryPointTraceFunctionEntry, ..., EntryPointTraceFunctionEntry>. Signature:
 ///   \c void(MCRegister, uint64_t HostFnPtr, EntryPointTraceFunctionEntry, ..., EntryPointTraceFunctionEntry).
 ///
-/// The \c EntryPointTraceFunctionEntry parameters are passed as \c ConstantStruct values of
-/// whatever struct type HIP-Clang chose to represent them at the IR level
-/// (recovered from the \c Function 's \c FunctionType). A \c nullptr
-/// \c Targets[I] entry (the zero-real-candidates stand-in) becomes the
-/// \c i64 sentinel \c 0 for the \c FnHandleAddr field — matching the
+/// HIP-Clang lowers each \c EntryPointTraceFunctionEntry by-value parameter on
+/// the AMDGPU device ABI in one of two ways depending on how many previous
+/// register-passed slots have been consumed:
+///   1. \b Coerce: the struct's two \c i64 fields become two consecutive \c i64
+///      scalar parameters (\c %Ps.coerce0, \c %Ps.coerce1). This is used until
+///      the CC's coerced-scalar register budget is exhausted.
+///   2. \b Byref: the remaining struct(s) become a single
+///      \c ptr addrspace(5) byref parameter, and the callee reads the fields
+///      through that pointer. The caller (this builder) allocates a stack slot,
+///      stores the pair, and passes the pointer.
+/// The exact split (e.g. first 3 coerced + rest byref for N=4/5) is decided by
+/// Clang's AMDGPU ABI and can shift between compiler versions, so we walk
+/// \c Hook 's actual \c FunctionType parameter list and dispatch per param.
+///
+/// A \c nullptr \c Targets[I] entry (the zero-real-candidates stand-in) becomes
+/// the \c i64 sentinel \c 0 for the \c FnHandleAddr field — matching the
 /// device-side check `TraceAddr == Cur`, which cannot match a legitimate
 /// non-zero trace address.
-llvm::SmallVector<PayloadArg, 8>
+///
+/// Byref allocas are inserted through \p Builder, so this must be called from
+/// inside the injected payload's build callback (the lambda passed to
+/// \c Prototype::createInjectedPayload).
+llvm::SmallVector<llvm::Value *, 8>
 buildMultiHookArgs(llvm::Module &IModule, llvm::Function &Hook,
                    llvm::MCRegister Reg,
                    llvm::ArrayRef<llvm::Function *> Targets,
                    llvm::ArrayRef<std::uint64_t> TraceAddrs,
-                   std::uint64_t HostFnPtr) {
+                   std::uint64_t HostFnPtr,
+                   llvm::IRBuilderBase &Builder) {
   assert(Targets.size() == TraceAddrs.size() &&
          "targets and trace addresses must be same length");
   llvm::LLVMContext &Ctx = IModule.getContext();
@@ -766,14 +783,14 @@ buildMultiHookArgs(llvm::Module &IModule, llvm::Function &Hook,
   llvm::Type *I64Ty = llvm::Type::getInt64Ty(Ctx);
   llvm::FunctionType *FTy = Hook.getFunctionType();
 
-  llvm::SmallVector<PayloadArg, 8> Args;
+  llvm::SmallVector<llvm::Value *, 8> Args;
   Args.push_back(llvm::ConstantInt::get(I32Ty, Reg.id()));
   Args.push_back(llvm::ConstantInt::get(I64Ty, HostFnPtr));
 
   // Params 0..1 are Reg + HostFnPtr; the rest are the EntryPointTraceFunctionEntry pack.
+  unsigned ParamIdx = 2;
+  const unsigned NumParams = FTy->getNumParams();
   for (unsigned I = 0, E = Targets.size(); I != E; ++I) {
-    llvm::StructType *PairTy =
-        llvm::cast<llvm::StructType>(FTy->getParamType(2 + I));
     llvm::Constant *TraceC = llvm::ConstantInt::get(I64Ty, TraceAddrs[I]);
     // Same placeholder trick as buildSingleArgs — see the note there.
     llvm::Constant *HandleC =
@@ -781,7 +798,41 @@ buildMultiHookArgs(llvm::Module &IModule, llvm::Function &Hook,
             ? llvm::ConstantExpr::getPtrToInt(
                   getOrInsertIModulePlaceholder(IModule, *Targets[I]), I64Ty)
             : llvm::ConstantInt::get(I64Ty, 0);
-    Args.push_back(llvm::ConstantStruct::get(PairTy, {TraceC, HandleC}));
+
+    assert(ParamIdx < NumParams && "ran off the end of the hook's params");
+    llvm::Type *NextTy = FTy->getParamType(ParamIdx);
+
+    if (NextTy->isIntegerTy(64) && ParamIdx + 1 < NumParams &&
+        FTy->getParamType(ParamIdx + 1)->isIntegerTy(64)) {
+      // Coerced: two consecutive i64 scalars carry TraceAddr / FnHandleAddr.
+      Args.push_back(TraceC);
+      Args.push_back(HandleC);
+      ParamIdx += 2;
+    } else if (NextTy->isPointerTy()) {
+      // Byref: alloca a { i64, i64 } in the pointer's address space, store the
+      // pair into it, and pass the alloca. Inlining the hook will fold the
+      // load/store pair back into direct scalar uses.
+      llvm::StructType *PairTy = llvm::StructType::get(I64Ty, I64Ty);
+      unsigned AS =
+          llvm::cast<llvm::PointerType>(NextTy)->getAddressSpace();
+      llvm::AllocaInst *Slot =
+          Builder.CreateAlloca(PairTy, AS, /*ArraySize=*/nullptr,
+                                "luthier.te.byref");
+      Slot->setAlignment(llvm::Align(8));
+      Builder.CreateAlignedStore(
+          llvm::ConstantStruct::get(PairTy, {TraceC, HandleC}), Slot,
+          llvm::Align(8));
+      Args.push_back(Slot);
+      ParamIdx += 1;
+    } else if (auto *PairTy = llvm::dyn_cast<llvm::StructType>(NextTy)) {
+      // Legacy direct-struct path: some future Clang / another target may keep
+      // the aggregate as a StructType param. Emit a ConstantStruct as before.
+      Args.push_back(llvm::ConstantStruct::get(PairTy, {TraceC, HandleC}));
+      ParamIdx += 1;
+    } else {
+      llvm_unreachable(
+          "unexpected hook parameter lowering for EntryPointTraceFunctionEntry");
+    }
   }
   return Args;
 }
@@ -921,9 +972,27 @@ llvm::Error injectRegPatchPayload(RunContext &RC, llvm::MachineInstr &MI,
   // The zero-candidate stand-in for N=1 sends `nullptr` as the Function*;
   // the args builder maps that to a `0`-valued `FnHandleAddr` field — a
   // guaranteed mismatch against every legitimate runtime trace address.
-  auto Args = buildMultiHookArgs(RC.IModule, *Hook, Reg, Targets, TraceAddrs,
-                                 RC.HostFnPtr);
-  return RC.P.createInjectedPayload(*Hook, MI, RC.IFAM, Args).takeError();
+  //
+  // Drive the payload build directly (rather than through the ArrayRef<Value*>
+  // overload) so \c buildMultiHookArgs can insert allocas for byref-lowered
+  // EntryPointTraceFunctionEntry parameters through the payload's builder.
+  return RC.P
+      .createInjectedPayload(
+          MI, RC.IFAM,
+          [&](llvm::IRBuilderBase &Builder) -> llvm::Error {
+            llvm::SmallVector<llvm::Value *, 8> HookArgs = buildMultiHookArgs(
+                RC.IModule, *Hook, Reg, Targets, TraceAddrs, RC.HostFnPtr,
+                Builder);
+            llvm::CallInst *HookCall = Builder.CreateCall(Hook, HookArgs);
+            llvm::InlineFunctionInfo IFI;
+            llvm::InlineResult IR = llvm::InlineFunction(*HookCall, IFI);
+            if (!IR.isSuccess())
+              return LUTHIER_MAKE_GENERIC_ERROR(
+                  "Failed to force-inline hook '" + Hook->getName().str() +
+                  "' into payload: " + IR.getFailureReason());
+            return llvm::Error::success();
+          })
+      .takeError();
 }
 
 /// Rewrite a single S_GETPC_B64 into a pair of S_MOV_B32 immediates

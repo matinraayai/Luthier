@@ -30,6 +30,7 @@
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "luthier/ToolCodeGen/PseudoOpcodeAndRegMapper.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
+#include "luthier/ToolCodeGen/TargetRegisterBudget.h"
 #include "luthier/ToolCodeGen/TraceFunctionTranslationAnalysis.h"
 #include "luthier/ToolCodeGen/TraceFunctionTranslator.h"
 #include <MCTargetDesc/AMDGPUMCExpr.h>
@@ -68,6 +69,13 @@ static llvm::cl::opt<bool> LuthierMaxNumRegsAttrs(
 /// Overwrite \c amdgpu-num-sgpr and \c amdgpu-num-vgpr on \p F with the
 /// subtarget's addressable maximums when \c LuthierMaxNumRegsAttrs is
 /// enabled.
+///
+/// This only widens the AMDGPU backend's allocation *cap* so instrumentation
+/// can allocate past the application's original budget. The budget itself
+/// stays recorded in \c luthier-app-num-sgpr / \c luthier-app-num-vgpr (see
+/// \c luthier::setTargetRegisterBudget ) and is never removed, so downstream
+/// target-module passes can still tell which registers the wave actually
+/// owns instead of inferring it from \c MachineRegisterInfo::isReserved .
 static void applyMaxNumRegsAttrsIfEnabled(llvm::Function &F,
                                           const llvm::GCNSubtarget &ST) {
   if (!LuthierMaxNumRegsAttrs)
@@ -1002,6 +1010,17 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   }();
   F->addFnAttr("amdgpu-num-sgpr", llvm::formatv("{0}", NextFreeSGPR).str());
 
+  /// Record the wave's launch budget separately from the backend's
+  /// allocation cap. \c applyMaxNumRegsAttrsIfEnabled may widen
+  /// \c amdgpu-num-* below so instrumentation can allocate past what the
+  /// application asked for; these attributes keep the original numbers so
+  /// liveness and register scavenging can tell which registers the wave
+  /// actually owns.
+  setTargetRegisterBudget(
+      *F, NextFreeSGPR,
+      F->getFnAttributeAsParsedInteger("amdgpu-num-vgpr",
+                                       ST.getAddressableNumVGPRs(0)));
+
   return std::make_pair(std::ref(MF), KDSymbolIfPresent);
 }
 
@@ -1088,6 +1107,14 @@ initLiftedDeviceFunctionEntry(uint64_t DeviceEntryPointAddr,
       InitialExecutionPoint.getFnAttributeAsParsedInteger("amdgpu-num-sgpr");
   F->addFnAttr("amdgpu-num-vgpr", llvm::formatv("{0}", NumVGPRs).str());
   F->addFnAttr("amdgpu-num-sgpr", llvm::formatv("{0}", NumSGPRs).str());
+  /// The launch budget is a property of the dispatch, so a device function
+  /// reached from this entry point inherits the kernel's.
+  setTargetRegisterBudget(
+      *F,
+      InitialExecutionPoint.getFnAttributeAsParsedInteger(AppNumSGPRsAttribute,
+                                                          NumSGPRs),
+      InitialExecutionPoint.getFnAttributeAsParsedInteger(AppNumVGPRsAttribute,
+                                                          NumVGPRs));
 
   llvm::MachineFunction &MF =
       FAM.getResult<llvm::MachineFunctionAnalysis>(*F).getMF();
@@ -1715,6 +1742,10 @@ CodeDiscoveryPass::run(Prototype &IP,
 
   InitialExecPointMFAndSymbol->first.getFunction().addFnAttr(
       InitialExecutionPointAttr);
+
+  applyMaxNumRegsAttrsIfEnabled(
+      InitialExecPointMFAndSymbol->first.getFunction(),
+      InitialExecPointMFAndSymbol->first.getSubtarget<llvm::GCNSubtarget>());
 
   /// Start of the code discovery loop
 

@@ -64,6 +64,7 @@ add_library(LuthierToolCodeGen OBJECT
         SVAPhysVGPRPinPass.cpp
         TargetModulePatcherPass.cpp
         TargetModuleScavenger.cpp
+        TargetRegisterBudget.cpp
         TargetModuleBranchRelaxation.cpp
         IntrinsicMIRLoweringPass.cpp
         InjectedPayloadPEIPass.cpp

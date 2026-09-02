@@ -23,6 +23,7 @@
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
+#include "luthier/ToolCodeGen/TargetRegisterBudget.h"
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <AMDGPU.h>
 #include <GCNSubtarget.h>
@@ -93,39 +94,21 @@ static bool livePhysRegsEqual(const llvm::LivePhysRegs &A,
 //===----------------------------------------------------------------------===//
 
 /// Build the initial "everything live" set for the not-fully-discovered
-/// fallback: the union of the function's allocatable SGPR / VGPR / AGPR
-/// pool (sized by \c amdgpu-num-sgpr / \c amdgpu-num-vgpr) plus every
-/// reserved register from MRI (includes VCC, EXEC, FLAT_SCR, and the
-/// runtime-owned TTMP/TBA/TMA/MODE family — all of which can hold
-/// application-visible state across an instrumentation point).
+/// fallback.
+///
+/// Delegates to \c luthier::addAppOwnedRegisters rather than deriving the
+/// register pool here. The set we want is "everything the application's wave
+/// owns", which is decided by the launch budget lifted from the kernel
+/// descriptor — not by \c MachineRegisterInfo::isReserved . Luthier widens
+/// \c amdgpu-num-sgpr / \c amdgpu-num-vgpr to the subtarget maximum so
+/// instrumentation can allocate past the application's budget, which made
+/// the old attribute-driven pool here cover the *entire* register file: every
+/// SGPR and VGPR came out live at every instrumentation point, so
+/// \c InjectedPayloadPreserveLiveRegsPass saved all of them into the payload
+/// and the resulting pressure forced the SGPR allocator to spill.
 static void buildAllocatableSet(const llvm::MachineFunction &MF,
                                 llvm::LivePhysRegs &Out) {
-  const llvm::Function &F = MF.getFunction();
-  const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
-  const auto *TRI = ST.getRegisterInfo();
-  const llvm::MachineRegisterInfo &MRI = MF.getRegInfo();
-
-  unsigned NumSGPRs = F.getFnAttributeAsParsedInteger("amdgpu-num-sgpr");
-  unsigned NumVGPRs = F.getFnAttributeAsParsedInteger("amdgpu-num-vgpr");
-
-  for (unsigned I = 0; I < NumSGPRs; ++I)
-    Out.addReg(llvm::AMDGPU::SGPR0 + I);
-  for (unsigned I = 0; I < NumVGPRs; ++I)
-    Out.addReg(llvm::AMDGPU::VGPR0 + I);
-  if (ST.hasMAIInsts()) {
-    for (unsigned I = 0; I < NumVGPRs; ++I)
-      Out.addReg(llvm::AMDGPU::AGPR0 + I);
-  }
-
-  Out.addReg(llvm::AMDGPU::SCC);
-  Out.addReg(TRI->getVCC());
-  
-  const llvm::BitVector &Reserved = MRI.getReservedRegs();
-  for (unsigned RegId = 0, E = Reserved.size(); RegId < E; ++RegId) {
-    if (!Reserved.test(RegId))
-      continue;
-    Out.addReg(static_cast<llvm::MCPhysReg>(RegId));
-  }
+  addAppOwnedRegisters(MF, Out);
 }
 
 } // namespace

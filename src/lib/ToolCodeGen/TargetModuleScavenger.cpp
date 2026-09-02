@@ -25,6 +25,7 @@
 #include "luthier/ToolCodeGen/TargetModuleScavenger.h"
 
 #include "luthier/LLVM/streams.h"
+#include "luthier/ToolCodeGen/TargetRegisterBudget.h"
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/BitVector.h>
 #include <llvm/ADT/SmallVector.h>
@@ -105,7 +106,11 @@ bool TargetModuleScavenger::isReserved(llvm::Register Reg) const {
   for (llvm::MCPhysReg R : ReservedRegs)
     if (TRI->regsOverlap(Reg, R))
       return true;
-  return MRI->isReserved(Reg);
+  // Not \c MRI->isReserved: on a target-module function that also reports
+  // every GPR above the application's launch budget, which are precisely the
+  // registers scavenging exists to find. \c isReservedForApp consults the
+  // launch budget instead.
+  return isReservedForApp(*MBB->getParent(), Reg);
 }
 
 bool TargetModuleScavenger::isRegUsed(llvm::Register Reg,
@@ -157,8 +162,11 @@ findSurvivorBackwards(
   const llvm::TargetRegisterInfo &TRI = *MRI.getTargetRegisterInfo();
   llvm::LiveRegUnits Used(TRI);
 
+  const llvm::MachineFunction &MF = *MBB.getParent();
   auto Forbidden = [&](llvm::MCPhysReg Reg) {
-    if (MRI.isReserved(Reg))
+    // See TargetModuleScavenger::isReserved: MRI.isReserved would also reject
+    // every GPR above the application's launch budget.
+    if (isReservedForApp(MF, Reg))
       return true;
     for (llvm::MCPhysReg R : ReservedRegs)
       if (TRI.regsOverlap(Reg, R))

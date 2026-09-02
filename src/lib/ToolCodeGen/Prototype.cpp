@@ -292,7 +292,6 @@ runModulePass(PrototypeModulePassManager &MPM, llvm::Module &M,
     SubModulePA.preserve<llvm::FunctionAnalysisManagerModuleProxy>();
     SubModulePA.preserve<llvm::CGSCCAnalysisManagerModuleProxy>();
     SubModulePA.preserve<llvm::MachineFunctionAnalysisManagerModuleProxy>();
-    SubModulePA.preserve<llvm::LazyCallGraphAnalysis>();
     MAM.invalidate(M, SubModulePA);
 
     PI.runAfterPass<llvm::Module>(*SubPass, M, SubPA);

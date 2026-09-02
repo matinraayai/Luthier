@@ -233,7 +233,14 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
       ReservedLanes.push_back(static_cast<uint8_t>(It->second + I));
   }
   llvm::sort(ReservedLanes);
-  for (uint8_t Lane : ReservedLanes) {
+
+  /// Burns one lane of the shared WWM LaneVGPR by handing
+  /// \c allocateSGPRSpillToVGPRLane a frame index nothing will ever spill
+  /// to. \p Lane only names the lane being reserved for diagnostics; the
+  /// framework hands out lanes in call order off its monotonic
+  /// \c NumVirtualVGPRSpillLanes counter, which is why the reservation has to
+  /// happen in sorted lane order.
+  auto reserveLane = [&](unsigned Lane) -> int {
     int FI = MFI.CreateStackObject(/*Size=*/4, llvm::Align(4),
                                    /*isSpillSlot=*/true);
     MFI.setStackID(FI, llvm::TargetStackID::SGPRSpill);
@@ -242,8 +249,69 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
       Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
           "Failed to reserve SVA lane {0} on the WWM LaneVGPR in MF {1}", Lane,
           MF.getName()))));
-      return Changed;
+      return -1;
     }
+    return FI;
+  };
+
+  /// Frame index of the first lane reserved below. The framework hands out
+  /// lanes off a monotonic counter that starts at zero and this reservation
+  /// is its first client, so this frame index -- and only this one -- owns
+  /// lane 0 of the SVA LaneVGPR.
+  int LaneZeroFI = -1;
+  for (uint8_t Lane : ReservedLanes) {
+    int FI = reserveLane(Lane);
+    if (FI < 0)
+      return Changed;
+    if (LaneZeroFI < 0)
+      LaneZeroFI = FI;
+  }
+
+  // Pad the reservation out to a whole wavefront.
+  //
+  // The lanes above are the SVA's own; the rest of the LaneVGPR would
+  // otherwise be handed to the register allocator's SGPR spills, which land
+  // on it through the same monotonic counter. That leaves the LaneVGPR with
+  // no spill on lane 0 -- the reserved lanes never get a spill instruction --
+  // and SILowerSGPRSpills only records a virtual LaneVGPR's IMPLICIT_DEF
+  // insertion point when it lowers a spill whose lane is 0
+  // (SILowerSGPRSpills.cpp:345). The first RA spill therefore arrives at a
+  // nonzero lane with an empty LaneVGPRDomInstr and trips the assert on the
+  // next line. Rounding up to the wavefront makes the allocator's first spill
+  // wrap onto lane 0 of a fresh LaneVGPR, which does get an insertion point.
+  const unsigned WaveSize = ST.getWavefrontSize();
+  const unsigned PaddedLanes = llvm::alignTo<unsigned>(
+      static_cast<unsigned>(ReservedLanes.size()), WaveSize);
+  for (unsigned Lane = ReservedLanes.size(); Lane < PaddedLanes; ++Lane) {
+    if (reserveLane(Lane) < 0)
+      return Changed;
+  }
+
+  // Anchor the SVA LaneVGPR with a spill instruction on its lane 0.
+  //
+  // SILowerSGPRSpills records a virtual LaneVGPR's IMPLICIT_DEF insertion
+  // point only while lowering an actual spill, and only for the spill whose
+  // lane is 0 (SILowerSGPRSpills.cpp:345). Reserving lanes hands the
+  // LaneVGPR out without ever emitting a spill against them, so the register
+  // reaches the IMPLICIT_DEF loop at SILowerSGPRSpills.cpp:623 with nothing
+  // recorded, `LaneVGPRDomInstr[Reg]` default-constructs a null MBB, and
+  // line 625 dereferences it. (Without the wavefront padding above the same
+  // gap shows up one step earlier: the allocator's first spill lands on a
+  // nonzero lane of this LaneVGPR and trips the assert on line 348.)
+  //
+  // One restore off the lane-0 frame index is enough to close both. It only
+  // *reads* the lane, so no SVA state is disturbed, and its destination is
+  // dead. SI_SPILL_S32_RESTORE carries a non-invariant stack load, which
+  // makes MachineInstr::isSafeToMove -- and therefore
+  // wouldBeTriviallyDead -- false, so DCE keeps it alive until
+  // SILowerSGPRSpills lowers it into the V_READLANE_B32 it wants to see.
+  if (LaneZeroFI >= 0) {
+    llvm::Register AnchorVReg =
+        MRI.createVirtualRegister(&llvm::AMDGPU::SReg_32RegClass);
+    TII->loadRegFromStackSlot(MF.front(), MF.front().begin(), AnchorVReg,
+                              LaneZeroFI, &llvm::AMDGPU::SReg_32RegClass,
+                              /*VReg=*/{});
+    Changed = true;
   }
 
   /// Returns the SVA lane for a frame reg read/written by an injected
