@@ -19,7 +19,6 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_STATE_VALUE_ARRAY_STORAGE_H
 #define LUTHIER_TOOL_CODE_GEN_STATE_VALUE_ARRAY_STORAGE_H
-#include "luthier/HSA/LoadedCodeObject.h"
 #include <llvm/CodeGen/SlotIndexes.h>
 
 namespace llvm {

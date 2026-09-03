@@ -1445,14 +1445,14 @@ void emitPartialCallgraphSVSHandoffWraps(llvm::MachineFunction &MF,
     }
   }
 
-  // 3. Caller side: handOffSVA before the last call/indirect-branch/terminator
+  // 3. Caller side: handOffSVA before the last call/indirect-branch/return
   // MI (non S_ENDPGM) in every MBB whose PMBB has unresolved edges.
   unsigned HandOffsEmitted = 0;
   for (llvm::MachineBasicBlock &MBB : MF) {
     llvm::MachineInstr *TargetMI = nullptr;
     for (auto It = MBB.rbegin(), End = MBB.rend(); It != End; ++It) {
       if (It->isCall() || It->isIndirectBranch() ||
-          (It->isTerminator() && It->getOpcode() != llvm::AMDGPU::S_ENDPGM)) {
+          (It->isReturn() && It->getOpcode() != llvm::AMDGPU::S_ENDPGM)) {
         TargetMI = &*It;
         break;
       }
