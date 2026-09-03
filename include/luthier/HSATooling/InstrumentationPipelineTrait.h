@@ -150,10 +150,49 @@ public:
   runInstrumentationPipelineForDispatch(
       const llvm::amdhsa::kernel_descriptor_t &KD,
       llvm::OptimizationLevel Level = llvm::OptimizationLevel::O3) {
+    return runInstrumentationPipelineImpl(KD, luthier::EntryPoint(KD), Level);
+  }
+
+  /// Assemble and run the instrumentation pipeline for a device function
+  /// reached at runtime by \p EnclosingKD 's dispatch, seeded to start
+  /// discovery at \p DevFuncAddr rather than a kernel entry.
+  ///
+  /// Used from \c PatchPCUsagesPass 's host callback when a wave hits an
+  /// indirect callee whose runtime address is not yet in the on-device
+  /// resolver table — the callback synchronously lifts + instruments the
+  /// callee, loads the resulting code object, and publishes the mapping.
+  ///
+  /// The execution point stays as \p EnclosingKD because segment allocation
+  /// lookups and target-machine features are all keyed off the kernel this
+  /// device function is being called from; the code-discovery seed however
+  /// is the raw device address.
+  llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>>
+  runInstrumentationPipelineForDeviceFunction(
+      const llvm::amdhsa::kernel_descriptor_t &EnclosingKD,
+      uint64_t DevFuncAddr,
+      llvm::OptimizationLevel Level = llvm::OptimizationLevel::O3) {
+    return runInstrumentationPipelineImpl(EnclosingKD,
+                                          luthier::EntryPoint(DevFuncAddr),
+                                          Level);
+  }
+
+private:
+  /// Shared body for the kernel and device-function pipeline entries. \p
+  /// TargetMachineKD is the KD whose subtarget features and agent context
+  /// the pipeline lowers against (always the kernel being dispatched, even
+  /// for a mid-dispatch device-function bring-up). \p InitialEP is the
+  /// entry point \c CodeDiscoveryPass will walk from — a kernel descriptor
+  /// for a kernel launch, a raw device address for an indirect callee.
+  /// \p Level is the IR optimization level.
+  llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>>
+  runInstrumentationPipelineImpl(
+      const llvm::amdhsa::kernel_descriptor_t &TargetMachineKD,
+      const luthier::EntryPoint &InitialEP, llvm::OptimizationLevel Level) {
     Derived &D = derived();
 
     std::unique_ptr<llvm::TargetMachine> TM;
-    LUTHIER_RETURN_ON_ERROR(D.buildTargetMachineForKD(&KD).moveInto(TM));
+    LUTHIER_RETURN_ON_ERROR(
+        D.buildTargetMachineForKD(&TargetMachineKD).moveInto(TM));
 
     llvm::LLVMContext Ctx;
     auto TargetM = std::make_unique<llvm::Module>("luthier.target", Ctx);
@@ -184,9 +223,11 @@ public:
 
     // Record the dispatch's entry/execution point on the target module so the
     // corresponding analyses can read them without knowing where a kernel
-    // descriptor comes from.
-    luthier::setInitialEntryPoint(*TargetM, luthier::EntryPoint(KD));
-    luthier::setInitialExecutionPoint(*TargetM, KD);
+    // descriptor comes from. Entry point can be a kernel or a raw device
+    // address (device-function bring-up path); execution point is always
+    // the enclosing kernel, since segment/agent context is that kernel's.
+    luthier::setInitialEntryPoint(*TargetM, InitialEP);
+    luthier::setInitialExecutionPoint(*TargetM, TargetMachineKD);
 
     luthier::Prototype IP(std::move(TargetM), std::move(IModuleM));
 
