@@ -217,8 +217,21 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::unloadAll() {
   llvm::sys::ScopedWriter W(Mutex);
   LLVM_DEBUG(luthier::dbgs()
              << "[InstrumentedKernelLoaderAndLauncher] unloadAll: "
-             << ByOriginal.size() << " record(s)\n");
+             << ByOriginal.size() << " kernel record(s), "
+             << DeviceFuncRecords.size() << " device-function record(s)\n");
   llvm::Error E = llvm::Error::success();
+  // Tear down device-function records first — they depend on the parent
+  // kernel's globals (bound in via defineGlobalsOfPriorCodeObjects at load
+  // time). Destroying the parent first would leave those pointers dangling
+  // when the device-function executable is destroyed.
+  const auto Core = CoreApi.getTable();
+  for (auto &Rec : DeviceFuncRecords) {
+    E = llvm::joinErrors(std::move(E),
+                         hsa::executableDestroy(Core, Rec.Exec));
+    E = llvm::joinErrors(std::move(E),
+                         hsa::codeObjectReaderDestroy(Rec.Reader, Core));
+  }
+  DeviceFuncRecords.clear();
   // eraseRecordLocked calls ByOriginal.erase, which bumps DenseMap's epoch and
   // may rehome other buckets — no surviving iterator can bridge iterations.
   // Drain via begin() each pass; DenseMap::end() is recomputed on each cmp.
@@ -996,6 +1009,126 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   }
 
   return InstrSym;
+}
+
+//===----------------------------------------------------------------------===//
+// loadInstrumentedDeviceFunction
+//===----------------------------------------------------------------------===//
+
+llvm::Error
+InstrumentedKernelLoaderAndLauncher::loadInstrumentedDeviceFunction(
+    std::unique_ptr<llvm::MemoryBuffer> Relocatable,
+    const llvm::amdhsa::kernel_descriptor_t *EnclosingKD, uint64_t Preset) {
+  LLVM_DEBUG(
+      luthier::dbgs()
+      << "[InstrumentedKernelLoaderAndLauncher] loadInstrumentedDeviceFunction "
+      << "EnclosingKD=" << EnclosingKD << " preset=" << Preset << "\n");
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      Relocatable != nullptr,
+      "Null relocatable MemoryBuffer passed to loadInstrumentedDeviceFunction"));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      EnclosingKD != nullptr,
+      "Null enclosing kernel-descriptor pointer passed to "
+      "loadInstrumentedDeviceFunction"));
+
+  const auto Core = CoreApi.getTable();
+
+  // Resolve the owning agent from the enclosing kernel-descriptor's HSA
+  // pointer info — the KD is loaded into agent-visible memory, so its
+  // owner is the agent whose code object dispatched the wave that missed
+  // in the resolver. No callee-address query is needed.
+  hsa_amd_pointer_info_t PointerInfo{};
+  PointerInfo.size = sizeof(hsa_amd_pointer_info_t);
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+      AmdExt.getTable().callFunction<hsa_amd_pointer_info>(
+          const_cast<void *>(reinterpret_cast<const void *>(EnclosingKD)),
+          &PointerInfo,
+          /*alloc=*/nullptr, /*num_agents_accessible=*/nullptr,
+          /*accessible=*/nullptr),
+      llvm::formatv("Failed to query HSA pointer info for enclosing KD {0}",
+                    static_cast<const void *>(EnclosingKD))));
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      PointerInfo.type != HSA_EXT_POINTER_TYPE_UNKNOWN,
+      llvm::formatv("Enclosing KD {0} is not owned by any HSA allocation",
+                    static_cast<const void *>(EnclosingKD))));
+  hsa_agent_t Agent = PointerInfo.agentOwner;
+
+  llvm::sys::ScopedWriter W(Mutex);
+
+  // Link REL → shared so the resulting object has a proper .dynsym /
+  // PT_DYNAMIC layout, same as the kernel path.
+  llvm::SmallVector<char, 0> LinkedBuf;
+  LUTHIER_RETURN_ON_ERROR(linker::linkRelocatableToExecutable(
+      llvm::ArrayRef<char>(Relocatable->getBufferStart(),
+                            Relocatable->getBufferSize()),
+      LinkedBuf));
+  auto Linked = std::make_unique<llvm::SmallVectorMemoryBuffer>(
+      std::move(LinkedBuf), "luthier.instrumented.devfunc.linked",
+      /*RequiresNullTerminator=*/false);
+  Relocatable = std::move(Linked);
+
+  llvm::MemoryBufferRef RelocRef = Relocatable->getMemBufferRef();
+
+  // Stand up the HSA executable and bind it against every global variable
+  // the enclosing kernel's own instrumented code objects already define, so
+  // the just-lifted device function's references to Luthier's runtime
+  // resolver globals (\c EntryPointToTraceFunctionAddrMap and friends) and
+  // to any kernel-side device globals the tool published resolve.
+  auto ExecOrErr = hsa::executableCreate(Core);
+  LUTHIER_RETURN_ON_ERROR(ExecOrErr.takeError());
+  hsa_executable_t Exec = *ExecOrErr;
+
+  {
+    auto ParentIt = ByOriginal.find(Key{EnclosingKD, Preset});
+    if (ParentIt != ByOriginal.end()) {
+      if (auto Err = defineGlobalsOfPriorCodeObjects(ParentIt->second, Exec,
+                                                    Agent))
+        return llvm::joinErrors(std::move(Err),
+                                hsa::executableDestroy(Core, Exec));
+    }
+    // If there is no enclosing-kernel record, we still proceed — the
+    // pipeline may have produced a fully self-contained device function
+    // (no references to Luthier's runtime resolver globals). If it did
+    // reference them, hsa_executable_load_agent_code_object will refuse
+    // the code object with an undefined-symbol error, which is the right
+    // failure signal.
+  }
+
+  auto ReaderOrErr =
+      hsa::codeObjectReaderCreateFromMemory(Core, RelocRef.getBuffer());
+  if (!ReaderOrErr)
+    return llvm::joinErrors(ReaderOrErr.takeError(),
+                            hsa::executableDestroy(Core, Exec));
+  hsa_code_object_reader_t Reader = *ReaderOrErr;
+
+  auto Fail = [&](llvm::Error E) -> llvm::Error {
+    return llvm::joinErrors(
+        llvm::joinErrors(std::move(E), hsa::executableDestroy(Core, Exec)),
+        hsa::codeObjectReaderDestroy(Reader, Core));
+  };
+
+  if (auto Err = hsa::executableLoadAgentCodeObject(Core, Exec, Reader, Agent)
+                     .takeError())
+    return Fail(std::move(Err));
+  if (auto Err = hsa::executableFreeze(Core, Exec))
+    return Fail(std::move(Err));
+
+  // Freezing the executable fires the code object's device-side
+  // constructor, which appends this device function's (\c TraceAddr →
+  // \c FnHandleAddr ) seed entry into the runtime resolver table under
+  // the caller-held map lock — that's the entire "publish" step.
+  DeviceFuncRecord Rec;
+  Rec.RelocatableBuffer = std::move(Relocatable);
+  Rec.Reader = Reader;
+  Rec.Exec = Exec;
+  Rec.Agent = Agent;
+  DeviceFuncRecords.push_back(std::move(Rec));
+
+  LLVM_DEBUG(luthier::dbgs()
+             << "[InstrumentedKernelLoaderAndLauncher] loaded instrumented "
+                "device-function code object under EnclosingKD="
+             << EnclosingKD << " preset=" << Preset << "\n");
+  return llvm::Error::success();
 }
 
 //===----------------------------------------------------------------------===//

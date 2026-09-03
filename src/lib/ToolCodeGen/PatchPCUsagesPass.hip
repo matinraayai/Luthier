@@ -109,6 +109,40 @@ void luthier::PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap() 
   // Size the allocation to the codegen-time seed count + 5, so the host
   // callback can append 5 more entries before it has to reallocate.
   const std::uint32_t SeedN = P::EntryPointToTraceFunctionAddrMapSeedSize;
+
+  // Two entry modes: a first-time init that allocates a fresh runtime
+  // table sized to the seed + 5-entry slack, and an extend-into-place mode
+  // that keeps whatever entries a prior constructor already installed and
+  // appends this code object's seed to them. The pointer being non-null
+  // (paired with a non-zero \c MaxSize ) is the "already initialised" gate:
+  // it lets a later-loaded code object contribute its own trace-fn entries
+  // without a "discover the initial entry point" step at load time — the
+  // table just grows.
+  if (P::EntryPointToTraceFunctionAddrMap != nullptr &&
+      P::EntryPointToTraceFunctionAddrMapMaxSize > 0u) {
+    const std::uint32_t OldSize = P::EntryPointToTraceFunctionAddrMapSize;
+    const std::uint32_t Needed = OldSize + SeedN;
+    if (Needed > P::EntryPointToTraceFunctionAddrMapMaxSize) {
+      // Grow to \c Needed + 5-entry slack so subsequent extends /
+      // host-callback appends have headroom.
+      const std::uint32_t NewCapacity = Needed + 5u;
+      TE *NewBuf = static_cast<TE *>(malloc(sizeof(TE) * NewCapacity));
+      for (std::uint32_t I = 0; I < OldSize; ++I)
+        NewBuf[I] = P::EntryPointToTraceFunctionAddrMap[I];
+      free(P::EntryPointToTraceFunctionAddrMap);
+      P::EntryPointToTraceFunctionAddrMap = NewBuf;
+      P::EntryPointToTraceFunctionAddrMapMaxSize = NewCapacity;
+    }
+    for (std::uint32_t I = 0; I < SeedN; ++I)
+      P::EntryPointToTraceFunctionAddrMap[OldSize + I] =
+          P::EntryPointToTraceFunctionAddrMapSeed[I];
+    P::EntryPointToTraceFunctionAddrMapSize = Needed;
+    return;
+  }
+
+  // First-time init: size the allocation to the codegen-time seed count
+  // + 5, so the host callback can append 5 more entries before it has to
+  // reallocate.
   const std::uint32_t Capacity = SeedN + 5u;
   P::EntryPointToTraceFunctionAddrMap =
       static_cast<TE *>(malloc(sizeof(TE) * Capacity));
@@ -164,8 +198,11 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
                       std::uint64_t HostFnPtr) {
   using PCP = luthier::PatchPCUsagesPass;
 
-  // Acquire the wave-uniform spinlock.
-  while (atomicCAS(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u, 1u) != 0u) {
+  // Acquire the wave-uniform spinlock — but only through hardware lane 0.
+  if (__lane_id() == 0u) {
+    while (atomicCAS(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u,
+                     1u) != 0u) {
+    }
   }
 
   const PCP::EntryPointTraceFunctionEntry *BR = PCP::Parser::EntryPointToTraceFunctionAddrMap;
@@ -173,7 +210,9 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
   for (std::uint32_t I = 0; I < BRN; ++I) {
     if (BR[I].TraceAddr == Cur) {
       luthier::writeReg<std::uint64_t>(Reg, BR[I].FnHandleAddr);
-      atomicExch(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u);
+      if (__lane_id() == 0u) {
+        atomicExch(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u);
+      }
       return;
     }
   }
@@ -188,7 +227,9 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
       reinterpret_cast<unsigned long>(&PCP::Parser::EntryPointToTraceFunctionAddrMapSize),
       reinterpret_cast<unsigned long>(&PCP::Parser::EntryPointToTraceFunctionAddrMapMaxSize),
       0, 0);
-  atomicExch(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u);
+  if (__lane_id() == 0u) {
+    atomicExch(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u);
+  }
   luthier::writeReg<std::uint64_t>(Reg, static_cast<std::uint64_t>(Result[0]));
 }
 
@@ -1015,6 +1056,39 @@ llvm::Error rewriteSetPC(RunContext &RC, llvm::MachineInstr &MI) {
   return injectRegPatchPayload(RC, MI, TargetReg, SR);
 }
 
+/// Drop the synthetic \c S_ENDPGM continuation \c CodeDiscoveryPass placed
+/// after \p CallMBB (which held the original call/branch MI). Once the
+/// call MI has been lowered to \c S_SETPC_B64_return the continuation is
+/// unreachable: the return is a barrier terminator, control never falls
+/// through to it. Leaving the stale \c CallMBB → \c EndpgmMBB successor
+/// edge would tell downstream liveness / IP-predicated-CFG consumers that
+/// this MBB has an intra-procedural successor when it really has none —
+/// so remove the edge here, and delete the dead MBB when nothing else
+/// references it.
+///
+/// A synthetic-endpgm MBB is identified by its shape rather than a flag,
+/// mirroring the "1 MI, opcode \c S_ENDPGM" pattern \c CodeDiscoveryPass
+/// emits (see the "Isolated synthetic S_ENDPGM MBB" section).
+void dropDeadSyntheticEndpgmContinuation(llvm::MachineBasicBlock &CallMBB) {
+  llvm::MachineFunction &MF = *CallMBB.getParent();
+  llvm::SmallVector<llvm::MachineBasicBlock *, 2> DeadSuccs;
+  for (llvm::MachineBasicBlock *Succ : CallMBB.successors()) {
+    if (Succ->size() != 1)
+      continue;
+    if (Succ->back().getOpcode() != llvm::AMDGPU::S_ENDPGM)
+      continue;
+    DeadSuccs.push_back(Succ);
+  }
+  for (llvm::MachineBasicBlock *Succ : DeadSuccs) {
+    CallMBB.removeSuccessor(Succ);
+    if (Succ->pred_empty()) {
+      Succ->eraseFromParent();
+      LLVM_DEBUG(llvm::dbgs() << "[PatchPCUsagesPass]     dropped dead "
+                                 "synthetic S_ENDPGM MBB\n");
+    }
+  }
+}
+
 /// S_SWAPPC_B64: materialize `TraceAddr + 4` into the RA-dest pair via
 /// direct S_MOV_B32s, inject the target-reg payload as above, and lower
 /// the opcode from S_SWAPPC_B64 to S_SETPC_B64 so the atomic RA write
@@ -1045,11 +1119,12 @@ llvm::Error rewriteSwapPC(RunContext &RC, llvm::MachineInstr &MI,
   //    flag / retranslation bit on the rewritten jump.
   const llvm::DebugLoc DL = MI.getDebugLoc();
   llvm::MDNode *TraceMD = MI.getPCSections();
-  auto NewMI = llvm::BuildMI(MBB, MI, DL, TII.get(llvm::AMDGPU::S_SETPC_B64))
+  auto NewMI = llvm::BuildMI(MBB, MI, DL, TII.get(llvm::AMDGPU::S_SETPC_B64_return))
                    .addReg(TargetReg);
   if (TraceMD)
     NewMI->setPCSections(*MI.getMF(), TraceMD);
   MI.eraseFromParent();
+  dropDeadSyntheticEndpgmContinuation(MBB);
   return llvm::Error::success();
 }
 
@@ -1085,11 +1160,12 @@ llvm::Error rewriteCall(RunContext &RC, llvm::MachineInstr &MI,
   // pcsections MDNode across.
   const llvm::DebugLoc DL = MI.getDebugLoc();
   llvm::MDNode *TraceMD = MI.getPCSections();
-  auto NewMI = llvm::BuildMI(MBB, MI, DL, TII.get(llvm::AMDGPU::S_SETPC_B64))
+  auto NewMI = llvm::BuildMI(MBB, MI, DL, TII.get(llvm::AMDGPU::S_SETPC_B64_return))
                    .addReg(ScavPair);
   if (TraceMD)
     NewMI->setPCSections(*MI.getMF(), TraceMD);
   MI.eraseFromParent();
+  dropDeadSyntheticEndpgmContinuation(MBB);
   return llvm::Error::success();
 }
 
@@ -1116,11 +1192,12 @@ llvm::Error rewriteAddPC(RunContext &RC, llvm::MachineInstr &MI,
   // pcsections MDNode across.
   const llvm::DebugLoc DL = MI.getDebugLoc();
   llvm::MDNode *TraceMD = MI.getPCSections();
-  auto NewMI = llvm::BuildMI(MBB, MI, DL, TII.get(llvm::AMDGPU::S_SETPC_B64))
+  auto NewMI = llvm::BuildMI(MBB, MI, DL, TII.get(llvm::AMDGPU::S_SETPC_B64_return))
                    .addReg(ScavPair);
   if (TraceMD)
     NewMI->setPCSections(*MI.getMF(), TraceMD);
   MI.eraseFromParent();
+  dropDeadSyntheticEndpgmContinuation(MBB);
   return llvm::Error::success();
 }
 
@@ -1139,6 +1216,7 @@ llvm::Error rewriteIfRelevant(RunContext &RC, llvm::MachineInstr &MI) {
   switch (Opcode) {
   case llvm::AMDGPU::S_GETPC_B64:
   case llvm::AMDGPU::S_SETPC_B64:
+  case llvm::AMDGPU::S_SETPC_B64_return:
   case llvm::AMDGPU::S_SWAPPC_B64:
   case llvm::AMDGPU::S_CALL_B64:
   case llvm::AMDGPU::S_ADD_PC_I64:

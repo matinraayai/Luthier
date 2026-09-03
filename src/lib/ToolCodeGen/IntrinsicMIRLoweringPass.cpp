@@ -197,21 +197,26 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     return false;
   }
 
-  SVAVGPRPlaceholder =
-      SVAVGPR ? MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass)
-              : llvm::AMDGPU::VGPR0;
+  /// TODO file an issue with LLVM to be able to actually use WWM
+  SVAVGPRPlaceholder = SVAVGPR ? llvm::Register(SVAVGPR) : llvm::AMDGPU::VGPR0;
   if (SVAVGPR) {
-    MRI.setSimpleHint(SVAVGPRPlaceholder, SVAVGPR);
     llvm::MDNode *MarkerNode = llvm::MDNode::get(
     Ctx, {llvm::MDString::get(Ctx, "luthier.sva_vgpr_placeholder")});
+    // Declare the SVA physreg as an entry live-in
+    if (!MF.front().isLiveIn(SVAVGPR))
+      MF.front().addLiveIn(SVAVGPR);
+
+    // Anchor a dead virtual VGPR for \c svaInsertPt only. Emitting
+    // IMPLICIT_DEF on the physreg itself upsets downstream RA/LiveRegs
+    // bookkeeping; a dead vreg with a properly-defined lifetime is fine.
+    llvm::Register SVAAnchorVReg =
+        MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
     SVAImplDef =
         llvm::BuildMI(MF.front(), SVAInsertPt, llvm::MIMetadata(),
-                      TII->get(llvm::AMDGPU::IMPLICIT_DEF), SVAVGPRPlaceholder)
+                      TII->get(llvm::AMDGPU::IMPLICIT_DEF), SVAAnchorVReg)
             .getInstr();
     SVAImplDef->setPCSections(MF, MarkerNode);
   }
-
-  SIMFI->setFlag(SVAVGPRPlaceholder, llvm::AMDGPU::VirtRegFlag::WWM_REG);
 
   // Reserve the SVA lane region on the WWM LaneVGPR in lane order.
   llvm::MachineFrameInfo &MFI = MF.getFrameInfo();

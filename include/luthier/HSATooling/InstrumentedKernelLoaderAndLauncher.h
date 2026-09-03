@@ -236,6 +236,48 @@ public:
                        const llvm::amdhsa::kernel_descriptor_t *OriginalKD,
                        uint64_t Preset = 0);
 
+  /// Load an instrumented copy of a *device function* — a non-kernel
+  /// callable the runtime resolver hit at a wave's indirect callsite that
+  /// isn't yet in the on-device address map. Used by \c PatchPCUsagesPass 's
+  /// host callback when it needs to synchronously bring up an instrumented
+  /// variant of an external device function reached mid-dispatch.
+  ///
+  /// The relocatable is linked to a shared object with
+  /// \c linker::linkRelocatableToExecutable (same as \c loadInstrumented),
+  /// loaded into a fresh HSA executable, and bound against the code objects
+  /// currently cached under <tt>(EnclosingKD, Preset)</tt> so device globals
+  /// like \c EntryPointToTraceFunctionAddrMap resolve to the kernel-side
+  /// storage the wave will look them up in. The entry-point symbol is
+  /// picked by ELF walk — the first \c STT_FUNC symbol that is not one of
+  /// the standard \c amdgcn.device.{init,fini} kernels and not a Luthier
+  /// resolver-payload artifact.
+  ///
+  /// \param Relocatable REL bytes produced by
+  ///   \c runInstrumentationPipelineForDeviceFunction.
+  /// \param EnclosingKD kernel descriptor of the dispatch this callback
+  ///   fires under; used to (a) pick the agent and (b) find the parent
+  ///   record whose globals we bind against.
+  /// Stand up the just-instrumented device-function relocatable as an
+  /// HSA executable bound against the enclosing kernel's already-loaded
+  /// Luthier globals. The (\c OriginalDevFuncAddr → \c FnHandleAddr )
+  /// mapping the wave will resolve to is installed into the runtime
+  /// resolver table by the loaded code object's
+  /// \c initEntryPointToTraceFunctionAddrMap constructor at load time
+  /// (see \c PatchPCUsagesPass ), so the loader itself no longer computes
+  /// an entry-point address — callers consult the device-side table for
+  /// that.
+  ///
+  /// The owning HSA agent is derived from \p EnclosingKD 's HSA pointer
+  /// info; no callee-address query is needed.
+  ///
+  /// \param Preset must match the preset used when the enclosing kernel
+  ///   was instrumented so we bind against the same copy of the runtime
+  ///   resolver's globals.
+  llvm::Error loadInstrumentedDeviceFunction(
+      std::unique_ptr<llvm::MemoryBuffer> Relocatable,
+      const llvm::amdhsa::kernel_descriptor_t *EnclosingKD,
+      uint64_t Preset = 0);
+
   /// Tear down every cached record. Joins all HSA destruction errors
   /// and returns the joined \c llvm::Error (success only if every
   /// teardown succeeded). Idempotent.
@@ -415,6 +457,27 @@ protected:
 
   /// Authoritative storage of every cached record.
   llvm::DenseMap<Key, CodeObjectList, KeyDenseMapInfo> ByOriginal;
+
+  /// One code object we brought up for a device function reached at
+  /// runtime by the resolver payload. Simpler than \c InstrumentedRecord
+  /// because a device function has no kernel descriptor, no
+  /// device.init/fini ctor/dtor path, no extended kernarg buffer, and no
+  /// hostcall/heap buffers to stand up — the enclosing kernel's record
+  /// owns all of those. Kept only for HSA-lifetime bookkeeping (destroy
+  /// on unload); the caller/callee address mapping now lives in the
+  /// device-side resolver table populated by the code object's ctor,
+  /// see \c PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap.
+  struct DeviceFuncRecord {
+    std::unique_ptr<llvm::MemoryBuffer> RelocatableBuffer;
+    hsa_code_object_reader_t Reader{};
+    hsa_executable_t Exec{};
+    hsa_agent_t Agent{};
+  };
+
+  /// HSA-lifetime bookkeeping for every instrumented device-function code
+  /// object we've brought up. Destroyed on \c unloadAll ; not consulted
+  /// for address resolution (that's the device-side resolver table's job).
+  std::vector<DeviceFuncRecord> DeviceFuncRecords;
 
   /// Cached \c HSA_AMD_SYSTEM_INFO_SVM_SUPPORTED query result.
   std::optional<bool> HmmSupportedCache;
