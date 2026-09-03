@@ -126,7 +126,8 @@ public:
   /// the SVS's emergency slot and loads the SVA from \c this scheme into
   /// \c VGPR0 (all lanes) so the callee sees \c V0 == SVA on entry.
   virtual void handOffSVA(llvm::MachineInstr &MI,
-                          const StateValueArraySpecs &Specs) const = 0;
+                          const StateValueArraySpecs &Specs,
+                          const llvm::GCNSubtarget &ST) const = 0;
 
   /// Cross trace function handoff protocol — callee side. Emitted at the
   /// first MI of a device-function entry block: \c VGPR0 arrives holding the
@@ -134,7 +135,8 @@ public:
   /// scheme's storage (the entry-block SVS) and restores \c VGPR0's app value
   /// (all lanes) from the SVS's emergency slot.
   virtual void pickOffSVA(llvm::MachineInstr &MI,
-                          const StateValueArraySpecs &Specs) const = 0;
+                          const StateValueArraySpecs &Specs,
+                          const llvm::GCNSubtarget &ST) const = 0;
 
   /// Emit a set of instructions after \p MI that moves \c this
   /// the \p TargetSVS
@@ -205,11 +207,11 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override {};
 
-  void handOffSVA(llvm::MachineInstr &MI,
-                  const StateValueArraySpecs &Specs) const override;
+  void handOffSVA(llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+                  const llvm::GCNSubtarget &ST) const override;
 
-  void pickOffSVA(llvm::MachineInstr &MI,
-                  const StateValueArraySpecs &Specs) const override;
+  void pickOffSVA(llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+                  const llvm::GCNSubtarget &ST) const override;
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
@@ -256,11 +258,11 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
 
-  void handOffSVA(llvm::MachineInstr &MI,
-                  const StateValueArraySpecs &Specs) const override;
+  void handOffSVA(llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+                  const llvm::GCNSubtarget &ST) const override;
 
-  void pickOffSVA(llvm::MachineInstr &MI,
-                  const StateValueArraySpecs &Specs) const override;
+  void pickOffSVA(llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+                  const llvm::GCNSubtarget &ST) const override;
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
@@ -318,11 +320,11 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
 
-  void handOffSVA(llvm::MachineInstr &MI,
-                  const StateValueArraySpecs &Specs) const override;
+  void handOffSVA(llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+                  const llvm::GCNSubtarget &ST) const override;
 
-  void pickOffSVA(llvm::MachineInstr &MI,
-                  const StateValueArraySpecs &Specs) const override;
+  void pickOffSVA(llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+                  const llvm::GCNSubtarget &ST) const override;
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
@@ -376,11 +378,11 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
 
-  void handOffSVA(llvm::MachineInstr &MI,
-                  const StateValueArraySpecs &Specs) const override;
+  void handOffSVA(llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+                  const llvm::GCNSubtarget &ST) const override;
 
-  void pickOffSVA(llvm::MachineInstr &MI,
-                  const StateValueArraySpecs &Specs) const override;
+  void pickOffSVA(llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+                  const llvm::GCNSubtarget &ST) const override;
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
@@ -426,11 +428,11 @@ public:
   void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                           llvm::MCRegister SrcVGPR) const override;
 
-  void handOffSVA(llvm::MachineInstr &MI,
-                  const StateValueArraySpecs &Specs) const override;
+  void handOffSVA(llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+                  const llvm::GCNSubtarget &ST) const override;
 
-  void pickOffSVA(llvm::MachineInstr &MI,
-                  const StateValueArraySpecs &Specs) const override;
+  void pickOffSVA(llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+                  const llvm::GCNSubtarget &ST) const override;
 
   void
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,

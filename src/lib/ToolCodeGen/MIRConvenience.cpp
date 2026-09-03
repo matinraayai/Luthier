@@ -106,11 +106,30 @@ void emitExecMaskFlip(llvm::MachineBasicBlock::iterator MI) {
       .addReg(Exec, llvm::RegState::Kill);
 }
 
+void emitExecMaskFlip(llvm::MachineBasicBlock &MBB) {
+  const auto &ST = MBB.getParent()->getSubtarget<llvm::GCNSubtarget>();
+  const auto &TII = *ST.getInstrInfo();
+  const llvm::MCRegister Exec = ST.getRegisterInfo()->getExec();
+  const unsigned Opc =
+      ST.isWave32() ? llvm::AMDGPU::S_NOT_B32 : llvm::AMDGPU::S_NOT_B64;
+  (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(), TII.get(Opc), Exec)
+      .addReg(Exec, llvm::RegState::Kill);
+}
+
 void emitMoveFromVGPRToVGPR(llvm::MachineBasicBlock::iterator MI,
                             llvm::MCRegister SrcVGPR, llvm::MCRegister DestVGPR,
                             bool KillSource) {
   const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
   llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
+                TII.get(llvm::AMDGPU::V_MOV_B32_e32), DestVGPR)
+      .addReg(SrcVGPR, llvm::getKillRegState(KillSource));
+}
+
+void emitMoveFromVGPRToVGPR(llvm::MachineBasicBlock &MBB,
+                            llvm::MCRegister SrcVGPR, llvm::MCRegister DestVGPR,
+                            bool KillSource) {
+  const auto &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+  llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
                 TII.get(llvm::AMDGPU::V_MOV_B32_e32), DestVGPR)
       .addReg(SrcVGPR, llvm::getKillRegState(KillSource));
 }
@@ -238,11 +257,34 @@ void emitLoadFromEmergencyVGPRScratchSpillLocation(
       .addImm(0);
 }
 
+void emitLoadFromEmergencyVGPRScratchSpillLocation(
+    llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
+    llvm::MCRegister DestVGPR) {
+  const auto &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+  (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
+                      TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), DestVGPR)
+      .addReg(StackPtr)
+      .addImm(-8)
+      .addImm(0);
+}
+
 void emitStoreToEmergencyVGPRScratchSpillLocation(
     llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
     llvm::MCRegister SrcVGPR, bool KillSource) {
   const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
   (void)llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
+                      TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
+      .addReg(SrcVGPR, llvm::getKillRegState(KillSource))
+      .addReg(StackPtr)
+      .addImm(-8)
+      .addImm(0);
+}
+
+void emitStoreToEmergencyVGPRScratchSpillLocation(
+    llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
+    llvm::MCRegister SrcVGPR, bool KillSource) {
+  const auto &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+  (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
                       TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
       .addReg(SrcVGPR, llvm::getKillRegState(KillSource))
       .addReg(StackPtr)

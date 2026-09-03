@@ -1346,8 +1346,20 @@ bool SpilledWithOneSGPRsValueStorage::operator==(
 //     * Restore VGPR0 (all lanes) from the SVS's emergency slot.
 
 void VGPRStateValueArrayStorage::handOffSVA(
-    llvm::MachineInstr &MI, const StateValueArraySpecs &Specs) const {
+    llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+    const llvm::GCNSubtarget &ST) const {
   llvm::MachineBasicBlock::iterator Iter = MI.getIterator();
+  const bool NeedsFSInstall = !ST.hasArchitectedFlatScratch();
+  std::optional<uint8_t> FSSaveLane;
+  auto FSLoLane = Specs.findArgumentLane(FLAT_SCRATCH);
+  if (NeedsFSInstall) {
+    FSSaveLane = Specs.getScratchSpillLane();
+    if (!FSSaveLane || FSLoLane == Specs.argument_lane_end())
+      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_MAKE_GENERIC_ERROR(
+          "VGPRStateValueArrayStorage::handOffSVA on absolute-FS target "
+          "needs both ScratchSpillLane and a FLAT_SCRATCH SA lane in the "
+          "SVA layout to trampoline FLAT_SCR through."));
+  }
   // 1. Stash SGPR0 in the SVS's FramePointerRegSpillLane so we can
   //    scavenge SGPR0 as the SADDR for the SP-relative scratch ops.
   emitMoveFromSGPRToVGPRLane(Iter, llvm::AMDGPU::SGPR0, StorageVGPR,
@@ -1360,18 +1372,39 @@ void VGPRStateValueArrayStorage::handOffSVA(
   llvm::MachineBasicBlock::iterator Next =
       createSCCSafeSequenceOfMIs(Iter, [&](llvm::MachineBasicBlock &IPMBB,
                                            const llvm::TargetInstrInfo &TII) {
+        if (NeedsFSInstall) {
+          emitMoveFromSGPRToVGPRLane(IPMBB, llvm::AMDGPU::FLAT_SCR_LO,
+                                     StorageVGPR, *FSSaveLane, false);
+          emitMoveFromSGPRToVGPRLane(IPMBB, llvm::AMDGPU::FLAT_SCR_HI,
+                                     StorageVGPR, *FSSaveLane + 1, false);
+          emitMoveFromVGPRLaneToSGPR(IPMBB, StorageVGPR,
+                                     llvm::AMDGPU::FLAT_SCR_LO,
+                                     FSLoLane->second, false);
+          emitMoveFromVGPRLaneToSGPR(IPMBB, StorageVGPR,
+                                     llvm::AMDGPU::FLAT_SCR_HI,
+                                     FSLoLane->second + 1, false);
+        }
         // Active lanes.
         emitStoreToEmergencyVGPRScratchSpillLocation(
-            IPMBB.end(), llvm::AMDGPU::SGPR0, llvm::AMDGPU::VGPR0, false);
-        emitMoveFromVGPRToVGPR(IPMBB.end(), StorageVGPR, llvm::AMDGPU::VGPR0,
+            IPMBB, llvm::AMDGPU::SGPR0, llvm::AMDGPU::VGPR0, false);
+        emitMoveFromVGPRToVGPR(IPMBB, StorageVGPR, llvm::AMDGPU::VGPR0,
                                false);
-        emitExecMaskFlip(IPMBB.end());
+        emitExecMaskFlip(IPMBB);
         // Inactive lanes.
         emitStoreToEmergencyVGPRScratchSpillLocation(
-            IPMBB.end(), llvm::AMDGPU::SGPR0, llvm::AMDGPU::VGPR0, false);
-        emitMoveFromVGPRToVGPR(IPMBB.end(), StorageVGPR, llvm::AMDGPU::VGPR0,
+            IPMBB, llvm::AMDGPU::SGPR0, llvm::AMDGPU::VGPR0, false);
+        emitMoveFromVGPRToVGPR(IPMBB, StorageVGPR, llvm::AMDGPU::VGPR0,
                                false);
-        emitExecMaskFlip(IPMBB.end());
+        emitExecMaskFlip(IPMBB);
+        // Restore app's FLAT_SCR pair from the ScratchSpillLane spill.
+        if (NeedsFSInstall) {
+          emitMoveFromVGPRLaneToSGPR(IPMBB, StorageVGPR,
+                                     llvm::AMDGPU::FLAT_SCR_LO, *FSSaveLane,
+                                     false);
+          emitMoveFromVGPRLaneToSGPR(IPMBB, StorageVGPR,
+                                     llvm::AMDGPU::FLAT_SCR_HI,
+                                     *FSSaveLane + 1, false);
+        }
       });
   emitWaitCnt(Next);
   // 5. Restore SGPR0 from the SVS's FramePointerRegSpillLane.
@@ -1380,18 +1413,28 @@ void VGPRStateValueArrayStorage::handOffSVA(
 }
 
 void VGPRStateValueArrayStorage::pickOffSVA(
-    llvm::MachineInstr &MI, const StateValueArraySpecs &Specs) const {
+    llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+    const llvm::GCNSubtarget &ST) const {
+  const bool NeedsFSInstall = !ST.hasArchitectedFlatScratch();
+  std::optional<uint8_t> FSSaveLane;
+  auto FSLoLane = Specs.findArgumentLane(FLAT_SCRATCH);
+  if (NeedsFSInstall) {
+    FSSaveLane = Specs.getScratchSpillLane();
+    if (!FSSaveLane || FSLoLane == Specs.argument_lane_end())
+      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_MAKE_GENERIC_ERROR(
+          "VGPRStateValueArrayStorage::pickOffSVA on absolute-FS target "
+          "needs both ScratchSpillLane and a FLAT_SCRATCH SA lane in the "
+          "SVA layout to trampoline FLAT_SCR through."));
+  }
   // 1. Copy V0 (which arrives holding the SVA) → StorageVGPR (all lanes).
   //    After this, StorageVGPR holds the SVA and V0 still holds the SVA.
   llvm::MachineBasicBlock::iterator AfterMove = createSCCSafeSequenceOfMIs(
       MI.getIterator(),
       [&](llvm::MachineBasicBlock &IPMBB, const llvm::TargetInstrInfo &TII) {
-        emitMoveFromVGPRToVGPR(IPMBB.end(), llvm::AMDGPU::VGPR0, StorageVGPR,
-                               false);
-        emitExecMaskFlip(IPMBB.end());
-        emitMoveFromVGPRToVGPR(IPMBB.end(), llvm::AMDGPU::VGPR0, StorageVGPR,
-                               false);
-        emitExecMaskFlip(IPMBB.end());
+        emitMoveFromVGPRToVGPR(IPMBB, llvm::AMDGPU::VGPR0, StorageVGPR, false);
+        emitExecMaskFlip(IPMBB);
+        emitMoveFromVGPRToVGPR(IPMBB, llvm::AMDGPU::VGPR0, StorageVGPR, false);
+        emitExecMaskFlip(IPMBB);
       });
   // 2. Stash SGPR0 in the SVS's FramePointerRegSpillLane of StorageVGPR.
   emitMoveFromSGPRToVGPRLane(AfterMove, llvm::AMDGPU::SGPR0, StorageVGPR,
@@ -1403,12 +1446,32 @@ void VGPRStateValueArrayStorage::pickOffSVA(
   llvm::MachineBasicBlock::iterator AfterLoad = createSCCSafeSequenceOfMIs(
       AfterMove,
       [&](llvm::MachineBasicBlock &IPMBB, const llvm::TargetInstrInfo &TII) {
+        if (NeedsFSInstall) {
+          emitMoveFromSGPRToVGPRLane(IPMBB, llvm::AMDGPU::FLAT_SCR_LO,
+                                     StorageVGPR, *FSSaveLane, false);
+          emitMoveFromSGPRToVGPRLane(IPMBB, llvm::AMDGPU::FLAT_SCR_HI,
+                                     StorageVGPR, *FSSaveLane + 1, false);
+          emitMoveFromVGPRLaneToSGPR(IPMBB, StorageVGPR,
+                                     llvm::AMDGPU::FLAT_SCR_LO,
+                                     FSLoLane->second, false);
+          emitMoveFromVGPRLaneToSGPR(IPMBB, StorageVGPR,
+                                     llvm::AMDGPU::FLAT_SCR_HI,
+                                     FSLoLane->second + 1, false);
+        }
         emitLoadFromEmergencyVGPRScratchSpillLocation(
-            IPMBB.end(), llvm::AMDGPU::SGPR0, llvm::AMDGPU::VGPR0);
-        emitExecMaskFlip(IPMBB.end());
+            IPMBB, llvm::AMDGPU::SGPR0, llvm::AMDGPU::VGPR0);
+        emitExecMaskFlip(IPMBB);
         emitLoadFromEmergencyVGPRScratchSpillLocation(
-            IPMBB.end(), llvm::AMDGPU::SGPR0, llvm::AMDGPU::VGPR0);
-        emitExecMaskFlip(IPMBB.end());
+            IPMBB, llvm::AMDGPU::SGPR0, llvm::AMDGPU::VGPR0);
+        emitExecMaskFlip(IPMBB);
+        if (NeedsFSInstall) {
+          emitMoveFromVGPRLaneToSGPR(IPMBB, StorageVGPR,
+                                     llvm::AMDGPU::FLAT_SCR_LO, *FSSaveLane,
+                                     false);
+          emitMoveFromVGPRLaneToSGPR(IPMBB, StorageVGPR,
+                                     llvm::AMDGPU::FLAT_SCR_HI,
+                                     *FSSaveLane + 1, false);
+        }
       });
   emitWaitCnt(AfterLoad);
   // 5. Restore SGPR0 from StorageVGPR's FramePointerRegSpillLane.
@@ -1459,22 +1522,26 @@ static void loadFlatScratchFromSVALanes(llvm::MachineBasicBlock::iterator Iter,
 }
 
 void TwoAGPRValueStorage::handOffSVA(llvm::MachineInstr &MI,
-                                     const StateValueArraySpecs &) const {
+                                     const StateValueArraySpecs &,
+                                     const llvm::GCNSubtarget &) const {
   emitCodeToLoadSVA(MI, llvm::AMDGPU::VGPR0);
 }
 
 void TwoAGPRValueStorage::pickOffSVA(llvm::MachineInstr &MI,
-                                     const StateValueArraySpecs &) const {
+                                     const StateValueArraySpecs &,
+                                     const llvm::GCNSubtarget &) const {
   emitCodeToStoreSVA(MI, llvm::AMDGPU::VGPR0);
 }
 
 void AGPRWithThreeSGPRSValueStorage::handOffSVA(
-    llvm::MachineInstr &MI, const StateValueArraySpecs &) const {
+    llvm::MachineInstr &MI, const StateValueArraySpecs &,
+    const llvm::GCNSubtarget &) const {
   emitCodeToLoadSVA(MI, llvm::AMDGPU::VGPR0);
 }
 
 void AGPRWithThreeSGPRSValueStorage::pickOffSVA(
-    llvm::MachineInstr &MI, const StateValueArraySpecs &Specs) const {
+    llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+    const llvm::GCNSubtarget &) const {
   llvm::MachineBasicBlock::iterator Iter = MI.getIterator();
   loadStackPointerFromSVALanes(Iter, llvm::AMDGPU::VGPR0, StackPointer, Specs);
   loadFlatScratchFromSVALanes(Iter, llvm::AMDGPU::VGPR0, FlatScratchSGPRLow,
@@ -1484,12 +1551,14 @@ void AGPRWithThreeSGPRSValueStorage::pickOffSVA(
 }
 
 void SpilledWithThreeSGPRsValueStorage::handOffSVA(
-    llvm::MachineInstr &MI, const StateValueArraySpecs &) const {
+    llvm::MachineInstr &MI, const StateValueArraySpecs &,
+    const llvm::GCNSubtarget &) const {
   emitCodeToLoadSVA(MI, llvm::AMDGPU::VGPR0);
 }
 
 void SpilledWithThreeSGPRsValueStorage::pickOffSVA(
-    llvm::MachineInstr &MI, const StateValueArraySpecs &Specs) const {
+    llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+    const llvm::GCNSubtarget &) const {
   llvm::MachineBasicBlock::iterator Iter = MI.getIterator();
   loadStackPointerFromSVALanes(Iter, llvm::AMDGPU::VGPR0, StackPointer, Specs);
   loadFlatScratchFromSVALanes(Iter, llvm::AMDGPU::VGPR0, FlatScratchSGPRLow,
@@ -1499,12 +1568,14 @@ void SpilledWithThreeSGPRsValueStorage::pickOffSVA(
 }
 
 void SpilledWithOneSGPRsValueStorage::handOffSVA(
-    llvm::MachineInstr &MI, const StateValueArraySpecs &) const {
+    llvm::MachineInstr &MI, const StateValueArraySpecs &,
+    const llvm::GCNSubtarget &) const {
   emitCodeToLoadSVA(MI, llvm::AMDGPU::VGPR0);
 }
 
 void SpilledWithOneSGPRsValueStorage::pickOffSVA(
-    llvm::MachineInstr &MI, const StateValueArraySpecs &Specs) const {
+    llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
+    const llvm::GCNSubtarget &) const {
   llvm::MachineBasicBlock::iterator Iter = MI.getIterator();
   loadStackPointerFromSVALanes(Iter, llvm::AMDGPU::VGPR0, StackPointer, Specs);
   emitCodeToStoreSVA(MI, llvm::AMDGPU::VGPR0);

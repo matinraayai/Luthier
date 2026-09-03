@@ -993,6 +993,12 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
       .addReg(SVSStorageVGPR)
       .addImm(Specs.getFramePointerRegSpillLane());
 
+  if (!AppUsesDynamicStack) {
+    auto &FrameInfo = MF.getFrameInfo();
+    FrameInfo.setStackSize(static_cast<uint64_t>(FrameInfo.getStackSize()) +
+                           SVSSlotsReservation);
+  }
+
   return llvm::Error::success();
 }
 
@@ -1407,15 +1413,23 @@ void emitPartialCallgraphSVSHandoffWraps(llvm::MachineFunction &MF,
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   "
                                 "emitPartialCallgraphSVSHandoffWraps MF='"
                              << MF.getName() << "'\n");
-  if (SVLoc.hasFixedStorageAcrossAllFunctions()) {
+  bool CFGFullyDiscovered = true;
+  for (const PredicatedMachineBasicBlock &PMBB : IPCFG) {
+    if (PMBB.hasUnresolvedEdges()) {
+      CFGFullyDiscovered = false;
+      break;
+    }
+  }
+  if (SVLoc.hasFixedStorageAcrossAllFunctions() && CFGFullyDiscovered) {
     LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
-                                  "SVS is fixed across all functions; "
+                                  "SVS is fixed and CFG fully discovered; "
                                   "skipping handoff for MF '"
                                << MF.getName() << "'\n");
     return;
   }
 
   const llvm::Function &F = MF.getFunction();
+  const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
   // 2. Callee side: pickOffSVA at entry of every device function.
   if (F.getCallingConv() != llvm::CallingConv::AMDGPU_KERNEL && !MF.empty()) {
     llvm::MachineBasicBlock &EntryMBB = MF.front();
@@ -1426,18 +1440,19 @@ void emitPartialCallgraphSVSHandoffWraps(llvm::MachineFunction &MF,
         LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
                                       "pickOffSVA at entry of device fn '"
                                    << MF.getName() << "'\n");
-        EntrySVS.pickOffSVA(EntryMBB.front(), Specs);
+        EntrySVS.pickOffSVA(EntryMBB.front(), Specs, ST);
       }
     }
   }
 
-  // 3. Caller side: handOffSVA before the last call/indirect-branch MI
-  //    in every MBB whose PMBB has unresolved edges.
+  // 3. Caller side: handOffSVA before the last call/indirect-branch/terminator
+  // MI (non S_ENDPGM) in every MBB whose PMBB has unresolved edges.
   unsigned HandOffsEmitted = 0;
   for (llvm::MachineBasicBlock &MBB : MF) {
     llvm::MachineInstr *TargetMI = nullptr;
     for (auto It = MBB.rbegin(), End = MBB.rend(); It != End; ++It) {
-      if (It->isCall() || It->isIndirectBranch()) {
+      if (It->isCall() || It->isIndirectBranch() ||
+          (It->isTerminator() && It->getOpcode() != llvm::AMDGPU::S_ENDPGM)) {
         TargetMI = &*It;
         break;
       }
@@ -1456,7 +1471,7 @@ void emitPartialCallgraphSVSHandoffWraps(llvm::MachineFunction &MF,
     LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
                                   "handOffSVA before call/indirect-branch in "
                                << llvm::printMBBReference(MBB) << "\n");
-    BlockSVS.handOffSVA(*TargetMI, Specs);
+    BlockSVS.handOffSVA(*TargetMI, Specs, ST);
     ++HandOffsEmitted;
   }
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   emitted "
@@ -2154,6 +2169,17 @@ computeInitialEntryKernelSVAInfo(const llvm::MachineFunction &KernelMF,
                       amdgpu::hsamd::ValueKind::HiddenQueuePtr,
                       amdgpu::hsamd::ValueKind::HiddenPrintfBuffer})
       Info.ImplicitArgsExplicitlyRequested.insert(Attr);
+    // \c emitPartialCallgraphSVSHandoffWraps will inject \c handOffSVA /
+    // \c pickOffSVA around every runtime-resolved terminator in this
+    // kernel, and each site burns the \c SVSSlotsReservation +8 emergency
+    // scratch slot for the \c VGPR0 courier (spill/reload of the app
+    // V0). Force scratch/stack setup on so \c emitInitialEntryKernelSetup
+    // sizes the instrumentation SP and populates the SVA's
+    // \c StackPointerStoreLane the handoff reads from — otherwise the
+    // handoff's first \c SCRATCH_STORE_DWORD reads a garbage SP out of
+    // the SVA and faults into unmapped private memory before we ever
+    // reach the payload call.
+    Info.RequiresScratchAndStackSetup = true;
   }
 
   for (llvm::Function &PayloadFn : IModule) {
@@ -2451,6 +2477,18 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
   for (ScalarValueArgument SA : KernelInfo.RequestedKernelArguments) {
     LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]       SVA arg="
                                << static_cast<unsigned>(SA) << "\n");
+    // FLAT_SCRATCH and WAVEFRONT_PRIVATE_SEGMENT_BUFFER carry a per-wave
+    // value (\c FSInit + \c PSWO ) that \c emitCodeToSetupScratch already
+    // stashed in the SVA's \c FLAT_SCRATCH / \c WAVEFRONT_PRIVATE_SEGMENT_BUFFER
+    // lanes above. Storing the raw preloaded FSInit / PSB pair over the top
+    // here would clobber the per-wave value, and downstream handoff/pickoff
+    // sites would then trampoline a bare wave-relative-0 into FLAT_SCR.
+    if (SA == FLAT_SCRATCH || SA == WAVEFRONT_PRIVATE_SEGMENT_BUFFER) {
+      LLVM_DEBUG(luthier::dbgs()
+                 << "[TargetModulePatcherPass]         handled by "
+                    "emitCodeToSetupScratch\n");
+      continue;
+    }
     auto LaneIt = Specs.findArgumentLane(SA);
     if (LaneIt == Specs.argument_lane_end())
       return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
@@ -3165,7 +3203,22 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
       continue;
     llvm::MachineFunction &MF =
         TargetFAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
+    // \c handOffSVA / \c pickOffSVA emit through \c createSCCSafeSequenceOfMIs,
+    // which calls \c MachineBasicBlock::splitAt — that helper walks successor
+    // live-ins and asserts \c hasTracksLiveness(). By this point in the
+    // pipeline PEI has cleared \c TracksLiveness on every MF, so temporarily
+    // reinstate the property while the handoff wraps are emitted. The bits
+    // written here are already stale (post-RA), so no downstream pass reads
+    // them — this only silences the split-time assertion.
+    const bool HadTracksLiveness =
+        MF.getProperties().hasTracksLiveness();
+    if (!HadTracksLiveness)
+      MF.getProperties().set(
+          llvm::MachineFunctionProperties::Property::TracksLiveness);
     emitPartialCallgraphSVSHandoffWraps(MF, IPCFG, SVLocations, SVASpecs);
+    if (!HadTracksLiveness)
+      MF.getProperties().reset(
+          llvm::MachineFunctionProperties::Property::TracksLiveness);
   }
 
   // Emit the SVA preload setup (scratch + kernarg spills into

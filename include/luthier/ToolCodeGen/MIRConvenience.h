@@ -57,16 +57,33 @@ bool isVectorMBB(const llvm::MachineBasicBlock &MBB);
 void emitSGPRSwap(llvm::MachineBasicBlock::iterator InsertionPoint,
                   llvm::MCRegister SrcSGPR, llvm::MCRegister DestSGPR);
 
+/// MBB-appending overload: inserts at the end of \p MBB. Safe to call on an
+/// empty MBB (does not dereference a sentinel iterator, unlike the
+/// iterator-based overload).
+void emitSGPRSwap(llvm::MachineBasicBlock &MBB, llvm::MCRegister SrcSGPR,
+                  llvm::MCRegister DestSGPR);
+
 /// Swaps the value between \p ScrVGPR and \p DestVGPR by inserting 3
 /// <tt>V_XOR_B32_e32</tt>s before \p InsertionPoint
 void emitVGPRSwap(llvm::MachineBasicBlock::iterator InsertionPoint,
                   llvm::MCRegister SrcVGPR, llvm::MCRegister DestVGPR);
 
+/// MBB-appending overload — see \c emitSGPRSwap.
+void emitVGPRSwap(llvm::MachineBasicBlock &MBB, llvm::MCRegister SrcVGPR,
+                  llvm::MCRegister DestVGPR);
+
 /// Emits an instruction that flips the exec mask before \p MI
 /// Clobbers the SCC bit
 void emitExecMaskFlip(llvm::MachineBasicBlock::iterator MI);
 
+/// MBB-appending overload — see \c emitSGPRSwap.
+void emitExecMaskFlip(llvm::MachineBasicBlock &MBB);
+
 void emitMoveFromVGPRToVGPR(llvm::MachineBasicBlock::iterator MI,
+                            llvm::MCRegister SrcVGPR, llvm::MCRegister DestVGPR,
+                            bool KillSource);
+
+void emitMoveFromVGPRToVGPR(llvm::MachineBasicBlock &MBB,
                             llvm::MCRegister SrcVGPR, llvm::MCRegister DestVGPR,
                             bool KillSource);
 
@@ -74,11 +91,23 @@ void emitMoveFromSGPRToSGPR(llvm::MachineBasicBlock::iterator MI,
                             llvm::MCRegister SrcSGPR, llvm::MCRegister DestSGPR,
                             bool KillSource);
 
+void emitMoveFromSGPRToSGPR(llvm::MachineBasicBlock &MBB,
+                            llvm::MCRegister SrcSGPR, llvm::MCRegister DestSGPR,
+                            bool KillSource);
+
 void emitMoveFromAGPRToVGPR(llvm::MachineBasicBlock::iterator MI,
                             llvm::MCRegister SrcAGPR, llvm::MCRegister DestVGPR,
                             bool KillSource);
 
+void emitMoveFromAGPRToVGPR(llvm::MachineBasicBlock &MBB,
+                            llvm::MCRegister SrcAGPR, llvm::MCRegister DestVGPR,
+                            bool KillSource);
+
 void emitMoveFromVGPRToAGPR(llvm::MachineBasicBlock::iterator MI,
+                            llvm::MCRegister SrcVGPR, llvm::MCRegister DestAGPR,
+                            bool KillSource = true);
+
+void emitMoveFromVGPRToAGPR(llvm::MachineBasicBlock &MBB,
                             llvm::MCRegister SrcVGPR, llvm::MCRegister DestAGPR,
                             bool KillSource = true);
 
@@ -88,6 +117,18 @@ void emitMoveFromSGPRToVGPRLane(llvm::MachineBasicBlock::iterator MI,
                                 bool KillSource);
 
 void emitMoveFromVGPRLaneToSGPR(llvm::MachineBasicBlock::iterator MI,
+                                llvm::MCRegister SrcVGPR,
+                                llvm::MCRegister DestSGPR, unsigned int Lane,
+                                bool KillSource);
+
+/// MBB-appending overload — see \c emitMoveFromSGPRToVGPRLane.
+void emitMoveFromSGPRToVGPRLane(llvm::MachineBasicBlock &MBB,
+                                llvm::MCRegister SrcSGPR,
+                                llvm::MCRegister DestVGPR, unsigned int Lane,
+                                bool KillSource);
+
+/// MBB-appending overload — see \c emitMoveFromVGPRLaneToSGPR.
+void emitMoveFromVGPRLaneToSGPR(llvm::MachineBasicBlock &MBB,
                                 llvm::MCRegister SrcVGPR,
                                 llvm::MCRegister DestSGPR, unsigned int Lane,
                                 bool KillSource);
@@ -108,21 +149,39 @@ void emitLoadFromEmergencyVGPRScratchSpillLocation(
     llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
     llvm::MCRegister DestVGPR);
 
+void emitLoadFromEmergencyVGPRScratchSpillLocation(
+    llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
+    llvm::MCRegister DestVGPR);
+
 void emitStoreToEmergencyVGPRScratchSpillLocation(
     llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
+    llvm::MCRegister SrcVGPR, bool KillSource);
+
+void emitStoreToEmergencyVGPRScratchSpillLocation(
+    llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
     llvm::MCRegister SrcVGPR, bool KillSource);
 
 void emitLoadFromEmergencySVSScratchSpillLocation(
     llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
     llvm::MCRegister DestVGPR);
 
+void emitLoadFromEmergencySVSScratchSpillLocation(
+    llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
+    llvm::MCRegister DestVGPR);
+
 void emitStoreToEmergencySVSScratchSpillLocation(
     llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
+    llvm::MCRegister SrcVGPR, bool KillSource);
+
+void emitStoreToEmergencySVSScratchSpillLocation(
+    llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
     llvm::MCRegister SrcVGPR, bool KillSource);
 
 /// Emits an \c S_WAITCNT before \p MI with the given per-counter
 /// encoding \p Encoding.
 void emitWaitCnt(llvm::MachineBasicBlock::iterator MI, unsigned Encoding = 0);
+
+void emitWaitCnt(llvm::MachineBasicBlock &MBB, unsigned Encoding = 0);
 
 } // namespace luthier
 
