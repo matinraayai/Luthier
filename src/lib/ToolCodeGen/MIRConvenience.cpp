@@ -173,12 +173,35 @@ void emitMoveFromSGPRToVGPRLane(llvm::MachineBasicBlock::iterator MI,
       .addReg(DestVGPR);
 }
 
+void emitMoveFromSGPRToVGPRLane(llvm::MachineBasicBlock &MBB,
+                                llvm::MCRegister SrcSGPR,
+                                llvm::MCRegister DestVGPR, unsigned int Lane,
+                                bool KillSource) {
+  const auto &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+  (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
+                      TII.get(llvm::AMDGPU::V_WRITELANE_B32), DestVGPR)
+      .addReg(SrcSGPR, llvm::getKillRegState(KillSource))
+      .addImm(Lane)
+      .addReg(DestVGPR);
+}
+
 void emitMoveFromVGPRLaneToSGPR(llvm::MachineBasicBlock::iterator MI,
                                 llvm::MCRegister SrcVGPR,
                                 llvm::MCRegister DestSGPR, unsigned int Lane,
                                 bool KillSource) {
   const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
   (void)llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
+                      TII.get(llvm::AMDGPU::V_READLANE_B32), DestSGPR)
+      .addReg(SrcVGPR, llvm::getKillRegState(KillSource))
+      .addImm(Lane);
+}
+
+void emitMoveFromVGPRLaneToSGPR(llvm::MachineBasicBlock &MBB,
+                                llvm::MCRegister SrcVGPR,
+                                llvm::MCRegister DestSGPR, unsigned int Lane,
+                                bool KillSource) {
+  const auto &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+  (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
                       TII.get(llvm::AMDGPU::V_READLANE_B32), DestSGPR)
       .addReg(SrcVGPR, llvm::getKillRegState(KillSource))
       .addImm(Lane);
