@@ -699,7 +699,7 @@ parseKDKernelCode(const llvm::amdhsa::kernel_descriptor_t &KD,
     MFI->addDispatchID(*TRI);
   }
 
-  if (ST.hasArchitectedFlatScratch()) {
+  if (!ST.hasArchitectedFlatScratch()) {
     if (AMDHSA_BITS_GET(
             KD.kernel_code_properties,
             llvm::amdhsa::KERNEL_CODE_PROPERTY_ENABLE_SGPR_FLAT_SCRATCH_INIT) ==
@@ -717,15 +717,15 @@ parseKDKernelCode(const llvm::amdhsa::kernel_descriptor_t &KD,
   /// Wavefront32 should be taken care of when creating the target machine
 
   /// Set the size of the stack based on whether we have a dynamic stack or not
+  llvm::MachineFrameInfo &FrameInfo = MF.getFrameInfo();
   if (KD.private_segment_fixed_size != 0) {
-    llvm::MachineFrameInfo &FrameInfo = MF.getFrameInfo();
     FrameInfo.CreateFixedObject(KD.private_segment_fixed_size, 0, true);
     FrameInfo.setStackSize(KD.private_segment_fixed_size);
-    if (AMDHSA_BITS_GET(
-            KD.kernel_code_properties,
-            llvm::amdhsa::KERNEL_CODE_PROPERTY_USES_DYNAMIC_STACK)) {
-      FrameInfo.CreateVariableSizedObject(llvm::Align(4), nullptr);
-    }
+  }
+  if (AMDHSA_BITS_GET(
+          KD.kernel_code_properties,
+          llvm::amdhsa::KERNEL_CODE_PROPERTY_USES_DYNAMIC_STACK)) {
+    FrameInfo.CreateVariableSizedObject(llvm::Align(4), nullptr);
   }
 
   return llvm::Error::success();
