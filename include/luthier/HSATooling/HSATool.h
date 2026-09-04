@@ -195,6 +195,8 @@ public:
                       TripleOrErr->str(), ErrMsg)));
 
     llvm::TargetOptions TMOpts;
+    // Force this to on to support ctor/dtor kernels
+    TMOpts.UseInitArray = true;
     std::unique_ptr<llvm::TargetMachine> TM(TheTarget->createTargetMachine(
         *TripleOrErr, *CPUOrErr, FeaturesOrErr->getString(), TMOpts,
         /*RM=*/std::nullopt));

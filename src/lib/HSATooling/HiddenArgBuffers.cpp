@@ -29,6 +29,37 @@ namespace luthier {
 // DeviceHeapBuffer
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+/// \c heap_t layout constants mirrored from ROCm device-libs
+/// \c ockl/src/dm.cl. They describe the structure the device-side allocator
+/// reads out of the \c hidden_heap_v1 buffer, which \c DeviceHeapBuffer has to
+/// hand over in the state \c __ockl_dm_init_v1 would leave it in.
+
+/// \c NUM_KINDS — the number of block kinds the allocator tracks.
+constexpr uint32_t OcklHeapNumKinds = 16;
+
+/// \c NUM_SDATA (\c 1 << SDATA_SHIFT) — how many slabs one level of the slab
+/// record array holds, and the value \c num_recordable_slabs is initialized to.
+constexpr uint32_t OcklHeapNumSData = 256;
+
+/// Every counter in \c heap_t is a single atomic padded out to a cache line
+/// (\c ULONG_PER_CACHE_LINE ulongs), so the per-kind arrays stride by this.
+constexpr uint32_t OcklHeapCounterStride = 128;
+
+/// \c heap_t opens with \c start[NUM_KINDS] then
+/// \c num_allocated_slabs[NUM_KINDS], both of \c OcklHeapCounterStride-sized
+/// entries, so \c num_recordable_slabs starts after two such arrays.
+constexpr uint32_t OcklHeapNumRecordableSlabsOffset =
+    2 * OcklHeapNumKinds * OcklHeapCounterStride;
+
+static_assert(OcklHeapNumRecordableSlabsOffset +
+                      OcklHeapNumKinds * OcklHeapCounterStride <=
+                  DeviceHeapSize,
+              "num_recordable_slabs runs past the end of the device heap");
+
+} // namespace
+
 llvm::Expected<std::unique_ptr<DeviceHeapBuffer>>
 DeviceHeapBuffer::create(const hsa::ApiTableContainer<::AmdExtTable> &AmdExt,
                          hsa_agent_t Agent) {
@@ -50,9 +81,10 @@ DeviceHeapBuffer::create(const hsa::ApiTableContainer<::AmdExtTable> &AmdExt,
     return llvm::joinErrors(std::move(Err),
                             hsa::memoryPoolFree(AmdExt, *AllocOrErr));
 
-  // An all-zero heap is the state the device libraries expect to start from;
-  // see the class comment. hsa_amd_memory_pool_allocate makes no guarantee
-  // about the contents, so zero it explicitly.
+  // Zero the whole heap first. This matches the clearing loop at the top of
+  // \c __ockl_dm_init_v1, which blanks exactly 131072 bytes — the same figure
+  // as \c DeviceHeapSize and as ROCclr's own \c HeapBufferSize.
+  // hsa_amd_memory_pool_allocate makes no guarantee about the contents.
   if (llvm::Error Err = LUTHIER_HSA_CALL_ERROR_CHECK(
           AmdExt.callFunction<hsa_amd_memory_fill>(*AllocOrErr, /*Value=*/0,
                                                    DeviceHeapSize /
@@ -62,6 +94,41 @@ DeviceHeapBuffer::create(const hsa::ApiTableContainer<::AmdExtTable> &AmdExt,
                         DeviceHeapSize, Agent.handle)))
     return llvm::joinErrors(std::move(Err),
                             hsa::memoryPoolFree(AmdExt, *AllocOrErr));
+
+  // Zeroing alone is not enough. ROCclr brings the heap up by launching
+  // \c __amd_rocclr_initHeap (a 256-work-item kernel that calls
+  // \c __ockl_dm_init_v1) before any device-side malloc can run; Luthier
+  // dispatches its own constructor/destructor kernels, so it has to leave the
+  // heap in that same state itself.
+  //
+  // \c heap_t is documented as "all bits 0 is an acceptable state" but
+  // \c __ockl_dm_init_v1 still writes \c num_recordable_slabs[k] = NUM_SDATA
+  // for each of the \c NUM_KINDS block kinds, and the allocator does not work
+  // without it: it looks a slab record up as
+  // \c sdata[k][(i - NUM_SDATA) >> SDATA_SHIFT], so an index that never
+  // reaches \c NUM_SDATA underflows to a huge value. The resulting
+  // \c global_atomic_cmpswap_x2 then lands hundreds of megabytes past the
+  // heap, where — with XNACK off — it never retires instead of faulting, and
+  // the wave hangs on the following \c s_waitcnt vmcnt(0) with no diagnostic.
+  //
+  // The remaining fields \c __ockl_dm_init_v1 touches — \c initial_slabs,
+  // \c initial_slabs_end and \c initial_slabs_start — are all written from its
+  // initial-slab-buffer arguments, which are zero when no such buffer is
+  // supplied (ROCclr's \c initial_heap_size_ == 0 path). Luthier supplies
+  // none, so the zeroing above already leaves them correct.
+  for (uint32_t Kind = 0; Kind < OcklHeapNumKinds; ++Kind) {
+    auto *NumRecordableSlabs =
+        static_cast<uint8_t *>(*AllocOrErr) + OcklHeapNumRecordableSlabsOffset +
+        Kind * OcklHeapCounterStride;
+    if (llvm::Error Err = LUTHIER_HSA_CALL_ERROR_CHECK(
+            AmdExt.callFunction<hsa_amd_memory_fill>(
+                NumRecordableSlabs, /*Value=*/OcklHeapNumSData, /*Count=*/1),
+            llvm::formatv("Failed to initialize num_recordable_slabs[{0}] of "
+                          "the device heap for agent {1:x}",
+                          Kind, Agent.handle)))
+      return llvm::joinErrors(std::move(Err),
+                              hsa::memoryPoolFree(AmdExt, *AllocOrErr));
+  }
 
   return std::unique_ptr<DeviceHeapBuffer>(
       new DeviceHeapBuffer(AmdExt, *AllocOrErr));

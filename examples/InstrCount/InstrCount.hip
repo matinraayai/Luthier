@@ -69,6 +69,7 @@
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/NewPMAsmPrinter.h>
 #include <luthier/ToolCodeGen/PrototypeCallGraph.h>
+#include <llvm/Transforms/Utils/ModuleUtils.h>
 #include <memory>
 #include <mutex>
 
@@ -421,6 +422,57 @@ llvm::PreservedAnalyses
 InstrCountTool::run(luthier::Prototype &P,
                     luthier::PrototypeAnalysisManager &PAM) {
   llvm::Module &IModule = P.getInstrumentationModule();
+
+  // A device-function prototype is a callee the runtime resolver brought up
+  // for an already-instrumented kernel, and its code object is loaded under
+  // that kernel's. The tool's device globals belong to the kernel's code
+  // object: \c Counter is where its payloads already accumulate and where the
+  // host reads the total back from. Defining a second \c Counter here would
+  // give this callee its own counter — instructions it executes would go
+  // missing from the total — and the load fails outright anyway
+  // (\c HSA_STATUS_ERROR_VARIABLE_ALREADY_DEFINED) once the loader defines the
+  // enclosing kernel's copy into this executable.
+  //
+  // So demote them to declarations and let the loader bind them, exactly as
+  // \c PatchPCUsagesPass does for its resolver-table globals. Clearing
+  // \c dso_local is the part that matters for codegen: this runs before the
+  // instrumentation module's ISel, so ISel then picks GOT-indirect addressing
+  // by itself instead of the direct amdgpu-rel32 sequence, which cannot
+  // reference a symbol this object does not define.
+  {
+    auto &TargetMAM =
+        PAM.getResult<luthier::TargetModuleAnalysisManagerPrototypeProxy>(P)
+            .getManager();
+    const luthier::EntryPoint EP =
+        TargetMAM.getResult<luthier::InitialEntryPointAnalysis>(
+                     P.getTargetModule())
+            .getInitialEntryPoint();
+    if (!EP.isKernel()) {
+      // Every externally-visible device global the tool's module defines is
+      // one the enclosing kernel's code object already defines — \c Counter,
+      // the parser trait's \c DeviceCodeMarker pair, and the HIP per-TU
+      // \c __hip_cuid_* markers alike — so demote all of them rather than
+      // naming them one at a time. Local globals are private to this object
+      // and cannot collide, and the \c llvm.* metadata globals are not real
+      // definitions. \c PatchPCUsagesPass runs after this and re-establishes
+      // its seed globals as local definitions, which is what they have to be.
+      llvm::SmallPtrSet<llvm::Constant *, 8> Externalized;
+      for (llvm::GlobalVariable &GV : IModule.globals()) {
+        if (GV.isDeclaration() || GV.hasLocalLinkage() ||
+            GV.getName().starts_with("llvm."))
+          continue;
+        GV.setInitializer(nullptr);
+        GV.setLinkage(llvm::GlobalValue::ExternalLinkage);
+        GV.setVisibility(llvm::GlobalValue::DefaultVisibility);
+        GV.setDSOLocal(false);
+        Externalized.insert(&GV);
+      }
+      llvm::removeFromUsedLists(IModule, [&](llvm::Constant *C) {
+        return C && Externalized.contains(C->stripPointerCasts());
+      });
+    }
+  }
+
   NextInstrIdx = 0;
   P.forEachTargetMF(PAM, [&](llvm::MachineFunction &MF) {
     luthier::errs() << "[InstrCountTool] runInstrumentationPass for MF '"

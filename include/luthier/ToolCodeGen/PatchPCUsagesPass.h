@@ -116,7 +116,7 @@ public:
     __attribute__((device, used,
                    constant)) static const EntryPointTraceFunctionEntry
         *EntryPointToTraceFunctionAddrMapSeed;
-    __attribute__((device, used, constant)) static const std::uint32_t
+    __attribute__((device, used, constant)) static std::uint32_t
         EntryPointToTraceFunctionAddrMapSeedSize;
 
     /// ctor used to dynamically allocate the

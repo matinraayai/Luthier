@@ -123,6 +123,31 @@ struct QueuePtrTag {
 template struct PrivateAccessor<QueuePtrTag,
                                 &llvm::GCNUserSGPRUsageInfo::QueuePtr>;
 
+/// Reaches the \c std::unique_ptr the \c MachineFunctionAnalysis result owns,
+/// so a \c MachineFunction can be handed from one \c FunctionAnalysisManager
+/// to another intact rather than deep-copied.
+///
+/// Deep-copying is not equivalent: a \c MachineFunction's target-specific
+/// \c MachineFunctionInfo (\c SIMachineFunctionInfo on AMDGPU) carries state
+/// that only exists after \c SIISelLowering::LowerFormalArguments has run —
+/// most importantly the user-SGPR allocation counter behind
+/// \c getNumUserSGPRs(). A destination \c MachineFunction built by
+/// \c MachineFunctionAnalysis::run gets a fresh \c SIMachineFunctionInfo whose
+/// \c has* flags are re-derived from the \c Function's attributes but whose
+/// counters start at zero, and nothing replays the allocation. The asm printer
+/// then emits a kernel descriptor whose \c kernel_code_properties advertise
+/// preloaded dispatch/queue/kernarg/dispatch-id SGPRs while
+/// \c compute_pgm_rsrc2.USER_SGPR_COUNT reads 0, so the hardware preloads no
+/// user SGPRs at all and the kernel starts with a garbage kernarg pointer.
+struct MFAnalysisResultMFTag {
+  using MemberT =
+      std::unique_ptr<llvm::MachineFunction> llvm::MachineFunctionAnalysis::
+          Result::*;
+  friend MemberT get(MFAnalysisResultMFTag);
+};
+template struct PrivateAccessor<MFAnalysisResultMFTag,
+                                &llvm::MachineFunctionAnalysis::Result::MF>;
+
 struct PrivateSegmentSizeTag {
   using MemberT = bool llvm::GCNUserSGPRUsageInfo::*;
   friend MemberT get(PrivateSegmentSizeTag);
@@ -1388,30 +1413,54 @@ void emitSVSSwitchesForMF(llvm::MachineFunction &MF,
              << " via critical-edge split) for MF '" << MF.getName() << "'\n");
 }
 
-/// Emit the partial-callgraph V0-courier handoff for a target MF:
+/// The partial-callgraph V0-courier handoff plan of a single target MF,
+/// captured before any patching runs.
+///
+/// \c SVStorageAndLoadLocations keys its storage intervals on
+/// \c MachineBasicBlock pointers, and those keys only cover the MBBs that
+/// existed when the analysis ran. Both \c emitSVSSwitchesForMF and the
+/// handoff emission itself split MBBs (\c handOffSVA / \c pickOffSVA go
+/// through \c createSCCSafeSequenceOfMIs, which calls
+/// \c MachineBasicBlock::splitAt), so querying \c SVLoc once patching has
+/// begun hands back an empty interval list for every block the patcher
+/// created. The sites that need a handoff are therefore resolved up front,
+/// while the MBB keys are still valid, and recorded against their
+/// \c MachineInstr — instructions are spliced between blocks by the splits
+/// rather than recreated, so those pointers stay good.
+struct PartialCallgraphSVSHandoffPlan {
+  /// SVS live at the entry of a non-kernel MF, or null when this MF needs
+  /// no callee-side pickOff.
+  const StateValueArrayStorage *PickOffSVS = nullptr;
+  /// The last call / indirect-branch / non-\c S_ENDPGM return of each MBB
+  /// that existed before patching, paired with the SVS live in that MBB.
+  llvm::SmallVector<
+      std::pair<llvm::MachineInstr *, const StateValueArrayStorage *>, 4>
+      HandOffs;
+};
+
+/// Resolve the partial-callgraph V0-courier handoff sites of \p MF into
+/// \p Plan:
 ///
 ///  1. Fast path — if \c SVLoc reports a single fixed SVS across every
 ///     target MF, no handoff is needed (the SVA VGPR is unused by all
-///     functions and survives across calls). Skip.
+///     functions and survives across calls). Leave \p Plan empty.
 ///
-///  2. Callee side — at the entry of a device function (non-kernel),
-///     emit \c EntrySVS.pickOffSVA(firstMI, Specs). \c V0 arrives
-///     holding the SVA (from the caller's \c handOffSVA); pickOff
-///     stores it into the entry-block SVS and restores \c V0's app
-///     value from the SVS's emergency slot.
+///  2. Callee side — a device function (non-kernel) receives the SVA in
+///     \c V0 from its caller's \c handOffSVA, so record the entry-block
+///     SVS that \c pickOffSVA must store it into.
 ///
-///  3. Caller side — every MBB whose \c PMBB has unresolved edges
-///     may cross into an unknown callee. Find the last call or
-///     indirect-branch MI in the MBB and emit
-///     \c BlockSVS.handOffSVA(MI, Specs) before it. handOff spills
-///     \c V0's app value to the SVS's emergency slot and loads the
-///     SVA into \c V0 so the callee sees \c V0 == SVA.
-void emitPartialCallgraphSVSHandoffWraps(llvm::MachineFunction &MF,
-                                         const IPPredicatedCFG &IPCFG,
-                                         const SVStorageAndLoadLocations &SVLoc,
-                                         const StateValueArraySpecs &Specs) {
+///  3. Caller side — every MBB may cross into an unknown callee. Record
+///     the last call, indirect-branch or non-\c S_ENDPGM return MI of the
+///     block together with the block's SVS.
+///
+/// Must run before \c emitSVSSwitchesForMF for \p Plan to be meaningful;
+/// see \c PartialCallgraphSVSHandoffPlan.
+void capturePartialCallgraphSVSHandoffPlan(
+    llvm::MachineFunction &MF, const IPPredicatedCFG &IPCFG,
+    const SVStorageAndLoadLocations &SVLoc,
+    PartialCallgraphSVSHandoffPlan &Plan) {
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   "
-                                "emitPartialCallgraphSVSHandoffWraps MF='"
+                                "capturePartialCallgraphSVSHandoffPlan MF='"
                              << MF.getName() << "'\n");
   bool CFGFullyDiscovered = true;
   for (const PredicatedMachineBasicBlock &PMBB : IPCFG) {
@@ -1429,25 +1478,21 @@ void emitPartialCallgraphSVSHandoffWraps(llvm::MachineFunction &MF,
   }
 
   const llvm::Function &F = MF.getFunction();
-  const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
-  // 2. Callee side: pickOffSVA at entry of every device function.
+  // 2. Callee side: record the entry SVS of every device function.
   if (F.getCallingConv() != llvm::CallingConv::AMDGPU_KERNEL && !MF.empty()) {
     llvm::MachineBasicBlock &EntryMBB = MF.front();
     if (!EntryMBB.empty()) {
       auto Segs = SVLoc.getStorageIntervals(EntryMBB);
-      if (!Segs.empty()) {
-        const StateValueArrayStorage &EntrySVS = Segs.front().getSVS();
-        LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
-                                      "pickOffSVA at entry of device fn '"
-                                   << MF.getName() << "'\n");
-        EntrySVS.pickOffSVA(EntryMBB.front(), Specs, ST);
-      }
+      assert(!Segs.empty() && "Empty SVStorage Segment");
+      Plan.PickOffSVS = &Segs.front().getSVS();
+      LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
+                                    "pickOffSVA planned at entry of device fn '"
+                                 << MF.getName() << "'\n");
     }
   }
 
-  // 3. Caller side: handOffSVA before the last call/indirect-branch/return
-  // MI (non S_ENDPGM) in every MBB whose PMBB has unresolved edges.
-  unsigned HandOffsEmitted = 0;
+  // 3. Caller side: record the last call/indirect-branch/return MI (non
+  // S_ENDPGM) of every MBB along with that MBB's SVS.
   for (llvm::MachineBasicBlock &MBB : MF) {
     llvm::MachineInstr *TargetMI = nullptr;
     for (auto It = MBB.rbegin(), End = MBB.rend(); It != End; ++It) {
@@ -1467,15 +1512,50 @@ void emitPartialCallgraphSVSHandoffWraps(llvm::MachineFunction &MF,
     auto Segs = SVLoc.getStorageIntervals(MBB);
     assert(!Segs.empty() && "Empty SVStorage Segment");
 
-    const StateValueArrayStorage &BlockSVS = Segs.back().getSVS();
+    Plan.HandOffs.emplace_back(TargetMI, &Segs.back().getSVS());
+    LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
+                                  "handOffSVA planned before "
+                                  "call/indirect-branch in "
+                               << llvm::printMBBReference(MBB) << "\n");
+  }
+}
+
+/// Emit the partial-callgraph V0-courier handoff of \p MF from the sites
+/// \p Plan recorded before patching began.
+///
+/// Callee side: \c pickOffSVA stores the SVA \c V0 arrived with into the
+/// entry-block SVS and restores \c V0's app value from the SVS's emergency
+/// slot. Caller side: \c handOffSVA spills \c V0's app value to the SVS's
+/// emergency slot and loads the SVA into \c V0, so the callee sees
+/// \c V0 == SVA.
+void emitPartialCallgraphSVSHandoffWraps(
+    llvm::MachineFunction &MF, const PartialCallgraphSVSHandoffPlan &Plan,
+    const StateValueArraySpecs &Specs) {
+  LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   "
+                                "emitPartialCallgraphSVSHandoffWraps MF='"
+                             << MF.getName() << "'\n");
+  const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
+  // The pickOff has to dominate everything that could touch V0, so it goes
+  // at the current front of the function rather than at whatever MI held
+  // that position when the plan was captured — emitSVSSwitchesForMF may
+  // have prepended switch code to the entry block since then.
+  if (Plan.PickOffSVS && !MF.empty() && !MF.front().empty()) {
+    LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
+                                  "pickOffSVA at entry of device fn '"
+                               << MF.getName() << "'\n");
+    Plan.PickOffSVS->pickOffSVA(MF.front().front(), Specs, ST);
+  }
+
+  for (const auto &[TargetMI, BlockSVS] : Plan.HandOffs) {
     LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
                                   "handOffSVA before call/indirect-branch in "
-                               << llvm::printMBBReference(MBB) << "\n");
-    BlockSVS.handOffSVA(*TargetMI, Specs, ST);
-    ++HandOffsEmitted;
+                               << llvm::printMBBReference(*TargetMI->getParent())
+                               << "\n");
+    BlockSVS->handOffSVA(*TargetMI, Specs, ST);
   }
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   emitted "
-                             << HandOffsEmitted << " partial-callgraph SVS "
+                             << Plan.HandOffs.size()
+                             << " partial-callgraph SVS "
                              << "handOff(s) for MF '" << MF.getName() << "'\n");
 }
 
@@ -2764,8 +2844,6 @@ llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
     // llvm.global.annotations, ...) list payloads and hooks, neither of which
     // is cloned into the target module. Moving them would drag those
     // references across, so they stay behind in the IModule.
-    if (GV.getName().starts_with("llvm."))
-      continue;
     MovedGVs.push_back(&GV);
   }
   for (llvm::GlobalVariable *GV : MovedGVs) {
@@ -2955,11 +3033,24 @@ llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
   // Moving the Function does not move its MachineFunction: that lives in the
   // instrumentation module's FunctionAnalysisManager, keyed by this Function,
   // while NewPMAsmPrinter looks the target module's MIR up in the target FAM.
-  // Create the MF there and deep-clone the body across. This has to run after
-  // the move loop, both so F->getParent() is the target module when
-  // MachineFunctionAnalysis::run builds the destination, and so every global
-  // operand cloneMFInto walks already has its VMap entry.
-  unsigned ClonedMFs = 0;
+  // Hand the MachineFunction over by moving the unique_ptr the analysis result
+  // owns, rather than deep-copying the body into a freshly built MF.
+  //
+  // The MF has to arrive intact: its target-specific MachineFunctionInfo holds
+  // post-LowerFormalArguments state — notably SIMachineFunctionInfo's user-SGPR
+  // allocation counter — that a fresh MF built by MachineFunctionAnalysis::run
+  // does not have and that nothing downstream recomputes. A copied-body MF
+  // therefore emits a kernel descriptor advertising preloaded user SGPRs while
+  // compute_pgm_rsrc2.USER_SGPR_COUNT reads 0; the hardware honours the count,
+  // preloads nothing, and the kernel reads its kernarg segment through an
+  // uninitialized SGPR pair.
+  //
+  // This has to run after the move loop so F->getParent() is the target module
+  // when MachineFunctionAnalysis::run builds the (immediately replaced)
+  // destination result. The MIR's global operands need no fixup: pass 0 moved
+  // the globals themselves rather than copying them, so every GlobalValue the
+  // moved MIR names keeps its identity across the module boundary.
+  unsigned MovedMFs = 0;
   for (llvm::Function *F : FuncsToMove) {
     if (F->isDeclaration())
       continue;
@@ -2972,11 +3063,14 @@ llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
     LLVM_DEBUG(luthier::dbgs()
                << "[TargetModulePatcherPass]   re-home MF '" << F->getName()
                << "' (" << SrcMFRes->getMF().size() << " MBB(s))\n");
-    llvm::MachineFunction &DstMF =
-        TargetFAM.getResult<llvm::MachineFunctionAnalysis>(*F).getMF();
-    if (auto Err = cloneMFInto(SrcMFRes->getMF(), VMap, DstMF))
-      return Err;
-    ++ClonedMFs;
+    auto &DstMFRes = TargetFAM.getResult<llvm::MachineFunctionAnalysis>(*F);
+    const auto MFMember = get(MFAnalysisResultMFTag());
+    // Drops the freshly constructed destination MF and installs the source's in
+    // its place. The source result is left holding nothing, so nothing may
+    // query IFAM for this Function afterwards — it no longer lives in the
+    // IModule either, so no later pass has cause to.
+    DstMFRes.*MFMember = std::move(SrcMFRes->*MFMember);
+    ++MovedMFs;
   }
 
   // Pass 3 — move named metadata (\c llvm.module.flags,
@@ -3016,7 +3110,7 @@ llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
                 "done: "
              << MovedGVCount << " GV(s) moved, " << FuncsToMove.size()
              << " Fn(s) moved (" << SkippedPayloads << " payload(s) skipped, "
-             << RedirectedDecls << " decl(s) redirected), " << ClonedMFs
+             << RedirectedDecls << " decl(s) redirected), " << MovedMFs
              << " MF(s) re-homed, " << ReHomedComdats << " comdat(s) re-homed, "
              << MovedAliases.size() << " alias(es) moved, "
              << MovedIFuncs.size() << " ifunc(s) moved, " << MovedNamedMDs
@@ -3179,6 +3273,24 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   /// interval boundary.
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] === "
                                 "Emit SVS Switches For MF ===\n");
+
+  /// Resolve the partial-callgraph SVS handoff sites *before* any patching
+  /// runs. \c SVLocations keys its storage intervals on the MBBs that
+  /// existed when the analysis ran, and every emission step below splits
+  /// MBBs, so the handoff sites have to be pinned to their MachineInstrs
+  /// while those keys still resolve. See
+  /// \c PartialCallgraphSVSHandoffPlan.
+  llvm::DenseMap<const llvm::MachineFunction *, PartialCallgraphSVSHandoffPlan>
+      HandoffPlans;
+  for (llvm::Function &F : TargetModule) {
+    if (F.isDeclaration())
+      continue;
+    llvm::MachineFunction &MF =
+        TargetFAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
+    capturePartialCallgraphSVSHandoffPlan(MF, IPCFG, SVLocations,
+                                          HandoffPlans[&MF]);
+  }
+
   for (llvm::Function &F : TargetModule) {
     if (F.isDeclaration())
       continue;
@@ -3189,12 +3301,9 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   }
 
   /// Partial-callgraph SVS handoff. Wrap the last call in every MBB
-  /// whose PMBB.hasUnresolvedEdges() with the V0-courier protocol
-  /// (BlockSVS.emitCodeToLoadSVA / emitCodeToStoreSVA around the call
-  /// site into a VGPRStateValueArrayStorage(V0)). Depends on the SVS
-  /// switches being in place first — this pass reads the last segment
-  /// of the MBB's storage intervals to pick the right BlockSVS at the
-  /// call site.
+  /// with the V0-courier protocol (BlockSVS.emitCodeToLoadSVA /
+  /// emitCodeToStoreSVA around the call site into a
+  /// VGPRStateValueArrayStorage(V0)), at the sites captured above.
   LLVM_DEBUG(luthier::dbgs()
              << "[TargetModulePatcherPass] === "
                 "Emit Partial-Callgraph SVS Handoff Wraps ===\n");
@@ -3215,7 +3324,7 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
     if (!HadTracksLiveness)
       MF.getProperties().set(
           llvm::MachineFunctionProperties::Property::TracksLiveness);
-    emitPartialCallgraphSVSHandoffWraps(MF, IPCFG, SVLocations, SVASpecs);
+    emitPartialCallgraphSVSHandoffWraps(MF, HandoffPlans[&MF], SVASpecs);
     if (!HadTracksLiveness)
       MF.getProperties().reset(
           llvm::MachineFunctionProperties::Property::TracksLiveness);
@@ -3452,6 +3561,7 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   }
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] run complete; "
                                 "target module is patched and verified\n");
+
 
   // Preserve the outer MAM proxy so the Prototype adaptor doesn't
   // wipe every cached module-level analysis for both modules on the way out

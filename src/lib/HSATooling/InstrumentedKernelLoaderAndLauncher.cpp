@@ -317,6 +317,14 @@ InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented(
       std::max<uint32_t>(Packet.private_segment_size,
                          K.KDHostAddress->private_segment_fixed_size);
 
+  if (usesDynamicStack(*K.KDHostAddress)) {
+    auto MaxPrivateSegmentSizeOrErr =
+        getMaxPrivateSegmentSize(CoreApi.getTable(), Rec.Agent);
+    LUTHIER_RETURN_ON_ERROR(MaxPrivateSegmentSizeOrErr.takeError());
+    Packet.private_segment_size = std::max<uint32_t>(
+        Packet.private_segment_size, *MaxPrivateSegmentSizeOrErr);
+  }
+
   const uint32_t KernargSize = K.KDHostAddress->kernarg_size;
   // An instrumented kernel with a zero-byte kernarg segment has neither an
   // app-kernarg prefix nor any hidden args, so there is nothing to build and
@@ -1078,21 +1086,32 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumentedDeviceFunction(
   LUTHIER_RETURN_ON_ERROR(ExecOrErr.takeError());
   hsa_executable_t Exec = *ExecOrErr;
 
-  {
-    auto ParentIt = ByOriginal.find(Key{EnclosingKD, Preset});
-    if (ParentIt != ByOriginal.end()) {
-      if (auto Err = defineGlobalsOfPriorCodeObjects(ParentIt->second, Exec,
-                                                    Agent))
-        return llvm::joinErrors(std::move(Err),
-                                hsa::executableDestroy(Core, Exec));
+  // Find the record of the kernel this device function was reached from.
+  CodeObjectList *ParentCodeObjects = nullptr;
+  for (auto &[EntryKey, CodeObjects] : ByOriginal) {
+    if (EntryKey.Preset != Preset || CodeObjects.empty())
+      continue;
+    const InstrumentedRecord &First = CodeObjects.front();
+    if (First.Kernel &&
+        First.Kernel->KDDeviceAddress ==
+            reinterpret_cast<uint64_t>(EnclosingKD)) {
+      ParentCodeObjects = &CodeObjects;
+      break;
     }
-    // If there is no enclosing-kernel record, we still proceed — the
-    // pipeline may have produced a fully self-contained device function
-    // (no references to Luthier's runtime resolver globals). If it did
-    // reference them, hsa_executable_load_agent_code_object will refuse
-    // the code object with an undefined-symbol error, which is the right
-    // failure signal.
   }
+
+  if (ParentCodeObjects != nullptr) {
+    if (auto Err =
+            defineGlobalsOfPriorCodeObjects(*ParentCodeObjects, Exec, Agent))
+      return llvm::joinErrors(std::move(Err),
+                              hsa::executableDestroy(Core, Exec));
+  }
+  // If there is no enclosing-kernel record, we still proceed — the
+  // pipeline may have produced a fully self-contained device function
+  // (no references to Luthier's runtime resolver globals). If it did
+  // reference them, hsa_executable_load_agent_code_object will refuse
+  // the code object with an undefined-symbol error, which is the right
+  // failure signal.
 
   auto ReaderOrErr =
       hsa::codeObjectReaderCreateFromMemory(Core, RelocRef.getBuffer());
@@ -1113,10 +1132,35 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumentedDeviceFunction(
   if (auto Err = hsa::executableFreeze(Core, Exec))
     return Fail(std::move(Err));
 
-  // Freezing the executable fires the code object's device-side
-  // constructor, which appends this device function's (\c TraceAddr →
-  // \c FnHandleAddr ) seed entry into the runtime resolver table under
-  // the caller-held map lock — that's the entire "publish" step.
+  // Run the constructor kernel
+  {
+    auto ParsedOrErr = object::AMDGCNObjectFile::createAMDGCNObjectFile(RelocRef);
+    if (!ParsedOrErr)
+      return Fail(ParsedOrErr.takeError());
+    std::unique_ptr<object::AMDGCNObjectFile> Parsed = std::move(*ParsedOrErr);
+
+    auto MDDocOrErr = Parsed->getMetadataDocument();
+    if (!MDDocOrErr)
+      return Fail(MDDocOrErr.takeError());
+    llvm::msgpack::Document &MetadataDoc = **MDDocOrErr;
+
+    auto CtorKernelOrErr = findKernelIfPresent(*Parsed, MetadataDoc, Exec, Agent,
+                                               GlobalCtorKernelName);
+    if (!CtorKernelOrErr)
+      return Fail(CtorKernelOrErr.takeError());
+
+    if (CtorKernelOrErr->has_value()) {
+      if (ParentCodeObjects == nullptr)
+        return Fail(LUTHIER_MAKE_GENERIC_ERROR(
+            "The instrumented device-function code object carries a global "
+            "constructor, but no enclosing-kernel record owns the runtime "
+            "resolver table it has to publish into"));
+      if (auto Err = launchSingleWorkItemKernelAndWait(
+              ParentCodeObjects->front(), **CtorKernelOrErr))
+        return Fail(std::move(Err));
+    }
+  }
+
   DeviceFuncRecord Rec;
   Rec.RelocatableBuffer = std::move(Relocatable);
   Rec.Reader = Reader;

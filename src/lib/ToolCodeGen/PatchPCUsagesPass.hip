@@ -98,7 +98,7 @@ const luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry *
         nullptr;
 
 __attribute__((device, used, constant))
-const std::uint32_t
+std::uint32_t
     luthier::PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeedSize =
         0;
 
@@ -136,7 +136,14 @@ void luthier::PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap() 
     for (std::uint32_t I = 0; I < SeedN; ++I)
       P::EntryPointToTraceFunctionAddrMap[OldSize + I] =
           P::EntryPointToTraceFunctionAddrMapSeed[I];
-    P::EntryPointToTraceFunctionAddrMapSize = Needed;
+    // Release-store the count at agent scope: it is what publishes the entries
+    // written just above to waves of other dispatches that are already
+    // running and polling this table. Those waves acquire-load it in
+    // \c patchRegMultiFallback, so a plain store here would leave them reading
+    // a stale count out of an incoherent scalar cache and falling back to the
+    // host forever.
+    __hip_atomic_store(&P::EntryPointToTraceFunctionAddrMapSize, Needed,
+                       __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_AGENT);
     return;
   }
 
@@ -205,11 +212,37 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
     }
   }
 
-  const PCP::EntryPointTraceFunctionEntry *BR = PCP::Parser::EntryPointToTraceFunctionAddrMap;
-  const std::uint32_t BRN = PCP::Parser::EntryPointToTraceFunctionAddrMapSize;
+  // Every read of the table has to be an agent-scope acquire load, not a plain
+  // one.
+  //
+  // The table is published by a *different* dispatch: the ctor of the
+  // device-function code object the host loads on a miss. A wave that is
+  // already running when that happens has cached these locations, and because
+  // they are wave-uniform the compiler reads them with scalar loads whose
+  // cache is not coherent with another kernel's stores. The symptom is
+  // asymmetric and easy to misread: the map pointer is written by the
+  // enclosing kernel's own ctor *before* the wave launches, so its cached
+  // value is correct, while the count goes 0 → 1 *after* the wave starts, so
+  // the wave keeps seeing 0, walks nothing, and falls through to the host on
+  // every single call — which then resolves it fine from the same addresses.
+  // The entries themselves are written by that same later dispatch, so they
+  // need the same treatment.
+  //
+  // The spinlock above is already an atomic, which is why it works; these were
+  // the reads left behind.
+  const auto *BR = __hip_atomic_load(
+      &PCP::Parser::EntryPointToTraceFunctionAddrMap, __ATOMIC_ACQUIRE,
+      __HIP_MEMORY_SCOPE_AGENT);
+  const std::uint32_t BRN = __hip_atomic_load(
+      &PCP::Parser::EntryPointToTraceFunctionAddrMapSize, __ATOMIC_ACQUIRE,
+      __HIP_MEMORY_SCOPE_AGENT);
   for (std::uint32_t I = 0; I < BRN; ++I) {
-    if (BR[I].TraceAddr == Cur) {
-      luthier::writeReg<std::uint64_t>(Reg, BR[I].FnHandleAddr);
+    const std::uint64_t TraceAddr = __hip_atomic_load(
+        &BR[I].TraceAddr, __ATOMIC_RELAXED, __HIP_MEMORY_SCOPE_AGENT);
+    if (TraceAddr == Cur) {
+      luthier::writeReg<std::uint64_t>(
+          Reg, __hip_atomic_load(&BR[I].FnHandleAddr, __ATOMIC_RELAXED,
+                                 __HIP_MEMORY_SCOPE_AGENT));
       if (__lane_id() == 0u) {
         atomicExch(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u);
       }
@@ -527,9 +560,12 @@ findGVByShadowHandle(PatchPCUsagesPass::Parser &OffloadParser,
 /// space 4 holding each Function's \c (TraceAddr, FnHandleAddr) pair and
 /// rewrites the seed pointer's initializer to reference it.
 ///
-/// Called only when the initial entry point is a kernel — for device-fn
-/// entry points, the enclosing kernel's module owns both the runtime
-/// table and the seed.
+/// Called for a kernel entry point that can still reach the runtime
+/// fallback, and for a device-function entry point. The latter owns no
+/// runtime table of its own — the enclosing kernel's module allocated it —
+/// but its seed is exactly the (TraceAddr, FnHandleAddr) pair that its
+/// ctor appends to that table at load time, which is how the runtime
+/// resolver learns where the instrumented device function lives.
 llvm::Error emitEntryPointSeed(
     Prototype &P, PatchPCUsagesPass::Parser &OffloadParser) {
   llvm::Module &IModule = P.getInstrumentationModule();
@@ -617,24 +653,184 @@ llvm::Error emitEntryPointSeed(
         llvm::GlobalValue::PrivateLinkage, Init,
         "__luthier.relocatable_pc.seed_array", /*InsertBefore=*/nullptr,
         llvm::GlobalValue::NotThreadLocal, /*AddressSpace=*/4);
-    // Point the constant-AS seed pointer at the new array. The pointer
-    // GV's value type is opaque `ptr`; a plain assignment is enough (no
-    // bitcast).
-    SeedPtrGV->setInitializer(SeedArrGV);
+    // Point the constant-AS seed pointer at the new array. The array GV
+    // lives in AS(4), so its type is `ptr addrspace(4)`, whereas
+    // `EntryPointToTraceFunctionAddrMapSeed` is declared as a plain
+    // `const EntryPointTraceFunctionEntry *` — a *generic* pointer that
+    // merely happens to be stored in constant memory. Those two types
+    // differ, so the initializer needs an explicit addrspacecast to the
+    // pointer's own value type; assigning the AS(4) GV directly trips
+    // GlobalVariable::setInitializer's type assertion.
+    llvm::Constant *SeedArrC = SeedArrGV;
+    if (SeedArrC->getType() != SeedPtrGV->getValueType())
+      SeedArrC = llvm::ConstantExpr::getAddrSpaceCast(
+          SeedArrC, SeedPtrGV->getValueType());
+    SeedPtrGV->setInitializer(SeedArrC);
   }
   SeedSizeGV->setInitializer(llvm::ConstantInt::get(I32Ty, N));
   return llvm::Error::success();
 }
 
-/// Emit the codegen-time seed when the initial entry point is a kernel
-/// AND the callgraph still has indirect edges the runtime resolver has to
-/// serve. When the initial entry point is a device function, OR when it's
-/// a kernel whose callgraph is fully recovered and consists only of
-/// direct edges, strip \c initEntryPointToTraceFunctionAddrMap,
+/// Re-point a device-function prototype's runtime-resolver globals at the
+/// enclosing kernel's code object.
+///
+/// A device-function prototype is only ever produced by
+/// \c runInstrumentationPipelineForDeviceFunction, i.e. the runtime resolver
+/// servicing a miss for a callee reached from an already-instrumented kernel.
+/// The resolver table itself belongs to that kernel's code object: its ctor
+/// allocated it, its waves take the lock, and the host reads it back through
+/// the addresses that kernel's waves hand over in the hostcall. This object
+/// must therefore *use* that table, not stand up a second one.
+///
+/// So the four table globals are demoted to declarations, which
+/// \c InstrumentedKernelLoaderAndLauncher binds to the enclosing kernel's
+/// definitions via \c hsa_executable_agent_global_variable_define. Leaving
+/// them as definitions is wrong twice over: with binding in place the load
+/// fails outright with \c HSA_STATUS_ERROR_VARIABLE_ALREADY_DEFINED, and
+/// without it the ctor happily seeds a private table that no wave and no host
+/// readback ever consults, so the resolver reports "no map entry" forever.
+///
+/// The two seed globals go the other way. They are this object's own
+/// contribution — the (trace address → instrumented handle) pair its ctor
+/// appends — and every instrumented object carries a same-named pair. They get
+/// local binding so each object reads its own seed instead of colliding with,
+/// or being resolved to, the enclosing kernel's.
+llvm::Error
+bindRuntimeTableToEnclosingKernel(Prototype &P,
+                                  PatchPCUsagesPass::Parser &OffloadParser) {
+  llvm::Module &IModule = P.getInstrumentationModule();
+
+  /// Turn a definition into a declaration the loader can bind externally.
+  llvm::SmallPtrSet<llvm::Constant *, 4> Externalized;
+  auto ExternalizeGV = [&](auto *Handle) -> llvm::Error {
+    auto GVOrErr = findGVByShadowHandle(OffloadParser, IModule, Handle);
+    LUTHIER_RETURN_ON_ERROR(GVOrErr.takeError());
+    llvm::GlobalVariable *GV = *GVOrErr;
+    if (GV == nullptr)
+      return llvm::Error::success();
+    GV->setInitializer(nullptr);
+    GV->setLinkage(llvm::GlobalValue::ExternalLinkage);
+    // An imported symbol has to stay externally visible for the loader's
+    // variable-define to find it; protected visibility would bind it to this
+    // object and defeat the whole point.
+    GV->setVisibility(llvm::GlobalValue::DefaultVisibility);
+    // Clearing linkage and visibility is not enough on its own: dso_local is
+    // its own bit, and it is the one ISel consults when it picks an addressing
+    // mode. Left set, ISel keeps emitting the direct
+    // S_GETPC_B64 / S_ADD_U32 / S_ADDC_U32 sequence with amdgpu-rel32 target
+    // flags, which cannot reference a symbol this object does not define —
+    // ld.lld rejects it with "relocation R_AMDGPU_REL32_LO cannot be used
+    // against symbol ...; recompile with -fPIC". Cleared, ISel emits the
+    // GOT-indirect form by itself, which is what an imported variable needs.
+    // This runs before the instrumentation module's ISel, so the choice is
+    // still open.
+    GV->setDSOLocal(false);
+    Externalized.insert(GV);
+    LLVM_DEBUG(llvm::dbgs()
+               << "[PatchPCUsagesPass]   externalized runtime-table global '"
+               << GV->getName() << "'\n");
+    return llvm::Error::success();
+  };
+  // The four table globals are the ones that matter semantically, but this
+  // pass has just linked its own parser module into the IModule, which brings
+  // that module's globals along — its HIP per-TU \c __hip_cuid_* marker among
+  // them. Those are definitions the enclosing kernel's code object already
+  // carries too, so they collide on load exactly the same way. Demote every
+  // externally-visible definition rather than enumerating them.
+  //
+  // The seed pair is the exception in the other direction: those are this
+  // object's own contribution and \c emitEntryPointSeed just gave them
+  // initializers, so they are collected first and skipped here, then given
+  // local binding below.
+  llvm::SmallPtrSet<const llvm::GlobalVariable *, 2> SeedGVs;
+  auto CollectSeedGV = [&](auto *Handle) -> llvm::Error {
+    auto GVOrErr = findGVByShadowHandle(OffloadParser, IModule, Handle);
+    LUTHIER_RETURN_ON_ERROR(GVOrErr.takeError());
+    if (llvm::GlobalVariable *GV = *GVOrErr)
+      SeedGVs.insert(GV);
+    return llvm::Error::success();
+  };
+  LUTHIER_RETURN_ON_ERROR(CollectSeedGV(
+      &PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeed));
+  LUTHIER_RETURN_ON_ERROR(CollectSeedGV(
+      &PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeedSize));
+
+  for (llvm::GlobalVariable &GV : IModule.globals()) {
+    if (GV.isDeclaration() || GV.hasLocalLinkage() || SeedGVs.contains(&GV) ||
+        GV.getName().starts_with("llvm."))
+      continue;
+    GV.setInitializer(nullptr);
+    GV.setLinkage(llvm::GlobalValue::ExternalLinkage);
+    GV.setVisibility(llvm::GlobalValue::DefaultVisibility);
+    GV.setDSOLocal(false);
+    Externalized.insert(&GV);
+    LLVM_DEBUG(llvm::dbgs()
+               << "[PatchPCUsagesPass]   externalized device global '"
+               << GV.getName() << "'\n");
+  }
+
+  // `@llvm.used` / `@llvm.compiler.used` only pin definitions; a declaration
+  // left listed there is not a well-formed member.
+  llvm::removeFromUsedLists(IModule, [&](llvm::Constant *C) {
+    return C && Externalized.contains(C->stripPointerCasts());
+  });
+
+  /// Give this object's own seed local binding.
+  auto LocalizeGV = [&](auto *Handle) -> llvm::Error {
+    auto GVOrErr = findGVByShadowHandle(OffloadParser, IModule, Handle);
+    LUTHIER_RETURN_ON_ERROR(GVOrErr.takeError());
+    llvm::GlobalVariable *GV = *GVOrErr;
+    if (GV == nullptr || GV->isDeclaration())
+      return llvm::Error::success();
+    GV->setLinkage(llvm::GlobalValue::InternalLinkage);
+    GV->setVisibility(llvm::GlobalValue::DefaultVisibility);
+    // Local binding is by definition not preemptible, so the direct
+    // addressing ISel already uses for it stays correct.
+    GV->setDSOLocal(true);
+    // Local binding makes the codegen-time initializer this object's own, so
+    // the "someone outside writes this" marking no longer applies. It also
+    // has to go for the initializer to survive: the loader would otherwise be
+    // entitled to overwrite it.
+    GV->setExternallyInitialized(false);
+    LLVM_DEBUG(llvm::dbgs()
+               << "[PatchPCUsagesPass]   localized seed global '"
+               << GV->getName() << "'\n");
+    return llvm::Error::success();
+  };
+  LUTHIER_RETURN_ON_ERROR(LocalizeGV(
+      &PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeed));
+  LUTHIER_RETURN_ON_ERROR(LocalizeGV(
+      &PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeedSize));
+  return llvm::Error::success();
+}
+
+/// Emit the codegen-time seed, keeping
+/// \c initEntryPointToTraceFunctionAddrMap alive, in either of the two
+/// cases that need the runtime table:
+///
+///  - A kernel entry point whose callgraph still has indirect edges the
+///    runtime resolver has to serve, so a wave can reach the fallback.
+///
+///  - A device-function entry point. Such a prototype only ever comes from
+///    \c runInstrumentationPipelineForDeviceFunction, i.e. the runtime
+///    resolver servicing a miss: the host loads this object *because* its
+///    ctor is what publishes this device function's
+///    (trace address → instrumented handle) pair into the enclosing
+///    kernel's already-allocated table, via the ctor's extend-into-place
+///    branch. Stripping the ctor here leaves the entry unpublished, so the
+///    resolver reports "no map entry ... after load", the wave misses
+///    again, and the host callback re-instruments and re-loads forever.
+///    The device function does not need the table for *itself* — it needs
+///    the ctor to hand its mapping to whoever asked for it.
+///
+/// Only a kernel entry point whose callgraph is fully recovered and
+/// consists solely of single-target direct edges has nothing to serve and
+/// nothing to publish. In that one case strip
+/// \c initEntryPointToTraceFunctionAddrMap,
 /// \c finiEntryPointToTraceFunctionAddrMap, and both seed globals from
 /// the IModule (plus their \c @llvm.global_ctors / \c @llvm.global_dtors
-/// entries) — no wave ever hits the fallback path in either case, and the
-/// runtime table + spinlock become pure dead weight.
+/// entries) — no wave ever hits the fallback path, and the runtime table +
+/// spinlock become pure dead weight.
 llvm::Error handleEntryPointToTraceFunctionAddrMapCtorDtor(
     Prototype &P, const EntryPoint &EP, const PrototypeCallGraph &CG,
     PatchPCUsagesPass::Parser &OffloadParser) {
@@ -644,8 +840,13 @@ llvm::Error handleEntryPointToTraceFunctionAddrMapCtorDtor(
         return Entry.second.size() == 1;
       });
 
-  if (EP.isKernel() && !AllSingleTargetAndFullyRecovered)
-    return emitEntryPointSeed(P, OffloadParser);
+  if (!EP.isKernel() || !AllSingleTargetAndFullyRecovered) {
+    LUTHIER_RETURN_ON_ERROR(emitEntryPointSeed(P, OffloadParser));
+    if (!EP.isKernel())
+      LUTHIER_RETURN_ON_ERROR(
+          bindRuntimeTableToEnclosingKernel(P, OffloadParser));
+    return llvm::Error::success();
+  }
 
   llvm::Module &IModule = P.getInstrumentationModule();
 
