@@ -1,5 +1,5 @@
 #include "HSADispatcher.h"
-#include "DirectHsaApiTable.h"
+#include "HsaApiTable.h"
 
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/HSA/Agent.h"
@@ -46,7 +46,7 @@ llvm::Error HSADispatcher::init() {
   HSA_CHECK(hsa_init());
   Initialized = true;
 
-  RawCoreTable = buildDirectCoreApiTable();
+  RawCoreTable = buildCoreApiTable();
   CoreApi = std::make_unique<luthier::hsa::ApiTableContainer<::CoreApiTable>>(
       RawCoreTable);
 
@@ -285,8 +285,7 @@ HSADispatcher::dispatch(const GpuAgentInfo &Agent, llvm::ArrayRef<char> ELF,
   // --- Write AQL dispatch packet ---
   hsa_queue_t *Queue = Agent.Queue;
   uint64_t WriteIdx = hsa_queue_add_write_index_screlease(Queue, 1);
-  while (WriteIdx - hsa_queue_load_read_index_scacquire(Queue) >= Queue->size)
-    ;
+  while (WriteIdx - hsa_queue_load_read_index_scacquire(Queue) >= Queue->size);
 
   auto *Packet = &reinterpret_cast<hsa_kernel_dispatch_packet_t *>(
       Queue->base_address)[WriteIdx & (Queue->size - 1)];
