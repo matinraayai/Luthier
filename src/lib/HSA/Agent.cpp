@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-/// \file Agent.cpp
+/// \file
 /// Implements a set of commonly used functionality around the \c hsa_agent_t
 /// handle in HSA.
 //===----------------------------------------------------------------------===//
@@ -22,6 +22,7 @@
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/HSA/HsaError.h"
 #include "luthier/HSA/Region.h"
+#include <hsa/hsa_ext_amd.h>
 #include <llvm/Support/FormatVariadic.h>
 
 namespace luthier::hsa {
@@ -124,6 +125,65 @@ agentGetWavefrontSize(const ApiTableContainer<::CoreApiTable> &CoreApi,
       llvm::formatv("Agent {0:x} reported a wavefront size of zero",
                     Agent.handle)));
   return *SizeOrErr;
+}
+
+/// Query one of the AMD vendor extension's agent attributes. They travel
+/// through the same \c hsa_agent_get_info entry point as the core ones, so
+/// the enumerator is just cast into \c hsa_agent_info_t .
+template <typename T>
+static llvm::Expected<T>
+agentGetAmdInfoT(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                 hsa_agent_t Agent, hsa_amd_agent_info_t Attr) {
+  return agentGetInfoT<T>(CoreApi, Agent, static_cast<hsa_agent_info_t>(Attr));
+}
+
+llvm::Expected<uint32_t>
+agentGetComputeUnitCount(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                         hsa_agent_t Agent) {
+  llvm::Expected<uint32_t> CountOrErr = agentGetAmdInfoT<uint32_t>(
+      CoreApi, Agent, HSA_AMD_AGENT_INFO_COMPUTE_UNIT_COUNT);
+  LUTHIER_RETURN_ON_ERROR(CountOrErr.takeError());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      *CountOrErr != 0,
+      llvm::formatv("Agent {0:x} reported zero compute units", Agent.handle)));
+  return *CountOrErr;
+}
+
+llvm::Expected<uint32_t>
+agentGetMaxWavesPerComputeUnit(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                               hsa_agent_t Agent) {
+  llvm::Expected<uint32_t> CountOrErr = agentGetAmdInfoT<uint32_t>(
+      CoreApi, Agent, HSA_AMD_AGENT_INFO_MAX_WAVES_PER_CU);
+  LUTHIER_RETURN_ON_ERROR(CountOrErr.takeError());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      *CountOrErr != 0,
+      llvm::formatv("Agent {0:x} reported zero wavefronts per compute unit",
+                    Agent.handle)));
+  return *CountOrErr;
+}
+
+llvm::Expected<uint32_t>
+agentGetNumShaderEngines(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                         hsa_agent_t Agent) {
+  llvm::Expected<uint32_t> CountOrErr = agentGetAmdInfoT<uint32_t>(
+      CoreApi, Agent, HSA_AMD_AGENT_INFO_NUM_SHADER_ENGINES);
+  LUTHIER_RETURN_ON_ERROR(CountOrErr.takeError());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      *CountOrErr != 0,
+      llvm::formatv("Agent {0:x} reported zero shader engines", Agent.handle)));
+  return *CountOrErr;
+}
+
+llvm::Expected<uint32_t>
+agentGetNumXcc(const ApiTableContainer<::CoreApiTable> &CoreApi,
+               hsa_agent_t Agent) {
+  llvm::Expected<uint32_t> CountOrErr =
+      agentGetAmdInfoT<uint32_t>(CoreApi, Agent, HSA_AMD_AGENT_INFO_NUM_XCC);
+  LUTHIER_RETURN_ON_ERROR(CountOrErr.takeError());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      *CountOrErr != 0,
+      llvm::formatv("Agent {0:x} reported zero XCCs", Agent.handle)));
+  return *CountOrErr;
 }
 
 llvm::Error agentGetCaches(const ApiTableContainer<::CoreApiTable> &CoreApi,

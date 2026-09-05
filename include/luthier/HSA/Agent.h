@@ -161,6 +161,34 @@ llvm::Expected<uint32_t>
 agentGetWavefrontSize(const ApiTableContainer<::CoreApiTable> &CoreApi,
                       hsa_agent_t Agent);
 
+/// Queries the number of compute units on the \p Agent.
+/// \sa hsa_agent_get_info, HSA_AMD_AGENT_INFO_COMPUTE_UNIT_COUNT
+llvm::Expected<uint32_t>
+agentGetComputeUnitCount(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                         hsa_agent_t Agent);
+
+/// Queries the maximum number of wavefronts that can be resident on one
+/// compute unit of the \p Agent.
+/// \sa hsa_agent_get_info, HSA_AMD_AGENT_INFO_MAX_WAVES_PER_CU
+llvm::Expected<uint32_t>
+agentGetMaxWavesPerComputeUnit(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                               hsa_agent_t Agent);
+
+/// Queries the number of shader engines on the \p Agent. ROCr programs
+/// \c COMPUTE_TMPRING_SIZE.WAVES per shader engine from gfx11, so this is
+/// what a wave-slot index space must be scaled by there.
+/// \sa hsa_agent_get_info, HSA_AMD_AGENT_INFO_NUM_SHADER_ENGINES
+llvm::Expected<uint32_t>
+agentGetNumShaderEngines(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                         hsa_agent_t Agent);
+
+/// Queries the number of accelerator complex dies on the \p Agent. Each XCC
+/// indexes into its own stretch of the queue's scratch ring.
+/// \sa hsa_agent_get_info, HSA_AMD_AGENT_INFO_NUM_XCC
+llvm::Expected<uint32_t>
+agentGetNumXcc(const ApiTableContainer<::CoreApiTable> &CoreApi,
+               hsa_agent_t Agent);
+
 //===----------------------------------------------------------------------===//
 // Agent cache iteration
 //===----------------------------------------------------------------------===//
