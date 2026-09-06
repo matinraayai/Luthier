@@ -1512,7 +1512,8 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
           CurrentMBB = OldMBB->splitAt(*PrevMI, false);
         }
       }
-      if (MCID.isTerminator()) {
+      /// Both normal terminators and calls end the block.
+      if (MCID.isTerminator() || MCID.isCall()) {
         LLVM_DEBUG(luthier::dbgs()
                    << "[CodeDiscoveryPass] Instruction is a terminator\n");
         if (IsDirectBranch) {

@@ -272,14 +272,8 @@ def S_LSHR_B32_sem : InstSISemantic<S_LSHR_B32> {
 //   rdna4-instruction-set-architecture.pdf, page 219.
 def S_LSHR_B64_sem : InstSISemantic<S_LSHR_B64> {
   let Semantic = [
-    // src0 is a 64-bit pair (i64 by default), src1 is a 32-bit count.
-    // \c LLVMAnd requires same-width operands, so request src1 as i64
-    // explicitly — matches S_ASHR_I64 / S_LSHL_B64's pattern (the
-    // sibling S_LSHL_B64 uses \c LLVMZExt; \c GetNamedOperand with an
-    // explicit OutType achieves the same widening via the cached
-    // zext-or-trunc inside getOperandAsValue).
     (DefVal $shifted, (LLVMLShr (GetNamedOperand $src0),
-                                 (LLVMAnd (GetNamedOperand $src1, si_llvm_i64_ty),
+                                 (LLVMAnd (LLVMZExt (GetNamedOperand $src1, si_llvm_i32_ty), si_llvm_i64_ty),
                                           (ConstantInt si_llvm_i64_ty, 63)))),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $shifted),
                                       (ConstantInt si_llvm_i64_ty, 0))>.ret,
