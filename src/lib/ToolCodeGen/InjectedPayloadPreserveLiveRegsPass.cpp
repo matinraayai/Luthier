@@ -300,6 +300,22 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
             MF->getSubtarget().getRegisterInfo();
         llvm::MachineRegisterInfo &MRI = MF->getRegInfo();
 
+        // Add a block in case of a single block payload to keep SCC-related
+        // optimizations of AMDGPU backend happy
+        if (MF->front().isReturnBlock()) {
+          llvm::MachineBasicBlock &Body = MF->front();
+          llvm::MachineBasicBlock *NewEntry =
+              MF->CreateMachineBasicBlock(Body.getBasicBlock());
+          MF->insert(Body.getIterator(), NewEntry);
+          for (const auto &LI : Body.liveins())
+            NewEntry->addLiveIn(LI.PhysReg, LI.LaneMask);
+          NewEntry->sortUniqueLiveIns();
+          NewEntry->addSuccessor(&Body);
+          (void)llvm::BuildMI(*NewEntry, NewEntry->end(), llvm::DebugLoc(),
+                              TII->get(llvm::AMDGPU::S_BRANCH))
+              .addMBB(&Body);
+        }
+
         llvm::MachineBasicBlock &EntryMBB = MF->front();
         // Insert before the fresh entry's terminator (\c S_BRANCH) so
         // COPYs land inside the block, ahead of the branch to the old

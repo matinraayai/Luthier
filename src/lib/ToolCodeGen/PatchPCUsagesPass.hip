@@ -43,6 +43,7 @@
 #include <llvm/CodeGen/LivePhysRegs.h>
 #include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFunction.h>
+#include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/CodeGen/MachineInstr.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/CodeGen/MachineRegisterInfo.h>
@@ -1681,6 +1682,18 @@ PatchPCUsagesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
       TState.markDirty(*MBB);
     if (auto Err = TState.flush())
       return EmitAndReturn(std::move(Err), /*Mutated=*/true);
+  }
+
+  /// Invalidate function-level analysis for the target module
+  /// except for the machine function analysis
+  {
+    llvm::FunctionAnalysisManager &TargetFAM =
+        PAM.getResult<TargetFunctionAnalysisManagerPrototypeProxy>(P)
+            .getManager();
+    llvm::PreservedAnalyses IRPA = llvm::PreservedAnalyses::none();
+    IRPA.preserve<llvm::MachineFunctionAnalysis>();
+    for (auto &[MF, MBBs] : RC.DirtyMBBsByMF)
+      TargetFAM.invalidate(MF->getFunction(), IRPA);
   }
 
   // Every injected payload that was going to reference a device-side
