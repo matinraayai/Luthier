@@ -25,9 +25,13 @@
 #include <AMDGPU.h>
 #include <GCNSubtarget.h>
 #include <SIRegisterInfo.h>
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/CodeGen/MachineBasicBlock.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineInstr.h>
+#include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Support/ErrorHandling.h>
 
 namespace luthier {
 
@@ -1585,6 +1589,317 @@ void SpilledWithOneSGPRsValueStorage::pickOffSVA(
   llvm::MachineBasicBlock::iterator Iter = MI.getIterator();
   loadStackPointerFromSVALanes(Iter, llvm::AMDGPU::VGPR0, StackPointer, Specs);
   emitCodeToStoreSVA(MI, llvm::AMDGPU::VGPR0);
+}
+
+//===----------------------------------------------------------------------===//
+// Long-jump SGPR save/restore
+//===----------------------------------------------------------------------===//
+//
+// Building a long jump (S_GETPC_B64 / S_ADD_U32 / S_ADDC_U32 / S_SETPC_B64 or
+// SI_CALL) costs an SReg_64 pair, plus a third SGPR to park $scc across the
+// three $scc-clobbering defs when $scc is live across the site. When no such
+// registers are dead there, the app's values are parked in the SVA instead and
+// handed back once the jump has been constructed.
+//
+// The three lanes borrowed are the ones that only ever hold anything while an
+// injected payload's own prologue/epilogue is mid-flight (see
+// InjectedPayloadPEIPass): the SP spill lane, the FP spill lane, and the lo
+// half of the EXEC spill lane. A target-module patch point or relaxed branch
+// is by definition not inside a payload, so all three are dead there. The
+// borrow window must not nest --- one borrower at a time.
+//
+// Each storage scheme routes the save through its own storage:
+//   * SVS_SINGLE_VGPR              --- write the lanes of the storage VGPR
+//                                      directly; nothing else moves.
+//   * SVS_TWO_AGPRs                --- park VGPR0's app value in the temp
+//                                      AGPR (all lanes), pull the SVA out of
+//                                      the storage AGPR into VGPR0, write the
+//                                      lanes, put it all back.
+//   * the AGPR-with-SGPRs and the two spilled schemes
+//                                  --- park VGPR0's app value on the
+//                                      instrumentation stack via the scheme's
+//                                      stack pointer (installing FLAT_SCR
+//                                      from the shadow SGPRs first on the
+//                                      absolute-FS schemes), pull the SVA
+//                                      into VGPR0, write the lanes, put it
+//                                      all back.
+//
+// Every scheme but SVS_SINGLE_VGPR gets the courier and the SVA into place
+// with its own emitCodeToLoadSVA / emitCodeToStoreSVA, and does the lane
+// moves strictly between the two. Fusing the lane moves *into* the load's
+// per-EXEC-half body would be wrong: those loads cover the wave in two halves,
+// so the courier only holds a lane-accurate SVA once both halves have run,
+// whereas V_READLANE_B32 addresses an absolute lane regardless of EXEC and
+// would read a lane the other half had not filled in yet.
+
+/// The VGPR every non-VGPR-backed scheme borrows to reach the SVA. Same
+/// courier, and same emergency slot, as the cross-trace-function handoff
+/// protocol above.
+static constexpr llvm::MCPhysReg LongJumpSpillCourierVGPR = llvm::AMDGPU::VGPR0;
+
+uint8_t
+StateValueArrayStorage::getLongJumpSpillLane(const StateValueArraySpecs &Specs,
+                                             unsigned Idx) {
+  switch (Idx) {
+  case 0:
+    return Specs.getStackPointerRegSpillLane();
+  case 1:
+    return Specs.getFramePointerRegSpillLane();
+  case 2:
+    return Specs.getExecMaskSpillLane();
+  default:
+    llvm::report_fatal_error(
+        "StateValueArrayStorage::getLongJumpSpillLane: only " +
+            llvm::Twine(MaxLongJumpSpillSGPRs) +
+            " SGPRs can be parked in the SVA across a long jump",
+        /*GenCrashDiag=*/false);
+  }
+}
+
+void StateValueArrayStorage::addLongJumpSpillLiveIns(
+    llvm::MachineBasicBlock &MBB, llvm::MCRegister Courier) const {
+  llvm::SmallVector<llvm::MCRegister, 4> StorageRegs;
+  getAllStorageRegisters(StorageRegs);
+  for (llvm::MCRegister R : StorageRegs)
+    if (!MBB.isLiveIn(R))
+      MBB.addLiveIn(R);
+  if (Courier && !MBB.isLiveIn(Courier))
+    MBB.addLiveIn(Courier);
+}
+
+/// A throwaway \c S_NOP at \p InsertPt to hang the save sequence off.
+///
+/// \c emitCodeToLoadSVA / \c emitCodeToStoreSVA take a \c MachineInstr& , and
+/// on every scheme but \c SVS_SINGLE_VGPR they split \p MBB , which
+/// invalidates a bare iterator. A real MI reference survives the split, so
+/// anchoring all three steps on one placeholder keeps them in source order.
+/// Same trick \c TargetModuleBranchRelaxation uses on its reload side.
+static llvm::MachineInstr *
+createLongJumpSpillAnchor(llvm::MachineBasicBlock &MBB,
+                          llvm::MachineBasicBlock::iterator InsertPt) {
+  const auto &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+  return llvm::BuildMI(MBB, InsertPt, llvm::DebugLoc(),
+                       TII.get(llvm::AMDGPU::S_NOP))
+      .addImm(0)
+      .getInstr();
+}
+
+static void checkLongJumpSpillSGPRs(llvm::ArrayRef<llvm::MCRegister> SGPRs) {
+  if (SGPRs.empty() ||
+      SGPRs.size() > StateValueArrayStorage::MaxLongJumpSpillSGPRs)
+    llvm::report_fatal_error(
+        "Long-jump SGPR save takes between 1 and " +
+            llvm::Twine(StateValueArrayStorage::MaxLongJumpSpillSGPRs) +
+            " SGPRs, got " + llvm::Twine(SGPRs.size()),
+        /*GenCrashDiag=*/false);
+}
+
+/// \c V_WRITELANE_B32 each of \p SGPRs into its lane of \p Courier , before
+/// \p InsertPt . Ignores \c EXEC , so it is correct no matter which lanes are
+/// on at the borrow site.
+static void emitSGPRsToSVALanes(llvm::MachineBasicBlock::iterator InsertPt,
+                                llvm::MCRegister Courier,
+                                llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                                const StateValueArraySpecs &Specs) {
+  checkLongJumpSpillSGPRs(SGPRs);
+  for (const auto &[Idx, SGPR] : llvm::enumerate(SGPRs))
+    emitMoveFromSGPRToVGPRLane(
+        InsertPt, SGPR, Courier,
+        StateValueArrayStorage::getLongJumpSpillLane(Specs, Idx),
+        /*KillSource=*/false);
+}
+
+/// MBB-appending overload --- see \c emitSGPRsToSVALanes .
+static void emitSGPRsToSVALanes(llvm::MachineBasicBlock &MBB,
+                                llvm::MCRegister Courier,
+                                llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                                const StateValueArraySpecs &Specs) {
+  checkLongJumpSpillSGPRs(SGPRs);
+  for (const auto &[Idx, SGPR] : llvm::enumerate(SGPRs))
+    emitMoveFromSGPRToVGPRLane(
+        MBB, SGPR, Courier,
+        StateValueArrayStorage::getLongJumpSpillLane(Specs, Idx),
+        /*KillSource=*/false);
+}
+
+/// \c V_READLANE_B32 each of \p SGPRs back out of its lane of \p Courier ,
+/// before \p InsertPt .
+static void emitSVALanesToSGPRs(llvm::MachineBasicBlock::iterator InsertPt,
+                                llvm::MCRegister Courier,
+                                llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                                const StateValueArraySpecs &Specs) {
+  checkLongJumpSpillSGPRs(SGPRs);
+  for (const auto &[Idx, SGPR] : llvm::enumerate(SGPRs))
+    emitMoveFromVGPRLaneToSGPR(
+        InsertPt, Courier, SGPR,
+        StateValueArrayStorage::getLongJumpSpillLane(Specs, Idx),
+        /*KillSource=*/false);
+}
+
+/// MBB-appending overload --- see \c emitSVALanesToSGPRs .
+static void emitSVALanesToSGPRs(llvm::MachineBasicBlock &MBB,
+                                llvm::MCRegister Courier,
+                                llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                                const StateValueArraySpecs &Specs) {
+  checkLongJumpSpillSGPRs(SGPRs);
+  for (const auto &[Idx, SGPR] : llvm::enumerate(SGPRs))
+    emitMoveFromVGPRLaneToSGPR(
+        MBB, Courier, SGPR,
+        StateValueArrayStorage::getLongJumpSpillLane(Specs, Idx),
+        /*KillSource=*/false);
+}
+
+//=== SVS_SINGLE_VGPR =========================================================
+
+void VGPRStateValueArrayStorage::emitLongJumpSGPRSpill(
+    llvm::MachineBasicBlock &MBB, llvm::MachineBasicBlock::iterator InsertPt,
+    llvm::ArrayRef<llvm::MCRegister> SGPRs,
+    const StateValueArraySpecs &Specs) const {
+  // The SVA is already sitting in a VGPR we own, so the lanes are writable in
+  // place: no courier, no round trip through storage, and no block split.
+  addLongJumpSpillLiveIns(MBB, /*Courier=*/{});
+  if (InsertPt == MBB.end())
+    emitSGPRsToSVALanes(MBB, StorageVGPR, SGPRs, Specs);
+  else
+    emitSGPRsToSVALanes(InsertPt, StorageVGPR, SGPRs, Specs);
+}
+
+void VGPRStateValueArrayStorage::emitLongJumpSGPRRestore(
+    llvm::MachineBasicBlock &MBB, llvm::MachineBasicBlock::iterator InsertPt,
+    llvm::ArrayRef<llvm::MCRegister> SGPRs,
+    const StateValueArraySpecs &Specs) const {
+  addLongJumpSpillLiveIns(MBB, /*Courier=*/{});
+  if (InsertPt == MBB.end())
+    emitSVALanesToSGPRs(MBB, StorageVGPR, SGPRs, Specs);
+  else
+    emitSVALanesToSGPRs(InsertPt, StorageVGPR, SGPRs, Specs);
+}
+
+//=== SVS_TWO_AGPRs ===========================================================
+
+void TwoAGPRValueStorage::emitLongJumpSGPRSpill(
+    llvm::MachineBasicBlock &MBB, llvm::MachineBasicBlock::iterator InsertPt,
+    llvm::ArrayRef<llvm::MCRegister> SGPRs,
+    const StateValueArraySpecs &Specs) const {
+  // The SVA lives in StorageAGPR, which this subtarget cannot use as a vector
+  // operand, so the lanes are only reachable through a VGPR. emitCodeToLoadSVA
+  // parks the courier's app value in TempAGPR on both EXEC halves and brings
+  // StorageAGPR into it; emitCodeToStoreSVA reverses both.
+  addLongJumpSpillLiveIns(MBB, LongJumpSpillCourierVGPR);
+  llvm::MachineInstr *Anchor = createLongJumpSpillAnchor(MBB, InsertPt);
+  emitCodeToLoadSVA(*Anchor, LongJumpSpillCourierVGPR);
+  emitSGPRsToSVALanes(Anchor->getIterator(), LongJumpSpillCourierVGPR, SGPRs,
+                      Specs);
+  emitCodeToStoreSVA(*Anchor, LongJumpSpillCourierVGPR);
+  Anchor->eraseFromParent();
+}
+
+void TwoAGPRValueStorage::emitLongJumpSGPRRestore(
+    llvm::MachineBasicBlock &MBB, llvm::MachineBasicBlock::iterator InsertPt,
+    llvm::ArrayRef<llvm::MCRegister> SGPRs,
+    const StateValueArraySpecs &Specs) const {
+  addLongJumpSpillLiveIns(MBB, LongJumpSpillCourierVGPR);
+  llvm::MachineInstr *Anchor = createLongJumpSpillAnchor(MBB, InsertPt);
+  emitCodeToLoadSVA(*Anchor, LongJumpSpillCourierVGPR);
+  emitSVALanesToSGPRs(Anchor->getIterator(), LongJumpSpillCourierVGPR, SGPRs,
+                      Specs);
+  emitCodeToStoreSVA(*Anchor, LongJumpSpillCourierVGPR);
+  Anchor->eraseFromParent();
+}
+
+//=== SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908 =============================
+
+void AGPRWithThreeSGPRSValueStorage::emitLongJumpSGPRSpill(
+    llvm::MachineBasicBlock &MBB, llvm::MachineBasicBlock::iterator InsertPt,
+    llvm::ArrayRef<llvm::MCRegister> SGPRs,
+    const StateValueArraySpecs &Specs) const {
+  // No temp AGPR here: emitCodeToLoadSVA installs FLAT_SCR from the
+  // FlatScratchSGPRHigh/Low shadows, spills the courier's app value to the
+  // emergency VGPR slot at [StackPointer + 0] on both EXEC halves, and reads
+  // StorageAGPR into it. emitCodeToStoreSVA unwinds all of that.
+  addLongJumpSpillLiveIns(MBB, LongJumpSpillCourierVGPR);
+  llvm::MachineInstr *Anchor = createLongJumpSpillAnchor(MBB, InsertPt);
+  emitCodeToLoadSVA(*Anchor, LongJumpSpillCourierVGPR);
+  emitSGPRsToSVALanes(Anchor->getIterator(), LongJumpSpillCourierVGPR, SGPRs,
+                      Specs);
+  emitCodeToStoreSVA(*Anchor, LongJumpSpillCourierVGPR);
+  Anchor->eraseFromParent();
+}
+
+void AGPRWithThreeSGPRSValueStorage::emitLongJumpSGPRRestore(
+    llvm::MachineBasicBlock &MBB, llvm::MachineBasicBlock::iterator InsertPt,
+    llvm::ArrayRef<llvm::MCRegister> SGPRs,
+    const StateValueArraySpecs &Specs) const {
+  addLongJumpSpillLiveIns(MBB, LongJumpSpillCourierVGPR);
+  llvm::MachineInstr *Anchor = createLongJumpSpillAnchor(MBB, InsertPt);
+  emitCodeToLoadSVA(*Anchor, LongJumpSpillCourierVGPR);
+  emitSVALanesToSGPRs(Anchor->getIterator(), LongJumpSpillCourierVGPR, SGPRs,
+                      Specs);
+  emitCodeToStoreSVA(*Anchor, LongJumpSpillCourierVGPR);
+  Anchor->eraseFromParent();
+}
+
+//=== SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs ================================
+
+void SpilledWithThreeSGPRsValueStorage::emitLongJumpSGPRSpill(
+    llvm::MachineBasicBlock &MBB, llvm::MachineBasicBlock::iterator InsertPt,
+    llvm::ArrayRef<llvm::MCRegister> SGPRs,
+    const StateValueArraySpecs &Specs) const {
+  // The SVA is already on the instrumentation stack, at [StackPointer + 4].
+  // emitCodeToLoadSVA installs FLAT_SCR from the FlatScratchSGPRHigh/Low
+  // shadows, parks the courier's app value at [StackPointer + 0] on both EXEC
+  // halves, and loads the SVA into it; emitCodeToStoreSVA reverses both.
+  addLongJumpSpillLiveIns(MBB, LongJumpSpillCourierVGPR);
+  llvm::MachineInstr *Anchor = createLongJumpSpillAnchor(MBB, InsertPt);
+  emitCodeToLoadSVA(*Anchor, LongJumpSpillCourierVGPR);
+  emitSGPRsToSVALanes(Anchor->getIterator(), LongJumpSpillCourierVGPR, SGPRs,
+                      Specs);
+  emitCodeToStoreSVA(*Anchor, LongJumpSpillCourierVGPR);
+  Anchor->eraseFromParent();
+}
+
+void SpilledWithThreeSGPRsValueStorage::emitLongJumpSGPRRestore(
+    llvm::MachineBasicBlock &MBB, llvm::MachineBasicBlock::iterator InsertPt,
+    llvm::ArrayRef<llvm::MCRegister> SGPRs,
+    const StateValueArraySpecs &Specs) const {
+  addLongJumpSpillLiveIns(MBB, LongJumpSpillCourierVGPR);
+  llvm::MachineInstr *Anchor = createLongJumpSpillAnchor(MBB, InsertPt);
+  emitCodeToLoadSVA(*Anchor, LongJumpSpillCourierVGPR);
+  emitSVALanesToSGPRs(Anchor->getIterator(), LongJumpSpillCourierVGPR, SGPRs,
+                      Specs);
+  emitCodeToStoreSVA(*Anchor, LongJumpSpillCourierVGPR);
+  Anchor->eraseFromParent();
+}
+
+//=== SVS_SPILLED_WITH_ONE_SGPR_architected_fs ================================
+
+void SpilledWithOneSGPRsValueStorage::emitLongJumpSGPRSpill(
+    llvm::MachineBasicBlock &MBB, llvm::MachineBasicBlock::iterator InsertPt,
+    llvm::ArrayRef<llvm::MCRegister> SGPRs,
+    const StateValueArraySpecs &Specs) const {
+  // Architected FS, so no FLAT_SCR shuffle: emitCodeToLoadSVA parks the
+  // courier's app value at [StackPointer + 0] on both EXEC halves and loads
+  // the SVA from [StackPointer + 4] into it; emitCodeToStoreSVA reverses both.
+  addLongJumpSpillLiveIns(MBB, LongJumpSpillCourierVGPR);
+  llvm::MachineInstr *Anchor = createLongJumpSpillAnchor(MBB, InsertPt);
+  emitCodeToLoadSVA(*Anchor, LongJumpSpillCourierVGPR);
+  emitSGPRsToSVALanes(Anchor->getIterator(), LongJumpSpillCourierVGPR, SGPRs,
+                      Specs);
+  emitCodeToStoreSVA(*Anchor, LongJumpSpillCourierVGPR);
+  Anchor->eraseFromParent();
+}
+
+void SpilledWithOneSGPRsValueStorage::emitLongJumpSGPRRestore(
+    llvm::MachineBasicBlock &MBB, llvm::MachineBasicBlock::iterator InsertPt,
+    llvm::ArrayRef<llvm::MCRegister> SGPRs,
+    const StateValueArraySpecs &Specs) const {
+  addLongJumpSpillLiveIns(MBB, LongJumpSpillCourierVGPR);
+  llvm::MachineInstr *Anchor = createLongJumpSpillAnchor(MBB, InsertPt);
+  emitCodeToLoadSVA(*Anchor, LongJumpSpillCourierVGPR);
+  emitSVALanesToSGPRs(Anchor->getIterator(), LongJumpSpillCourierVGPR, SGPRs,
+                      Specs);
+  emitCodeToStoreSVA(*Anchor, LongJumpSpillCourierVGPR);
+  Anchor->eraseFromParent();
 }
 
 void getSupportedSVAStorageList(

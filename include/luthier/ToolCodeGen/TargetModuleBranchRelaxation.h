@@ -18,8 +18,16 @@
 /// \c llvm::BranchRelaxation. Tracks the same per-block size + offset
 /// model as stock but performs the long-branch emission via a
 /// Luthier-owned helper that delegates SGPR scavenging to
-/// \c TargetModuleScavenger — which allows protecting the SVA storage reg and
-/// optionally redirect emergency spills to SVA lanes.
+/// \c TargetModuleScavenger , which protects the SVA storage registers.
+///
+/// When the scavenger finds nothing free at the branch, the relaxer borrows
+/// an \c SGPR_64 pair anyway and parks its application value in the SVA
+/// across the jump via
+/// \c StateValueArrayStorage::emitLongJumpSGPRSpill /
+/// \c emitLongJumpSGPRRestore . That save is emitted cross-block by hand —
+/// the spill goes in the trampoline block and the reload at the branch's
+/// destination — rather than through \c TargetModuleScavenger 's own SVA
+/// sink, which only handles a same-block reload.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_TARGET_MODULE_BRANCH_RELAXATION_H
 #define LUTHIER_TOOL_CODE_GEN_TARGET_MODULE_BRANCH_RELAXATION_H

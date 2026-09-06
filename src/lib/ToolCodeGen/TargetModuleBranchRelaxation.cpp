@@ -23,8 +23,10 @@
 /// change is in \c fixupUnconditionalBranch, which calls
 /// \c emitLongBranch instead of \c TII->insertIndirectBranch.
 /// That helper mirrors \c SIInstrInfo::insertIndirectBranch's body but
-/// scavenges via \c TargetModuleScavenger (which sees the \c ReservedRegs
-/// set and the SVA-lane \c SpillSink the caller installed).
+/// scavenges via \c TargetModuleScavenger, which sees the \c ReservedRegs
+/// set the caller installs from the SVA storage active at the branch. When
+/// the scavenger comes up empty, \c emitSVALaneSpillForLongBranch borrows a
+/// pair anyway and parks its application value in the SVA across the jump.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/TargetModuleBranchRelaxation.h"
 
@@ -35,6 +37,7 @@
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
 #include "luthier/ToolCodeGen/StateValueArrayStorage.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
+#include "luthier/ToolCodeGen/TargetRegisterBudget.h"
 
 #include <AMDGPU.h>
 #include <GCNSubtarget.h>
@@ -143,6 +146,12 @@ class TargetModuleBranchRelaxationWorker {
   llvm::DenseSet<llvm::MCPhysReg>
   getSVSReservedRegsAtBranch(const llvm::MachineBasicBlock &SourceMBB) const;
 
+  /// Declare every SVS storage register active in \p MBB live-in on it.
+  /// The per-PMBB live-in sets describe the *application's* liveness only,
+  /// so re-seeding a block from them drops the SVA storage the patcher's
+  /// emitted code reads.
+  void addSVSStorageLiveIns(llvm::MachineBasicBlock &MBB) const;
+
   /// AMDGPU-specific long-branch emission. Forked from
   /// \c SIInstrInfo::insertIndirectBranch (the pre-gfx12 path).
   /// Scavenges via \c RS so the SVA storage reg is excluded. When no
@@ -243,38 +252,50 @@ TargetModuleBranchRelaxationWorker::getSVSReservedRegsAtBranch(
   return Out;
 }
 
+void TargetModuleBranchRelaxationWorker::addSVSStorageLiveIns(
+    llvm::MachineBasicBlock &MBB) const {
+  bool Added = false;
+  for (const StateValueStorageSegment &Seg : SVLoc.getStorageIntervals(MBB)) {
+    llvm::SmallVector<llvm::MCRegister, 4> Regs;
+    Seg.getSVS().getAllStorageRegisters(Regs);
+    for (llvm::MCRegister R : Regs)
+      if (!MBB.isLiveIn(R)) {
+        MBB.addLiveIn(R);
+        Added = true;
+      }
+  }
+  if (Added)
+    MBB.sortUniqueLiveIns();
+}
+
 bool TargetModuleBranchRelaxationWorker::emitSVALaneSpillForLongBranch(
     llvm::MachineBasicBlock &SpillMBB,
     llvm::MachineBasicBlock::iterator SpillBefore,
     llvm::MachineBasicBlock &ReloadMBB,
     llvm::MachineBasicBlock::iterator ReloadBefore, llvm::MCRegister Reg) {
-  // The pair is saved through two free SVA lanes; the SVA travels
-  // through the long jump in a courier VGPR that gets stored back to
-  // its permanent storage on the reload side.
+  // The pair's application value is parked in the SVA around the long jump,
+  // using the same save the target module patcher uses around a patch point:
   //
-  //   Spill side (in BranchBB before S_GETPC):
-  //     emitCodeToLoadSVA(anchor, Courier)  // no-op for VGPR schemes;
-  //                                          // otherwise: spills
-  //                                          // Courier's app value
-  //                                          // to the emergency VGPR
-  //                                          // slot, loads SVA into
-  //                                          // Courier
-  //     V_WRITELANE_B32 Sub0 -> Courier[l0]
-  //     V_WRITELANE_B32 Sub1 -> Courier[l1]
-  //     // Courier now carries the SVA-with-encoded-pair; the long
-  //     // jump only touches SGPRs, so it survives across.
+  //   Spill side (in BranchBB, before the S_GETPC):
+  //     SVS.emitLongJumpSGPRSpill(Sub0, Sub1)
+  //       -> V_WRITELANE_B32 of each half into the SP / FP spill lanes,
+  //          bracketed (on every scheme but the plain-VGPR one) by the
+  //          scheme's own courier load/store.
   //
   //   Reload side (at ReloadBefore in ReloadMBB):
-  //     V_READLANE_B32 Sub0 <- Courier[l0]
-  //     V_READLANE_B32 Sub1 <- Courier[l1]
-  //     emitCodeToStoreSVA(anchor, Courier)  // no-op for VGPR
-  //                                          // schemes; otherwise:
-  //                                          // stores Courier (SVA)
-  //                                          // back to permanent
-  //                                          // storage, restores
-  //                                          // Courier's app value
-  //                                          // from the emergency
-  //                                          // slot.
+  //     SVS.emitLongJumpSGPRRestore(Sub0, Sub1)
+  //       -> the mirror, with V_READLANE_B32.
+  //
+  // Both sides round-trip through the scheme's permanent storage rather than
+  // leaving the SVA parked in a courier VGPR across the jump. That costs one
+  // extra round trip on the AGPR and spilled schemes (the plain-VGPR scheme,
+  // where the load/store are no-ops, is unaffected), and buys a save that
+  // does not depend on the jump touching nothing but SGPRs.
+  //
+  // The lanes borrowed are the payload SP / FP spill lanes. They only ever
+  // hold anything while an injected payload's own prologue/epilogue is
+  // mid-flight, and a relaxed branch in target-module code is by definition
+  // not inside a payload.
   //
   // SVS lookup: BranchBB (SpillMBB) is not in SVLoc. Its unique
   // predecessor IS an original MBB — the branch's source MBB — and
@@ -286,7 +307,6 @@ bool TargetModuleBranchRelaxationWorker::emitSVALaneSpillForLongBranch(
   // (multi-pred case).
   auto *MF = SpillMBB.getParent();
   const auto &ST = MF->getSubtarget<llvm::GCNSubtarget>();
-  const auto *TII = ST.getInstrInfo();
   const auto *TRI = ST.getRegisterInfo();
 
   if (SpillMBB.pred_size() != 1)
@@ -297,105 +317,29 @@ bool TargetModuleBranchRelaxationWorker::emitSVALaneSpillForLongBranch(
     return false;
   const StateValueArrayStorage &SVS = SpillSegs.back().getSVS();
 
-  unsigned WaveSize = ST.getWavefrontSize();
-  auto FreeLanes = Specs.findLowestFreeLanes(2, WaveSize);
-  if (FreeLanes.size() < 2)
-    return false;
-
   llvm::MCRegister Sub0 = TRI->getSubReg(Reg, llvm::AMDGPU::sub0);
   llvm::MCRegister Sub1 = TRI->getSubReg(Reg, llvm::AMDGPU::sub1);
   if (!Sub0 || !Sub1)
     return false;
 
-  // Courier VGPR:
-  //   - VGPR SVS: the SVA VGPR itself. emitCodeToLoadSVA/StoreSVA are
-  //     no-ops; the WRITELANE / READLANE run directly against the live
-  //     SVA VGPR.
-  //   - Spilled / AGPR SVS: V0 by convention. emitCodeToLoadSVA spills
-  //     V0's app contents to the emergency VGPR slot (SP-8) and loads
-  //     the SVA into V0. emitCodeToStoreSVA on the reload side stores
-  //     V0 (SVA) back to its permanent storage and restores V0's app
-  //     contents from SP-8.
-  llvm::MCRegister Courier;
-  {
-    llvm::MCRegister SReg = SVS.getStateValueStorageReg();
-    if (SReg && llvm::AMDGPU::VGPR_32RegClass.contains(SReg))
-      Courier = SReg;
-    else
-      Courier = llvm::AMDGPU::VGPR0;
-  }
-
-  // Liveness on SpillMBB: MachineVerifier needs the SVS storage regs
-  // and the courier live-in for the WRITELANE tied-def read.
-  // SpillMBB (BranchBB) had its liveins seeded by the relaxer from
-  // the source MBB's successors' liveins, which does not include
-  // these. Reload-side liveness is handled by fixupUnconditionalBranch
-  // after we return.
-  llvm::SmallVector<llvm::MCRegister, 4> SVSStorageRegs;
-  SVS.getAllStorageRegisters(SVSStorageRegs);
-  for (llvm::MCRegister R : SVSStorageRegs)
-    if (!SpillMBB.isLiveIn(R))
-      SpillMBB.addLiveIn(R);
-  if (!SpillMBB.isLiveIn(Courier))
-    SpillMBB.addLiveIn(Courier);
-
-  llvm::DebugLoc DL;
+  const llvm::MCRegister Parts[]{Sub0, Sub1};
 
   // ---------- SPILL SIDE ----------
-  // emitCodeToLoadSVA inserts BEFORE its anchor MI. SpillBefore is
-  // the S_GETPC that emitLongBranch already placed at the top of
-  // BranchBB, so *SpillBefore is safe to dereference. Insertion
-  // order at the anchor position gives the final layout:
-  // [load-SVA]  [WRITELANEs]  [S_GETPC...].
-  {
-    llvm::MachineInstr &Anchor = *SpillBefore;
-    SVS.emitCodeToLoadSVA(Anchor, Courier);
-    (void)llvm::BuildMI(SpillMBB, SpillBefore, DL,
-                        TII->get(llvm::AMDGPU::V_WRITELANE_B32), Courier)
-        .addReg(Sub0)
-        .addImm(FreeLanes[0])
-        .addReg(Courier);
-    (void)llvm::BuildMI(SpillMBB, SpillBefore, DL,
-                        TII->get(llvm::AMDGPU::V_WRITELANE_B32), Courier)
-        .addReg(Sub1)
-        .addImm(FreeLanes[1])
-        .addReg(Courier);
-  }
+  // SpillBefore is the S_GETPC that emitLongBranch already placed at the top
+  // of BranchBB, so the save lands ahead of the whole PC-materialization
+  // sequence: [save] [S_GETPC ...] [S_SETPC].
+  SVS.emitLongJumpSGPRSpill(SpillMBB, SpillBefore, Parts, Specs);
 
   // ---------- RELOAD SIDE ----------
-  // ReloadMBB is either DestBB itself (single-pred case; ReloadBefore
-  // points at DestBB's first original MI) or a fresh block spliced in
-  // front of DestBB (multi-pred case; ReloadBefore == ReloadMBB.begin()
-  // on an empty block). In the multi-pred case *ReloadBefore is
-  // undefined; for VGPR schemes this is fine because emitCodeToStoreSVA
-  // is a no-op and we just BuildMI the V_READLANEs directly. For
-  // non-VGPR schemes we synthesize a placeholder S_NOP as an anchor,
-  // run emitCodeToStoreSVA against it, then erase the placeholder.
-  //
-  // Final layout: [READLANEs] [store-SVA] [original ReloadMBB contents
-  // if any].
-  auto EmitReadlanes = [&](llvm::MachineBasicBlock::iterator Before) {
-    (void)llvm::BuildMI(ReloadMBB, Before, DL,
-                        TII->get(llvm::AMDGPU::V_READLANE_B32), Sub0)
-        .addReg(Courier)
-        .addImm(FreeLanes[0]);
-    (void)llvm::BuildMI(ReloadMBB, Before, DL,
-                        TII->get(llvm::AMDGPU::V_READLANE_B32), Sub1)
-        .addReg(Courier)
-        .addImm(FreeLanes[1]);
-  };
-
-  if (SVS.requiresLoadAndStoreBeforeUse()) {
-    auto *Placeholder = llvm::BuildMI(ReloadMBB, ReloadBefore, DL,
-                                      TII->get(llvm::AMDGPU::S_NOP))
-                            .addImm(0)
-                            .getInstr();
-    EmitReadlanes(Placeholder->getIterator());
-    SVS.emitCodeToStoreSVA(*Placeholder, Courier);
-    Placeholder->eraseFromParent();
-  } else {
-    EmitReadlanes(ReloadBefore);
-  }
+  // ReloadMBB is either DestBB itself (single-pred case; ReloadBefore points
+  // at DestBB's first original MI) or a fresh block spliced in front of
+  // DestBB (multi-pred case; ReloadBefore == ReloadMBB.begin() on an empty
+  // block). emitLongJumpSGPRRestore never dereferences ReloadBefore — the
+  // non-VGPR schemes anchor on a placeholder they create themselves, and the
+  // VGPR scheme has an append-at-end path — so both cases work. Reload-side
+  // liveness beyond the SVA regs is handled by fixupUnconditionalBranch
+  // after we return.
+  SVS.emitLongJumpSGPRRestore(ReloadMBB, ReloadBefore, Parts, Specs);
   return true;
 }
 
@@ -409,6 +353,7 @@ void TargetModuleBranchRelaxationWorker::emitLongBranch(
   auto &MRI = MF->getRegInfo();
   const auto &ST = MF->getSubtarget<llvm::GCNSubtarget>();
   const auto *MFI = MF->getInfo<llvm::SIMachineFunctionInfo>();
+  const auto *TRI = ST.getRegisterInfo();
   auto &MCCtx = MF->getContext();
   auto I = MBB.end();
 
@@ -453,8 +398,8 @@ void TargetModuleBranchRelaxationWorker::emitLongBranch(
   (void)llvm::BuildMI(&MBB, DL, TII->get(llvm::AMDGPU::S_SETPC_B64))
       .addReg(PCReg);
 
-  // Scavenge an SReg_64 to replace PCReg. If none available, fall
-  // through to the SVA-lane spill of a fixed pair (SGPR0_SGPR1).
+  // Scavenge an SReg_64 to replace PCReg. If none is free, borrow one and
+  // park its application value in the SVA across the jump.
   llvm::Register LongBranchReservedReg = MFI->getLongBranchReservedReg();
   llvm::Register Scav;
   bool ScavengerSpilled = false;
@@ -463,18 +408,47 @@ void TargetModuleBranchRelaxationWorker::emitLongBranch(
     Scav = LongBranchReservedReg;
   } else {
     RS.enterBasicBlockEnd(MBB);
+    // AllowSpill stays false even though TargetModuleScavenger now has an
+    // SVA sink: spill() places its reload at MBBI, which after
+    // enterBasicBlockEnd is MBB.end() — i.e. past the S_SETPC_B64, where it
+    // would never execute. A long branch's reload site is in another block
+    // entirely, chosen by fixupUnconditionalBranch, so the cross-block
+    // emitSVALaneSpillForLongBranch below is the one that applies.
     Scav = RS.scavengeRegisterBackwards(
         llvm::AMDGPU::SReg_64RegClass, llvm::MachineBasicBlock::iterator(GetPC),
         /*RestoreAfter=*/false, /*SPAdj=*/0, /*AllowSpill=*/false);
     if (!Scav) {
-      Scav = llvm::AMDGPU::SGPR0_SGPR1;
+      // Pick the pair to borrow rather than hard-coding SGPR0_SGPR1: it must
+      // not overlap the SVA storage we are about to save into, and must not
+      // be reserved for a purpose instrumentation has to respect. Highest
+      // first, so a pair above the application's launch budget wins and the
+      // save has less to preserve.
+      const llvm::DenseSet<llvm::MCPhysReg> &SVSRegs = RS.getReservedRegs();
+      for (llvm::MCPhysReg Reg :
+           llvm::reverse(llvm::AMDGPU::SGPR_64RegClass)) {
+        if (isReservedForApp(*MF, Reg))
+          continue;
+        if (llvm::any_of(SVSRegs, [&](llvm::MCPhysReg R) {
+              return TRI->regsOverlap(Reg, R);
+            }))
+          continue;
+        Scav = llvm::MCRegister(Reg);
+        break;
+      }
+      if (!Scav)
+        llvm::report_fatal_error(
+            "TargetModuleBranchRelaxation: every SGPR_64 pair either "
+            "overlaps the state value array storage at the branch or is "
+            "reserved for the application; cannot relax long branch",
+            /*GenCrashDiag=*/false);
       ScavengerSpilled = true;
       if (!emitSVALaneSpillForLongBranch(MBB, GetPC->getIterator(), ReloadMBB,
                                          ReloadMBB.begin(), Scav)) {
         llvm::report_fatal_error(
-            "TargetModuleBranchRelaxation: no free SReg_64 and SVA-lane "
-            "spill could not be emitted (missing SVS segment or fewer than "
-            "two free SVA lanes); cannot relax long branch",
+            "TargetModuleBranchRelaxation: no free SReg_64 and the SVA save "
+            "could not be emitted (the branch block has no unique "
+            "predecessor, or no SVS segment covers it); cannot relax long "
+            "branch",
             /*GenCrashDiag=*/false);
       }
     }
@@ -784,13 +758,14 @@ bool TargetModuleBranchRelaxationWorker::fixupUnconditionalBranch(
   if (SinglePred) {
     // Reload code (if any) was prepended to DestBB. Update its size
     // and re-thread offsets across it. DestBB.liveins() already has
-    // whatever the original CFG made live; the SpillSink added the
-    // courier VGPR / SVA storage regs to SpillMBB's liveins but not
-    // ours — computeAndAddLiveIns can't run here (asserts empty
-    // livein list). Instead let the outer fixed-point loop's next
-    // relaxBranchInstructions call see any stale-but-safe live-in
-    // state; a subsequent full-MF liveness recompute (if any) will
-    // reconcile.
+    // whatever the original CFG made live, and the SVA save declared
+    // the storage regs and the courier live-in on both the spill and
+    // the reload block itself (see
+    // StateValueArrayStorage::addLongJumpSpillLiveIns), so nothing more
+    // is needed here — computeAndAddLiveIns can't run anyway (it
+    // asserts an empty livein list). Any remaining stale-but-safe
+    // live-in state is reconciled by the outer fixed-point loop's next
+    // relaxBranchInstructions call.
     BlockInfo[DestBB->getNumber()].Size = computeBlockSize(*DestBB);
     adjustBlockOffsets(*DestBB, std::next(DestBB->getIterator()));
     RelaxedUnconditionals.insert({BranchBB, DestBB});
@@ -924,6 +899,15 @@ bool TargetModuleBranchRelaxationWorker::run(llvm::MachineFunction &mf) {
         MBB.addLiveIn(R);
     MBB.sortUniqueLiveIns();
   }
+  // The SVA storage registers are not in either PMBB set — those describe
+  // the *application's* liveness, and the SVA is Luthier's. They are live
+  // across the whole instrumented function by construction, and the code the
+  // patcher already emitted into these blocks reads them, so re-seeding
+  // without them would leave those reads with no reaching definition. Done in
+  // its own unguarded walk because the loop above skips blocks the IPCFG does
+  // not know about, and those need the SVA storage declared just as much.
+  for (llvm::MachineBasicBlock &MBB : *MF)
+    addSVSStorageLiveIns(MBB);
 
   scanFunction();
   bool MadeChange = false;

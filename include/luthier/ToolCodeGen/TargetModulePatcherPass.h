@@ -29,20 +29,32 @@
 ///     across the target's control flow.
 ///
 /// **Phase B — Target Patching**
-///   - Clone every non-payload Function + GlobalVariable + GlobalAlias
+///   - Move every non-payload Function + GlobalVariable + GlobalAlias
 ///     + GlobalIFunc from the IModule into the target module (per user:
 ///     "consented to having them present in the final binary").
 ///   - Strip stale `amdgpu-num-vgpr` / `amdgpu-num-sgpr` attributes from
 ///     target functions (CodeDiscoveryPass set them, and they're no
 ///     longer correct after instrumentation extends register usage).
-///   - First iteration (minimal): every injected payload is outlined.
-///     At each AppMI, replace with an `s_branch` to a per-payload label
-///     emitted after the host function. Once all outlined payloads are
-///     placed, walk the s_branches and relax any whose displacement
-///     exceeds the s_branch limit to `s_setpc_b64`-via-scavenged-SGPRs,
-///     using IPPredicatedLivenessAnalysis::getPMBBLiveIns and,
-///     as a last resort, two free SVA lanes from
-///     `StateValueArraySpecs::findLowestFreeLanes`.
+///   - Outline every injected payload behind a call. At each `PATCHPOINT`
+///     marker, scavenge an `SReg_64` pair (plus a 32-bit SGPR to park
+///     `$scc` when it is live across the site), materialize the payload's
+///     address into the pair with `s_getpc_b64` + `s_add_u32` /
+///     `s_addc_u32`, and emit an `SI_CALL` (`s_swappc_b64`) through it.
+///     The payload MF is moved — not cloned — into the target module, and
+///     its return terminators are rewritten to land back at the call's
+///     continuation symbol.
+///   - Scavenging asks `luthier::isReservedForApp`, not
+///     `MRI.isReserved`, so registers above the application's launch
+///     budget are eligible. When nothing is free at a site, the pair is
+///     borrowed anyway and its application value is parked in the SVA
+///     across the injection via
+///     `StateValueArrayStorage::emitLongJumpSGPRSpill`, handed back to the
+///     payload at its entry block, and re-parked at each of its return
+///     blocks so the return trampoline has the pair to work with.
+///   - Finally, relax any branch whose displacement exceeds the
+///     `s_branch` limit to `s_setpc_b64`-via-scavenged-SGPRs
+///     (`TargetModuleBranchRelaxation`), which falls back on the same SVA
+///     save.
 ///
 /// Pipeline slot: very last Prototype-level pass, after
 /// `injected-payload-pei` and `machine-passes` have finished lowering the

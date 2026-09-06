@@ -115,8 +115,9 @@ public:
   virtual void emitCodeToLoadSVA(llvm::MachineInstr &MI,
                                  llvm::MCRegister DestVGPR) const = 0;
 
-  /// Emit a set of instructions after \p MI that stores the state value array
-  /// from \p SrcVGPR to the storage
+  /// Emit a set of instructions before \p MI that stores the state value array
+  /// from \p SrcVGPR to the storage, and returns \p SrcVGPR 's application
+  /// value to it.
   virtual void emitCodeToStoreSVA(llvm::MachineInstr &MI,
                                   llvm::MCRegister SrcVGPR) const = 0;
 
@@ -153,6 +154,57 @@ public:
   virtual void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const = 0;
 
+  /// Largest number of 32-bit SGPRs \c emitLongJumpSGPRSpill /
+  /// \c emitLongJumpSGPRRestore can carry: an \c SReg_64 pair plus the
+  /// \c $scc save slot the patch-point call sequence needs when \c $scc is
+  /// live across the site.
+  static constexpr unsigned MaxLongJumpSpillSGPRs = 3;
+
+  /// \return the SVA lane the \p Idx -th spilled SGPR occupies.
+  ///
+  /// The long-jump save borrows the three lanes that are only ever live
+  /// inside an injected payload's own prologue/epilogue window --- the
+  /// stack-pointer spill lane, the frame-pointer spill lane, and the lo half
+  /// of the \c EXEC spill lane (see \c InjectedPayloadPEIPass ). At a
+  /// target-module patch point or relaxed branch no payload is executing, so
+  /// all three hold nothing live. The stack-pointer *store* lane is
+  /// deliberately not in the list: it holds the instrumentation stack pointer
+  /// for the lifetime of the wave.
+  static uint8_t getLongJumpSpillLane(const StateValueArraySpecs &Specs,
+                                      unsigned Idx);
+
+  /// Emit code before \p InsertPt that parks \p SGPRs --- between one and
+  /// \c MaxLongJumpSpillSGPRs 32-bit SGPRs --- in the state value array,
+  /// leaving the registers free for the caller to clobber while it builds a
+  /// long jump out of them.
+  ///
+  /// Every scheme implements this against its own storage: the VGPR scheme
+  /// writes the lanes directly, the AGPR schemes shuttle through a courier
+  /// VGPR parked in the temp AGPR, and the spilled schemes shuttle through a
+  /// courier VGPR parked on the instrumentation stack.
+  ///
+  /// \param MBB block \p InsertPt belongs to
+  /// \param InsertPt where the save is emitted; on every scheme but
+  /// \c SVS_SINGLE_VGPR this call splits \p MBB , so iterators into it do
+  /// not survive
+  /// \param SGPRs the 32-bit SGPRs to save, in lane order
+  /// \param Specs the SVA lane layout
+  virtual void
+  emitLongJumpSGPRSpill(llvm::MachineBasicBlock &MBB,
+                        llvm::MachineBasicBlock::iterator InsertPt,
+                        llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                        const StateValueArraySpecs &Specs) const = 0;
+
+  /// Inverse of \c emitLongJumpSGPRSpill : reload \p SGPRs from their SVA
+  /// lanes, releasing the lanes for the next borrower. \p SGPRs must be the
+  /// same list, in the same order, that was handed to the matching
+  /// \c emitLongJumpSGPRSpill .
+  virtual void
+  emitLongJumpSGPRRestore(llvm::MachineBasicBlock &MBB,
+                          llvm::MachineBasicBlock::iterator InsertPt,
+                          llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                          const StateValueArraySpecs &Specs) const = 0;
+
   static int getNumVGPRsUsed(StorageKind Kind);
 
   /// \return the number of VGPRs used by this storage
@@ -175,6 +227,15 @@ public:
   bool isSupportedOnSubTarget(const llvm::GCNSubtarget &ST) const {
     return isSupportedOnSubTarget(Kind, ST);
   }
+
+protected:
+  /// Declare this scheme's storage registers, plus \p Courier when it is
+  /// non-zero, live-in on \p MBB . The lane moves emitted by
+  /// \c emitLongJumpSGPRSpill read the courier as a tied operand and read
+  /// the storage registers as addresses, and neither is in the block's
+  /// live-in set as the patcher and the branch relaxer seed it.
+  void addLongJumpSpillLiveIns(llvm::MachineBasicBlock &MBB,
+                               llvm::MCRegister Courier) const;
 };
 
 /// \brief describes the state value array when stored in a free VGPR
@@ -216,6 +277,17 @@ public:
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
                       const StateValueArrayStorage &TargetSVS,
                       const StateValueArraySpecs &Specs) const override;
+
+  void emitLongJumpSGPRSpill(llvm::MachineBasicBlock &MBB,
+                             llvm::MachineBasicBlock::iterator InsertPt,
+                             llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                             const StateValueArraySpecs &Specs) const override;
+
+  void
+  emitLongJumpSGPRRestore(llvm::MachineBasicBlock &MBB,
+                          llvm::MachineBasicBlock::iterator InsertPt,
+                          llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                          const StateValueArraySpecs &Specs) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -267,6 +339,17 @@ public:
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
                       const StateValueArrayStorage &TargetSVS,
                       const StateValueArraySpecs &Specs) const override;
+
+  void emitLongJumpSGPRSpill(llvm::MachineBasicBlock &MBB,
+                             llvm::MachineBasicBlock::iterator InsertPt,
+                             llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                             const StateValueArraySpecs &Specs) const override;
+
+  void
+  emitLongJumpSGPRRestore(llvm::MachineBasicBlock &MBB,
+                          llvm::MachineBasicBlock::iterator InsertPt,
+                          llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                          const StateValueArraySpecs &Specs) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
@@ -330,6 +413,17 @@ public:
                       const StateValueArrayStorage &TargetSVS,
                       const StateValueArraySpecs &Specs) const override;
 
+  void emitLongJumpSGPRSpill(llvm::MachineBasicBlock &MBB,
+                             llvm::MachineBasicBlock::iterator InsertPt,
+                             llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                             const StateValueArraySpecs &Specs) const override;
+
+  void
+  emitLongJumpSGPRRestore(llvm::MachineBasicBlock &MBB,
+                          llvm::MachineBasicBlock::iterator InsertPt,
+                          llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                          const StateValueArraySpecs &Specs) const override;
+
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
     Regs.push_back(StorageAGPR);
@@ -388,6 +482,17 @@ public:
                       const StateValueArrayStorage &TargetSVS,
                       const StateValueArraySpecs &Specs) const override;
 
+  void emitLongJumpSGPRSpill(llvm::MachineBasicBlock &MBB,
+                             llvm::MachineBasicBlock::iterator InsertPt,
+                             llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                             const StateValueArraySpecs &Specs) const override;
+
+  void
+  emitLongJumpSGPRRestore(llvm::MachineBasicBlock &MBB,
+                          llvm::MachineBasicBlock::iterator InsertPt,
+                          llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                          const StateValueArraySpecs &Specs) const override;
+
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
     Regs.push_back(FlatScratchSGPRHigh);
@@ -437,6 +542,17 @@ public:
   emitCodeToSwitchSVS(llvm::MachineBasicBlock::iterator MI,
                       const StateValueArrayStorage &TargetSVS,
                       const StateValueArraySpecs &Specs) const override;
+
+  void emitLongJumpSGPRSpill(llvm::MachineBasicBlock &MBB,
+                             llvm::MachineBasicBlock::iterator InsertPt,
+                             llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                             const StateValueArraySpecs &Specs) const override;
+
+  void
+  emitLongJumpSGPRRestore(llvm::MachineBasicBlock &MBB,
+                          llvm::MachineBasicBlock::iterator InsertPt,
+                          llvm::ArrayRef<llvm::MCRegister> SGPRs,
+                          const StateValueArraySpecs &Specs) const override;
 
   void getAllStorageRegisters(
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {

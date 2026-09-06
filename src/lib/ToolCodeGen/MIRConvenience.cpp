@@ -24,6 +24,7 @@
 #include <SIRegisterInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
+#include <llvm/Support/MathExtras.h>
 #include <algorithm>
 #include <cassert>
 
@@ -326,14 +327,49 @@ static void emitWaitStatesImpl(llvm::MachineBasicBlock &MBB,
 /// same instruction with SADDR from 0 to 9192 -- every value faults with
 /// \c offset:-8 and every value succeeds with \c offset:0 or \c offset:8;
 /// there is no bounds check on the SADDR itself).
+///
+/// \p StackPtr arrives in the units the *application's* frame uses, because
+/// that is the one value everyone shares: the kernel prolog parks it in the
+/// SVA's stack-pointer lane, and \c InjectedPayloadPEIPass reads it straight
+/// into the payload's \c SGPR32 where the payload's compiler-generated frame
+/// code consumes it. On a subtarget that reaches scratch through the private
+/// segment buffer that is a wave-swizzled offset -- bytes times the wavefront
+/// size, which is exactly what \c getScratchScaleFactor reports and what
+/// \c SIFrameLowering scales an entry function's stack size by.
+/// \c SCRATCH_{LOAD,STORE}_DWORD_SADDR is a *flat* scratch instruction and
+/// takes a plain per-lane byte offset instead, so the two disagree by the
+/// wavefront size and the access lands a whole wave's worth of scratch past
+/// where it belongs. Unswizzle into \p StackPtr for the duration of the
+/// access and put it back afterwards, so the register still holds what every
+/// other consumer expects.
+///
+/// The shift pair clobbers \c SCC. Every caller is either already inside a
+/// \c createSCCSafeSequenceOfMIs region (the spilled and AGPR storage schemes
+/// bracket their load/store bodies with one) or sits at a point where the
+/// AMDGPU ABI leaves \c SCC dead -- immediately before a call, or at a device
+/// function's entry, which is where the V0-courier hand-off protocol runs.
 static void emitEmergencySlotAccess(llvm::MachineBasicBlock &MBB,
                                     llvm::MachineBasicBlock::iterator Where,
                                     llvm::MCRegister StackPtr,
                                     llvm::MCRegister DataVGPR, int Offset,
                                     bool IsStore, bool KillSource) {
   assert(Offset >= 0 && "emergency-slot offsets must be non-negative");
-  const auto &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+  const auto &ST = MBB.getParent()->getSubtarget<llvm::GCNSubtarget>();
+  const auto &TII = *ST.getInstrInfo();
+  // Emitted before the shift so the wait states cover the first SALU read of
+  // the VALU-defined StackPtr, which is now the S_LSHR_B32 rather than the
+  // scratch op itself.
   emitWaitStatesImpl(MBB, Where, VMEMReadSGPRVALUDefWaitStates);
+  const unsigned Log2WaveSize = llvm::Log2_32(ST.getWavefrontSize());
+  const bool NeedsUnswizzle = getScratchScaleFactor(ST) != 1;
+  assert((!NeedsUnswizzle ||
+          getScratchScaleFactor(ST) == ST.getWavefrontSize()) &&
+         "scratch scale is either 1 or the wavefront size");
+  if (NeedsUnswizzle)
+    (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::S_LSHR_B32), StackPtr)
+        .addReg(StackPtr)
+        .addImm(Log2WaveSize);
   if (IsStore)
     (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(),
                         TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
@@ -351,6 +387,13 @@ static void emitEmergencySlotAccess(llvm::MachineBasicBlock &MBB,
   (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(),
                       TII.get(llvm::AMDGPU::S_WAITCNT))
       .addImm(0);
+  // Re-swizzle: the caller's register is the shared instrumentation SP and
+  // every other reader of it wants the application's units back.
+  if (NeedsUnswizzle)
+    (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::S_LSHL_B32), StackPtr)
+        .addReg(StackPtr)
+        .addImm(Log2WaveSize);
 }
 
 void emitLoadFromEmergencyVGPRScratchSpillLocation(

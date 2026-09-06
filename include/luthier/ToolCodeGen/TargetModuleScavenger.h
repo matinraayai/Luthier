@@ -15,10 +15,16 @@
 //===----------------------------------------------------------------------===//
 /// \file
 /// Target-module register scavenger — a custom version of
-/// \c llvm::RegScavenger. Sole addition over stock: \c ReservedRegs —
-/// a \c DenseSet of phys-regs the scavenger must never pick, regardless
-/// of \c MRI.isReserved / \c LiveUnits / backward-walk state. Used by
-/// \c TargetModuleBranchRelaxation to protect the SVA storage register(s).
+/// \c llvm::RegScavenger. Two additions over stock:
+///
+///   * \c ReservedRegs — a \c DenseSet of phys-regs the scavenger must never
+///     pick, regardless of \c MRI.isReserved / \c LiveUnits / backward-walk
+///     state. Used by \c TargetModuleBranchRelaxation to protect the SVA
+///     storage register(s).
+///   * an optional state-value-array spill sink (\c setSVASpillSink). Stock
+///     \c spill() parks the scavenged register in an emergency frame slot,
+///     which a lifted target-module function does not have; with the sink
+///     installed it parks the register in the SVA instead.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOL_CODE_GEN_TARGET_MODULE_SCAVENGER_H
 #define LUTHIER_TOOL_CODE_GEN_TARGET_MODULE_SCAVENGER_H
@@ -42,6 +48,9 @@ class TargetRegisterInfo;
 
 namespace luthier {
 
+class StateValueArraySpecs;
+class StateValueArrayStorage;
+
 /// Sibling-class fork of \c llvm::RegScavenger
 class TargetModuleScavenger {
 public:
@@ -52,6 +61,34 @@ public:
   /// scan's \c Used set.
   void setReservedRegs(llvm::DenseSet<llvm::MCPhysReg> Regs) {
     ReservedRegs = std::move(Regs);
+  }
+
+  /// \return the never-pick set installed by \c setReservedRegs. Callers that
+  /// have to pick a register the scavenger declined to hand out — the branch
+  /// relaxer, choosing a pair to borrow and save — need the same exclusions.
+  const llvm::DenseSet<llvm::MCPhysReg> &getReservedRegs() const {
+    return ReservedRegs;
+  }
+
+  /// Route emergency spills through the state value array instead of an
+  /// emergency frame slot.
+  ///
+  /// Target-module functions are lifted from a loaded code object rather than
+  /// frame-lowered by LLVM, so they have no scavenging frame index and stock
+  /// \c spill() has nowhere to put the register — it reports a fatal error
+  /// that already names this sink as the supported escape hatch. With
+  /// \p SVS installed, \c spill() parks the register in \p SVS 's SVA lanes
+  /// via \c StateValueArrayStorage::emitLongJumpSGPRSpill and reloads it at
+  /// the use point.
+  ///
+  /// Only applies to scalar register classes no wider than
+  /// \c StateValueArrayStorage::MaxLongJumpSpillSGPRs 32-bit registers;
+  /// anything else still takes the stock path. Both pointers must outlive
+  /// the scavenger. Pass \c nullptr for \p SVS to clear the sink.
+  void setSVASpillSink(const StateValueArrayStorage *SVS,
+                       const StateValueArraySpecs *Specs) {
+    SVASpillSink = SVS;
+    SVASpillSpecs = Specs;
   }
 
   // ============ Stock RegScavenger API surface ============================
@@ -146,6 +183,11 @@ private:
   /// Phys-regs the scavenger is forbidden to pick, on top of MRI's
   /// reserved set. Populated via \c setReservedRegs.
   llvm::DenseSet<llvm::MCPhysReg> ReservedRegs;
+
+  /// Where \c spill() parks a scavenged scalar register when set. Populated
+  /// via \c setSVASpillSink; null means the stock frame-index path.
+  const StateValueArrayStorage *SVASpillSink = nullptr;
+  const StateValueArraySpecs *SVASpillSpecs = nullptr;
 };
 
 } // namespace luthier

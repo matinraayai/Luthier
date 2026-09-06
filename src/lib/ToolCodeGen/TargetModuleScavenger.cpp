@@ -21,11 +21,18 @@
 ///     addition to \c MRI.isReserved at every candidate check.
 ///   * \c isReserved returns true for both \c MRI.isReserved and
 ///     \c ReservedRegs members.
+///   * \c spill prefers the state-value-array sink installed by
+///     \c setSVASpillSink over the emergency frame slot, since a lifted
+///     target-module function has no scavenging frame index.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/TargetModuleScavenger.h"
 
 #include "luthier/LLVM/streams.h"
+#include "luthier/ToolCodeGen/StateValueArrayStorage.h"
 #include "luthier/ToolCodeGen/TargetRegisterBudget.h"
+#include <AMDGPU.h>
+#include <GCNSubtarget.h>
+#include <SIRegisterInfo.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/BitVector.h>
 #include <llvm/ADT/SmallVector.h>
@@ -241,13 +248,80 @@ static unsigned getFrameIndexOperandNum(llvm::MachineInstr &MI) {
   return i;
 }
 
+/// \return the 32-bit constituents of \p Reg , in sub-register order, or an
+/// empty list if \p Reg is not a scalar register the SVA sink can carry.
+///
+/// The sink parks each constituent in one SVA lane, so anything wider than
+/// \c MaxLongJumpSpillSGPRs 32-bit registers — and anything vector — is out
+/// of its reach and belongs on the stock frame-index path.
+static llvm::SmallVector<llvm::MCRegister, 3>
+splitForSVASpill(const llvm::TargetRegisterInfo &TRI,
+                 const llvm::TargetRegisterClass &RC, llvm::Register Reg) {
+  llvm::SmallVector<llvm::MCRegister, 3> Parts;
+  if (!Reg.isPhysical())
+    return Parts;
+  if (!llvm::AMDGPU::SReg_32RegClass.hasSubClassEq(&RC) &&
+      !llvm::AMDGPU::SReg_64RegClass.hasSubClassEq(&RC) &&
+      !llvm::AMDGPU::SReg_96RegClass.hasSubClassEq(&RC))
+    return Parts;
+  const unsigned NumParts = TRI.getRegSizeInBits(RC) / 32;
+  if (NumParts == 0 || NumParts > StateValueArrayStorage::MaxLongJumpSpillSGPRs)
+    return Parts;
+  if (NumParts == 1) {
+    Parts.push_back(llvm::MCRegister(Reg.asMCReg()));
+    return Parts;
+  }
+  static constexpr unsigned SubIdx[]{llvm::AMDGPU::sub0, llvm::AMDGPU::sub1,
+                                     llvm::AMDGPU::sub2};
+  for (unsigned I = 0; I < NumParts; ++I) {
+    llvm::MCRegister Part = TRI.getSubReg(Reg.asMCReg(), SubIdx[I]);
+    if (!Part)
+      return {};
+    Parts.push_back(Part);
+  }
+  return Parts;
+}
+
 TargetModuleScavenger::ScavengedInfo &
 TargetModuleScavenger::spill(llvm::Register Reg,
                            const llvm::TargetRegisterClass &RC, int SPAdj,
                            llvm::MachineBasicBlock::iterator Before,
                            llvm::MachineBasicBlock::iterator &UseMI) {
+  // SVA path — the only sink a lifted target-module function has, since it
+  // carries no LLVM-managed frame and therefore no scavenging frame index.
+  // The register's application value is parked in the SVA before \p Before
+  // and handed back at \p UseMI.
+  if (SVASpillSink && SVASpillSpecs) {
+    llvm::SmallVector<llvm::MCRegister, 3> Parts =
+        splitForSVASpill(*TRI, RC, Reg);
+    if (!Parts.empty()) {
+      SVASpillSink->emitLongJumpSGPRSpill(*MBB, Before, Parts, *SVASpillSpecs);
+      SVASpillSink->emitLongJumpSGPRRestore(*UseMI->getParent(), UseMI, Parts,
+                                            *SVASpillSpecs);
+      // Claim a slot that is not backed by a frame index. -1 is already the
+      // ScavengedInfo default, and getScavengingFrameIndices filters on
+      // FrameIndex >= 0, so the sentinel stays invisible to frame
+      // bookkeeping while still tracking Reg/Restore for backward().
+      ScavengedInfo *Slot = nullptr;
+      for (ScavengedInfo &SI : Scavenged) {
+        if (SI.Reg == 0 && SI.FrameIndex < 0) {
+          Slot = &SI;
+          break;
+        }
+      }
+      if (!Slot) {
+        Scavenged.push_back(ScavengedInfo(/*FI=*/-1));
+        Slot = &Scavenged.back();
+      }
+      Slot->Reg = Reg;
+      LLVM_DEBUG(luthier::dbgs()
+                 << "LuthierScavenger spilled " << llvm::printReg(Reg, TRI)
+                 << " through the state value array\n");
+      return *Slot;
+    }
+  }
+
   // Stock FrameIndex path — verbatim from llvm::RegScavenger::spill.
-  // TODO: Add a spill to SVA path
   const llvm::MachineFunction &MF = *Before->getMF();
   const llvm::MachineFrameInfo &MFI = MF.getFrameInfo();
   unsigned NeedSize = TRI->getSpillSize(RC);
