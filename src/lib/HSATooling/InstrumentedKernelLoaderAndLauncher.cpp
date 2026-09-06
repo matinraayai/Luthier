@@ -251,6 +251,35 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::unloadInstrumentedIfExists(
 }
 
 //===----------------------------------------------------------------------===//
+// getOriginalKernelDescriptor
+//===----------------------------------------------------------------------===//
+
+const llvm::amdhsa::kernel_descriptor_t *
+InstrumentedKernelLoaderAndLauncher::getOriginalKernelDescriptor(
+    const llvm::amdhsa::kernel_descriptor_t *InstrumentedKD) {
+  if (InstrumentedKD == nullptr)
+    return nullptr;
+  llvm::sys::ScopedReader R(Mutex);
+  // An original KD is already a key; hand it straight back so callers holding
+  // either form can normalize unconditionally.
+  for (const auto &[K, Records] : ByOriginal) {
+    if (K.KD == InstrumentedKD)
+      return InstrumentedKD;
+  }
+  // Otherwise look for the record whose loaded kernel this KD belongs to. The
+  // device address of an instrumented kernel's descriptor is what
+  // overrideWithInstrumented writes into the dispatch packet.
+  const auto DevAddr = reinterpret_cast<uint64_t>(InstrumentedKD);
+  for (const auto &[K, Records] : ByOriginal) {
+    for (const InstrumentedRecord &Rec : Records) {
+      if (Rec.Kernel && Rec.Kernel->KDDeviceAddress == DevAddr)
+        return K.KD;
+    }
+  }
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // lookupGlobalVariable
 //===----------------------------------------------------------------------===//
 
@@ -317,6 +346,12 @@ InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented(
       std::max<uint32_t>(Packet.private_segment_size,
                          K.KDHostAddress->private_segment_fixed_size);
 
+  // EXPERIMENT (revert me): do NOT inflate the dispatch's private_segment_size
+  // to the agent maximum for dynamic-stack kernels. The scratch ring behind the
+  // dispatch was already sized by the HIP runtime from the ORIGINAL kernel, so
+  // the inflated figure is not backed; the instrumentation SP derived from it
+  // (PSS - Reservation) then lands outside the wave's private segment.
+#if 0
   if (usesDynamicStack(*K.KDHostAddress)) {
     auto MaxPrivateSegmentSizeOrErr =
         getMaxPrivateSegmentSize(CoreApi.getTable(), Rec.Agent);
@@ -324,6 +359,7 @@ InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented(
     Packet.private_segment_size = std::max<uint32_t>(
         Packet.private_segment_size, *MaxPrivateSegmentSizeOrErr);
   }
+#endif
 
   const uint32_t KernargSize = K.KDHostAddress->kernarg_size;
   // An instrumented kernel with a zero-byte kernarg segment has neither an
@@ -735,6 +771,66 @@ InstrumentedKernelLoaderAndLauncher::defineGlobalsOfPriorCodeObjects(
 }
 
 //===----------------------------------------------------------------------===//
+// defineGlobalsOfAllLoadedCodeObjects
+//===----------------------------------------------------------------------===//
+
+llvm::Error
+InstrumentedKernelLoaderAndLauncher::defineGlobalsOfAllLoadedCodeObjects(
+    hsa_executable_t Exec, hsa_agent_t Agent,
+    llvm::ArrayRef<InstrumentedRecord> PreferredFirst) {
+  const auto Core = CoreApi.getTable();
+  // Earliest definition of a name wins; HSA refuses to define one twice, and a
+  // name bound in this way is re-reported by the executable's own symbol
+  // iteration afterwards.
+  llvm::StringSet<> Defined;
+
+  auto bind = [&](llvm::StringRef Name,
+                  hsa_executable_symbol_t Sym) -> llvm::Error {
+    if (!Defined.insert(Name).second)
+      return llvm::Error::success();
+    auto AddrOrErr = hsa::executableSymbolGetAddress(Core, Sym);
+    LUTHIER_RETURN_ON_ERROR(AddrOrErr.takeError());
+    LUTHIER_RETURN_ON_ERROR(hsa::executableDefineExternalAgentGlobalVariable(
+        Core, Exec, Agent, Name, reinterpret_cast<const void *>(*AddrOrErr)));
+    LLVM_DEBUG(luthier::dbgs()
+               << "[InstrumentedKernelLoaderAndLauncher] bound '" << Name
+               << "' at " << llvm::format_hex(*AddrOrErr, 18)
+               << " into executable " << Exec.handle << "\n");
+    return llvm::Error::success();
+  };
+
+  // The enclosing kernel's own code objects first, so its definitions win any
+  // name collision with a device function's.
+  for (const InstrumentedRecord &Rec : PreferredFirst)
+    for (const auto &NameAndSym : Rec.NameToVarSymbol)
+      LUTHIER_RETURN_ON_ERROR(
+          bind(NameAndSym.getKey(), NameAndSym.getValue()));
+
+  // Then every other instrumented kernel code object on this agent.
+  for (const auto &[EntryKey, CodeObjects] : ByOriginal) {
+    for (const InstrumentedRecord &Rec : CodeObjects) {
+      if (Rec.Agent.handle != Agent.handle)
+        continue;
+      for (const auto &NameAndSym : Rec.NameToVarSymbol)
+        LUTHIER_RETURN_ON_ERROR(
+            bind(NameAndSym.getKey(), NameAndSym.getValue()));
+    }
+  }
+
+  // Finally every device function we have already brought up: a later one may
+  // reference a global an earlier one's constructor published.
+  for (const DeviceFuncRecord &Rec : DeviceFuncRecords) {
+    if (Rec.Agent.handle != Agent.handle)
+      continue;
+    for (const auto &NameAndSym : Rec.NameToVarSymbol)
+      LUTHIER_RETURN_ON_ERROR(
+          bind(NameAndSym.getKey(), NameAndSym.getValue()));
+  }
+
+  return llvm::Error::success();
+}
+
+//===----------------------------------------------------------------------===//
 // loadInstrumented
 //===----------------------------------------------------------------------===//
 
@@ -1087,31 +1183,30 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumentedDeviceFunction(
   hsa_executable_t Exec = *ExecOrErr;
 
   // Find the record of the kernel this device function was reached from.
+  // \p EnclosingKD is the *original* application kernel descriptor — the same
+  // thing ByOriginal is keyed by — so this is a direct lookup. (It used to
+  // scan for a record whose Kernel->KDDeviceAddress matched, i.e. it expected
+  // the instrumented KD; callers now normalize through
+  // getOriginalKernelDescriptor before getting here.)
   CodeObjectList *ParentCodeObjects = nullptr;
-  for (auto &[EntryKey, CodeObjects] : ByOriginal) {
-    if (EntryKey.Preset != Preset || CodeObjects.empty())
-      continue;
-    const InstrumentedRecord &First = CodeObjects.front();
-    if (First.Kernel &&
-        First.Kernel->KDDeviceAddress ==
-            reinterpret_cast<uint64_t>(EnclosingKD)) {
-      ParentCodeObjects = &CodeObjects;
-      break;
-    }
-  }
+  if (auto It = ByOriginal.find(Key{EnclosingKD, Preset});
+      It != ByOriginal.end() && !It->second.empty())
+    ParentCodeObjects = &It->second;
 
-  if (ParentCodeObjects != nullptr) {
-    if (auto Err =
-            defineGlobalsOfPriorCodeObjects(*ParentCodeObjects, Exec, Agent))
-      return llvm::joinErrors(std::move(Err),
-                              hsa::executableDestroy(Core, Exec));
-  }
-  // If there is no enclosing-kernel record, we still proceed — the
-  // pipeline may have produced a fully self-contained device function
-  // (no references to Luthier's runtime resolver globals). If it did
-  // reference them, hsa_executable_load_agent_code_object will refuse
-  // the code object with an undefined-symbol error, which is the right
-  // failure signal.
+  // Bind against every code object already loaded, not just the enclosing
+  // kernel's. A device function reached through the runtime resolver refers to
+  // the tool's device globals, to PatchPCUsagesPass's resolver-table globals,
+  // and possibly to globals published by an earlier device function's
+  // constructor; anything left undefined makes
+  // hsa_executable_load_agent_code_object fail the load with
+  // HSA_STATUS_ERROR_VARIABLE_UNDEFINED. The enclosing kernel's own code
+  // objects go first so its definitions win any name collision.
+  if (auto Err = defineGlobalsOfAllLoadedCodeObjects(
+          Exec, Agent,
+          ParentCodeObjects ? llvm::ArrayRef<InstrumentedRecord>(
+                                  *ParentCodeObjects)
+                            : llvm::ArrayRef<InstrumentedRecord>{}))
+    return llvm::joinErrors(std::move(Err), hsa::executableDestroy(Core, Exec));
 
   auto ReaderOrErr =
       hsa::codeObjectReaderCreateFromMemory(Core, RelocRef.getBuffer());
@@ -1166,6 +1261,25 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumentedDeviceFunction(
   Rec.Reader = Reader;
   Rec.Exec = Exec;
   Rec.Agent = Agent;
+
+  // Harvest this code object's device-global variables so the *next* device
+  // function we bring up can be bound against them — its constructor may have
+  // published the resolver-table storage everything after it reads.
+  auto HarvestDevFuncGlobals =
+      [&](hsa_executable_symbol_t Sym) -> llvm::Error {
+    auto KindOrErr = hsa::executableSymbolGetType(Core, Sym);
+    LUTHIER_RETURN_ON_ERROR(KindOrErr.takeError());
+    if (*KindOrErr != HSA_SYMBOL_KIND_VARIABLE)
+      return llvm::Error::success();
+    auto NameOrErr = hsa::executableSymbolGetName(Core, Sym);
+    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
+    Rec.NameToVarSymbol[*NameOrErr] = Sym;
+    return llvm::Error::success();
+  };
+  if (auto Err = hsa::executableIterateAgentSymbols(Core, Exec, Agent,
+                                                    HarvestDevFuncGlobals))
+    return Fail(std::move(Err));
+
   DeviceFuncRecords.push_back(std::move(Rec));
 
   LLVM_DEBUG(luthier::dbgs()

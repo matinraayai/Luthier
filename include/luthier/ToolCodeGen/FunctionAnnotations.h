@@ -57,6 +57,22 @@ namespace luthier {
 /// have this attribute
 #define LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE luthier.function.injected_payload
 
+/// Injected payloads that must run on a single lane of the wavefront carry
+/// this attribute.
+/// \details Some payload bodies are only correct when exactly one lane of the
+/// wave executes them — the canonical example being an \c atomicCAS spin-lock
+/// acquire loop, whose divergent structurization peels winning lanes out of
+/// \c EXEC and keeps looping while any lane is still spinning, so a release
+/// placed after the loop never runs while a peer lane still holds the lock.
+/// Guarding the body with a device-side <tt>__lane_id() == 0</tt> test does not
+/// help, because the guard itself is just more divergent control flow.
+/// \c InjectedPayloadPEIPass therefore owns single-lane execution at the
+/// framework level: it spills the app's \c EXEC into the SVA's exec-mask spill
+/// lanes (see \c StateValueArraySpecs::getExecMaskSpillLane ), forces
+/// <tt>EXEC = 1</tt> for the duration of the payload, and restores the app's
+/// \c EXEC in the epilogue.
+#define LUTHIER_EXECUTE_SINGLE_LANE_ATTRIBUTE luthier.execute_single_lane
+
 static constexpr llvm::StringLiteral DevFuncHandlePrefix{
     LUTHIER_STRINGIFY(LUTHIER_DEVICE_FUNCTION_HANDLE_PREFIX)};
 
@@ -71,6 +87,9 @@ static constexpr llvm::StringLiteral BuiltinAttribute{
 
 static constexpr llvm::StringLiteral InjectedPayloadAttribute{
     LUTHIER_STRINGIFY(LUTHIER_INJECTED_PAYLOAD_ATTRIBUTE)};
+
+static constexpr llvm::StringLiteral ExecuteSingleLaneAttribute{
+    LUTHIER_STRINGIFY(LUTHIER_EXECUTE_SINGLE_LANE_ATTRIBUTE)};
 
 #define EntryPointAddrAttr "luthier.function.entrypoint.addr"
 

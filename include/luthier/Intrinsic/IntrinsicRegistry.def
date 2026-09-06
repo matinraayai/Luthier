@@ -33,4 +33,7 @@ REGISTER_INTRINSIC("luthier::writeExec",
 REGISTER_INTRINSIC("luthier::sAtomicAdd",
                    sAtomicAddIRProcessor,
                    sAtomicAddMIRProcessor)
+REGISTER_INTRINSIC("luthier::sICacheInv",
+                   sICacheInvIRProcessor,
+                   sICacheInvMIRProcessor)
 #undef REGISTER_INTRINSIC

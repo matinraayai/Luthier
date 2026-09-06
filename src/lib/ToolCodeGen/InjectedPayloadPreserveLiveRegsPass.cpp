@@ -25,6 +25,7 @@
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
+#include "luthier/ToolCodeGen/TargetRegisterBudget.h"
 #include <AMDGPU.h>
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
@@ -237,6 +238,55 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
             PreserveUnits.reset(static_cast<unsigned>(U));
         }
 
+        LLVM_DEBUG({
+          luthier::dbgs() << "    payload reads={";
+          for (llvm::MCRegister R : Acc.reads())
+            luthier::dbgs() << " " << llvm::printReg(R, &TargetTRI);
+          luthier::dbgs() << " } writes={";
+          for (llvm::MCRegister R : Acc.writes())
+            luthier::dbgs() << " " << llvm::printReg(R, &TargetTRI);
+          luthier::dbgs() << " }\n    preserve={";
+          for (llvm::MCPhysReg R : Preserve)
+            luthier::dbgs() << " " << llvm::printReg(R, &TargetTRI);
+          luthier::dbgs() << " }\n";
+          // What the payload has to hold all of that in.
+          const llvm::Function &PF = MF->getFunction();
+          auto attr = [&PF](const char *N) {
+            return PF.hasFnAttribute(N)
+                       ? PF.getFnAttribute(N).getValueAsString().str()
+                       : std::string("<none>");
+          };
+          const auto &PST = MF->getSubtarget<llvm::GCNSubtarget>();
+          auto [MaxV, MaxA] = PST.getMaxNumVectorRegs(PF);
+          luthier::dbgs()
+              << "    payload budget: amdgpu-num-vgpr=" << attr("amdgpu-num-vgpr")
+              << " amdgpu-num-sgpr=" << attr("amdgpu-num-sgpr")
+              << " getMaxNumVectorRegs=(vgpr " << MaxV << ", agpr " << MaxA
+              << ") maxSGPRs=" << PST.getMaxNumSGPRs(PF)
+              << "  preserveCount=" << Preserve.size() << "\n";
+          // Does the payload know what the app actually launched with? These
+          // are what addAppOwnedRegisters/getTargetRegisterBudget read to
+          // decide which registers hold application state.
+          const llvm::Function &TF = TMF.getFunction();
+          luthier::dbgs()
+              << "      payload app-budget attrs: " << AppNumVGPRsAttribute
+              << "=" << attr(AppNumVGPRsAttribute) << " "
+              << AppNumSGPRsAttribute << "=" << attr(AppNumSGPRsAttribute)
+              << " waves-per-eu=" << attr("amdgpu-waves-per-eu") << "\n";
+          auto tattr = [&TF](const char *N) {
+            return TF.hasFnAttribute(N)
+                       ? TF.getFnAttribute(N).getValueAsString().str()
+                       : std::string("<none>");
+          };
+          luthier::dbgs()
+              << "      target '" << TF.getName()
+              << "' attrs: amdgpu-num-vgpr=" << tattr("amdgpu-num-vgpr")
+              << " amdgpu-num-sgpr=" << tattr("amdgpu-num-sgpr") << " "
+              << AppNumVGPRsAttribute << "=" << tattr(AppNumVGPRsAttribute)
+              << " " << AppNumSGPRsAttribute << "="
+              << tattr(AppNumSGPRsAttribute) << "\n";
+        });
+
         // Advance the walk past the PATCHPOINT itself so that a later
         // PATCHPOINT MI upstream in the same MBB sees the correct
         // (post-payload-effects) live state.
@@ -256,11 +306,42 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
         // entry.
         auto EntryInsertPt = EntryMBB.getFirstTerminator();
 
-        // For each preserved phys-reg, emit an entry-block COPY into a fresh
-        // virtual register, and at every return block, emit a COPY back to
-        // the phys-reg before the terminator + add an implicit-use of the
-        // phys-reg on the terminator so the register allocator treats it as
-        // a live-out of the function.
+        // A payload marked \c ExecuteSingleLaneAttribute runs with
+        // <tt>EXEC = 1</tt>: \c InjectedPayloadPEIPass parks the app's mask
+        // in the SVA's exec-mask spill lanes and narrows the wave to lane 0
+        // as the last step of its prologue — which is emitted at the *top* of
+        // the entry block, i.e. strictly before the copies below. A plain
+        // <tt>%save = COPY $vgprN</tt> is \c EXEC -masked, so under that mask
+        // it would only capture lane 0 and the payload's clobber of lanes
+        // 1..63 would leak back to the app. Such registers therefore need
+        // whole-wave preservation: save under the current mask, flip \c EXEC ,
+        // save the complement, flip back — the same idiom
+        // \c VGPRStateValueArrayStorage::handOffSVA uses for the \c VGPR0
+        // courier. Only the mask being *identical* at save and restore
+        // matters, not what it is, and PEI guarantees that: it sets
+        // <tt>EXEC = 1</tt> ahead of every copy below and restores the app's
+        // \c EXEC after every restore below.
+        const bool IsSingleLanePayload =
+            PayloadDef->hasFnAttribute(ExecuteSingleLaneAttribute);
+        const llvm::MCRegister ExecReg =
+            MF->getSubtarget<llvm::GCNSubtarget>().getRegisterInfo()->getExec();
+
+        /// One accepted entry of \c Preserve, resolved down to the virtual
+        /// registers its save/restore copies use.
+        struct PreservedReg {
+          llvm::MCPhysReg PhysReg;
+          /// Holds the lanes live under \c EXEC at the copy points.
+          llvm::Register ActiveSaveVReg;
+          /// Holds the complement; only valid when \c IsWholeWave .
+          llvm::Register InactiveSaveVReg;
+          /// Vector register in a single-lane payload — needs the
+          /// \c EXEC -flip pair around it.
+          bool IsWholeWave;
+        };
+        llvm::SmallVector<PreservedReg, 16> Preserved;
+        bool AnyWholeWave = false;
+
+        // Phase 1: validate each candidate and allocate its save vreg(s).
         for (llvm::MCPhysReg PhysReg : Preserve) {
           const llvm::TargetRegisterClass *RC =
               TRI->getPhysRegBaseClass(PhysReg);
@@ -270,6 +351,14 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
                        << ": no reg class\n");
             continue;
           }
+          // \c EXEC is never preserved here — it has no meaningful
+          // save/restore as an opaque value from this pass's point of view,
+          // and \c InjectedPayloadPEIPass owns it outright: it spills the
+          // app's mask into the SVA's exec-mask spill lanes on entry and
+          // reinstalls it on exit. This filter is what keeps the two passes
+          // from both trying to save it, so it must stay unconditional —
+          // in particular it already covers \c ExecuteSingleLaneAttribute
+          // payloads, where PEI additionally rewrites \c EXEC to 1.
           bool IsUnpreservableArchReg = false;
           for (llvm::MCPhysReg ArchReg :
                {llvm::AMDGPU::EXEC, llvm::AMDGPU::XNACK_MASK}) {
@@ -310,7 +399,13 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
                        << ": cross-copy class not allocatable\n");
             continue;
           }
-          llvm::Register SaveVReg = MRI.createVirtualRegister(CrossCopyRC);
+          // A register is lane-partitioned only if it is a vector one;
+          // SGPRs / VCC / SCC hold a single wave-uniform value that a plain
+          // COPY captures regardless of \c EXEC .
+          const bool IsWholeWave =
+              IsSingleLanePayload && (llvm::SIRegisterInfo::hasVGPRs(RC) ||
+                                      llvm::SIRegisterInfo::hasAGPRs(RC));
+          AnyWholeWave |= IsWholeWave;
           // Entry:
           // %physreg = IMPLICIT_DEF ; Introduce a dummy def besides the live-in
           // decl to keep the live intervals happy
@@ -321,32 +416,79 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
           // (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
           //                     TII->get(llvm::AMDGPU::IMPLICIT_DEF))
           //     .addReg(PhysReg, llvm::RegState::Define);
-          (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
-                              TII->get(llvm::AMDGPU::COPY))
-              .addReg(SaveVReg, llvm::RegState::Define)
-              .addReg(PhysReg);
+          Preserved.push_back(
+              {PhysReg, MRI.createVirtualRegister(CrossCopyRC),
+               IsWholeWave ? MRI.createVirtualRegister(CrossCopyRC)
+                           : llvm::Register(),
+               IsWholeWave});
+        }
+        EntryMBB.sortUniqueLiveIns();
 
+        // Phase 2: emit the copies.
+        //
+        // Ordering inside each block is load-bearing because
+        // \c emitExecMaskFlip clobbers \c SCC , and \c SCC itself can be one
+        // of the preserved registers. The flips are therefore hoisted out of
+        // the per-register loop into a single pair per block, placed after
+        // every entry-block save and before every return-block restore, so no
+        // scalar copy ever straddles one.
+        auto emitPreserveCopy = [&](llvm::MachineBasicBlock &MBB,
+                                    llvm::MachineBasicBlock::iterator Pt,
+                                    const PreservedReg &P, llvm::Register VReg,
+                                    bool Restore, bool UnderFlippedExec) {
+          auto MIB = llvm::BuildMI(MBB, Pt, llvm::DebugLoc(),
+                                   TII->get(llvm::AMDGPU::COPY));
+          if (Restore)
+            MIB.addReg(P.PhysReg, llvm::RegState::Define).addReg(VReg);
+          else
+            MIB.addReg(VReg, llvm::RegState::Define).addReg(P.PhysReg);
+          // A generic \c COPY carries no \c EXEC operand until it is expanded
+          // to a \c V_MOV_B32_e32 after register allocation, so nothing would
+          // otherwise stop the pre-RA scheduler from hoisting the complement
+          // copy above the \c S_NOT that set up its mask. Spell the
+          // dependency out.
+          if (UnderFlippedExec)
+            MIB.addReg(ExecReg, llvm::RegState::Implicit);
+        };
 
-          // Return blocks: emit restore COPY before the first terminator and
-          // tag the terminator with an implicit-use of the physreg.
-          for (llvm::MachineBasicBlock &MBB : *MF) {
-            if (!MBB.isReturnBlock())
-              continue;
-            auto FirstTerm = MBB.getFirstTerminator();
-            (void)llvm::BuildMI(MBB, FirstTerm, llvm::DebugLoc(),
-                                TII->get(llvm::AMDGPU::COPY))
-                .addReg(PhysReg, llvm::RegState::Define)
-                .addReg(SaveVReg);
+        for (const PreservedReg &P : Preserved)
+          emitPreserveCopy(EntryMBB, EntryInsertPt, P, P.ActiveSaveVReg,
+                           /*Restore=*/false, /*UnderFlippedExec=*/false);
+        if (AnyWholeWave) {
+          emitExecMaskFlip(EntryMBB, EntryInsertPt);
+          for (const PreservedReg &P : Preserved)
+            if (P.IsWholeWave)
+              emitPreserveCopy(EntryMBB, EntryInsertPt, P, P.InactiveSaveVReg,
+                               /*Restore=*/false, /*UnderFlippedExec=*/true);
+          emitExecMaskFlip(EntryMBB, EntryInsertPt);
+        }
+
+        // Return blocks: emit restore COPYs before the first terminator and
+        // tag the terminator with an implicit-use of each physreg.
+        for (llvm::MachineBasicBlock &MBB : *MF) {
+          if (!MBB.isReturnBlock())
+            continue;
+          auto FirstTerm = MBB.getFirstTerminator();
+          if (AnyWholeWave) {
+            emitExecMaskFlip(MBB, FirstTerm);
+            for (const PreservedReg &P : Preserved)
+              if (P.IsWholeWave)
+                emitPreserveCopy(MBB, FirstTerm, P, P.InactiveSaveVReg,
+                                 /*Restore=*/true, /*UnderFlippedExec=*/true);
+            emitExecMaskFlip(MBB, FirstTerm);
+          }
+          for (const PreservedReg &P : Preserved) {
+            emitPreserveCopy(MBB, FirstTerm, P, P.ActiveSaveVReg,
+                             /*Restore=*/true, /*UnderFlippedExec=*/false);
             // Add implicit use of $physreg on the terminator so the live-out
             // is visible to RA.
             if (FirstTerm != MBB.end()) {
               FirstTerm->addOperand(llvm::MachineOperand::CreateReg(
-                  PhysReg, /*isDef=*/false, /*isImp=*/true));
+                  P.PhysReg, /*isDef=*/false, /*isImp=*/true));
             }
           }
-          Changed = true;
         }
-        EntryMBB.sortUniqueLiveIns();
+        Changed |= !Preserved.empty();
       } // end for each PATCHPOINT MI in reverse
     } // end for each MBB in TMF
   } // end for each target function

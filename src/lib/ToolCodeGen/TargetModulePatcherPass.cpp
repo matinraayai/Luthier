@@ -27,6 +27,7 @@
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include <MCTargetDesc/AMDGPUMCExpr.h>
+#include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
@@ -355,7 +356,6 @@ userSGPRPreloadForSV(ScalarValueArgument SV) {
   switch (SV) {
   case WAVEFRONT_PRIVATE_SEGMENT_BUFFER:
     return PV::PRIVATE_SEGMENT_BUFFER;
-  case KERNEL_ARG_PTR:
   case IMPLICIT_ARG_BUFFER:
     return PV::KERNARG_SEGMENT_PTR;
   case DISPATCH_ID:
@@ -922,17 +922,19 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
 
   // Compute the instrumentation SP and stash it in the SVA's
   // StackPointerStoreLane. The instrumentation frame reserves two
-  // 32-bit slots immediately below SP for the partial-callgraph V0
-  // handoff protocol:
-  //   * [SP-8, SP-4) — emergency VGPR spill slot (holds V0's app
+  // 32-bit slots at the very bottom of the instrumentation stack for
+  // the partial-callgraph V0 handoff protocol:
+  //   * [SP+0, SP+4) — emergency VGPR spill slot (holds V0's app
   //     value while the SVA is loaded into V0 across an unresolved-
   //     edge call).
-  //   * [SP-4, SP)   — SVA spill slot (used by the spilled SVS
+  //   * [SP+4, SP+8) — SVA spill slot (used by the spilled SVS
   //     schemes to hold the SVA itself when V0 must be repurposed).
-  // \c SVSSlotsReservation captures that 8-byte carve-out; the
-  // initial SP is always \c Base + SVSSlotsReservation so the two
-  // slots live below SP at fixed offsets and the payload's own
-  // growth region begins at SP itself.
+  // \c SVSSlotsReservation captures that 8-byte carve-out. SP is the
+  // *bottom* of the instrumentation stack, so both slots are reached
+  // with non-negative \c inst_offset s (gfx942 faults on a SCRATCH
+  // SADDR access carrying a negative immediate). The payload's own
+  // growth region begins at \c SP + SVSSlotsReservation, which is the
+  // bias \c InjectedPayloadPEIPass applies when it picks SP up.
   //
   // Setup steps:
   //   1. Spill SGPR0 to the frame-pointer spill lane of the SVA
@@ -950,7 +952,12 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
   //      StackPointerStoreLane — this is where the payload prologue
   //      picks it up on entry.
   //   4. Restore SGPR0 from the frame-pointer spill lane.
-  static constexpr unsigned SVSSlotsReservation = 8;
+  static constexpr unsigned SVSSlotsReservation =
+      InstrumentationSlotsReservation;
+  // SP register units: bytes under flat scratch, wave-swizzled bytes under
+  // buffer scratch. Everything downstream (the payload PEI bias, the payload's
+  // own LLVM-generated frame code) reads the lane in these units.
+  const unsigned ScratchScale = getScratchScaleFactor(ST);
 
   // 1. Spill SGPR0 to the FP spill lane.
   (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
@@ -961,13 +968,15 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
 
   // 2. Materialize the SP value in SGPR0.
   if (!AppUsesDynamicStack) {
-    const unsigned SP = AppPrivateSegmentFixedSize + SVSSlotsReservation;
+    // Bottom of the instrumentation stack: immediately above the app's own
+    // fixed private segment.
+    const unsigned SP = AppPrivateSegmentFixedSize * ScratchScale;
     LLVM_DEBUG(luthier::dbgs()
                << "[TargetModulePatcherPass]     "
-                  "InstrumentationStackStart(static)="
+                  "InstrumentationStackBottom(static)="
                << SP << " (= AppPrivateSegmentFixedSize("
-               << AppPrivateSegmentFixedSize << ") + SVSSlotsReservation("
-               << SVSSlotsReservation << "))\n");
+               << AppPrivateSegmentFixedSize << ") * ScratchScale("
+               << ScratchScale << "))\n");
     (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                         TII.get(llvm::AMDGPU::S_MOV_B32), llvm::AMDGPU::SGPR0)
         .addImm(SP);
@@ -992,15 +1001,27 @@ llvm::Error emitCodeToSetupScratch(llvm::MachineInstr &EntryInstr,
     const unsigned Reservation = PayloadBudget + SVSSlotsReservation;
     LLVM_DEBUG(luthier::dbgs()
                << "[TargetModulePatcherPass]     "
-                  "InstrumentationStackStart(dynamic)= PSS("
+                  "InstrumentationStackBottom(dynamic)= (PSS("
                << llvm::printReg(PSS, &TRI) << ") - " << Reservation
-               << " (= PayloadBudget(" << PayloadBudget
-               << ") + SVSSlotsReservation(" << SVSSlotsReservation << "))\n");
-    // SGPR0 = PSS - (PayloadBudget + SVSSlotsReservation).
+               << ") * ScratchScale(" << ScratchScale << ")  (Reservation = "
+                  "PayloadBudget("
+               << PayloadBudget << ") + SVSSlotsReservation("
+               << SVSSlotsReservation << "))\n");
+    // SGPR0 = PSS - (PayloadBudget + SVSSlotsReservation): the bottom of the
+    // instrumentation stack, leaving [SP, SP+8) for the two emergency slots
+    // and [SP+8, PSS) for the payload's own frame.
     (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
                         TII.get(llvm::AMDGPU::S_SUB_U32), llvm::AMDGPU::SGPR0)
         .addReg(PSS)
         .addImm(Reservation);
+    // PSS arrives in bytes; convert to SP-register units. The scale is a power
+    // of two, so this is a shift.
+    if (ScratchScale != 1)
+      (void)llvm::BuildMI(MF.front(), EntryInstr, llvm::DebugLoc(),
+                          TII.get(llvm::AMDGPU::S_LSHL_B32),
+                          llvm::AMDGPU::SGPR0)
+          .addReg(llvm::AMDGPU::SGPR0)
+          .addImm(llvm::Log2_32(ScratchScale));
   }
 
   // 3. Save the instrumentation SP (SGPR0) into the SVA's
@@ -1491,8 +1512,15 @@ void capturePartialCallgraphSVSHandoffPlan(
     }
   }
 
-  // 3. Caller side: record the last call/indirect-branch/return MI (non
-  // S_ENDPGM) of every MBB along with that MBB's SVS.
+  // 3. Caller side: record the last call / indirect-branch MI of every MBB
+  // along with that MBB's SVS.
+  //
+  // A return is a hand-off site like any other: the callee spills whatever
+  // \c V0 holds at that point — its return value — into the courier slot and
+  // puts the SVA in \c V0 for its caller, exactly mirroring the call
+  // direction. \c V0 never holds the SVA and the return value at the same
+  // time. That only works if the caller emits the matching pickOff right
+  // after the call, which is what \c PickOffsAfterCall below records.
   for (llvm::MachineBasicBlock &MBB : MF) {
     llvm::MachineInstr *TargetMI = nullptr;
     for (auto It = MBB.rbegin(), End = MBB.rend(); It != End; ++It) {
@@ -1506,17 +1534,26 @@ void capturePartialCallgraphSVSHandoffPlan(
       LLVM_DEBUG(luthier::dbgs()
                  << "[TargetModulePatcherPass]     "
                     "MBB has no call/indirect-branch "
-                 << llvm::printMBBReference(MBB) << "; skipping\n");
+                 << llvm::printMBBReference(MBB) << " (last MI: "
+                 << (MBB.empty() ? "<empty>"
+                                 : MF.getSubtarget().getInstrInfo()->getName(
+                                       MBB.rbegin()->getOpcode()))
+                 << "); skipping\n");
       continue;
     }
     auto Segs = SVLoc.getStorageIntervals(MBB);
     assert(!Segs.empty() && "Empty SVStorage Segment");
 
     Plan.HandOffs.emplace_back(TargetMI, &Segs.back().getSVS());
-    LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
-                                  "handOffSVA planned before "
-                                  "call/indirect-branch in "
-                               << llvm::printMBBReference(MBB) << "\n");
+    LLVM_DEBUG(luthier::dbgs()
+               << "[TargetModulePatcherPass]     "
+                  "handOffSVA planned before "
+               << MF.getSubtarget().getInstrInfo()->getName(
+                      TargetMI->getOpcode())
+               << " in " << llvm::printMBBReference(MBB) << " (isCall="
+               << TargetMI->isCall() << " isReturn=" << TargetMI->isReturn()
+               << " isIndirectBranch=" << TargetMI->isIndirectBranch()
+               << " succs=" << MBB.succ_size() << ")\n");
   }
 }
 
@@ -1553,6 +1590,7 @@ void emitPartialCallgraphSVSHandoffWraps(
                                << "\n");
     BlockSVS->handOffSVA(*TargetMI, Specs, ST);
   }
+
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   emitted "
                              << Plan.HandOffs.size()
                              << " partial-callgraph SVS "
@@ -2150,8 +2188,6 @@ preloadedValueForSVA(ScalarValueArgument SA) {
   switch (SA) {
   case WAVEFRONT_PRIVATE_SEGMENT_BUFFER:
     return llvm::AMDGPUFunctionArgInfo::PRIVATE_SEGMENT_BUFFER;
-  case KERNEL_ARG_PTR:
-    return llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR;
   case DISPATCH_ID:
     return llvm::AMDGPUFunctionArgInfo::DISPATCH_ID;
   case FLAT_SCRATCH:

@@ -126,12 +126,35 @@ struct InstrCountTool
     const auto *DispatchPacket =
         reinterpret_cast<const hsa_kernel_dispatch_packet_t *>(
             DispatchPacketAddr);
-    const auto *EnclosingKD =
+    // What the wave is actually running: by the time this callback fires,
+    // overrideWithInstrumented has already rewritten kernel_object, so the
+    // packet names the *instrumented* KD. Normalized to the application's KD
+    // below — see getOriginalKernelDescriptor.
+    const auto *DispatchedKD =
         reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
             DispatchPacket->kernel_object);
 
     InstrCountTool::withInstance([&](InstrCountTool &T) {
       const auto Core = T.getCoreApiTableSnapshot().getTable();
+
+      // The enclosing kernel for everything below has to be the *original*
+      // application KD, not the instrumented one the packet points at. The
+      // launcher's caches are keyed by the original KD, and CodeDiscoveryPass
+      // takes the initial execution point from it — a device function lifted
+      // against the instrumented KD would inherit the instrumented kernel's
+      // register usage as the application's launch budget
+      // (luthier-app-num-vgpr / -sgpr) instead of what the wave really
+      // launched with.
+      const llvm::amdhsa::kernel_descriptor_t *EnclosingKD =
+          T.getOriginalKernelDescriptor(DispatchedKD);
+      if (EnclosingKD == nullptr) {
+        luthier::errs()
+            << "[InstrCountTool] patchPCUsagesHostCallback: dispatched "
+               "kernel_object 0x"
+            << llvm::utohexstr(reinterpret_cast<uint64_t>(DispatchedKD))
+            << " maps to no cached original kernel descriptor; giving up\n";
+        return;
+      }
 
       struct EntryPointTraceFunctionEntry {
         uint64_t TraceAddr;

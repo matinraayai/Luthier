@@ -1344,6 +1344,11 @@ bool SpilledWithOneSGPRsValueStorage::operator==(
 //   Callee (pickOffSVA @ device-function entry MI):
 //     * Store VGPR0 (SVA) into the entry-block SVS storage (all lanes).
 //     * Restore VGPR0 (all lanes) from the SVS's emergency slot.
+//
+// The emergency slots live at the very bottom of the instrumentation stack —
+// [SP+0, SP+4) for the VGPR0 courier and [SP+4, SP+8) for the SVA — so both
+// are reached from the SP the kernel prolog parked in the SVA's
+// StackPointerStoreLane with a non-negative inst_offset.
 
 void VGPRStateValueArrayStorage::handOffSVA(
     llvm::MachineInstr &MI, const StateValueArraySpecs &Specs,
@@ -1368,7 +1373,7 @@ void VGPRStateValueArrayStorage::handOffSVA(
   //    into SGPR0.
   emitMoveFromVGPRLaneToSGPR(Iter, StorageVGPR, llvm::AMDGPU::SGPR0,
                              Specs.getStackPointerStoreLane(), false);
-  // 3+4. Spill V0 (all lanes) → [SGPR0-8] and copy SVA → V0 (all lanes).
+  // 3+4. Spill V0 (all lanes) → [SGPR0+0] and copy SVA → V0 (all lanes).
   llvm::MachineBasicBlock::iterator Next =
       createSCCSafeSequenceOfMIs(Iter, [&](llvm::MachineBasicBlock &IPMBB,
                                            const llvm::TargetInstrInfo &TII) {
@@ -1442,7 +1447,8 @@ void VGPRStateValueArrayStorage::pickOffSVA(
   // 3. Load the instrumentation SP from StorageVGPR's StackPointerStoreLane.
   emitMoveFromVGPRLaneToSGPR(AfterMove, StorageVGPR, llvm::AMDGPU::SGPR0,
                              Specs.getStackPointerStoreLane(), false);
-  // 4. Restore V0 (all lanes) from [SGPR0-8] (caller's SP-8 emergency slot).
+  // 4. Restore V0 (all lanes) from [SGPR0+0] (the caller's V0-courier slot at
+  //    the bottom of the instrumentation stack).
   llvm::MachineBasicBlock::iterator AfterLoad = createSCCSafeSequenceOfMIs(
       AfterMove,
       [&](llvm::MachineBasicBlock &IPMBB, const llvm::TargetInstrInfo &TII) {

@@ -201,10 +201,14 @@ SubstituteAMDGCNIntrinsicsPass::run(llvm::Module &M,
            [](llvm::Module &M, llvm::IRBuilderBase &B) {
              return emitReadSVAConstPtr(M, B, IMPLICIT_ARG_BUFFER, "iap");
            }},
-          {"llvm.amdgcn.kernarg.segment.ptr",
-           [](llvm::Module &M, llvm::IRBuilderBase &B) {
-             return emitReadSVAConstPtr(M, B, KERNEL_ARG_PTR, "kap");
-           }},
+          // NOTE: \c llvm.amdgcn.kernarg.segment.ptr has no substitution. The
+          // SVA used to reserve a \c KERNEL_ARG_PTR slot for it, but those two
+          // lanes were reclaimed for the exec-mask spill
+          // ( \c StateValueArraySpecs::getExecMaskSpillLane ) — the SVA is
+          // exactly saturated on GFX10's 32-lane waves. Payload code reaches
+          // the hidden arguments through \c llvm.amdgcn.implicitarg.ptr above,
+          // which the instrumented kernel's expanded kernarg buffer backs
+          // directly.
           {"llvm.amdgcn.dispatch.ptr",
            [](llvm::Module &M, llvm::IRBuilderBase &B) {
              return emitReadSVAConstPtr(M, B, DISPATCH_PTR, "dp");

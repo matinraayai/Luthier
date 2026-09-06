@@ -24,6 +24,8 @@
 #include <SIRegisterInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
+#include <algorithm>
+#include <cassert>
 
 namespace luthier {
 
@@ -107,12 +109,17 @@ void emitExecMaskFlip(llvm::MachineBasicBlock::iterator MI) {
 }
 
 void emitExecMaskFlip(llvm::MachineBasicBlock &MBB) {
+  emitExecMaskFlip(MBB, MBB.end());
+}
+
+void emitExecMaskFlip(llvm::MachineBasicBlock &MBB,
+                      llvm::MachineBasicBlock::iterator InsertionPoint) {
   const auto &ST = MBB.getParent()->getSubtarget<llvm::GCNSubtarget>();
   const auto &TII = *ST.getInstrInfo();
   const llvm::MCRegister Exec = ST.getRegisterInfo()->getExec();
   const unsigned Opc =
       ST.isWave32() ? llvm::AMDGPU::S_NOT_B32 : llvm::AMDGPU::S_NOT_B64;
-  (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(), TII.get(Opc), Exec)
+  (void)llvm::BuildMI(MBB, InsertionPoint, llvm::DebugLoc(), TII.get(Opc), Exec)
       .addReg(Exec, llvm::RegState::Kill);
 }
 
@@ -269,73 +276,127 @@ llvm::MachineBasicBlock::iterator createSCCSafeSequenceOfMIs(
   return ExitBlock.begin();
 }
 
+/// Wait states GFX9+ requires between a VALU write to an SGPR and a VMEM
+/// instruction that reads that SGPR as an address operand
+/// (\c GCNSubtarget::hasVMEMReadSGPRVALUDefHazard, true for every subtarget
+/// from Volcanic Islands on).
+///
+/// Every emergency-slot access below takes its SADDR from \c StackPtr, which
+/// the SVA hand-off protocol materializes with a \c V_READLANE_B32 out of the
+/// state value array a couple of instructions earlier. This code is injected
+/// by the target module patcher *after* codegen has finished, so neither
+/// \c PostRAHazardRecognizerPass nor \c SIInsertWaitcnts ever runs over it and
+/// the required waits have to be emitted here.
+static constexpr unsigned VMEMReadSGPRVALUDefWaitStates = 5;
+
+/// Emits \p NumWaitStates worth of \c S_NOP before \p Where. An \c S_NOP with
+/// immediate \c N is worth \c N+1 wait states and the immediate is 4 bits, so
+/// long requests are split across several.
+static void emitWaitStatesImpl(llvm::MachineBasicBlock &MBB,
+                               llvm::MachineBasicBlock::iterator Where,
+                               unsigned NumWaitStates) {
+  const auto &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+  while (NumWaitStates > 0) {
+    const unsigned Chunk = std::min(NumWaitStates, 16u);
+    (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::S_NOP))
+        .addImm(Chunk - 1);
+    NumWaitStates -= Chunk;
+  }
+}
+
+/// Emits one emergency-slot scratch access at \c [StackPtr + Offset], bracketed
+/// by the waits the hardware requires and that no later pass will supply:
+///
+///   * Before: \c VMEMReadSGPRVALUDefWaitStates wait states, because \p
+///     StackPtr is VALU-defined (see above).
+///   * After: an \c S_WAITCNT. A scratch store reads its data VGPR
+///     asynchronously, and every caller of the store form immediately
+///     overwrites \c VGPR0 with the state value array — a write-after-read on
+///     the in-flight store's data operand, which would spill whatever the
+///     overwrite left behind instead of the app's \c V0. The load form has the
+///     mirror-image read-after-write problem: callers consume the loaded VGPR
+///     right away.
+///
+/// \p Offset must be non-negative, and \c StackPtr is the *bottom* of the
+/// instrumentation stack, so the two slots are reached with \c offset:0 and
+/// \c offset:4. A negative \c inst_offset must never be used here: on gfx942 a
+/// \c SCRATCH_{LOAD,STORE}_DWORD_SADDR carrying a negative immediate takes a
+/// memory violation no matter what the SADDR holds (verified by probing the
+/// same instruction with SADDR from 0 to 9192 -- every value faults with
+/// \c offset:-8 and every value succeeds with \c offset:0 or \c offset:8;
+/// there is no bounds check on the SADDR itself).
+static void emitEmergencySlotAccess(llvm::MachineBasicBlock &MBB,
+                                    llvm::MachineBasicBlock::iterator Where,
+                                    llvm::MCRegister StackPtr,
+                                    llvm::MCRegister DataVGPR, int Offset,
+                                    bool IsStore, bool KillSource) {
+  assert(Offset >= 0 && "emergency-slot offsets must be non-negative");
+  const auto &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+  emitWaitStatesImpl(MBB, Where, VMEMReadSGPRVALUDefWaitStates);
+  if (IsStore)
+    (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
+        .addReg(DataVGPR, llvm::getKillRegState(KillSource))
+        .addReg(StackPtr)
+        .addImm(Offset)
+        .addImm(0);
+  else
+    (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR),
+                        DataVGPR)
+        .addReg(StackPtr)
+        .addImm(Offset)
+        .addImm(0);
+  (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(),
+                      TII.get(llvm::AMDGPU::S_WAITCNT))
+      .addImm(0);
+}
+
 void emitLoadFromEmergencyVGPRScratchSpillLocation(
     llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
     llvm::MCRegister DestVGPR) {
-  const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
-  (void)llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
-                      TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), DestVGPR)
-      .addReg(StackPtr)
-      .addImm(-8)
-      .addImm(0);
+  emitEmergencySlotAccess(*MI->getParent(), MI, StackPtr, DestVGPR, 0,
+                          /*IsStore=*/false, /*KillSource=*/false);
 }
 
 void emitLoadFromEmergencyVGPRScratchSpillLocation(
     llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
     llvm::MCRegister DestVGPR) {
-  const auto &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
-  (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
-                      TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), DestVGPR)
-      .addReg(StackPtr)
-      .addImm(-8)
-      .addImm(0);
+  emitEmergencySlotAccess(MBB, MBB.end(), StackPtr, DestVGPR, 0,
+                          /*IsStore=*/false, /*KillSource=*/false);
 }
 
 void emitStoreToEmergencyVGPRScratchSpillLocation(
     llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
     llvm::MCRegister SrcVGPR, bool KillSource) {
-  const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
-  (void)llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
-                      TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
-      .addReg(SrcVGPR, llvm::getKillRegState(KillSource))
-      .addReg(StackPtr)
-      .addImm(-8)
-      .addImm(0);
+  emitEmergencySlotAccess(*MI->getParent(), MI, StackPtr, SrcVGPR, 0,
+                          /*IsStore=*/true, KillSource);
 }
 
 void emitStoreToEmergencyVGPRScratchSpillLocation(
     llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
     llvm::MCRegister SrcVGPR, bool KillSource) {
-  const auto &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
-  (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
-                      TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
-      .addReg(SrcVGPR, llvm::getKillRegState(KillSource))
-      .addReg(StackPtr)
-      .addImm(-8)
-      .addImm(0);
+  emitEmergencySlotAccess(MBB, MBB.end(), StackPtr, SrcVGPR, 0,
+                          /*IsStore=*/true, KillSource);
 }
 
 void emitLoadFromEmergencySVSScratchSpillLocation(
     llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
     llvm::MCRegister DestVGPR) {
-  const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
-  (void)llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
-                      TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR), DestVGPR)
-      .addReg(StackPtr)
-      .addImm(-4)
-      .addImm(0);
+  emitEmergencySlotAccess(*MI->getParent(), MI, StackPtr, DestVGPR, 4,
+                          /*IsStore=*/false, /*KillSource=*/false);
 }
 
 void emitStoreToEmergencySVSScratchSpillLocation(
     llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
     llvm::MCRegister SrcVGPR, bool KillSource) {
-  const auto &TII = *MI->getMF()->getSubtarget().getInstrInfo();
-  (void)llvm::BuildMI(*MI->getParent(), MI, llvm::DebugLoc(),
-                      TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
-      .addReg(SrcVGPR, llvm::getKillRegState(KillSource))
-      .addReg(StackPtr)
-      .addImm(-4)
-      .addImm(0);
+  emitEmergencySlotAccess(*MI->getParent(), MI, StackPtr, SrcVGPR, 4,
+                          /*IsStore=*/true, KillSource);
+}
+
+unsigned getScratchScaleFactor(const llvm::GCNSubtarget &ST) {
+  return ST.hasFlatScratchEnabled() ? 1 : ST.getWavefrontSize();
 }
 
 void emitWaitCnt(llvm::MachineBasicBlock::iterator MI, unsigned Encoding) {

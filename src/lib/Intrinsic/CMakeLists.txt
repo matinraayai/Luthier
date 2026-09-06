@@ -5,6 +5,7 @@ add_library(LuthierIntrinsic OBJECT
         WriteExec.cpp
         ImplicitArgPtr.cpp
         SAtomicAdd.cpp
+        SICacheInv.cpp
 )
 
 target_compile_definitions(LuthierIntrinsic PRIVATE ${LLVM_DEFINITIONS})

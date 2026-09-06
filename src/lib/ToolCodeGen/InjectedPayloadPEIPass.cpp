@@ -24,6 +24,7 @@
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
+#include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/MIRConvenience.h"
 #include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
 #include "luthier/ToolCodeGen/PredicatedMachineBasicBlock.h"
@@ -260,6 +261,61 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   const bool PayloadSPUsed = anyLiveAtTargetMI(TargetSPReg);
   const bool PayloadFPUsed = anyLiveAtTargetMI(TargetFPReg);
 
+  // ---- Decide whether this payload needs Luthier to own EXEC -------------
+  //
+  // Two independent triggers:
+  //
+  //   1. The payload reads or writes \c EXEC through \c luthier::readReg /
+  //      \c luthier::writeReg . \c IntrinsicMIRLoweringPass routes both of
+  //      those at the SVA's exec-mask spill lanes rather than at the physical
+  //      register (see \c getFrameSVALaneForPhysReg there), so the lanes have
+  //      to be primed with the app's \c EXEC on entry, and — when the payload
+  //      writes — drained back into the real \c EXEC on exit.
+  //
+  //   2. The payload carries \c ExecuteSingleLaneAttribute , meaning its body
+  //      is only correct with exactly one lane live. Device-side
+  //      <tt>__lane_id() == 0</tt> guards cannot express that: the guard is
+  //      divergent control flow, so a spin-lock acquire loop written that way
+  //      structurizes into an \c EXEC-peeling loop whose winning lanes leave
+  //      \c EXEC while their peers keep spinning, and a release placed after
+  //      the loop never runs. Forcing <tt>EXEC = 1</tt> around the whole
+  //      payload makes the body genuinely uniform-single-lane instead.
+  const bool IsSingleLanePayload =
+      F.hasFnAttribute(ExecuteSingleLaneAttribute);
+  bool PayloadReadsExec = false;
+  bool PayloadWritesExec = false;
+  {
+    // \c InjectedPayloadSideEffectsAnalysis is a Function-level analysis over
+    // the payload's still-intact IR (the \c luthier::readReg / writeReg
+    // inline-asm placeholders survive MIR lowering, which only rewrites the
+    // machine instructions). Reach its manager through the machine-function
+    // side's Function proxy — \c InstrumentationPassBuilder cross-registers
+    // it on the instrumentation module's \c MachineFunctionAnalysisManager .
+    llvm::FunctionAnalysisManager &IModuleFAM =
+        MFAM.getResult<llvm::FunctionAnalysisManagerMachineFunctionProxy>(MF)
+            .getManager();
+    const InjectedPayloadSideEffects &SideEffects =
+        IModuleFAM.getResult<InjectedPayloadSideEffectsAnalysis>(F);
+    const llvm::TargetRegisterInfo &PayloadTRI = *ST.getRegisterInfo();
+    // Match on the 64-bit \c EXEC so both halves — and the wave32 spelling,
+    // where the mask is just \c EXEC_LO — are caught by the same query.
+    for (llvm::MCRegister R : SideEffects.reads())
+      PayloadReadsExec |= PayloadTRI.regsOverlap(R, llvm::AMDGPU::EXEC);
+    for (llvm::MCRegister R : SideEffects.writes())
+      PayloadWritesExec |= PayloadTRI.regsOverlap(R, llvm::AMDGPU::EXEC);
+  }
+  /// Spill the app's \c EXEC into the SVA on entry.
+  const bool NeedsExecSpill =
+      IsSingleLanePayload || PayloadReadsExec || PayloadWritesExec;
+  /// Install the (possibly payload-modified) mask back into \c EXEC on exit.
+  /// A payload that only *reads* \c EXEC leaves the architectural register
+  /// untouched, so there is nothing to put back.
+  const bool NeedsExecRestore = IsSingleLanePayload || PayloadWritesExec;
+  LLVM_DEBUG(if (NeedsExecSpill) luthier::dbgs()
+             << "  EXEC handling: single-lane=" << IsSingleLanePayload
+             << " reads=" << PayloadReadsExec
+             << " writes=" << PayloadWritesExec << "\n");
+
   // ---- Decide whether this payload actually uses the SVA -----------------
   //
   // Sources of SVA use:
@@ -267,6 +323,8 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   //   2. The payload reads/writes to physical registers aliased by the SP
   //   and FP of the payload (e.g. s32, s33).
   //   3. The payload needs frame setup i.e. it spills and has calls.
+  //   4. The payload needs EXEC handling — the exec-mask spill lanes live in
+  //   the SVA, so the SVA has to be materialized for it too.
   bool UsesSVA = false;
   if (SVAVGPR && MRI.isPhysRegUsed(SVAVGPR)) {
     LLVM_DEBUG(luthier::dbgs()
@@ -294,6 +352,10 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   }
   if (!UsesSVA && MFI.hasCalls()) {
     LLVM_DEBUG(luthier::dbgs() << "  MFI has calls\n");
+    UsesSVA = true;
+  }
+  if (!UsesSVA && NeedsExecSpill) {
+    LLVM_DEBUG(luthier::dbgs() << "  payload needs EXEC handling\n");
     UsesSVA = true;
   }
   if (!UsesSVA) {
@@ -363,10 +425,11 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   // the physregs the payload actually references get spilled.
   auto emitSpillPhysRegToLane = [&](llvm::MachineBasicBlock &MBB,
                                     llvm::MachineBasicBlock::iterator InsertPt,
-                                    llvm::MCRegister PhysReg, uint8_t Lane) {
+                                    llvm::MCRegister PhysReg, uint8_t Lane,
+                                    bool KillSrc = true) {
     (void)llvm::BuildMI(MBB, InsertPt, llvm::DebugLoc(),
                         TII->get(llvm::AMDGPU::V_WRITELANE_B32), SVAVGPR)
-        .addReg(PhysReg, llvm::RegState::Kill)
+        .addReg(PhysReg, llvm::getKillRegState(KillSrc))
         .addImm(Lane)
         .addReg(SVAVGPR);
   };
@@ -377,6 +440,21 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   if (PayloadFPUsed) {
     emitSpillPhysRegToLane(EntryMBB, EntryInsertPt, PayloadFPReg,
                            Specs.getFramePointerRegSpillLane());
+  }
+
+  // Park the app's EXEC in the SVA. \c V_WRITELANE_B32 is one of the very few
+  // VALU ops that ignores \c EXEC, so this works no matter which lanes are
+  // live at the patch point — including the degenerate all-off case. The
+  // source is deliberately not marked \c Kill : \c EXEC stays live through
+  // the rest of the prologue (and, for a payload that only reads it, through
+  // the whole body).
+  const uint8_t ExecSpillLane = Specs.getExecMaskSpillLane();
+  if (NeedsExecSpill) {
+    emitSpillPhysRegToLane(EntryMBB, EntryInsertPt, llvm::AMDGPU::EXEC_LO,
+                           ExecSpillLane, /*KillSrc=*/false);
+    emitSpillPhysRegToLane(EntryMBB, EntryInsertPt, llvm::AMDGPU::EXEC_HI,
+                           static_cast<uint8_t>(ExecSpillLane + 1),
+                           /*KillSrc=*/false);
   }
 
   // Save/setup PSB and FLAT_SCR.
@@ -471,11 +549,59 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
                         TII->get(llvm::AMDGPU::V_READLANE_B32), PayloadSPReg)
         .addReg(SVAVGPR)
         .addImm(Specs.getStackPointerStoreLane());
+    // The lane holds the *bottom* of the instrumentation stack, whose first
+    // two dwords are the emergency VGPR0-courier and state-value-array slots
+    // (see \c InstrumentationSlotsReservation). The payload's own frame starts
+    // above them, so bias SP past the carve-out. The bias is in SP-register
+    // units: bytes under flat scratch, wave-swizzled bytes otherwise.
+    const unsigned SPBias =
+        InstrumentationSlotsReservation * getScratchScaleFactor(ST);
+    // S_ADD_U32 clobbers SCC. If the caller had SCC live across the
+    // patchpoint, InjectedPayloadPreserveLiveRegsPass has fronted the payload
+    // with a block that copies $scc into a vreg and branches to the old entry;
+    // emitting before that block's terminator puts this add *after* the copy,
+    // so the caller's SCC is already safely captured. When SCC is not live in
+    // there is nothing to preserve and the top of the block is fine.
+    auto SPBiasInsertPt = EntryInsertPt;
+    if (EntryMBB.isLiveIn(llvm::AMDGPU::SCC) &&
+        EntryMBB.getFirstTerminator() != EntryMBB.end())
+      SPBiasInsertPt = EntryMBB.getFirstTerminator();
+    auto BiasMI =
+        llvm::BuildMI(EntryMBB, SPBiasInsertPt, llvm::DebugLoc(),
+                      TII->get(llvm::AMDGPU::S_ADD_U32), PayloadSPReg)
+            .addReg(PayloadSPReg)
+            .addImm(SPBias);
+    BiasMI->getOperand(3).setIsDead(); // SCC is dead after the bias.
     if (NeedsFPSetup) {
-      (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
+      (void)llvm::BuildMI(EntryMBB, SPBiasInsertPt, llvm::DebugLoc(),
                           TII->get(llvm::AMDGPU::S_MOV_B32), PayloadFPReg)
           .addReg(PayloadSPReg);
     }
+  }
+
+  // Narrow the wave down to lane 0. This is emitted last so that everything
+  // above still runs under the app's own \c EXEC — in particular
+  // \c emitCodeToLoadSVA , whose VMEM/VGPR traffic is \c EXEC-sensitive,
+  // unlike the \c V_READLANE_B32 / \c V_WRITELANE_B32 frame shuffling.
+  //
+  // Anything appended to this block after PEI runs therefore sees
+  // <tt>EXEC == 1</tt>; that is exactly the contract
+  // \c InjectedPayloadPreserveLiveRegsPass relies on when it widens its
+  // save/restore copies to the whole wave for a single-lane payload (its
+  // copies are emitted at the entry block's terminator, i.e. after this
+  // point, and its restores at the return blocks' terminators, i.e. before
+  // the \c EXEC restore below — so the mask is identical at both ends).
+  if (IsSingleLanePayload) {
+    if (ST.isWave32())
+      (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
+                          TII->get(llvm::AMDGPU::S_MOV_B32),
+                          llvm::AMDGPU::EXEC_LO)
+          .addImm(1);
+    else
+      (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
+                          TII->get(llvm::AMDGPU::S_MOV_B64),
+                          llvm::AMDGPU::EXEC)
+          .addImm(1);
   }
 
   // ---- Emit the symmetric epilogue at every return block ----------------
@@ -543,6 +669,87 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
                          /*NumSubLanes=*/4);
     if (NeedFSSave)
       emitRestoreWideReg(PayloadFSReg, *FSSpillLaneOpt, /*NumSubLanes=*/2);
+    // Put the mask back before anything EXEC-sensitive runs. Two consumers
+    // depend on this landing here rather than later:
+    //   * A \c luthier::writeReg of \c EXEC_LO / \c EXEC_HI inside the
+    //     payload was lowered to a \c V_WRITELANE_B32 into these very lanes
+    //     (\c IntrinsicMIRLoweringPass ), so this read-back is what actually
+    //     commits the payload's intended mask.
+    //   * \c emitCodeToStoreSVA below is \c EXEC-sensitive, and a single-lane
+    //     payload would otherwise write the SVA back with only lane 0 live.
+    //
+    // \c EXEC cannot be written by a \c V_READLANE_B32 the way \c SP / \c FP /
+    // \c PSB / \c FLAT_SCR are: on gfx9 / gfx942 the lane read simply does not
+    // land in the mask (verified on MI300A — the wave stays on whatever \c EXEC
+    // the prologue left it with, and it is not a wait-state problem: padding
+    // the sequence with \c S_NOP does not change it). The mask has to be
+    // installed by a scalar \c S_MOV, which needs a scalar staging register.
+    //
+    // The payload's own \c SP / \c FP pair ( \c $sgpr32 / \c $sgpr33 ) is that
+    // register: by this point the payload's frame is dead, and the two SVA
+    // lanes that back them — \c getStackPointerRegSpillLane and
+    // \c getFramePointerRegSpillLane — have already been drained by the app
+    // SP / FP restores above, so they are free to park whatever the pair
+    // currently holds. Park, borrow, install, un-park: no register scavenging
+    // and no liveness query, and the pair comes back bit-identical whether it
+    // held the app's SP / FP, the payload's frame, or nothing at all.
+    if (NeedsExecRestore) {
+      const llvm::MCRegister ExecTempPair = TRI->getMatchingSuperReg(
+          PayloadSPReg, llvm::AMDGPU::sub0, &llvm::AMDGPU::SGPR_64RegClass);
+      const bool TempPairIsSPFP =
+          ExecTempPair &&
+          TRI->getSubReg(ExecTempPair, llvm::AMDGPU::sub1) == PayloadFPReg;
+      if (!ExecTempPair || (!ST.isWave32() && !TempPairIsSPFP)) {
+        Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+            "{0}: the payload's stack-pointer register {1} and frame-pointer "
+            "register {2} do not form an aligned SGPR pair, so the app's EXEC "
+            "mask cannot be staged through them on the way out.",
+            F.getName(), llvm::printReg(PayloadSPReg, TRI),
+            llvm::printReg(PayloadFPReg, TRI)))));
+        return llvm::PreservedAnalyses::all();
+      }
+      const uint8_t SPParkLane = Specs.getStackPointerRegSpillLane();
+      const uint8_t FPParkLane = Specs.getFramePointerRegSpillLane();
+      // A wave32 mask is 32 bits wide, so only the SP half is borrowed.
+      const bool NeedsHiHalf = !ST.isWave32();
+      emitSpillPhysRegToLane(MBB, FirstTerm, PayloadSPReg, SPParkLane,
+                             /*KillSrc=*/false);
+      if (NeedsHiHalf)
+        emitSpillPhysRegToLane(MBB, FirstTerm, PayloadFPReg, FPParkLane,
+                               /*KillSrc=*/false);
+      auto emitReadLaneInto = [&](llvm::MCRegister PhysReg, uint8_t Lane) {
+        (void)llvm::BuildMI(MBB, FirstTerm, llvm::DebugLoc(),
+                            TII->get(llvm::AMDGPU::V_READLANE_B32), PhysReg)
+            .addReg(SVAVGPR)
+            .addImm(Lane);
+      };
+      emitReadLaneInto(PayloadSPReg, ExecSpillLane);
+      if (NeedsHiHalf)
+        emitReadLaneInto(PayloadFPReg,
+                         static_cast<uint8_t>(ExecSpillLane + 1));
+      if (ST.isWave32())
+        (void)llvm::BuildMI(MBB, FirstTerm, llvm::DebugLoc(),
+                            TII->get(llvm::AMDGPU::S_MOV_B32),
+                            llvm::AMDGPU::EXEC_LO)
+            .addReg(PayloadSPReg);
+      else
+        (void)llvm::BuildMI(MBB, FirstTerm, llvm::DebugLoc(),
+                            TII->get(llvm::AMDGPU::S_MOV_B64),
+                            llvm::AMDGPU::EXEC)
+            .addReg(ExecTempPair);
+      emitReadLaneInto(PayloadSPReg, SPParkLane);
+      if (NeedsHiHalf)
+        emitReadLaneInto(PayloadFPReg, FPParkLane);
+      // Keep the un-parked pair visible as a live-out so nothing downstream
+      // treats the app SP / FP restore above as dead.
+      if (FirstTerm != MBB.end()) {
+        FirstTerm->addOperand(llvm::MachineOperand::CreateReg(
+            PayloadSPReg, /*isDef=*/false, /*isImp=*/true));
+        if (NeedsHiHalf)
+          FirstTerm->addOperand(llvm::MachineOperand::CreateReg(
+              PayloadFPReg, /*isDef=*/false, /*isImp=*/true));
+      }
+    }
     if (StateValueStorage.requiresLoadAndStoreBeforeUse()) {
       // Emit at FirstTerm of THIS return block, not at the entry point
       if (FirstTerm != MBB.end()) {

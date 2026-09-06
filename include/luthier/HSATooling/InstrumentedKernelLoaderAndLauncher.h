@@ -225,6 +225,28 @@ public:
   overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
                            const hsa_queue_t &Queue, uint64_t Preset = 0);
 
+  /// Map an *instrumented* kernel descriptor back to the original application
+  /// kernel descriptor it was built from, or \c nullptr when \p InstrumentedKD
+  /// names no cached instrumented variant.
+  ///
+  /// \c overrideWithInstrumented rewrites \c hsa_kernel_dispatch_packet_t
+  /// ::kernel_object in place, so anything that reads the dispatch packet
+  /// *after* the override — most importantly \c PatchPCUsagesPass 's host
+  /// callback, which runs mid-dispatch off the wave's own dispatch pointer —
+  /// sees the instrumented KD, not the application's. Handing that KD onward
+  /// as the enclosing kernel is wrong in two ways: the launcher's caches are
+  /// keyed by the *original* KD, and \c CodeDiscoveryPass derives a lifted
+  /// function's initial execution point (and with it the wave's register
+  /// budget, \c luthier-app-num-vgpr / \c luthier-app-num-sgpr) from it — so
+  /// the instrumented kernel's inflated register usage would be mistaken for
+  /// the application's.
+  ///
+  /// Passing an original KD through returns it unchanged, so callers that may
+  /// hold either can normalize unconditionally.
+  const llvm::amdhsa::kernel_descriptor_t *
+  getOriginalKernelDescriptor(
+      const llvm::amdhsa::kernel_descriptor_t *InstrumentedKD);
+
   /// Resolve a device-global variable \p Name to its
   /// \c hsa_executable_symbol_t inside the code objects cached under
   /// <tt>(OriginalKD, Preset)</tt>, searched in load order so the code object
@@ -472,6 +494,12 @@ protected:
     hsa_code_object_reader_t Reader{};
     hsa_executable_t Exec{};
     hsa_agent_t Agent{};
+    /// Device-global variables this code object defines, harvested after
+    /// freeze exactly like \c InstrumentedRecord::NameToVarSymbol. A device
+    /// function loaded later may reference a global an earlier one defined —
+    /// the resolver map its constructor publishes, most of all — so these
+    /// have to be bindable into subsequent executables.
+    llvm::StringMap<hsa_executable_symbol_t> NameToVarSymbol;
   };
 
   /// HSA-lifetime bookkeeping for every instrumented device-function code
@@ -514,6 +542,29 @@ protected:
   llvm::Error
   defineGlobalsOfPriorCodeObjects(llvm::ArrayRef<InstrumentedRecord> Prior,
                                   hsa_executable_t Exec, hsa_agent_t Agent);
+
+  /// Bind \p Exec against every global variable defined by *every* code object
+  /// this loader has already brought up on \p Agent — every
+  /// \c InstrumentedRecord in every \c ByOriginal entry, plus every
+  /// \c DeviceFuncRecord — so a freshly lifted device function resolves its
+  /// references no matter which code object published them.
+  ///
+  /// A device function reached through the runtime resolver is not
+  /// self-contained: it refers to the tool's device globals (the instruction
+  /// counter), to \c PatchPCUsagesPass 's resolver-table globals, and possibly
+  /// to globals an *earlier* device function's constructor published. Binding
+  /// only against the enclosing kernel's own code objects leaves the rest
+  /// undefined and \c hsa_executable_load_agent_code_object rejects the load
+  /// with \c HSA_STATUS_ERROR_VARIABLE_UNDEFINED.
+  ///
+  /// Same earliest-definition-wins rule as
+  /// \c defineGlobalsOfPriorCodeObjects, and for the same reason. Records are
+  /// visited enclosing-kernel-first so a kernel-side definition beats a
+  /// device-function-side one of the same name. Caller must hold the writer
+  /// lock.
+  llvm::Error defineGlobalsOfAllLoadedCodeObjects(
+      hsa_executable_t Exec, hsa_agent_t Agent,
+      llvm::ArrayRef<InstrumentedRecord> PreferredFirst = {});
 
   /// Allocate + publish every managed variable carried by the instrumented
   /// executable \p Rec just loaded: for each \c <base>.managed ELF symbol,

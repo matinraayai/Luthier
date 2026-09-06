@@ -43,7 +43,9 @@ StateValueArraySpecs::findLowestFreeLanes(unsigned NumLanes,
   //   0       — StackPointerRegSpillLane (SGPR0 of PRIVATE_SEGMENT_BUFFER)
   //   1       — FramePointerRegSSpillLane (SGPR1)
   //   2       — StackPointerStoreLane (instrumentation SGPR32)
-  //   3..N-1  — BufferRsrcOrScratchSpillLane region (FS = 2 lanes, buffer
+  //   3, 4    — ExecMaskSpillLane and ExecMaskSpillLane + 1 (app EXEC_LO /
+  //             EXEC_HI, reserved on every target)
+  //   5..N-1  — BufferRsrcOrScratchSpillLane region (FS = 2 lanes, buffer
   //             rsrc = 4 lanes, architected-FS = 0 lanes)
   //   …       — Each ScalarArguments[SA] entry holds 1, 2, or 4 contiguous
   //             lanes starting at the stored base.
@@ -60,6 +62,7 @@ StateValueArraySpecs::findLowestFreeLanes(unsigned NumLanes,
   markRange(StackPointerRegSpillLane, 1);
   markRange(FramePointerRegSSpillLane, 1);
   markRange(StackPointerStoreLane, 1);
+  markRange(ExecMaskSpillLane, /*EXEC_LO + EXEC_HI=*/2);
 
   if (BufferRsrcSpillLane)
     markRange(*BufferRsrcSpillLane, /*PSB=*/4);
@@ -79,8 +82,6 @@ unsigned StateValueArraySpecs::getArgumentLaneSize(ScalarValueArgument SA) {
   switch (SA) {
   case WAVEFRONT_PRIVATE_SEGMENT_BUFFER:
     return ScalarValueArgumentInfo<WAVEFRONT_PRIVATE_SEGMENT_BUFFER>::NumLanes;
-  case KERNEL_ARG_PTR:
-    return ScalarValueArgumentInfo<KERNEL_ARG_PTR>::NumLanes;
   case DISPATCH_ID:
     return ScalarValueArgumentInfo<DISPATCH_ID>::NumLanes;
   case FLAT_SCRATCH:
@@ -255,7 +256,13 @@ StateValueArraySpecsAnalysis::run(Prototype &IP,
   }
 #endif
 
-  uint8_t NextLane = StateValueArraySpecs::StackPointerStoreLane + 1;
+  // The exec-mask spill claims the two lanes right above the fixed
+  // kernel-prolog slots, so the first SA-assignable lane sits above it. The
+  // pair is reserved unconditionally — \c InjectedPayloadPEIPass has to be
+  // able to park the app's \c EXEC somewhere on every target, and the SVA
+  // layout has to agree across all payloads of a Prototype whether or not any
+  // individual one ends up needing it.
+  uint8_t NextLane = StateValueArraySpecs::ExecMaskSpillLane + 2;
   if (!HasFS && !IsArchitectedFS) {
     Out.ScalarArguments.insert({WAVEFRONT_PRIVATE_SEGMENT_BUFFER, NextLane});
     NextLane +=

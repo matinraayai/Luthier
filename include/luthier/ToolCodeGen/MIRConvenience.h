@@ -25,6 +25,7 @@
 namespace llvm {
 
 class MCRegister;
+class GCNSubtarget;
 
 }
 
@@ -78,6 +79,13 @@ void emitExecMaskFlip(llvm::MachineBasicBlock::iterator MI);
 
 /// MBB-appending overload — see \c emitSGPRSwap.
 void emitExecMaskFlip(llvm::MachineBasicBlock &MBB);
+
+/// Explicit (block, insertion point) overload. Unlike the iterator-only form
+/// this one never dereferences \p InsertionPoint , so it is safe to pass
+/// <tt>MBB.end()</tt> or the result of \c getFirstTerminator on a block with
+/// no terminator.
+void emitExecMaskFlip(llvm::MachineBasicBlock &MBB,
+                      llvm::MachineBasicBlock::iterator InsertionPoint);
 
 void emitMoveFromVGPRToVGPR(llvm::MachineBasicBlock::iterator MI,
                             llvm::MCRegister SrcVGPR, llvm::MCRegister DestVGPR,
@@ -176,6 +184,23 @@ void emitStoreToEmergencySVSScratchSpillLocation(
 void emitStoreToEmergencySVSScratchSpillLocation(
     llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
     llvm::MCRegister SrcVGPR, bool KillSource);
+
+/// Byte size of the instrumentation stack's reserved two-slot carve-out. The
+/// instrumentation stack pointer points at the *bottom* of the instrumentation
+/// stack, and these two slots sit at the very bottom of it:
+///   * \c [SP+0, SP+4) — emergency \c VGPR0 courier slot.
+///   * \c [SP+4, SP+8) — emergency state-value-array slot.
+/// A payload's own frame therefore begins at \c SP + \c InstrumentationSlotsReservation.
+inline constexpr unsigned InstrumentationSlotsReservation = 8;
+
+/// Mirrors \c getScratchScaleFactor in LLVM's \c SIFrameLowering.cpp: a stack
+/// pointer register holds a plain byte offset when flat scratch is enabled, and
+/// a wave-swizzled offset (bytes times the wavefront size) when scratch is
+/// addressed through the private segment buffer instead. Every place Luthier
+/// materializes, biases, or hands off an SP value has to agree with the
+/// subtarget's convention, otherwise the payload's LLVM-generated frame code and
+/// Luthier's hand-written scratch accesses disagree about units.
+unsigned getScratchScaleFactor(const llvm::GCNSubtarget &ST);
 
 /// Emits an \c S_WAITCNT before \p MI with the given per-counter
 /// encoding \p Encoding.

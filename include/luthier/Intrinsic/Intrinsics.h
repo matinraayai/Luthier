@@ -99,6 +99,16 @@ LUTHIER_INTRINSIC_ANNOTATE void writeReg(llvm::MCRegister Reg, T Val);
 
 LUTHIER_INTRINSIC_ANNOTATE void writeExec(uint64_t Val);
 
+/// \brief Intrinsic to invalidate the scalar instruction cache
+/// \details Lowers to a single \c s_icache_inv. Needed wherever a wave is
+/// about to branch to code that was loaded after the wave started — the CU's
+/// instruction cache can still hold stale lines covering that address range,
+/// and fetching through them faults at the callee's entry. \c s_icache_inv is
+/// a SOPP scalar op, so it retires once per wave regardless of the exec mask,
+/// and it only invalidates the issuing CU's cache: every wave that intends to
+/// branch to freshly-loaded code has to issue its own.
+LUTHIER_INTRINSIC_ANNOTATE void sICacheInv();
+
 template <typename T,
           typename = std::enable_if_t<
               std::is_same_v<T, uint32_t> || std::is_same_v<T, uint64_t> ||

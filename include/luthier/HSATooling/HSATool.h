@@ -245,17 +245,26 @@ public:
   /// \p PAM, then forwards to \c Prototype::createInjectedPayload. The
   /// handle is taken as a typed pointer so callers need not cast to
   /// \c void*.
+  ///
+  /// \param LaneMode how many lanes the payload body runs on. Defaults to
+  /// \c PayloadLaneMode::AllActiveLanes , which leaves the application's
+  /// \c EXEC mask untouched. \c PayloadLaneMode::SingleLane runs the body
+  /// with <tt>EXEC = 1</tt>, spilling the app's \c EXEC into the SVA's
+  /// exec-mask spill lanes on entry and restoring it on exit, and switches
+  /// the preserve pass to whole-wave save/restore of every vector register
+  /// the payload clobbers.
   template <typename T>
-  llvm::Error createInjectedPayload(T *HostHandle, Prototype &P,
-                                    PrototypeAnalysisManager &PAM,
-                                    llvm::MachineInstr &TargetMI,
-                                    llvm::ArrayRef<PayloadArg> Args = {}) {
+  llvm::Error createInjectedPayload(
+      T *HostHandle, Prototype &P, PrototypeAnalysisManager &PAM,
+      llvm::MachineInstr &TargetMI, llvm::ArrayRef<PayloadArg> Args = {},
+      PayloadLaneMode LaneMode = PayloadLaneMode::AllActiveLanes) {
     auto FnOrErr = resolvePayloadHandle(HostHandle, P.getInstrumentationModule());
     LUTHIER_RETURN_ON_ERROR(FnOrErr.takeError());
     llvm::FunctionAnalysisManager &IFAM =
         PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
             .getManager();
-    return P.createInjectedPayload(**FnOrErr, TargetMI, IFAM, Args).takeError();
+    return P.createInjectedPayload(**FnOrErr, TargetMI, IFAM, Args, LaneMode)
+        .takeError();
   }
 
   /// Lambda-taking companion of the above: resolves \p HostHandle to a
@@ -264,12 +273,20 @@ public:
   /// when the payload needs arguments that must be materialized inside the
   /// payload's own function (e.g. \c luthier::readReg intrinsic calls),
   /// which cannot be prepared before the payload's BB exists.
+  ///
+  /// \param LaneMode how many lanes the payload body runs on; see the
+  /// \p Args -taking overload above. \c PayloadLaneMode::SingleLane pins the
+  /// body to one lane by way of \c ExecuteSingleLaneAttribute — \c EXEC is
+  /// spilled to the SVA's exec-mask spill lanes, forced to 1 for the body,
+  /// and restored afterwards, and clobbered vector registers are preserved
+  /// whole-wave instead of only across the originally active lanes.
   template <typename T>
   llvm::Error createInjectedPayload(
       T *HostHandle, Prototype &P, PrototypeAnalysisManager &PAM,
       llvm::MachineInstr &TargetMI,
       llvm::function_ref<llvm::Error(llvm::Function &, llvm::IRBuilderBase &)>
-          Build) {
+          Build,
+      PayloadLaneMode LaneMode = PayloadLaneMode::AllActiveLanes) {
     auto FnOrErr = resolvePayloadHandle(HostHandle, P.getInstrumentationModule());
     LUTHIER_RETURN_ON_ERROR(FnOrErr.takeError());
     llvm::FunctionAnalysisManager &IFAM =
@@ -280,7 +297,8 @@ public:
                  TargetMI, IFAM,
                  [&](llvm::IRBuilderBase &Builder) -> llvm::Error {
                    return Build(Hook, Builder);
-                 })
+                 },
+                 LaneMode)
         .takeError();
   }
 

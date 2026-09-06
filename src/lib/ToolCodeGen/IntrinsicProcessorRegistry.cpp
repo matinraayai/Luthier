@@ -20,6 +20,7 @@
 #include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
 #include "luthier/Intrinsic/ImplicitArgPtr.h"
 #include "luthier/Intrinsic/SAtomicAdd.h"
+#include "luthier/Intrinsic/SICacheInv.h"
 #include "luthier/Intrinsic/WriteExec.h"
 
 namespace luthier {

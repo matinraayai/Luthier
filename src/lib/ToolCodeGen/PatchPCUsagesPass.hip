@@ -129,9 +129,22 @@ void luthier::PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap() 
       TE *NewBuf = static_cast<TE *>(malloc(sizeof(TE) * NewCapacity));
       for (std::uint32_t I = 0; I < OldSize; ++I)
         NewBuf[I] = P::EntryPointToTraceFunctionAddrMap[I];
-      free(P::EntryPointToTraceFunctionAddrMap);
-      P::EntryPointToTraceFunctionAddrMap = NewBuf;
-      P::EntryPointToTraceFunctionAddrMapMaxSize = NewCapacity;
+      // Deliberately do NOT free the old buffer here. This constructor does
+      // not hold \c EntryPointToTraceFunctionAddrMapLock (it cannot: a
+      // reader in \c patchRegMultiFallback holds that lock across its
+      // hostcall, and the host's response to a miss is to load the code
+      // object whose ctor this is, so acquiring it here would deadlock).
+      // Readers therefore run concurrently with this extend, and they load
+      // the map pointer and the count as two separate acquire loads, so one
+      // can still be walking the old array when the pointer swap below
+      // lands. The table holds a handful of 16-byte entries and only grows
+      // when a new code object is loaded, so retaining the old array is far
+      // cheaper than a use-after-free. The destructor frees the live one.
+      __hip_atomic_store(&P::EntryPointToTraceFunctionAddrMapMaxSize,
+                         NewCapacity, __ATOMIC_RELAXED,
+                         __HIP_MEMORY_SCOPE_AGENT);
+      __hip_atomic_store(&P::EntryPointToTraceFunctionAddrMap, NewBuf,
+                         __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_AGENT);
     }
     for (std::uint32_t I = 0; I < SeedN; ++I)
       P::EntryPointToTraceFunctionAddrMap[OldSize + I] =
@@ -151,16 +164,33 @@ void luthier::PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap() 
   // + 5, so the host callback can append 5 more entries before it has to
   // reallocate.
   const std::uint32_t Capacity = SeedN + 5u;
-  P::EntryPointToTraceFunctionAddrMap =
-      static_cast<TE *>(malloc(sizeof(TE) * Capacity));
+  TE *Buf = static_cast<TE *>(malloc(sizeof(TE) * Capacity));
   // Copy the constant-AS seed entries into the freshly-allocated runtime
   // table. Ordering matches the seed exactly.
   for (std::uint32_t I = 0; I < SeedN; ++I)
-    P::EntryPointToTraceFunctionAddrMap[I] =
-        P::EntryPointToTraceFunctionAddrMapSeed[I];
-  P::EntryPointToTraceFunctionAddrMapSize = SeedN;
-  P::EntryPointToTraceFunctionAddrMapMaxSize = Capacity;
-  P::EntryPointToTraceFunctionAddrMapLock = 0;
+    Buf[I] = P::EntryPointToTraceFunctionAddrMapSeed[I];
+  __hip_atomic_store(&P::EntryPointToTraceFunctionAddrMapMaxSize, Capacity,
+                     __ATOMIC_RELAXED, __HIP_MEMORY_SCOPE_AGENT);
+  // Publish the buffer, then the count, as agent-scope release stores — the
+  // same publication the extend-into-place path above performs, for the same
+  // reason. This path used plain stores, and a plain store publishes nothing:
+  // the readers in \c patchRegMultiFallback acquire-load these locations, and
+  // an acquire only pairs with a release. The seed entries therefore stayed
+  // invisible, every wave read the zero-initialized count, walked an empty
+  // table, missed, and issued its own hostcall — the host resolving each one
+  // correctly from the same addresses, which masks the bug as "slow" rather
+  // than "wrong". The spinlock cannot help with this: it serializes the
+  // waves faithfully, but what it guards is a read that always returns empty.
+  // The count goes last because its release also publishes the entries and
+  // the buffer pointer stored before it.
+  __hip_atomic_store(&P::EntryPointToTraceFunctionAddrMap, Buf,
+                     __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_AGENT);
+  __hip_atomic_store(&P::EntryPointToTraceFunctionAddrMapSize, SeedN,
+                     __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_AGENT);
+  // NOTE: the lock is intentionally not reset here. It is zero-initialized,
+  // and this constructor can run while a reader of a previously loaded code
+  // object holds it (that reader's hostcall is what triggered this load), so
+  // storing 0 would release a lock this kernel does not own.
 }
 
 __attribute__((device, used, destructor))
@@ -205,11 +235,15 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
                       std::uint64_t HostFnPtr) {
   using PCP = luthier::PatchPCUsagesPass;
 
-  // Acquire the wave-uniform spinlock — but only through hardware lane 0.
-  if (__lane_id() == 0u) {
-    while (atomicCAS(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u,
-                     1u) != 0u) {
-    }
+  // Acquire the wave-uniform spinlock. No lane guard is needed: every payload
+  // the PC patcher injects runs in \c PayloadLaneMode::SingleLane , so the
+  // injected-payload prologue has already forced <tt>EXEC = 1</tt> and only
+  // lane 0 is executing this body. Guarding on \c __lane_id() here would be
+  // worse than redundant — the compiler structurizes the guarded CAS loop by
+  // masking EXEC, which retires the winning lane out of EXEC before the
+  // matching release below and deadlocks the wave.
+  while (atomicCAS(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u,
+                   1u) != 0u) {
   }
 
   // Every read of the table has to be an agent-scope acquire load, not a plain
@@ -240,12 +274,17 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
     const std::uint64_t TraceAddr = __hip_atomic_load(
         &BR[I].TraceAddr, __ATOMIC_RELAXED, __HIP_MEMORY_SCOPE_AGENT);
     if (TraceAddr == Cur) {
+      // Invalidate before installing the handle: the entry we just hit may
+      // have been contributed by a code object loaded after this wave
+      // started, so this CU's instruction cache can hold stale lines covering
+      // the target. s_icache_inv only affects the issuing CU, so every wave
+      // that resolves has to do this — not just the one that took the
+      // hostcall.
+      luthier::sICacheInv();
       luthier::writeReg<std::uint64_t>(
           Reg, __hip_atomic_load(&BR[I].FnHandleAddr, __ATOMIC_RELAXED,
                                  __HIP_MEMORY_SCOPE_AGENT));
-      if (__lane_id() == 0u) {
-        atomicExch(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u);
-      }
+      atomicExch(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u);
       return;
     }
   }
@@ -254,16 +293,44 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
   // safely append to (or reallocate) the table under exclusive access.
   const unsigned long DispatchPacketAddr =
       reinterpret_cast<unsigned long>(__builtin_amdgcn_dispatch_ptr());
+  // The hostcall is issued from a single lane, but the single lane comes from
+  // \c PayloadLaneMode::SingleLane rather than from a \c __lane_id() guard.
+  // It matters that only one lane runs it: the FUNCTION_CALL service answers
+  // *per active lane* — HostcallBuffer::processPackets walks the packet's
+  // ActiveMask and invokes the host function once for every set bit — so a
+  // wave-wide call would run the resolver popcount(exec) times, 64 identical
+  // callbacks for one wave-uniform miss. The spinlock does not prevent that:
+  // it serializes *waves*, while the duplication happens inside a single lock
+  // hold across the lanes of one wave. Every input here (Cur, HostFnPtr, the
+  // three table addresses, the dispatch pointer) is wave-uniform, so the one
+  // active lane's answer is the whole wave's answer.
   __luthier_ockl_long2 Result = __ockl_call_host_function(
       HostFnPtr, static_cast<unsigned long>(Cur), DispatchPacketAddr,
       reinterpret_cast<unsigned long>(&PCP::Parser::EntryPointToTraceFunctionAddrMap),
       reinterpret_cast<unsigned long>(&PCP::Parser::EntryPointToTraceFunctionAddrMapSize),
       reinterpret_cast<unsigned long>(&PCP::Parser::EntryPointToTraceFunctionAddrMapMaxSize),
       0, 0);
-  if (__lane_id() == 0u) {
-    atomicExch(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u);
-  }
-  luthier::writeReg<std::uint64_t>(Reg, static_cast<std::uint64_t>(Result[0]));
+  std::uint64_t Handle = static_cast<std::uint64_t>(Result[0]);
+  atomicExch(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u);
+  // The hostcall's side effect is that the host loads a *new code object*
+  // holding the callee this wave is about to branch to. Those instruction
+  // bytes are written after the wave started, so this CU's instruction cache
+  // can still hold stale lines covering that range — the wave then fetches
+  // garbage at the target and takes an instruction-fetch memory violation
+  // right at the callee's entry. Invalidate before the resolved handle is
+  // installed into \p Reg and branched through. s_icache_inv is a scalar op
+  // that retires once per wave regardless of EXEC, so issuing it from the
+  // single active lane still covers the whole wave.
+  luthier::sICacheInv();
+  // Pull the answer out of the one active lane; \c Reg is a scalar register,
+  // so the value written has to be wave-uniform.
+  const unsigned HandleLo = __builtin_amdgcn_readfirstlane(
+      static_cast<unsigned>(Handle & 0xffffffffu));
+  const unsigned HandleHi =
+      __builtin_amdgcn_readfirstlane(static_cast<unsigned>(Handle >> 32));
+  luthier::writeReg<std::uint64_t>(
+      Reg, (static_cast<std::uint64_t>(HandleHi) << 32) |
+               static_cast<std::uint64_t>(HandleLo));
 }
 
 } // namespace
@@ -1160,6 +1227,14 @@ resolveSiteAtAddr(const RunContext &RC, std::optional<std::uint64_t> Addr) {
 /// codegen-time candidates beyond \c MaxMultiHookN are dropped from the
 /// compile-time check; the specialization's own runtime EntryPointToTraceFunctionAddrMap +
 /// hostcall path still resolves those addresses if they arise.
+///
+/// Both payloads are created in \c PayloadLaneMode::SingleLane . Everything
+/// these hooks do is wave-uniform — they compute one function handle and write
+/// it into a scalar register — while the fallback's spinlock and hostcall are
+/// actively wrong to run per-lane (duplicate host callbacks) and cannot be
+/// made single-lane with a \c __lane_id() guard, because structurizing the
+/// guarded CAS loop masks the winning lane out of EXEC before it can release
+/// the lock.
 llvm::Error injectRegPatchPayload(RunContext &RC, llvm::MachineInstr &MI,
                                   llvm::MCRegister Reg,
                                   const SiteResolution &SR) {
@@ -1168,7 +1243,8 @@ llvm::Error injectRegPatchPayload(RunContext &RC, llvm::MachineInstr &MI,
   if (SR.Targets.size() == 1 && !SR.IsIncomplete) {
     auto Args = buildSingleArgs(RC.IModule, Reg, SR.Targets.front());
     return RC.P
-        .createInjectedPayload(*RC.PatchRegSingleFn, MI, RC.IFAM, Args)
+        .createInjectedPayload(*RC.PatchRegSingleFn, MI, RC.IFAM, Args,
+                               luthier::PayloadLaneMode::SingleLane)
         .takeError();
   }
 
@@ -1233,7 +1309,8 @@ llvm::Error injectRegPatchPayload(RunContext &RC, llvm::MachineInstr &MI,
                   "Failed to force-inline hook '" + Hook->getName().str() +
                   "' into payload: " + IR.getFailureReason());
             return llvm::Error::success();
-          })
+          },
+          luthier::PayloadLaneMode::SingleLane)
       .takeError();
 }
 
@@ -1552,6 +1629,24 @@ PatchPCUsagesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   if (auto Err = BindHandle(RC.PatchRegMultiHookByN[4],
                             &Parser::patchRegMulti<TE, TE, TE, TE, TE>))
     return EmitAndReturn(std::move(Err), /*Mutated=*/true);
+
+  // NOTE: marking these hooks' parameters \c inreg here (via
+  // \c Argument::addAttr after \c linkParserModuleIntoIModule) was tried and
+  // is a no-op on gfx942: the payload already receives them in SGPRs.
+  // Verified by A/B on the resulting MIR — with and without the attribute the
+  // payload's entry is identical:
+  //   liveins: $sgpr4_sgpr5, $sgpr8_sgpr9
+  // and the emitted code is byte-for-byte the same. The \c v_readlane_b32
+  // s4/s5/s8/s9, v10, <lane> sequence at the payload entry is the MIR
+  // lowering marshalling those SGPR arguments out of the state value array,
+  // not a bypass of the calling convention.
+  //
+  // It may still be worth revisiting for the 4- and 5-pair specializations:
+  // Clang's AMDGPU ABI coerces the leading pairs to scalars and spills the
+  // rest to a \c ptr addrspace(5) byref stack slot (see \c buildMultiHookArgs),
+  // and those byref parameters do reach the callee through scratch. Neither
+  // specialization is exercised by a single-callee patch site, so that path is
+  // untested here.
 
   llvm::Error WalkErr = llvm::Error::success();
   P.forEachTargetMF(PAM, [&](llvm::MachineFunction &MF) {

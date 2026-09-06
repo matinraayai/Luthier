@@ -218,106 +218,26 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     SVAImplDef->setPCSections(MF, MarkerNode);
   }
 
-  // Reserve the SVA lane region on the WWM LaneVGPR in lane order.
-  llvm::MachineFrameInfo &MFI = MF.getFrameInfo();
-  llvm::SmallVector<uint8_t, 32> ReservedLanes;
-  ReservedLanes.push_back(SVASpecs.getStackPointerRegSpillLane());
-  ReservedLanes.push_back(SVASpecs.getFramePointerRegSpillLane());
-  ReservedLanes.push_back(SVASpecs.getStackPointerStoreLane());
-  if (auto PSBLane = SVASpecs.getRsrcBufferSpillLane())
-    for (uint8_t I = 0; I < 4; ++I)
-      ReservedLanes.push_back(static_cast<uint8_t>(*PSBLane + I));
-  if (auto FSLane = SVASpecs.getScratchSpillLane())
-    for (uint8_t I = 0; I < 2; ++I)
-      ReservedLanes.push_back(static_cast<uint8_t>(*FSLane + I));
-  for (auto It = SVASpecs.argument_lane_begin();
-       It != SVASpecs.argument_lane_end(); ++It) {
-    const unsigned NumLanes =
-        StateValueArraySpecs::getArgumentLaneSize(It->first);
-    for (unsigned I = 0; I < NumLanes; ++I)
-      ReservedLanes.push_back(static_cast<uint8_t>(It->second + I));
-  }
-  llvm::sort(ReservedLanes);
-
-  /// Burns one lane of the shared WWM LaneVGPR by handing
-  /// \c allocateSGPRSpillToVGPRLane a frame index nothing will ever spill
-  /// to. \p Lane only names the lane being reserved for diagnostics; the
-  /// framework hands out lanes in call order off its monotonic
-  /// \c NumVirtualVGPRSpillLanes counter, which is why the reservation has to
-  /// happen in sorted lane order.
-  auto reserveLane = [&](unsigned Lane) -> int {
-    int FI = MFI.CreateStackObject(/*Size=*/4, llvm::Align(4),
-                                   /*isSpillSlot=*/true);
-    MFI.setStackID(FI, llvm::TargetStackID::SGPRSpill);
-    if (!SIMFI->allocateSGPRSpillToVGPRLane(MF, FI,
-                                            /*SpillToPhysVGPRLane=*/false)) {
-      Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-          "Failed to reserve SVA lane {0} on the WWM LaneVGPR in MF {1}", Lane,
-          MF.getName()))));
-      return -1;
-    }
-    return FI;
-  };
-
-  /// Frame index of the first lane reserved below. The framework hands out
-  /// lanes off a monotonic counter that starts at zero and this reservation
-  /// is its first client, so this frame index -- and only this one -- owns
-  /// lane 0 of the SVA LaneVGPR.
-  int LaneZeroFI = -1;
-  for (uint8_t Lane : ReservedLanes) {
-    int FI = reserveLane(Lane);
-    if (FI < 0)
-      return Changed;
-    if (LaneZeroFI < 0)
-      LaneZeroFI = FI;
-  }
-
-  // Pad the reservation out to a whole wavefront.
+  // No lane reservation happens here.
   //
-  // The lanes above are the SVA's own; the rest of the LaneVGPR would
-  // otherwise be handed to the register allocator's SGPR spills, which land
-  // on it through the same monotonic counter. That leaves the LaneVGPR with
-  // no spill on lane 0 -- the reserved lanes never get a spill instruction --
-  // and SILowerSGPRSpills only records a virtual LaneVGPR's IMPLICIT_DEF
-  // insertion point when it lowers a spill whose lane is 0
-  // (SILowerSGPRSpills.cpp:345). The first RA spill therefore arrives at a
-  // nonzero lane with an empty LaneVGPRDomInstr and trips the assert on the
-  // next line. Rounding up to the wavefront makes the allocator's first spill
-  // wrap onto lane 0 of a fresh LaneVGPR, which does get an insertion point.
-  const unsigned WaveSize = ST.getWavefrontSize();
-  const unsigned PaddedLanes = llvm::alignTo<unsigned>(
-      static_cast<unsigned>(ReservedLanes.size()), WaveSize);
-  for (unsigned Lane = ReservedLanes.size(); Lane < PaddedLanes; ++Lane) {
-    if (reserveLane(Lane) < 0)
-      return Changed;
-  }
-
-  // Anchor the SVA LaneVGPR with a spill instruction on its lane 0.
+  // The SVA does not live on a WWM LaneVGPR any more: \c SVAVGPRPlaceholder
+  // above *is* the physical SVA VGPR, and every access to it is emitted below
+  // as a \c V_READLANE_B32 / \c V_WRITELANE_B32 against a compile-time lane
+  // index taken from \c StateValueArraySpecs (see
+  // \c getFrameSVALaneForPhysReg and the SVA-argument lowering that follows).
+  // The lane assignment is therefore already tracked explicitly by this
+  // pipeline; nothing needs LLVM's SGPR-spill-to-VGPR-lane allocator to hand
+  // it out.
   //
-  // SILowerSGPRSpills records a virtual LaneVGPR's IMPLICIT_DEF insertion
-  // point only while lowering an actual spill, and only for the spill whose
-  // lane is 0 (SILowerSGPRSpills.cpp:345). Reserving lanes hands the
-  // LaneVGPR out without ever emitting a spill against them, so the register
-  // reaches the IMPLICIT_DEF loop at SILowerSGPRSpills.cpp:623 with nothing
-  // recorded, `LaneVGPRDomInstr[Reg]` default-constructs a null MBB, and
-  // line 625 dereferences it. (Without the wavefront padding above the same
-  // gap shows up one step earlier: the allocator's first spill lands on a
-  // nonzero lane of this LaneVGPR and trips the assert on line 348.)
-  //
-  // One restore off the lane-0 frame index is enough to close both. It only
-  // *reads* the lane, so no SVA state is disturbed, and its destination is
-  // dead. SI_SPILL_S32_RESTORE carries a non-invariant stack load, which
-  // makes MachineInstr::isSafeToMove -- and therefore
-  // wouldBeTriviallyDead -- false, so DCE keeps it alive until
-  // SILowerSGPRSpills lowers it into the V_READLANE_B32 it wants to see.
-  if (LaneZeroFI >= 0) {
-    llvm::Register AnchorVReg =
-        MRI.createVirtualRegister(&llvm::AMDGPU::SReg_32RegClass);
-    TII->loadRegFromStackSlot(MF.front(), MF.front().begin(), AnchorVReg,
-                              LaneZeroFI, &llvm::AMDGPU::SReg_32RegClass,
-                              /*VReg=*/{});
-    Changed = true;
-  }
+  // The reservation this replaces used to burn one lane per SVA slot through
+  // \c allocateSGPRSpillToVGPRLane, pad the result out to a whole wavefront,
+  // and anchor a dummy lane-0 restore, purely to keep \c SILowerSGPRSpills'
+  // WWM bookkeeping consistent for lanes nothing ever spilled to. Its only
+  // surviving effect was to inflate \c SIMachineFunctionInfo::getSGPRSpillVGPRs
+  // by a whole LaneVGPR, which is what
+  // \c SILowerSGPRSpills::determineRegsForWWMAllocation sizes its WWM VGPR
+  // demand from — and on a payload whose VGPR budget is already tight that
+  // surfaces as "cannot find enough VGPRs for wwm-regalloc".
 
   /// Returns the SVA lane for a frame reg read/written by an injected
   /// payload, matching \c InjectedPayloadPEIPass 's convention:
@@ -329,12 +249,25 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
   ///        getRsrcBufferSpillLane() ..+3
   ///   FLAT_SCR_LO / FLAT_SCR_HI                        → \c
   ///   getScratchSpillLane() and +1
+  ///   EXEC_LO / EXEC_HI                                → \c
+  ///   getExecMaskSpillLane() and +1
   ///
   /// PSB and FLAT_SCR routing only fires when the SVA layout has the
   /// corresponding lane assignment (i.e., non-architected-FS targets;
   /// PSB additionally requires flat-scratch not to be explicitly
   /// enabled) . Returns \c std::nullopt if \p PhysReg is not one of the frame
   /// regs, or if this isn't an injected payload.
+  ///
+  /// \c EXEC is routed for the same reason \c SP / \c FP are: by the time the
+  /// payload body runs, \c InjectedPayloadPEIPass may have replaced the
+  /// architectural \c EXEC with the single-lane mask (payloads carrying
+  /// \c ExecuteSingleLaneAttribute run with <tt>EXEC = 1</tt>), so the
+  /// physical register no longer holds the app's value. The app's \c EXEC
+  /// lives in the SVA's exec-mask spill lanes for the whole payload, which
+  /// makes those lanes — not the physreg — the authoritative location for
+  /// \c luthier::readReg / \c luthier::writeReg of \c EXEC_LO / \c EXEC_HI .
+  /// A \c writeReg lands in the spill lane and PEI's epilogue installs it
+  /// into the real \c EXEC on the way out.
   auto getFrameSVALaneForPhysReg =
       [&](llvm::MCRegister PhysReg) -> std::optional<uint8_t> {
     if (!IsInjectedPayload)
@@ -343,6 +276,10 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
       return SVASpecs.getStackPointerRegSpillLane();
     if (PhysReg == SIMFI->getFrameOffsetReg().asMCReg())
       return SVASpecs.getFramePointerRegSpillLane();
+    if (PhysReg == llvm::AMDGPU::EXEC_LO)
+      return SVASpecs.getExecMaskSpillLane();
+    if (PhysReg == llvm::AMDGPU::EXEC_HI)
+      return static_cast<uint8_t>(SVASpecs.getExecMaskSpillLane() + 1);
     // PSB / FLAT_SCR routing is only meaningful when the target does NOT
     // have architected flat scratch
     if (!ST.hasArchitectedFlatScratch()) {

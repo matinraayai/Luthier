@@ -61,6 +61,38 @@ struct RegArg {
 /// body before the hook is called.
 using PayloadArg = std::variant<llvm::Value *, RegArg>;
 
+/// How many lanes of the wavefront an injected payload's body runs on.
+///
+/// \details Passed to \c Prototype::createInjectedPayload (and the
+/// \c HSATool wrappers around it) to pick between the two execution
+/// disciplines Luthier can give a payload. See \c PayloadLaneMode::SingleLane
+/// for what the non-default choice costs and buys.
+enum class PayloadLaneMode {
+  /// The payload body inherits the application's \c EXEC mask as it stood at
+  /// the instrumentation point, so every lane that was live there runs the
+  /// payload. This is the default and what every hook wants unless it is
+  /// doing something that is only correct wave-uniformly.
+  AllActiveLanes,
+  /// The payload body runs with exactly one lane live. Luthier marks the
+  /// created function with \c ExecuteSingleLaneAttribute , which makes
+  /// \c InjectedPayloadPEIPass spill the app's \c EXEC into the SVA's
+  /// exec-mask spill lanes (see
+  /// \c StateValueArraySpecs::getExecMaskSpillLane ), force <tt>EXEC = 1</tt>
+  /// for the duration of the body, and reinstall the app's mask on the way
+  /// out; \c InjectedPayloadPreserveLiveRegsPass in turn widens its
+  /// save/restore of every clobbered vector register to the whole wave,
+  /// since a lane-masked \c COPY under <tt>EXEC = 1</tt> would only capture
+  /// lane 0.
+  ///
+  /// Reach for this when the body is only correct single-lane — the
+  /// canonical case being an \c atomicCAS spin-lock acquire loop, whose
+  /// divergent structurization peels winning lanes out of \c EXEC and keeps
+  /// looping while any peer is still spinning, so a release after the loop
+  /// never runs. A device-side <tt>__lane_id() == 0</tt> guard does not fix
+  /// that, because the guard is itself just more divergent control flow.
+  SingleLane
+};
+
 class Prototype {
   /// Contains the code for the application being instrumented
   std::unique_ptr<llvm::Module> TargetModule{};
@@ -103,20 +135,38 @@ public:
   /// \details A single entry \c BasicBlock is created and an \c IRBuilderBase
   /// pointing into it is passed to \p Build.
   ///
+  /// \param LaneMode how many lanes the payload body runs on. The default,
+  /// \c PayloadLaneMode::AllActiveLanes , leaves the application's \c EXEC
+  /// mask alone. \c PayloadLaneMode::SingleLane instead tags the created
+  /// function with \c ExecuteSingleLaneAttribute , which makes
+  /// \c InjectedPayloadPEIPass spill the app's \c EXEC into the SVA's
+  /// exec-mask spill lanes, run the body with <tt>EXEC = 1</tt>, and restore
+  /// the app's mask in the epilogue, and makes
+  /// \c InjectedPayloadPreserveLiveRegsPass save and restore every clobbered
+  /// vector register whole-wave rather than only across the lanes that were
+  /// active at the instrumentation point.
+  ///
   /// \returns the newly created function, or an error if the operation fails
   llvm::Expected<llvm::Function *> createInjectedPayload(
       llvm::MachineInstr &TargetMI, llvm::FunctionAnalysisManager &IFAM,
-      llvm::function_ref<llvm::Error(llvm::IRBuilderBase &)> Build);
+      llvm::function_ref<llvm::Error(llvm::IRBuilderBase &)> Build,
+      PayloadLaneMode LaneMode = PayloadLaneMode::AllActiveLanes);
 
   /// Convenience overload: creates an injected-payload function for \p TargetMI
   /// that calls \p HookFn with \p Args. \c Value* entries in \p Args are
   /// forwarded verbatim; \c RegArg entries are lowered to
   /// \c luthier::readReg intrinsic calls inside the payload and their
   /// results become the corresponding hook argument.
-  llvm::Expected<llvm::Function *>
-  createInjectedPayload(llvm::Function &HookFn, llvm::MachineInstr &TargetMI,
-                        llvm::FunctionAnalysisManager &IFAM,
-                        llvm::ArrayRef<PayloadArg> Args = {});
+  ///
+  /// \param LaneMode how many lanes the payload body runs on; see the
+  /// primary overload above for what \c PayloadLaneMode::SingleLane entails
+  /// (<tt>EXEC = 1</tt> around the body, \c EXEC spilled to and restored from
+  /// the SVA's exec-mask spill lanes, and whole-wave register preservation).
+  llvm::Expected<llvm::Function *> createInjectedPayload(
+      llvm::Function &HookFn, llvm::MachineInstr &TargetMI,
+      llvm::FunctionAnalysisManager &IFAM,
+      llvm::ArrayRef<PayloadArg> Args = {},
+      PayloadLaneMode LaneMode = PayloadLaneMode::AllActiveLanes);
 
   /// \brief Invokes \p Fn on every <tt>llvm::MachineFunction</tt> of the
   /// target module.

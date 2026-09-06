@@ -74,37 +74,36 @@ enum ScalarValueArgument : uint8_t {
   WAVEFRONT_PRIVATE_SEGMENT_BUFFER = 0,
   /// Marks the first defined scalar value argument
   SCALAR_VALUE_ARGUMENT_FIRST = WAVEFRONT_PRIVATE_SEGMENT_BUFFER,
-  /// 64-bit address of the kernel's argument buffer
-  KERNEL_ARG_PTR = 1,
   /// 64-bit Dispatch ID of the kernel
-  DISPATCH_ID = 2,
+  DISPATCH_ID = 1,
   /// 64-bit flat scratch base address of the wavefront
-  FLAT_SCRATCH = 3,
+  FLAT_SCRATCH = 2,
   /// 64-bit address of the dispatch packet of the kernel being executed
   /// TODO: If the original kernel wants the dispatch pointer, we need to
   /// make it point to the **"original"** packet not the instrumented one
-  DISPATCH_PTR = 4,
+  DISPATCH_PTR = 3,
   /// 64-bit address of the HSA queue used to launch the kernel
-  QUEUE_PTR = 5,
+  QUEUE_PTR = 4,
   /// Size of a work-item's private segment
-  WORK_ITEM_PRIVATE_SEGMENT_SIZE = 6,
+  WORK_ITEM_PRIVATE_SEGMENT_SIZE = 5,
   /// 64-bit address of the instrumentation implicit argument buffer
-  IMPLICIT_ARG_BUFFER = 7,
+  IMPLICIT_ARG_BUFFER = 6,
   /// 32-bit X component of the workgroup ID (preloaded system SGPR)
-  WORKGROUP_ID_X = 8,
+  WORKGROUP_ID_X = 7,
   /// 32-bit Y component of the workgroup ID (preloaded system SGPR)
-  WORKGROUP_ID_Y = 9,
+  WORKGROUP_ID_Y = 8,
   /// 32-bit Z component of the workgroup ID (preloaded system SGPR)
-  WORKGROUP_ID_Z = 10,
+  WORKGROUP_ID_Z = 9,
   /// 32-bit X component of lane 0's workitem ID at kernel entry
-  WORKITEM_ID_X = 11,
+  WORKITEM_ID_X = 10,
   /// 32-bit Y component of lane 0's workitem ID at kernel entry
-  WORKITEM_ID_Y = 12,
+  WORKITEM_ID_Y = 11,
   /// 32-bit Z component of lane 0's workitem ID at kernel entry
-  WORKITEM_ID_Z = 13,
+  WORKITEM_ID_Z = 12,
   /// Marks the last defined scalar value argument
   SCALAR_VALUE_ARGUMENT_LAST = WORKITEM_ID_Z
-  // TODO: Optimize usage of these lanes for GFX10; We are at the limit
+  // NOTE: The SVA is exactly saturated on GFX10 (wave32 = 32 lanes), so any
+  // new entry here has to be paid for by dropping an existing one.
   // /// 64-bit address of the instrumentation routine's argument buffer
   // USER_ARG_PTR = 15,
   //   /// 32-bit private segment wave offset
@@ -115,10 +114,6 @@ template <ScalarValueArgument SA> struct ScalarValueArgumentInfo;
 
 template <> struct ScalarValueArgumentInfo<WAVEFRONT_PRIVATE_SEGMENT_BUFFER> {
   static constexpr uint8_t NumLanes = 4;
-};
-
-template <> struct ScalarValueArgumentInfo<KERNEL_ARG_PTR> {
-  static constexpr uint8_t NumLanes = 2;
 };
 
 template <> struct ScalarValueArgumentInfo<DISPATCH_ID> {

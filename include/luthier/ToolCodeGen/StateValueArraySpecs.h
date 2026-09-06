@@ -40,6 +40,14 @@ class StateValueArraySpecs {
 
   static constexpr uint8_t StackPointerStoreLane{2};
 
+  /// Lo half of the app's \c EXEC mask; the hi half lives in the immediately
+  /// following lane. Unlike the buffer-rsrc / flat-scratch spill lanes these
+  /// are reserved on every target: \c InjectedPayloadPEIPass parks the app's
+  /// \c EXEC here for the duration of any payload that reads or writes
+  /// \c EXEC , or that is marked \c LUTHIER_EXECUTE_SINGLE_LANE_ATTRIBUTE and
+  /// therefore runs with <tt>EXEC = 1</tt>.
+  static constexpr uint8_t ExecMaskSpillLane{3};
+
   std::optional<uint8_t> BufferRsrcSpillLane{std::nullopt};
 
   std::optional<uint8_t> ScratchSpillLane{std::nullopt};
@@ -61,6 +69,12 @@ public:
 
   [[nodiscard]] constexpr uint8_t getStackPointerStoreLane() const {
     return StackPointerStoreLane;
+  }
+
+  /// \return the SVA lane holding the lo half of the app's spilled \c EXEC
+  /// mask. The hi half is always the immediately following lane.
+  [[nodiscard]] constexpr uint8_t getExecMaskSpillLane() const {
+    return ExecMaskSpillLane;
   }
 
   [[nodiscard]] std::optional<uint8_t> getRsrcBufferSpillLane() const {
@@ -98,7 +112,7 @@ public:
   static unsigned getArgumentLaneSize(ScalarValueArgument SA);
 
   /// Return up to \p NumLanes lowest-numbered SVA lanes that are not
-  /// claimed by any of the fixed kernel-prolog slots (lanes 0-2 plus the
+  /// claimed by any of the fixed kernel-prolog slots (lanes 0-4 plus the
   /// FS / buffer-rsrc region) and not allocated to a scalar-value
   /// argument. Lanes range over <tt>0 .. WaveSize-1</tt>. Returns fewer
   /// than \p NumLanes if the SVA is saturated.

@@ -38,8 +38,6 @@ amdgpuPreloadToStateValueArg(ScalarValueArgument SA) {
   switch (SA) {
   case WAVEFRONT_PRIVATE_SEGMENT_BUFFER:
     return PV::PRIVATE_SEGMENT_BUFFER;
-  case KERNEL_ARG_PTR:
-    return PV::KERNARG_SEGMENT_PTR;
   case DISPATCH_ID:
     return PV::DISPATCH_ID;
   case FLAT_SCRATCH:
@@ -80,8 +78,10 @@ mapSVArgToAMDGPUPreload(llvm::AMDGPUFunctionArgInfo::PreloadedValue PV) {
   switch (PV) {
   case PVE::PRIVATE_SEGMENT_BUFFER:
     return WAVEFRONT_PRIVATE_SEGMENT_BUFFER;
-  case PVE::KERNARG_SEGMENT_PTR:
-    return KERNEL_ARG_PTR;
+  // NOTE: \c KERNARG_SEGMENT_PTR deliberately has no \c ScalarValueArgument
+  // counterpart — the SVA no longer reserves lanes for the kernel argument
+  // buffer pointer (its 2 lanes were reclaimed for the exec-mask spill), so
+  // it falls through to the \c nullopt default below.
   case PVE::DISPATCH_ID:
     return DISPATCH_ID;
   case PVE::FLAT_SCRATCH_INIT:
@@ -140,7 +140,6 @@ inline llvm::StringRef amdgpuNoUsageAttrForSA(ScalarValueArgument SA) {
     return "amdgpu-no-workitem-id-y";
   case WORKITEM_ID_Z:
     return "amdgpu-no-workitem-id-z";
-  case KERNEL_ARG_PTR:
   case WAVEFRONT_PRIVATE_SEGMENT_BUFFER:
   case WORK_ITEM_PRIVATE_SEGMENT_SIZE:
     // No dedicated amdgpu-no-* attribute — the backend infers these from

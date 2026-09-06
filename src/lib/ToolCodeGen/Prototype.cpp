@@ -109,7 +109,8 @@ Prototype::Prototype(
 
 llvm::Expected<llvm::Function *> Prototype::createInjectedPayload(
     llvm::MachineInstr &TargetMI, llvm::FunctionAnalysisManager &IFAM,
-    llvm::function_ref<llvm::Error(llvm::IRBuilderBase &)> Build) {
+    llvm::function_ref<llvm::Error(llvm::IRBuilderBase &)> Build,
+    PayloadLaneMode LaneMode) {
   auto *FTy = llvm::FunctionType::get(
       llvm::Type::getVoidTy(IModule->getContext()), /*isVarArg=*/false);
 
@@ -118,6 +119,16 @@ llvm::Expected<llvm::Function *> Prototype::createInjectedPayload(
 
   // FIXME: Find a better way to set this
   F->setDoesNotRecurse();
+
+  // Tag the payload before \p Build populates it, so anything the callback
+  // runs over the half-built function already sees the final annotation set.
+  // Everything the attribute implies — the \c EXEC spill/restore through the
+  // SVA's exec-mask lanes, the <tt>EXEC = 1</tt> prologue write, and the
+  // whole-wave widening of register preservation — is handled downstream by
+  // \c InjectedPayloadPEIPass and \c InjectedPayloadPreserveLiveRegsPass off
+  // this one attribute.
+  if (LaneMode == PayloadLaneMode::SingleLane)
+    F->addFnAttr(ExecuteSingleLaneAttribute);
 
   if (!F->getReturnType()->isVoidTy() || F->arg_size() != 0)
     return LUTHIER_MAKE_GENERIC_ERROR(
@@ -143,10 +154,12 @@ llvm::Expected<llvm::Function *> Prototype::createInjectedPayload(
 
 llvm::Expected<llvm::Function *> Prototype::createInjectedPayload(
     llvm::Function &HookFn, llvm::MachineInstr &TargetMI,
-    llvm::FunctionAnalysisManager &IFAM, llvm::ArrayRef<PayloadArg> Args) {
+    llvm::FunctionAnalysisManager &IFAM, llvm::ArrayRef<PayloadArg> Args,
+    PayloadLaneMode LaneMode) {
 
   return createInjectedPayload(
-      TargetMI, IFAM, [&](llvm::IRBuilderBase &Builder) -> llvm::Error {
+      TargetMI, IFAM,
+      [&](llvm::IRBuilderBase &Builder) -> llvm::Error {
         // Materialize each PayloadArg into a Value* the hook can consume.
         // RegArg entries emit a luthier::readReg intrinsic call whose result
         // (of the requested type) becomes the argument; Value* entries are
@@ -173,7 +186,8 @@ llvm::Expected<llvm::Function *> Prototype::createInjectedPayload(
                                      HookFn.getName().str() +
                                      "' into payload: " + IR.getFailureReason())
                                : llvm::Error::success();
-      });
+      },
+      LaneMode);
 }
 
 void Prototype::forEachTargetMF(

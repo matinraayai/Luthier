@@ -70,38 +70,21 @@ llvm::Error implicitArgPtrMIRProcessor(
       Args[0].first.isRegDefKind(),
       "The register argument of luthier::implicitArgPtr is not a definition."));
   llvm::Register Output = Args[0].second;
-  auto KernArgIt = SVAVRegs.find(KERNEL_ARG_PTR);
-  auto OffsetIt = SVAVRegs.find(IMPLICIT_ARG_BUFFER);
+  // The SVA's \c IMPLICIT_ARG_BUFFER lanes hold the *absolute* 64-bit base of
+  // the instrumented kernel's implicit-argument block, written there by
+  // \c TargetModulePatcherPass 's kernarg-buffer expansion. There is no longer
+  // a \c KERNEL_ARG_PTR entry to add a hidden offset onto — the SVA is
+  // saturated on GFX10 and those two lanes were reclaimed for the exec-mask
+  // spill — so the intrinsic is just a copy of the preserved pointer.
+  auto ImplArgIt = SVAVRegs.find(IMPLICIT_ARG_BUFFER);
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      KernArgIt != SVAVRegs.end() && OffsetIt != SVAVRegs.end(),
-      "luthier::implicitArgPtr: KERNEL_ARG_PTR / IMPLICIT_ARG_BUFFER missing "
-      "from pre-staged SVA map (IR processor must declare them)"));
-  llvm::Register KernArgSGPR = KernArgIt->second;
-  llvm::Register HiddenOffsetSGPR = OffsetIt->second;
+      ImplArgIt != SVAVRegs.end(),
+      "luthier::implicitArgPtr: IMPLICIT_ARG_BUFFER missing "
+      "from pre-staged SVA map (IR processor must declare it)"));
 
-  llvm::Register FirstAddSGPR = VirtRegBuilder(&llvm::AMDGPU::SGPR_32RegClass);
-
-  llvm::Register SecondAddSGPR = VirtRegBuilder(&llvm::AMDGPU::SGPR_32RegClass);
-
-  MIBuilder(llvm::AMDGPU::S_ADD_U32)
-      .addReg(FirstAddSGPR, llvm::RegState::Define)
-      .addReg(KernArgSGPR, llvm::RegState::Kill,
-              llvm::SIRegisterInfo::getSubRegFromChannel(0))
-      .addReg(HiddenOffsetSGPR, llvm::RegState::Kill);
-
-  MIBuilder(llvm::AMDGPU::S_ADDC_U32)
-      .addReg(SecondAddSGPR, llvm::RegState::Define)
-      .addReg(KernArgSGPR, llvm::RegState::Kill,
-              llvm::SIRegisterInfo::getSubRegFromChannel(1))
-      .addImm(0);
-
-  // Do a reg sequence copy to the output
-  (void)MIBuilder(llvm::AMDGPU::REG_SEQUENCE)
+  (void)MIBuilder(llvm::AMDGPU::COPY)
       .addReg(Output, llvm::RegState::Define)
-      .addReg(SecondAddSGPR)
-      .addImm(llvm::SIRegisterInfo::getSubRegFromChannel(1))
-      .addReg(FirstAddSGPR)
-      .addImm(llvm::SIRegisterInfo::getSubRegFromChannel(0));
+      .addReg(ImplArgIt->second, llvm::RegState::Kill);
 
   return llvm::Error::success();
 }
