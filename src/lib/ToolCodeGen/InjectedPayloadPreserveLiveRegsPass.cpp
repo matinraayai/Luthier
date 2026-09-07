@@ -194,6 +194,15 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
         llvm::BitVector PreserveUnits = LiveUnits;
         PreserveUnits.reset(AccessedUnits);
 
+        // A register the payload cannot write needs no save/restore.
+        const llvm::MachineRegisterInfo &PayloadMRI = MF->getRegInfo();
+        llvm::BitVector ReadOnlyUnits(TargetTRI.getNumRegUnits());
+        for (llvm::MCPhysReg R : Live)
+          if (PayloadMRI.isConstantPhysReg(R))
+            for (llvm::MCRegUnit U : TargetTRI.regunits(R))
+              ReadOnlyUnits.set(static_cast<unsigned>(U));
+        PreserveUnits.reset(ReadOnlyUnits);
+
         llvm::SmallVector<llvm::MCPhysReg, 16> Preserve;
         while (PreserveUnits.any()) {
           int UnitIdx = PreserveUnits.find_first();
