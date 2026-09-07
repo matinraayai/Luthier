@@ -97,31 +97,87 @@ displacedPrivateOffsetOf(const void *GenericAddr) {
   return static_cast<std::uint32_t>((std::size_t)P) + instrumentationReserve();
 }
 
-/// \return \p SOffset adjusted for a buffer access, iff \p RsrcLo / \p RsrcHi
-/// say the V# is the application's own per-wave scratch descriptor.
+/// \return the flat (generic) alias of the per-work-item private byte offset
+/// \p Offset.
 ///
-/// The aperture test used for \c FLAT_* does not apply to a buffer: a scratch
-/// V#'s 48-bit base is the address of the scratch backing memory, not an
-/// address inside the private aperture. What does identify it is that base
-/// itself, which is the same value the wavefront's \c FLAT_SCRATCH holds and
-/// which Luthier's kernel prologue has already parked in the state value
-/// array. Word 1 of a V# only carries \c base[47:32] in its low half — the
-/// upper half is stride and swizzle configuration — hence the mask.
+/// The private-to-flat conversion is *not* open-coded here. Splicing the
+/// aperture in by hand would have to reproduce all three of the sources
+/// \c SITargetLowering::getSegmentAperture picks between
+/// (SIISelLowering.cpp):
+///
+///   * \c hasApertureRegs() targets read \c SRC_PRIVATE_BASE --- and must read
+///     it as a *64-bit* copy and keep the high half, because the register
+///     returns zeroes when used as a 32-bit operand;
+///   * code object v5 and later get \c private_base through an implicit
+///     kernarg;
+///   * v4 loads it from the queue pointer at byte \c 0x44
+///     (\c private_segment_aperture_base_hi).
+///
+/// and would still be wrong on \c hasGloballyAddressableScratch() parts, where
+/// that helper asserts \c SRC_PRIVATE_BASE must not be used at all. Letting the
+/// backend lower an \c addrspacecast keeps every one of those cases correct by
+/// construction, on every target, and is the reason this is a cast rather than
+/// a shift and an or.
+__attribute__((device)) inline const void *
+privateOffsetToFlat(std::uint32_t Offset) {
+  return (const void *)(Private<const char> *)(std::size_t)Offset;
+}
+
+/// \return the flat address a buffer instruction was going to access, given its
+/// V# words 0 and 1 and its three offset terms.
+///
+/// The V#'s 48-bit base plus the instruction's offsets *is* the address the
+/// hardware forms, so it is also the address to aperture-check --- there is no
+/// need to know where the wavefront's scratch starts, which matters because
+/// neither \c FLAT_SCRATCH nor \c WAVEFRONT_PRIVATE_SEGMENT_BUFFER is available
+/// from the state value array on every target (the specs only reserve lanes for
+/// them on non-architected-flat-scratch parts).
+///
+/// Word 1 of a V# carries \c base[47:32] in its low half only; the upper half
+/// is stride and swizzle configuration, hence the mask.
+///
+/// \c soffset is added outside the swizzle while \c vaddr and \c inst_offset go
+/// inside it, but that distinction does not change which *page* the access
+/// lands on, so the plain sum is what the aperture test needs.
+__attribute__((device)) inline const void *
+bufferAccessFlatAddr(std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                     std::uint32_t VOffset, std::uint32_t SOffset,
+                     std::int32_t InstOffset) {
+  const std::uint64_t Base =
+      static_cast<std::uint64_t>(RsrcLo) |
+      (static_cast<std::uint64_t>(RsrcHi & 0xFFFFu) << 32);
+  const std::uint64_t Addr = Base + static_cast<std::uint64_t>(SOffset) +
+                             static_cast<std::uint64_t>(VOffset) +
+                             static_cast<std::uint64_t>(
+                                 static_cast<std::int64_t>(InstOffset));
+  return reinterpret_cast<const void *>(Addr);
+}
+
+/// \return \p SOffset adjusted for a buffer access, iff the address that access
+/// was going to form falls inside this work-item's private segment.
+///
+/// The decision is the same aperture test the \c FLAT_* payloads use, applied
+/// to the address reconstructed by \c bufferAccessFlatAddr . Deciding it from
+/// the address rather than from the identity of the descriptor is what makes
+/// this portable: it needs no state-value-array slot for the wavefront's
+/// scratch base, and \c __builtin_amdgcn_is_private lowers to whichever
+/// aperture source the target actually has --- \c SRC_PRIVATE_BASE , a code
+/// object v5 implicit kernarg, or a v4 queue-pointer load --- via
+/// \c SITargetLowering::getSegmentAperture .
 ///
 /// The displacement goes into \c soffset rather than into the offsets inside
 /// the swizzle: \c soffset is added *outside* it
 /// (<tt>Final = const_base + sgpr_offset + buffer_offset</tt>), so a
 /// dword-aligned per-lane displacement of \c N bytes is \c N * index_stride
-/// there, and \c index_stride for a scratch buffer is the wavefront size.
+/// there, and \c index_stride for a scratch buffer is the wavefront size ---
+/// which is exactly LLVM's own \c getScratchScaleFactor for a stack that is not
+/// on flat scratch.
 __attribute__((device)) inline std::uint32_t
 displacedBufferSOffset(std::uint32_t RsrcLo, std::uint32_t RsrcHi,
-                       std::uint32_t SOffset) {
-  const std::uint64_t FS =
-      luthier::readSVA<std::uint64_t>(luthier::FLAT_SCRATCH);
-  const bool IsAppScratch =
-      RsrcLo == static_cast<std::uint32_t>(FS) &&
-      ((RsrcHi ^ static_cast<std::uint32_t>(FS >> 32)) & 0xFFFFu) == 0;
-  if (IsAppScratch)
+                       std::uint32_t VOffset, std::uint32_t SOffset,
+                       std::int32_t InstOffset) {
+  if (__builtin_amdgcn_is_private(
+          bufferAccessFlatAddr(RsrcLo, RsrcHi, VOffset, SOffset, InstOffset)))
     SOffset += instrumentationReserve() *
                static_cast<std::uint32_t>(__builtin_amdgcn_wavefrontsize());
   return SOffset;
@@ -281,7 +337,8 @@ bufferLoadDwords(
     std::uint32_t RsrcHi, std::uint32_t VOffset, std::uint32_t SOffset,
     std::int32_t InstOffset) {
   const int SOff = static_cast<int>(
-      displacedBufferSOffset(RsrcLo, RsrcHi, SOffset) +
+      displacedBufferSOffset(RsrcLo, RsrcHi, VOffset, SOffset,
+                             InstOffset) +
       static_cast<std::uint32_t>(InstOffset));
   std::uint32_t V[4] = {0, 0, 0, 0};
   for (unsigned I = 0; I != N; ++I)
@@ -297,7 +354,8 @@ bufferStoreDwords(
     __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo, std::uint32_t RsrcHi,
     std::uint32_t VOffset, std::uint32_t SOffset, std::int32_t InstOffset) {
   const int SOff = static_cast<int>(
-      displacedBufferSOffset(RsrcLo, RsrcHi, SOffset) +
+      displacedBufferSOffset(RsrcLo, RsrcHi, VOffset, SOffset,
+                             InstOffset) +
       static_cast<std::uint32_t>(InstOffset));
   const std::uint32_t V[4] = {V0, V1, V2, V3};
   for (unsigned I = 0; I != N; ++I)
@@ -312,7 +370,8 @@ bufferLoadSubDword(
     std::uint32_t RsrcHi, std::uint32_t VOffset, std::uint32_t SOffset,
     std::int32_t InstOffset) {
   const int SOff = static_cast<int>(
-      displacedBufferSOffset(RsrcLo, RsrcHi, SOffset) +
+      displacedBufferSOffset(RsrcLo, RsrcHi, VOffset, SOffset,
+                             InstOffset) +
       static_cast<std::uint32_t>(InstOffset));
   T Val;
   if constexpr (sizeof(T) == 1)
@@ -332,7 +391,8 @@ bufferStoreSubDword(
     std::uint32_t RsrcHi, std::uint32_t VOffset, std::uint32_t SOffset,
     std::int32_t InstOffset) {
   const int SOff = static_cast<int>(
-      displacedBufferSOffset(RsrcLo, RsrcHi, SOffset) +
+      displacedBufferSOffset(RsrcLo, RsrcHi, VOffset, SOffset,
+                             InstOffset) +
       static_cast<std::uint32_t>(InstOffset));
   if constexpr (sizeof(T) == 1)
     __builtin_amdgcn_raw_buffer_store_b8(static_cast<unsigned char>(Value),
@@ -819,7 +879,23 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
           Class = AccessDesc::Kind::Scratch;
         else if (TII.isFLAT(MI) && !TII.isFLATGlobal(MI))
           Class = AccessDesc::Kind::Flat;
-        else if (TII.isMUBUF(MI))
+        // A buffer access can only reach the private segment on a target whose
+        // stack *is* a buffer, i.e. one that still has a private segment
+        // buffer. On architected-flat-scratch parts (gfx940+, gfx11+, gfx12+)
+        // there is no such descriptor to query at all --- the wave gets
+        // FLAT_SCRATCH from hardware and scratch is reached through
+        // SCRATCH_*/FLAT --- and the same holds wherever
+        // `enableFlatScratch()` moves the stack onto SCRATCH_*. In both cases
+        // every MUBUF is global by construction, so it must be left alone.
+        //
+        // This is also what keeps the payload buildable there: the state value
+        // array only reserves lanes for WAVEFRONT_PRIVATE_SEGMENT_BUFFER under
+        // exactly this predicate (see `findLowestFreeLanes` in
+        // StateValueArraySpecs.cpp), so a buffer payload emitted on an
+        // architected-flat-scratch target would read a slot that has no lane
+        // assignment and fail to lower.
+        else if (TII.isMUBUF(MI) && !ST.hasArchitectedFlatScratch() &&
+                 !ST.enableFlatScratch())
           Class = AccessDesc::Kind::Buffer;
         if (!Class)
           continue;

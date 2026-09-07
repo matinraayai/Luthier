@@ -203,6 +203,27 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
               ReadOnlyUnits.set(static_cast<unsigned>(U));
         PreserveUnits.reset(ReadOnlyUnits);
 
+        // Keep only the half of \c VCC that the wavefront size actually makes a
+        // condition register. \c luthier::addAppOwnedRegisters seeds liveness
+        // with \c SIRegisterInfo::getVCC() precisely so that a wave32 target
+        // claims \c $vcc_lo and not the 64-bit pair; the unit coalescing below
+        // would undo that, because it widens a chosen register to the widest
+        // super-register whose units are all still preserved, and nothing else
+        // here removes \c $vcc_hi 's unit. The result is a
+        // <tt>COPY $vcc</tt> save whose high half is never defined at the
+        // payload entry, which the register coalescer rejects as
+        // "Use not jointly dominated by defs".
+        if (const llvm::MCRegister WaveVCC = TargetST.getRegisterInfo()->getVCC();
+            WaveVCC != llvm::AMDGPU::VCC) {
+          llvm::BitVector WaveVCCUnits(TargetTRI.getNumRegUnits());
+          for (llvm::MCRegUnit U : TargetTRI.regunits(WaveVCC))
+            WaveVCCUnits.set(static_cast<unsigned>(U));
+          for (llvm::MCRegUnit U :
+               TargetTRI.regunits(llvm::MCRegister(llvm::AMDGPU::VCC)))
+            if (!WaveVCCUnits.test(static_cast<unsigned>(U)))
+              PreserveUnits.reset(static_cast<unsigned>(U));
+        }
+
         llvm::SmallVector<llvm::MCPhysReg, 16> Preserve;
         while (PreserveUnits.any()) {
           int UnitIdx = PreserveUnits.find_first();
@@ -309,9 +330,26 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
             MF->getSubtarget().getRegisterInfo();
         llvm::MachineRegisterInfo &MRI = MF->getRegInfo();
 
-        // Add a block in case of a single block payload to keep SCC-related
-        // optimizations of AMDGPU backend happy
-        if (MF->front().isReturnBlock()) {
+        // Splice a fresh entry block in front of the payload body and put the
+        // save copies there.
+        //
+        // This is unconditional, and has to be: the copies are inserted at
+        // \c getFirstTerminator() of \c MF->front() , which is only guaranteed
+        // to precede the payload's own code when that block holds nothing but
+        // the branch synthesized here. Reusing a body block as the entry puts
+        // every save at the *end* of it, after the payload has already run —
+        // and therefore after it may have clobbered the very register being
+        // saved. A payload whose entry block defines \c $vcc (any divergent
+        // compare does, e.g. the aperture test in the scratch-rebase buffer
+        // payloads) then saves the compare result instead of the
+        // application's \c $vcc , and leaves the physreg's live range with no
+        // def on the path into the block, which fails as
+        // "Use not jointly dominated by defs" in the register coalescer.
+        //
+        // Keeping it unconditional also preserves the original reason the
+        // block was introduced: a single-block payload gives the AMDGPU
+        // backend's SCC-related optimizations a separate block to work with.
+        {
           llvm::MachineBasicBlock &Body = MF->front();
           llvm::MachineBasicBlock *NewEntry =
               MF->CreateMachineBasicBlock(Body.getBasicBlock());
@@ -431,16 +469,38 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
               IsSingleLanePayload && (llvm::SIRegisterInfo::hasVGPRs(RC) ||
                                       llvm::SIRegisterInfo::hasAGPRs(RC));
           AnyWholeWave |= IsWholeWave;
-          // Entry:
-          // %physreg = IMPLICIT_DEF ; Introduce a dummy def besides the live-in
-          // decl to keep the live intervals happy
-          // %savevreg = COPY $physreg ; mark $physreg live-in.
-          // TODO: Fix this once and for all
+          // Entry, per preserved register:
+          //   $physreg  = IMPLICIT_DEF          ; dummy def
+          //   %savevreg = COPY $physreg
+          //
+          // Both the live-in declaration and the dummy def are needed, and for
+          // different reasons. The live-in is the truth: the application's
+          // value arrives in the register. The \c IMPLICIT_DEF is live-range
+          // bookkeeping — it gives the physreg a def that dominates the COPY on
+          // every path into the block, without which the register coalescer
+          // rejects the COPY's live range with "Use not jointly dominated by
+          // defs". It costs nothing in the emitted code (\c IMPLICIT_DEF
+          // expands to nothing), so the register still holds the caller's value
+          // when the COPY executes.
+          //
+          // The block live-in alone is not enough. \c LiveIntervals only
+          // manufactures a def from a block's live-in list for the *reg units*
+          // it lists, and a use of a physreg whose unit is reached along an edge
+          // from a predecessor that does not define it still has no reaching
+          // def — which is exactly the shape here, since the copies sit in a
+          // block with a predecessor-free entry only for the units the app
+          // actually hands over.
+          //
+          // These are emitted in this phase, ahead of every COPY that phase 2
+          // emits at the same insertion point, so that all the dummy defs
+          // precede all the saves. \c BuildMI inserts before the position it is
+          // handed (the entry block's terminator), so insertion order is
+          // program order.
           if (!EntryMBB.isLiveIn(PhysReg))
             EntryMBB.addLiveIn(PhysReg);
-          // (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
-          //                     TII->get(llvm::AMDGPU::IMPLICIT_DEF))
-          //     .addReg(PhysReg, llvm::RegState::Define);
+          (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
+                              TII->get(llvm::AMDGPU::IMPLICIT_DEF))
+              .addReg(PhysReg, llvm::RegState::Define);
           Preserved.push_back(
               {PhysReg, MRI.createVirtualRegister(CrossCopyRC),
                IsWholeWave ? MRI.createVirtualRegister(CrossCopyRC)
