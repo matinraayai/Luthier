@@ -130,6 +130,11 @@ StateValueArraySpecsAnalysis::run(Prototype &IP,
   llvm::Module &IModule = IP.getInstrumentationModule();
   llvm::Module &TargetModule = IP.getTargetModule();
 
+  // Nothing is being instrumented, so there is no state value array to lay
+  // out.
+  if (IModule.empty())
+    return Out;
+
   llvm::FunctionAnalysisManager &IModuleFAM =
       IPAM.getResult<IModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager()

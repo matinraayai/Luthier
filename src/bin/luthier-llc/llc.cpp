@@ -967,7 +967,22 @@ static int compileModule(char **argv,
       PB.addTargetModulePass(IPPM, std::move(TargetMPM));
     }
   } else if (!EmitLuthierFile) {
-    /// TODO: Run the complete instrumentation pipeline here
+    // TODO: Fix this
+    if (!MockLoaderOptions.CodeObjectPathList.empty()) {
+      ModulePassManager LoadMPM;
+      LoadMPM.addPass(luthier::MockLoadAMDGPUCodeObjects(MockLoaderOptions));
+      PB.addTargetModulePass(IPPM, std::move(LoadMPM));
+    }
+    llvm::Error PipelineErr = llvm::Error::success();
+    if (auto Err = PB.buildInstrumentationPipeline(
+            IPPM,
+            [](luthier::PrototypePassManager &, llvm::OptimizationLevel) {},
+            /*PatchPCUsagesHostCallback=*/nullptr, OptimizationLevel::O2,
+            FileType, Opt, OS, &PIC)) {
+      logAllUnhandledErrors(std::move(Err), errs(), "error: ");
+      return 1;
+    }
+    LUTHIER_REPORT_FATAL_ON_ERROR(std::move(PipelineErr));
   }
   // When EmitLuthierFile is set and -passes is empty, the driver runs no
   // default pipeline: the tool re-emits the Prototype as-is.
