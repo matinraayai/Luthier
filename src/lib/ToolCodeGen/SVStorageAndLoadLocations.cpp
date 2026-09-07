@@ -121,6 +121,13 @@ static void
 scavengeFreeRegister(const llvm::MachineFunction &MF,
                      const llvm::TargetRegisterClass &RC, int NumRegs,
                      llvm::SmallVectorImpl<llvm::MCRegister> &ScavengedRegs) {
+  // Every storage scheme the subtarget supports may need zero of this class —
+  // the architected-flat-scratch spilled scheme holds no registers at all, and
+  // no GFX10+ part has AGPRs. Without this the loop below never hits its
+  // termination test and walks the whole register file collecting registers
+  // nobody asked for.
+  if (NumRegs <= 0)
+    return;
   int NumRegsFound = 0;
   for (llvm::MCRegister Reg : reverse(RC)) {
     if (isAvailableForInstrumentation(MF, Reg)) {
@@ -151,6 +158,10 @@ static void
 scavengeFreeRegister(llvm::ArrayRef<llvm::MachineFunction *> Functions,
                      const llvm::TargetRegisterClass *RC, unsigned int NumRegs,
                      llvm::SmallVectorImpl<llvm::MCRegister> &Regs) {
+  // See the single-MF overload above: a request for zero registers is a real
+  // case, not a caller bug.
+  if (NumRegs == 0)
+    return;
   unsigned int NumRegFound = 0;
   for (llvm::MCRegister Reg : *RC) {
     bool IsUnused = llvm::all_of(Functions, [&](llvm::MachineFunction *MF) {

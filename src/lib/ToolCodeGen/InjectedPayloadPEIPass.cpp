@@ -541,39 +541,31 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
                                  FSSAIt->second, /*NumSubLanes=*/2);
   }
 
-  // If the payload needs stack, read the instrumentation's SP out of the
-  // SVA lane the kernel prolog populated, into the payload's SP register.
-  // Also setup the frame pointer if needed
+  // If the payload needs stack, materialize the instrumentation's SP into the
+  // payload's SP register. Also setup the frame pointer if needed.
   if (RequiresAccessToStack) {
-    (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
-                        TII->get(llvm::AMDGPU::V_READLANE_B32), PayloadSPReg)
-        .addReg(SVAVGPR)
-        .addImm(Specs.getStackPointerStoreLane());
-    // The lane holds the *bottom* of the instrumentation stack, whose first
-    // two dwords are the emergency VGPR0-courier and state-value-array slots
-    // (see \c InstrumentationSlotsReservation). The payload's own frame starts
-    // above them, so bias SP past the carve-out. The bias is in SP-register
-    // units: bytes under flat scratch, wave-swizzled bytes otherwise.
-    const unsigned SPBias =
+    // The instrumentation stack is pinned to the start of the wavefront's
+    // private segment, so the bottom of it is the constant zero and there is
+    // nothing to read out of the SVA. Its first two dwords are the emergency
+    // VGPR0-courier and state-value-array slots (see
+    // \c InstrumentationSlotsReservation ); the payload's own frame starts
+    // above them. The value is in SP-register units: bytes under flat scratch,
+    // wave-swizzled bytes otherwise.
+    //
+    // The application's frame is what moved instead --- it now begins
+    // \c WORK_ITEM_INSTRUMENTATION_PRIVATE_SEGMENT_SIZE bytes up, and
+    // \c RebaseAppScratchAccessesPass adds that displacement to every
+    // application scratch access.
+    const unsigned InstrSP =
         InstrumentationSlotsReservation * getScratchScaleFactor(ST);
-    // S_ADD_U32 clobbers SCC. If the caller had SCC live across the
-    // patchpoint, InjectedPayloadPreserveLiveRegsPass has fronted the payload
-    // with a block that copies $scc into a vreg and branches to the old entry;
-    // emitting before that block's terminator puts this add *after* the copy,
-    // so the caller's SCC is already safely captured. When SCC is not live in
-    // there is nothing to preserve and the top of the block is fine.
-    auto SPBiasInsertPt = EntryInsertPt;
-    if (EntryMBB.isLiveIn(llvm::AMDGPU::SCC) &&
-        EntryMBB.getFirstTerminator() != EntryMBB.end())
-      SPBiasInsertPt = EntryMBB.getFirstTerminator();
-    auto BiasMI =
-        llvm::BuildMI(EntryMBB, SPBiasInsertPt, llvm::DebugLoc(),
-                      TII->get(llvm::AMDGPU::S_ADD_U32), PayloadSPReg)
-            .addReg(PayloadSPReg)
-            .addImm(SPBias);
-    BiasMI->getOperand(3).setIsDead(); // SCC is dead after the bias.
+    // S_MOV_B32 does not touch SCC, so unlike the S_ADD_U32 this replaces
+    // there is no need to sequence it after
+    // InjectedPayloadPreserveLiveRegsPass's $scc capture block.
+    (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
+                        TII->get(llvm::AMDGPU::S_MOV_B32), PayloadSPReg)
+        .addImm(InstrSP);
     if (NeedsFPSetup) {
-      (void)llvm::BuildMI(EntryMBB, SPBiasInsertPt, llvm::DebugLoc(),
+      (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
                           TII->get(llvm::AMDGPU::S_MOV_B32), PayloadFPReg)
           .addReg(PayloadSPReg);
     }

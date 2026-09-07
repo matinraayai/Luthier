@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_INTRINSIC_INTRINSICS_H
 #define LUTHIER_INTRINSIC_INTRINSICS_H
+#include "luthier/Intrinsic/ScalarValueArgument.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include <llvm/MC/MCRegister.h>
 #include <type_traits>
@@ -114,6 +115,32 @@ template <typename T,
               std::is_same_v<T, uint32_t> || std::is_same_v<T, uint64_t> ||
               std::is_same_v<T, int32_t> || std::is_same_v<T, int64_t>>>
 LUTHIER_INTRINSIC_ANNOTATE T sAtomicAdd(T *Address, T Value);
+
+/// \brief Intrinsic to read a scalar value argument out of the state value
+/// array
+/// \details The values in \c ScalarValueArgument are only available to a
+/// kernel as preloaded SGPRs, which the application is free to clobber the
+/// moment it is done with them, so Luthier's kernel prologue saves each one
+/// the instrumentation asks for into a lane of the state value array. This
+/// intrinsic reads one back; it lowers to a \c V_READLANE_B32 per 32-bit lane
+/// of \p SA , so the result is always wave-uniform.
+///
+/// Requesting an \c SA here is what reserves a lane for it — see
+/// \c StateValueArraySpecsAnalysis — and what makes the target module patcher
+/// force-enable the matching preload on the instrumented kernel.
+///
+/// \tparam T the type of the value being read; must be a type that can be
+/// held in one or more AMD GPU registers (see
+/// \c detail::is_amdgpu_register_compatible ) and must be exactly as wide as
+/// the \c SA 's lane count (for example
+/// \c WORK_ITEM_INSTRUMENTATION_PRIVATE_SEGMENT_SIZE occupies one lane and
+/// needs a 32-bit \p T , while \c DISPATCH_ID occupies two and needs a 64-bit
+/// one).
+/// \param SA which scalar value argument to read; must be a constant value
+/// \returns the value of \p SA for the wavefront executing the payload
+template <typename T, typename = std::enable_if_t<
+                          detail::is_amdgpu_register_compatible_v<T>>>
+LUTHIER_INTRINSIC_ANNOTATE T readSVA(ScalarValueArgument SA);
 
 #endif
 

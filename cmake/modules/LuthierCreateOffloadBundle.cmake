@@ -276,8 +276,18 @@ function(luthier_create_offload_bundle target source)
           OBJECT_DEPENDS "${_TARGET_FATBIN}")
   set_target_properties(${target} PROPERTIES HIP_ARCHITECTURES OFF)
 
+  # -cuid names the compilation unit, and ToolDeviceCodeOffloadParserPass builds
+  # this bundle's section names out of it (luthier_fatbin_<cuid>) so that two
+  # bundles in one binary get separate sections and separate boundary symbols.
+  # It also keeps clang's own `__hip_cuid_<cuid>` from colliding, which
+  # `-fuse-cuid=none` alone does not: that leaves the id empty.
+  #
+  # Keying it off the target name rather than letting clang default to hashing
+  # the source path keeps the id stable when the source tree moves. Clang hashes
+  # the value either way, so the section reads luthier_fatbin_<hex>, not
+  # luthier_fatbin_${target}.
   target_compile_options(${target} PRIVATE
-          --cuda-host-only -fno-gpu-rdc -fuse-cuid=none
+          --cuda-host-only -fno-gpu-rdc -cuid=${target}
           -fgpu-allow-device-init
           "SHELL:-Xclang -fcuda-include-gpubinary -Xclang ${_TARGET_FATBIN}"
           -fpass-plugin=${_LUTHIER_IR_PLUGIN}

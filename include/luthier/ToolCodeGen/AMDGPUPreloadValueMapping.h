@@ -46,8 +46,11 @@ amdgpuPreloadToStateValueArg(ScalarValueArgument SA) {
     return PV::DISPATCH_PTR;
   case QUEUE_PTR:
     return PV::QUEUE_PTR;
-  case WORK_ITEM_PRIVATE_SEGMENT_SIZE:
-    return PV::PRIVATE_SEGMENT_SIZE;
+  case WORK_ITEM_INSTRUMENTATION_PRIVATE_SEGMENT_SIZE:
+    // Luthier's own reserve at the bottom of the wave's private segment. It
+    // is computed by the target module patcher, not handed to the wave by the
+    // hardware, so there is no preload to force-enable for it.
+    return std::nullopt;
   case IMPLICIT_ARG_BUFFER:
     return PV::IMPLICIT_ARG_PTR;
   case WORKGROUP_ID_X:
@@ -90,8 +93,10 @@ mapSVArgToAMDGPUPreload(llvm::AMDGPUFunctionArgInfo::PreloadedValue PV) {
     return DISPATCH_PTR;
   case PVE::QUEUE_PTR:
     return QUEUE_PTR;
-  case PVE::PRIVATE_SEGMENT_SIZE:
-    return WORK_ITEM_PRIVATE_SEGMENT_SIZE;
+  // NOTE: \c PRIVATE_SEGMENT_SIZE deliberately has no \c ScalarValueArgument
+  // counterpart. \c WORK_ITEM_INSTRUMENTATION_PRIVATE_SEGMENT_SIZE names
+  // Luthier's own reserve, not the dispatch's per-work-item private segment
+  // size, so mapping the preload onto it would hand payloads the wrong value.
   case PVE::IMPLICIT_ARG_PTR:
     return IMPLICIT_ARG_BUFFER;
   case PVE::WORKGROUP_ID_X:
@@ -141,9 +146,10 @@ inline llvm::StringRef amdgpuNoUsageAttrForSA(ScalarValueArgument SA) {
   case WORKITEM_ID_Z:
     return "amdgpu-no-workitem-id-z";
   case WAVEFRONT_PRIVATE_SEGMENT_BUFFER:
-  case WORK_ITEM_PRIVATE_SEGMENT_SIZE:
-    // No dedicated amdgpu-no-* attribute — the backend infers these from
-    // the caller-side ABI / target features. Callers should keep them
+  case WORK_ITEM_INSTRUMENTATION_PRIVATE_SEGMENT_SIZE:
+    // No dedicated amdgpu-no-* attribute. PSB is inferred by the backend from
+    // the caller-side ABI / target features; the instrumentation private
+    // segment size is not an AMDGPU concept at all. Callers should keep both
     // conservatively marked used when a fallback is needed.
     return llvm::StringRef();
   }

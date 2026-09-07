@@ -37,6 +37,7 @@
 #include "luthier/ToolCodeGen/SVAPhysVGPRPinPass.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
+#include "luthier/ToolCodeGen/RebaseAppScratchAccessesPass.h"
 #include "luthier/ToolCodeGen/TargetModulePatcherPass.h"
 #include "luthier/ToolCodeGen/TraceFunctionTranslationAnalysis.h"
 
@@ -1422,6 +1423,18 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
 
   /// Add the instrumentation passes
   InstCallback(PPM, Level);
+
+  /// Displace every application access to the wavefront's private segment past
+  /// the region Luthier reserves for its own instrumentation stack. This has to
+  /// run here: the target module still holds nothing but application code (the
+  /// instrumentation module is not merged in until \c TargetModulePatcherPass ),
+  /// and the PC-usage patching below has to see the final instruction layout.
+  {
+    llvm::Error RebaseErr = llvm::Error::success();
+    PPM.addPass(RebaseAppScratchAccessesPass(RebaseErr));
+    if (RebaseErr)
+      return RebaseErr;
+  }
 
   /// Run Patch-PC-Usages runs immediately after the tool's payloads are
   /// created

@@ -42,10 +42,9 @@ StateValueArraySpecs::findLowestFreeLanes(unsigned NumLanes,
   // Lane occupancy:
   //   0       — StackPointerRegSpillLane (SGPR0 of PRIVATE_SEGMENT_BUFFER)
   //   1       — FramePointerRegSSpillLane (SGPR1)
-  //   2       — StackPointerStoreLane (instrumentation SGPR32)
-  //   3, 4    — ExecMaskSpillLane and ExecMaskSpillLane + 1 (app EXEC_LO /
+  //   2, 3    — ExecMaskSpillLane and ExecMaskSpillLane + 1 (app EXEC_LO /
   //             EXEC_HI, reserved on every target)
-  //   5..N-1  — BufferRsrcOrScratchSpillLane region (FS = 2 lanes, buffer
+  //   4..N-1  — BufferRsrcOrScratchSpillLane region (FS = 2 lanes, buffer
   //             rsrc = 4 lanes, architected-FS = 0 lanes)
   //   …       — Each ScalarArguments[SA] entry holds 1, 2, or 4 contiguous
   //             lanes starting at the stored base.
@@ -61,7 +60,6 @@ StateValueArraySpecs::findLowestFreeLanes(unsigned NumLanes,
 
   markRange(StackPointerRegSpillLane, 1);
   markRange(FramePointerRegSSpillLane, 1);
-  markRange(StackPointerStoreLane, 1);
   markRange(ExecMaskSpillLane, /*EXEC_LO + EXEC_HI=*/2);
 
   if (BufferRsrcSpillLane)
@@ -90,8 +88,8 @@ unsigned StateValueArraySpecs::getArgumentLaneSize(ScalarValueArgument SA) {
     return ScalarValueArgumentInfo<DISPATCH_PTR>::NumLanes;
   case QUEUE_PTR:
     return ScalarValueArgumentInfo<QUEUE_PTR>::NumLanes;
-  case WORK_ITEM_PRIVATE_SEGMENT_SIZE:
-    return ScalarValueArgumentInfo<WORK_ITEM_PRIVATE_SEGMENT_SIZE>::NumLanes;
+  case WORK_ITEM_INSTRUMENTATION_PRIVATE_SEGMENT_SIZE:
+    return ScalarValueArgumentInfo<WORK_ITEM_INSTRUMENTATION_PRIVATE_SEGMENT_SIZE>::NumLanes;
   case IMPLICIT_ARG_BUFFER:
     return ScalarValueArgumentInfo<IMPLICIT_ARG_BUFFER>::NumLanes;
   case WORKGROUP_ID_X:
@@ -280,6 +278,8 @@ StateValueArraySpecsAnalysis::run(Prototype &IP,
 
   using SVArgUnderlyingType = std::underlying_type_t<ScalarValueArgument>;
 
+  const unsigned WaveSize = ST.getWavefrontSize();
+
   // Assign per-SA lane bases in canonical enum order — the same order the
   // metadata-based factory used, so consumers see the same layout.
   auto AssignIfUsed = [&]<SVArgUnderlyingType SVArg>() {
@@ -288,12 +288,27 @@ StateValueArraySpecsAnalysis::run(Prototype &IP,
       return;
     if constexpr (CastedSVArg == WAVEFRONT_PRIVATE_SEGMENT_BUFFER ||
                   CastedSVArg == FLAT_SCRATCH) {
-      if (IsArchitectedFS) {
+      // Neither exists on an architected-FS target.
+      if (IsArchitectedFS)
         return;
-      }
     }
+    // PSB and FLAT_SCRATCH are laid out above, ahead of their matching spill
+    // regions, on the targets that need them for the scratch setup. Bail out
+    // rather than advancing NextLane a second time for a key
+    // DenseMap::insert would no-op on --- that used to silently burn up to
+    // six lanes on every non-architected target.
+    if (Out.ScalarArguments.contains(CastedSVArg))
+      return;
+    constexpr uint8_t NumLanes = ScalarValueArgumentInfo<CastedSVArg>::NumLanes;
+    if (NextLane + NumLanes > WaveSize)
+      llvm::report_fatal_error(
+          "StateValueArraySpecsAnalysis: the state value array is out of "
+          "lanes; scalar value argument " +
+              llvm::Twine(static_cast<unsigned>(CastedSVArg)) +
+              " does not fit in a " + llvm::Twine(WaveSize) + "-lane wavefront",
+          /*GenCrashDiag=*/false);
     Out.ScalarArguments.insert({CastedSVArg, NextLane});
-    NextLane += ScalarValueArgumentInfo<CastedSVArg>::NumLanes;
+    NextLane += NumLanes;
   };
 
   // std::make_integer_sequence<T, N> produces [0, N-1]; the inclusive

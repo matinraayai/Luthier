@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/MIRConvenience.h"
 #include <GCNSubtarget.h>
+#include <SIDefines.h>
 #include <SIInstrInfo.h>
 #include <SIRegisterInfo.h>
 #include <llvm/CodeGen/MachineFunction.h>
@@ -56,12 +57,13 @@ bool isVectorMBB(const llvm::MachineBasicBlock &MBB) {
   return shouldImplicitReadExec(*It);
 }
 
-void emitSGPRSwap(llvm::MachineBasicBlock::iterator InsertionPoint,
-                  llvm::MCRegister SrcSGPR, llvm::MCRegister DestSGPR) {
+static void emitSGPRSwapImpl(llvm::MachineBasicBlock &MBB,
+                             llvm::MachineBasicBlock::iterator InsertionPoint,
+                             llvm::MCRegister SrcSGPR,
+                             llvm::MCRegister DestSGPR) {
   // Swap-with-self is a no-op
   if (SrcSGPR == DestSGPR)
     return;
-  auto &MBB = *InsertionPoint->getParent();
   const auto *TII = MBB.getParent()->getSubtarget().getInstrInfo();
   (void)llvm::BuildMI(MBB, InsertionPoint, llvm::DebugLoc(),
                       TII->get(llvm::AMDGPU::S_XOR_B32), SrcSGPR)
@@ -75,6 +77,102 @@ void emitSGPRSwap(llvm::MachineBasicBlock::iterator InsertionPoint,
                       TII->get(llvm::AMDGPU::S_XOR_B32), SrcSGPR)
       .addReg(SrcSGPR)
       .addReg(DestSGPR);
+}
+
+void emitSGPRSwap(llvm::MachineBasicBlock::iterator InsertionPoint,
+                  llvm::MCRegister SrcSGPR, llvm::MCRegister DestSGPR) {
+  emitSGPRSwapImpl(*InsertionPoint->getParent(), InsertionPoint, SrcSGPR,
+                   DestSGPR);
+}
+
+void emitSGPRSwap(llvm::MachineBasicBlock &MBB, llvm::MCRegister SrcSGPR,
+                  llvm::MCRegister DestSGPR) {
+  emitSGPRSwapImpl(MBB, MBB.end(), SrcSGPR, DestSGPR);
+}
+
+/// \return the \c HwregEncoding immediate naming one half of \c FLAT_SCR .
+static int16_t flatScratchHwregEncoding(bool Hi) {
+  using namespace llvm::AMDGPU::Hwreg;
+  return static_cast<int16_t>(
+      HwregEncoding::encode(Hi ? ID_FLAT_SCR_HI : ID_FLAT_SCR_LO, 0, 32));
+}
+
+void emitFlatScratchSwap(llvm::MachineBasicBlock &MBB,
+                         llvm::MCRegister InstFSLo, llvm::MCRegister InstFSHi,
+                         llvm::MCRegister TempSGPR) {
+  const auto &ST = MBB.getParent()->getSubtarget<llvm::GCNSubtarget>();
+  const auto &TII = *ST.getInstrInfo();
+  if (!llvm::AMDGPU::isGFX10Plus(ST)) {
+    // FLAT_SCR_LO / FLAT_SCR_HI are addressable SGPRs here, so the exchange is
+    // two ordinary register swaps and no temporary is needed.
+    emitSGPRSwap(MBB, llvm::AMDGPU::FLAT_SCR_HI, InstFSHi);
+    emitSGPRSwap(MBB, llvm::AMDGPU::FLAT_SCR_LO, InstFSLo);
+    return;
+  }
+  // GFX10+: FLAT_SCR is a hardware register reachable only through
+  // S_GETREG_B32 / S_SETREG_B32, neither of which can name a second register,
+  // so the XOR trick is unavailable. Rotate each half through TempSGPR:
+  //   TempSGPR <- FLAT_SCR_x ; FLAT_SCR_x <- InstFSx ; InstFSx <- TempSGPR
+  // which leaves the application's half in InstFSx, exactly as the GFX9 swap
+  // does, so a second call restores it.
+  auto SwapHalf = [&](bool Hi, llvm::MCRegister InstFS) {
+    const int16_t Encoded = flatScratchHwregEncoding(Hi);
+    (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::S_GETREG_B32), TempSGPR)
+        .addImm(Encoded);
+    (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::S_SETREG_B32))
+        .addReg(InstFS)
+        .addImm(Encoded);
+    (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::S_MOV_B32), InstFS)
+        .addReg(TempSGPR, llvm::RegState::Kill);
+  };
+  SwapHalf(/*Hi=*/true, InstFSHi);
+  SwapHalf(/*Hi=*/false, InstFSLo);
+}
+
+void emitFlatScratchSaveToSVALanes(llvm::MachineBasicBlock &MBB,
+                                   llvm::MCRegister SVAVGPR, unsigned Lane,
+                                   llvm::MCRegister TempSGPR) {
+  const auto &ST = MBB.getParent()->getSubtarget<llvm::GCNSubtarget>();
+  if (!llvm::AMDGPU::isGFX10Plus(ST)) {
+    emitMoveFromSGPRToVGPRLane(MBB, llvm::AMDGPU::FLAT_SCR_LO, SVAVGPR, Lane,
+                               false);
+    emitMoveFromSGPRToVGPRLane(MBB, llvm::AMDGPU::FLAT_SCR_HI, SVAVGPR,
+                               Lane + 1, false);
+    return;
+  }
+  assert(TempSGPR && "GFX10+ needs a temporary to read FLAT_SCR out of hwreg");
+  const auto &TII = *ST.getInstrInfo();
+  for (unsigned I = 0; I != 2; ++I) {
+    (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::S_GETREG_B32), TempSGPR)
+        .addImm(flatScratchHwregEncoding(/*Hi=*/I == 1));
+    emitMoveFromSGPRToVGPRLane(MBB, TempSGPR, SVAVGPR, Lane + I, true);
+  }
+}
+
+void emitFlatScratchLoadFromSVALanes(llvm::MachineBasicBlock &MBB,
+                                     llvm::MCRegister SVAVGPR, unsigned Lane,
+                                     llvm::MCRegister TempSGPR) {
+  const auto &ST = MBB.getParent()->getSubtarget<llvm::GCNSubtarget>();
+  if (!llvm::AMDGPU::isGFX10Plus(ST)) {
+    emitMoveFromVGPRLaneToSGPR(MBB, SVAVGPR, llvm::AMDGPU::FLAT_SCR_LO, Lane,
+                               false);
+    emitMoveFromVGPRLaneToSGPR(MBB, SVAVGPR, llvm::AMDGPU::FLAT_SCR_HI,
+                               Lane + 1, false);
+    return;
+  }
+  assert(TempSGPR && "GFX10+ needs a temporary to write FLAT_SCR via hwreg");
+  const auto &TII = *ST.getInstrInfo();
+  for (unsigned I = 0; I != 2; ++I) {
+    emitMoveFromVGPRLaneToSGPR(MBB, SVAVGPR, TempSGPR, Lane + I, false);
+    (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::S_SETREG_B32))
+        .addReg(TempSGPR, llvm::RegState::Kill)
+        .addImm(flatScratchHwregEncoding(/*Hi=*/I == 1));
+  }
 }
 
 void emitVGPRSwap(llvm::MachineBasicBlock::iterator InsertionPoint,
@@ -277,15 +375,15 @@ llvm::MachineBasicBlock::iterator createSCCSafeSequenceOfMIs(
   return ExitBlock.begin();
 }
 
-/// Wait states GFX9+ requires between a VALU write to an SGPR and a VMEM
+/// Wait states GFX9+ requires between a write to an SGPR and a VMEM
 /// instruction that reads that SGPR as an address operand
 /// (\c GCNSubtarget::hasVMEMReadSGPRVALUDefHazard, true for every subtarget
 /// from Volcanic Islands on).
 ///
-/// Every emergency-slot access below takes its SADDR from \c StackPtr, which
-/// the SVA hand-off protocol materializes with a \c V_READLANE_B32 out of the
-/// state value array a couple of instructions earlier. This code is injected
-/// by the target module patcher *after* codegen has finished, so neither
+/// Only the GFX9 absolute-flat-scratch emergency-slot path still has an SGPR
+/// address operand to hazard on — every other target reaches the slots with a
+/// SADDR-less \c SCRATCH_* . This code is injected by the target module
+/// patcher *after* codegen has finished, so neither
 /// \c PostRAHazardRecognizerPass nor \c SIInsertWaitcnts ever runs over it and
 /// the required waits have to be emitted here.
 static constexpr unsigned VMEMReadSGPRVALUDefWaitStates = 5;
@@ -306,135 +404,138 @@ static void emitWaitStatesImpl(llvm::MachineBasicBlock &MBB,
   }
 }
 
-/// Emits one emergency-slot scratch access at \c [StackPtr + Offset], bracketed
-/// by the waits the hardware requires and that no later pass will supply:
+/// Emits one emergency-slot scratch access at the absolute private-segment
+/// offset \p Offset, bracketed by the waits the hardware requires and that no
+/// later pass will supply.
 ///
-///   * Before: \c VMEMReadSGPRVALUDefWaitStates wait states, because \p
-///     StackPtr is VALU-defined (see above).
-///   * After: an \c S_WAITCNT. A scratch store reads its data VGPR
-///     asynchronously, and every caller of the store form immediately
-///     overwrites \c VGPR0 with the state value array — a write-after-read on
-///     the in-flight store's data operand, which would spill whatever the
-///     overwrite left behind instead of the app's \c V0. The load form has the
-///     mirror-image read-after-write problem: callers consume the loaded VGPR
-///     right away.
-///
-/// \p Offset must be non-negative, and \c StackPtr is the *bottom* of the
-/// instrumentation stack, so the two slots are reached with \c offset:0 and
-/// \c offset:4. A negative \c inst_offset must never be used here: on gfx942 a
+/// The instrumentation stack starts at offset zero of the wavefront's private
+/// segment, so the two slots are simply \c offset:0 and \c offset:4 with no
+/// address register to add. \c inst_offset stays non-negative: on gfx942 a
 /// \c SCRATCH_{LOAD,STORE}_DWORD_SADDR carrying a negative immediate takes a
 /// memory violation no matter what the SADDR holds (verified by probing the
 /// same instruction with SADDR from 0 to 9192 -- every value faults with
 /// \c offset:-8 and every value succeeds with \c offset:0 or \c offset:8;
 /// there is no bounds check on the SADDR itself).
 ///
-/// \p StackPtr arrives in the units the *application's* frame uses, because
-/// that is the one value everyone shares: the kernel prolog parks it in the
-/// SVA's stack-pointer lane, and \c InjectedPayloadPEIPass reads it straight
-/// into the payload's \c SGPR32 where the payload's compiler-generated frame
-/// code consumes it. On a subtarget that reaches scratch through the private
-/// segment buffer that is a wave-swizzled offset -- bytes times the wavefront
-/// size, which is exactly what \c getScratchScaleFactor reports and what
-/// \c SIFrameLowering scales an entry function's stack size by.
-/// \c SCRATCH_{LOAD,STORE}_DWORD_SADDR is a *flat* scratch instruction and
-/// takes a plain per-lane byte offset instead, so the two disagree by the
-/// wavefront size and the access lands a whole wave's worth of scratch past
-/// where it belongs. Unswizzle into \p StackPtr for the duration of the
-/// access and put it back afterwards, so the register still holds what every
-/// other consumer expects.
+/// Which SADDR-less encoding is available depends on the target:
+///   * \c hasFlatScratchSTMode (gfx10.3+, gfx940+) — the ST form takes
+///     neither a VGPR nor an SGPR address operand.
+///   * GFX10.1 — no ST form, but \c SGPR_NULL reads as zero and is a legal
+///     SADDR.
+///   * GFX9 absolute flat scratch — neither, so \p SADDRScratchSGPR is zeroed
+///     and used. This is the whole reason the GFX9 absolute-FS storage schemes
+///     still reserve a third SGPR.
 ///
-/// The shift pair clobbers \c SCC. Every caller is either already inside a
-/// \c createSCCSafeSequenceOfMIs region (the spilled and AGPR storage schemes
-/// bracket their load/store bodies with one) or sits at a point where the
-/// AMDGPU ABI leaves \c SCC dead -- immediately before a call, or at a device
-/// function's entry, which is where the V0-courier hand-off protocol runs.
+/// A trailing \c S_WAITCNT is always emitted. A scratch store reads its data
+/// VGPR asynchronously, and every caller of the store form immediately
+/// overwrites \c VGPR0 with the state value array — a write-after-read on the
+/// in-flight store's data operand, which would spill whatever the overwrite
+/// left behind instead of the app's \c V0. The load form has the mirror-image
+/// read-after-write problem: callers consume the loaded VGPR right away.
 static void emitEmergencySlotAccess(llvm::MachineBasicBlock &MBB,
                                     llvm::MachineBasicBlock::iterator Where,
-                                    llvm::MCRegister StackPtr,
+                                    llvm::MCRegister SADDRScratchSGPR,
                                     llvm::MCRegister DataVGPR, int Offset,
                                     bool IsStore, bool KillSource) {
   assert(Offset >= 0 && "emergency-slot offsets must be non-negative");
   const auto &ST = MBB.getParent()->getSubtarget<llvm::GCNSubtarget>();
   const auto &TII = *ST.getInstrInfo();
-  // Emitted before the shift so the wait states cover the first SALU read of
-  // the VALU-defined StackPtr, which is now the S_LSHR_B32 rather than the
-  // scratch op itself.
-  emitWaitStatesImpl(MBB, Where, VMEMReadSGPRVALUDefWaitStates);
-  const unsigned Log2WaveSize = llvm::Log2_32(ST.getWavefrontSize());
-  const bool NeedsUnswizzle = getScratchScaleFactor(ST) != 1;
-  assert((!NeedsUnswizzle ||
-          getScratchScaleFactor(ST) == ST.getWavefrontSize()) &&
-         "scratch scale is either 1 or the wavefront size");
-  if (NeedsUnswizzle)
+
+  if (ST.hasFlatScratchSTMode()) {
+    const unsigned Opc = IsStore ? llvm::AMDGPU::SCRATCH_STORE_DWORD_ST
+                                 : llvm::AMDGPU::SCRATCH_LOAD_DWORD_ST;
+    if (IsStore)
+      (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(), TII.get(Opc))
+          .addReg(DataVGPR, llvm::getKillRegState(KillSource))
+          .addImm(Offset)
+          .addImm(0);
+    else
+      (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(), TII.get(Opc), DataVGPR)
+          .addImm(Offset)
+          .addImm(0);
     (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(),
-                        TII.get(llvm::AMDGPU::S_LSHR_B32), StackPtr)
-        .addReg(StackPtr)
-        .addImm(Log2WaveSize);
+                        TII.get(llvm::AMDGPU::S_WAITCNT))
+        .addImm(0);
+    return;
+  }
+
+  llvm::MCRegister SADDR;
+  if (llvm::AMDGPU::isGFX10Plus(ST)) {
+    SADDR = llvm::AMDGPU::SGPR_NULL;
+  } else {
+    assert(SADDRScratchSGPR &&
+           "GFX9 absolute-flat-scratch emergency-slot access needs a scratch "
+           "SGPR to hold the zero SADDR");
+    SADDR = SADDRScratchSGPR;
+    (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(),
+                        TII.get(llvm::AMDGPU::S_MOV_B32), SADDR)
+        .addImm(0);
+    // GFX9+ requires wait states between an SALU write to an SGPR and a VMEM
+    // instruction that reads it as an address operand
+    // (\c GCNSubtarget::hasVMEMReadSGPRVALUDefHazard). This code is injected
+    // after codegen has finished, so neither \c PostRAHazardRecognizerPass nor
+    // \c SIInsertWaitcnts ever runs over it and the waits have to be emitted
+    // here.
+    emitWaitStatesImpl(MBB, Where, VMEMReadSGPRVALUDefWaitStates);
+  }
+
+  const unsigned Opc = IsStore ? llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR
+                               : llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR;
   if (IsStore)
-    (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(),
-                        TII.get(llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR))
+    (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(), TII.get(Opc))
         .addReg(DataVGPR, llvm::getKillRegState(KillSource))
-        .addReg(StackPtr)
+        .addReg(SADDR)
         .addImm(Offset)
         .addImm(0);
   else
-    (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(),
-                        TII.get(llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR),
-                        DataVGPR)
-        .addReg(StackPtr)
+    (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(), TII.get(Opc), DataVGPR)
+        .addReg(SADDR)
         .addImm(Offset)
         .addImm(0);
   (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(),
                       TII.get(llvm::AMDGPU::S_WAITCNT))
       .addImm(0);
-  // Re-swizzle: the caller's register is the shared instrumentation SP and
-  // every other reader of it wants the application's units back.
-  if (NeedsUnswizzle)
-    (void)llvm::BuildMI(MBB, Where, llvm::DebugLoc(),
-                        TII.get(llvm::AMDGPU::S_LSHL_B32), StackPtr)
-        .addReg(StackPtr)
-        .addImm(Log2WaveSize);
 }
 
 void emitLoadFromEmergencyVGPRScratchSpillLocation(
-    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
+    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister SADDRScratchSGPR,
     llvm::MCRegister DestVGPR) {
-  emitEmergencySlotAccess(*MI->getParent(), MI, StackPtr, DestVGPR, 0,
+  emitEmergencySlotAccess(*MI->getParent(), MI, SADDRScratchSGPR, DestVGPR, 0,
                           /*IsStore=*/false, /*KillSource=*/false);
 }
 
 void emitLoadFromEmergencyVGPRScratchSpillLocation(
-    llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
+    llvm::MachineBasicBlock &MBB, llvm::MCRegister SADDRScratchSGPR,
     llvm::MCRegister DestVGPR) {
-  emitEmergencySlotAccess(MBB, MBB.end(), StackPtr, DestVGPR, 0,
+  emitEmergencySlotAccess(MBB, MBB.end(), SADDRScratchSGPR, DestVGPR, 0,
                           /*IsStore=*/false, /*KillSource=*/false);
 }
 
 void emitStoreToEmergencyVGPRScratchSpillLocation(
-    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
+    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister SADDRScratchSGPR,
     llvm::MCRegister SrcVGPR, bool KillSource) {
-  emitEmergencySlotAccess(*MI->getParent(), MI, StackPtr, SrcVGPR, 0,
+  emitEmergencySlotAccess(*MI->getParent(), MI, SADDRScratchSGPR, SrcVGPR, 0,
                           /*IsStore=*/true, KillSource);
 }
 
 void emitStoreToEmergencyVGPRScratchSpillLocation(
-    llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
+    llvm::MachineBasicBlock &MBB, llvm::MCRegister SADDRScratchSGPR,
     llvm::MCRegister SrcVGPR, bool KillSource) {
-  emitEmergencySlotAccess(MBB, MBB.end(), StackPtr, SrcVGPR, 0,
+  emitEmergencySlotAccess(MBB, MBB.end(), SADDRScratchSGPR, SrcVGPR, 0,
                           /*IsStore=*/true, KillSource);
 }
 
 void emitLoadFromEmergencySVSScratchSpillLocation(
-    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
+    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister SADDRScratchSGPR,
     llvm::MCRegister DestVGPR) {
-  emitEmergencySlotAccess(*MI->getParent(), MI, StackPtr, DestVGPR, 4,
+  emitEmergencySlotAccess(*MI->getParent(), MI, SADDRScratchSGPR, DestVGPR, 4,
                           /*IsStore=*/false, /*KillSource=*/false);
 }
 
 void emitStoreToEmergencySVSScratchSpillLocation(
-    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
+    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister SADDRScratchSGPR,
     llvm::MCRegister SrcVGPR, bool KillSource) {
-  emitEmergencySlotAccess(*MI->getParent(), MI, StackPtr, SrcVGPR, 4,
+  emitEmergencySlotAccess(*MI->getParent(), MI, SADDRScratchSGPR, SrcVGPR, 4,
                           /*IsStore=*/true, KillSource);
 }
 

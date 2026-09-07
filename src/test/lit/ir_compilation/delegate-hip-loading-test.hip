@@ -11,7 +11,7 @@
 /// Device + host in a single invocation.
 /// ===========================================================================
 // clang-format off
-/// RUN: %clangxx -x hip --offload-arch=gfx908 -nogpulib -fuse-cuid=none -fPIC \
+/// RUN: %clangxx -x hip --offload-arch=gfx908 -nogpulib -cuid=delegate_hip_loading_test -fPIC \
 /// RUN:   -fpass-plugin=%luthier_tool_ir_compilation_plugin_path \
 /// RUN:   -fplugin=%luthier_tool_cxx_compilation_plugin_path \
 /// RUN:   -Xclang -add-plugin -Xclang luthier-emit-device-function-host-handle \
@@ -35,7 +35,7 @@
 /// RUN: clang-offload-bundler --type=o \
 /// RUN:   --targets=hipv4-amdgcn-amd-amdhsa--gfx908 --input=%t.dev.bc \
 /// RUN:   --output=%t.dev.hipfb --bundle-align=8
-/// RUN: %clangxx -x hip --cuda-host-only -fuse-cuid=none -fPIC \
+/// RUN: %clangxx -x hip --cuda-host-only -cuid=delegate_hip_loading_test -fPIC \
 /// RUN:   -Xclang -fcuda-include-gpubinary -Xclang %t.dev.hipfb \
 /// RUN:   -fpass-plugin=%luthier_tool_ir_compilation_plugin_path \
 /// RUN:   -fplugin=%luthier_tool_cxx_compilation_plugin_path \
@@ -88,8 +88,11 @@ luthier::HipHandleInfo *HipEnd;
 // CHECK-DAG: %"struct.luthier::HipHandleInfo" = type { ptr, ptr }
 
 // Every registered kind plus the exported device function collapse into one
-// six-element array in the luthier_hip_handles section, each pairing the host
-// handle with its device-name string.
+// six-element array in this TU's luthier_hip_handles_<cuid> section, each
+// pairing the host handle with its device-name string. The suffix is clang's
+// compilation-unit id, so that two bundles linked into one binary get separate
+// sections and separate boundary symbols; its exact value is a hash and is not
+// pinned here.
 // CHECK-DAG: @[[HDATA:[._a-zA-Z0-9]+]] = private constant [6 x %"struct.luthier::HipHandleInfo"] [
 // CHECK-DAG: %"struct.luthier::HipHandleInfo" { ptr @_Z13luthierKernelv, ptr @{{[0-9]+}} }
 // CHECK-DAG: %"struct.luthier::HipHandleInfo" { ptr @luthierDeviceVar, ptr @{{[0-9]+}} }
@@ -97,23 +100,23 @@ luthier::HipHandleInfo *HipEnd;
 // CHECK-DAG: %"struct.luthier::HipHandleInfo" { ptr @luthierTex, ptr @{{[0-9]+}} }
 // CHECK-DAG: %"struct.luthier::HipHandleInfo" { ptr @luthierSurf, ptr @{{[0-9]+}} }
 // CHECK-DAG: %"struct.luthier::HipHandleInfo" { ptr @_Z17luthierDeviceFuncv, ptr @.luthier.device_fn_name
-// CHECK-DAG: section "luthier_hip_handles"
+// CHECK-DAG: section "luthier_hip_handles_[[CUID:[a-f0-9]+]]"
 
-// The fat binary is moved into luthier_fatbin, and both it and the handle array
-// are retained via llvm.used.
-// CHECK-DAG: @__luthier_fatbin = {{.*}} section "luthier_fatbin"
-// CHECK-DAG: @llvm.used = {{.*}}@__luthier_fatbin{{.*}}@[[HDATA]]
+// The fat binary is moved into luthier_fatbin_<cuid> --- the same cuid --- and
+// both it and the handle array are retained via llvm.used.
+// CHECK-DAG: @__luthier_fatbin_[[CUID]] = {{.*}} section "luthier_fatbin_[[CUID]]"
+// CHECK-DAG: @llvm.used = {{.*}}@__luthier_fatbin_[[CUID]]{{.*}}@[[HDATA]]
 
 // At the IR level the boundary symbols are external declarations (the linker
 // defines them); the four slots point at them.
-// CHECK-DAG: @__start_luthier_fatbin = external constant i8
-// CHECK-DAG: @__stop_luthier_fatbin = external constant i8
-// CHECK-DAG: @__start_luthier_hip_handles = external constant i8
-// CHECK-DAG: @__stop_luthier_hip_handles = external constant i8
-// CHECK-DAG: @FatBegin = {{.*}}ptr @__start_luthier_fatbin
-// CHECK-DAG: @FatEnd = {{.*}}ptr @__stop_luthier_fatbin
-// CHECK-DAG: @HipBegin = {{.*}}ptr @__start_luthier_hip_handles
-// CHECK-DAG: @HipEnd = {{.*}}ptr @__stop_luthier_hip_handles
+// CHECK-DAG: @__start_luthier_fatbin_[[CUID]] = external constant i8
+// CHECK-DAG: @__stop_luthier_fatbin_[[CUID]] = external constant i8
+// CHECK-DAG: @__start_luthier_hip_handles_[[CUID]] = external constant i8
+// CHECK-DAG: @__stop_luthier_hip_handles_[[CUID]] = external constant i8
+// CHECK-DAG: @FatBegin = {{.*}}ptr @__start_luthier_fatbin_[[CUID]]
+// CHECK-DAG: @FatEnd = {{.*}}ptr @__stop_luthier_fatbin_[[CUID]]
+// CHECK-DAG: @HipBegin = {{.*}}ptr @__start_luthier_hip_handles_[[CUID]]
+// CHECK-DAG: @HipEnd = {{.*}}ptr @__stop_luthier_hip_handles_[[CUID]]
 
 // ===========================================================================
 // (2) After linking, the sections exist and the boundary symbols are resolved
@@ -122,13 +125,13 @@ luthier::HipHandleInfo *HipEnd;
 // { ptr, ptr } records (0x60). Both sections are retained (R = SHF_GNU_RETAIN).
 // ===========================================================================
 
-// ELF-DAG: luthier_fatbin {{.*}} AR
-// ELF-DAG: luthier_hip_handles {{.*}} 000060 00 WAR
+// ELF-DAG: luthier_fatbin_{{[a-f0-9]+}} {{.*}} AR
+// ELF-DAG: luthier_hip_handles_{{[a-f0-9]+}} {{.*}} 000060 00 WAR
 
 // Each boundary symbol is DEFINED (a numeric section index, not UND) and holds
 // a non-zero address — i.e. the __start/__stop trick is populated, not left as
 // external/undefined.
-// ELF-DAG: : {{0*[1-9a-f][0-9a-f]*}} {{.*}} {{[0-9]+}} __start_luthier_fatbin
-// ELF-DAG: : {{0*[1-9a-f][0-9a-f]*}} {{.*}} {{[0-9]+}} __stop_luthier_fatbin
-// ELF-DAG: : {{0*[1-9a-f][0-9a-f]*}} {{.*}} {{[0-9]+}} __start_luthier_hip_handles
-// ELF-DAG: : {{0*[1-9a-f][0-9a-f]*}} {{.*}} {{[0-9]+}} __stop_luthier_hip_handles
+// ELF-DAG: : {{0*[1-9a-f][0-9a-f]*}} {{.*}} {{[0-9]+}} __start_luthier_fatbin_{{[a-f0-9]+}}
+// ELF-DAG: : {{0*[1-9a-f][0-9a-f]*}} {{.*}} {{[0-9]+}} __stop_luthier_fatbin_{{[a-f0-9]+}}
+// ELF-DAG: : {{0*[1-9a-f][0-9a-f]*}} {{.*}} {{[0-9]+}} __start_luthier_hip_handles_{{[a-f0-9]+}}
+// ELF-DAG: : {{0*[1-9a-f][0-9a-f]*}} {{.*}} {{[0-9]+}} __stop_luthier_hip_handles_{{[a-f0-9]+}}

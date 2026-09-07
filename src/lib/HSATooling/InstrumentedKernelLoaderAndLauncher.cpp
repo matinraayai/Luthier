@@ -342,24 +342,29 @@ InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented(
   const void *AppKernargPtr = Packet.kernarg_address;
 
   Packet.kernel_object = K.KDDeviceAddress;
-  Packet.private_segment_size =
-      std::max<uint32_t>(Packet.private_segment_size,
-                         K.KDHostAddress->private_segment_fixed_size);
 
-  // EXPERIMENT (revert me): do NOT inflate the dispatch's private_segment_size
-  // to the agent maximum for dynamic-stack kernels. The scratch ring behind the
-  // dispatch was already sized by the HIP runtime from the ORIGINAL kernel, so
-  // the inflated figure is not backed; the instrumentation SP derived from it
-  // (PSS - Reservation) then lands outside the wave's private segment.
-#if 0
-  if (usesDynamicStack(*K.KDHostAddress)) {
-    auto MaxPrivateSegmentSizeOrErr =
-        getMaxPrivateSegmentSize(CoreApi.getTable(), Rec.Agent);
-    LUTHIER_RETURN_ON_ERROR(MaxPrivateSegmentSizeOrErr.takeError());
-    Packet.private_segment_size = std::max<uint32_t>(
-        Packet.private_segment_size, *MaxPrivateSegmentSizeOrErr);
-  }
-#endif
+  // Luthier's instrumentation stack occupies the bottom of every work-item's
+  // private segment and the application's own frame is displaced above it by
+  // `RebaseAppScratchAccessesPass`, so the dispatch has to ask for that much
+  // more than it otherwise would. The reserve is the difference the target
+  // module patcher already baked into the instrumented kernel descriptor's
+  // fixed size, which is why it can be recovered here rather than plumbed
+  // through: `KD` still points at the *original* descriptor, the packet's
+  // `kernel_object` having only just been overwritten.
+  //
+  // Adding it to the incoming request rather than taking a max with the fixed
+  // size is what keeps a dynamic-stack kernel correct: there the HIP runtime
+  // has already sized the request from the application's own worst case, and
+  // the displaced frame needs all of it plus the reserve on top.
+  const uint32_t InstrPrivateSegmentReserve =
+      K.KDHostAddress->private_segment_fixed_size >
+              KD->private_segment_fixed_size
+          ? K.KDHostAddress->private_segment_fixed_size -
+                KD->private_segment_fixed_size
+          : 0;
+  Packet.private_segment_size = std::max<uint32_t>(
+      Packet.private_segment_size + InstrPrivateSegmentReserve,
+      K.KDHostAddress->private_segment_fixed_size);
 
   const uint32_t KernargSize = K.KDHostAddress->kernarg_size;
   // An instrumented kernel with a zero-byte kernarg segment has neither an

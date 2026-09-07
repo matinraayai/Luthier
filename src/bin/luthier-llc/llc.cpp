@@ -23,6 +23,7 @@
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPassBuilder.h"
 #include "luthier/ToolCodeGen/PatchPCUsagesPass.h"
+#include "luthier/ToolCodeGen/RebaseAppScratchAccessesPass.h"
 #include "luthier/ToolCodeGen/LuthierFile.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 #include "luthier/ToolCodeGen/MockAMDGPULoader.h"
@@ -923,6 +924,12 @@ static int compileModule(char **argv,
       return false;
     if (Name.trim() == "prototype-callgraph-printer") {
       PPM.addPass(luthier::PrototypeCallGraphPrinter(llvm::outs()));
+      return true;
+    }
+    if (Name.trim() == "luthier-rebase-app-scratch-accesses") {
+      llvm::Error RebaseErr = llvm::Error::success();
+      PPM.addPass(luthier::RebaseAppScratchAccessesPass(RebaseErr));
+      LUTHIER_REPORT_FATAL_ON_ERROR(RebaseErr);
       return true;
     }
     if (Name.trim() == "luthier-patch-pc-usages") {

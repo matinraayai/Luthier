@@ -23,12 +23,12 @@ add_public_tablegen_target(LuthierSIInstrSemanticsGen)
 include(LuthierCreateOffloadBundle)
 
 # TODO: FIX the SPIR-V ctor/dtor issue
-luthier_create_offload_bundle(LuthierPatchPCUsagesPassObject
+luthier_create_offload_bundle(LuthierPatchPCUsagesPass
         PatchPCUsagesPass.hip
         NO_SPIRV
         DEVICE_OBJECT_LIBRARIES LuthierPatchPCUsagesPass_DEVICE_TARGETS)
 
-target_include_directories(LuthierPatchPCUsagesPassObject
+target_include_directories(LuthierPatchPCUsagesPass
         PRIVATE
         ${LLVM_INCLUDE_DIRS}
         ${CMAKE_CURRENT_BINARY_DIR}
@@ -39,7 +39,7 @@ target_include_directories(LuthierPatchPCUsagesPassObject
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
 
-target_link_libraries(LuthierPatchPCUsagesPassObject PUBLIC hip::host LuthierAMDGPU)
+target_link_libraries(LuthierPatchPCUsagesPass PUBLIC hip::host LuthierAMDGPU)
 
 foreach (_DEVICE_TARGET IN LISTS LuthierPatchPCUsagesPass_DEVICE_TARGETS)
     target_include_directories(${_DEVICE_TARGET}
@@ -52,6 +52,40 @@ foreach (_DEVICE_TARGET IN LISTS LuthierPatchPCUsagesPass_DEVICE_TARGETS)
     add_dependencies(${_DEVICE_TARGET} LuthierAMDGPU)
 endforeach ()
 
+
+# NO_SPIRV: the payloads are written against AMDGCN builtins that have no SPIR-V
+# form --- __builtin_amdgcn_is_private for the flat aperture test,
+# __builtin_amdgcn_raw_buffer_load/store_* for the buffer path,
+# __builtin_amdgcn_wavefrontsize for the buffer soffset scale --- so the SPIR-V
+# slice cannot be produced for this bundle.
+luthier_create_offload_bundle(LuthierRebaseAppScratchAccessesPass
+        RebaseAppScratchAccessesPass.hip
+        NO_SPIRV
+        DEVICE_OBJECT_LIBRARIES LuthierRebaseAppScratchAccessesPass_DEVICE_TARGETS)
+
+target_include_directories(LuthierRebaseAppScratchAccessesPass
+        PRIVATE
+        ${LLVM_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_BINARY_DIR}
+        ${hsa-runtime64_INCLUDE_DIRS}
+        PUBLIC
+        "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
+        "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+        "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
+)
+
+target_link_libraries(LuthierRebaseAppScratchAccessesPass PUBLIC hip::host LuthierAMDGPU)
+
+foreach (_DEVICE_TARGET IN LISTS LuthierRebaseAppScratchAccessesPass_DEVICE_TARGETS)
+    target_include_directories(${_DEVICE_TARGET}
+            PRIVATE
+            ${LLVM_INCLUDE_DIRS}
+            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
+            "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include/luthier/AMDGPU>")
+    target_link_libraries(${_DEVICE_TARGET} PRIVATE hip::device)
+    add_dependencies(${_DEVICE_TARGET} LuthierAMDGPU)
+endforeach ()
 
 add_library(LuthierToolCodeGen OBJECT
         ToolDeviceCodeParser.cpp

@@ -50,7 +50,8 @@ target_include_directories(luthier-llc PRIVATE ${LLVM_INCLUDE_DIRS} "${CMAKE_SOU
 
 target_link_libraries(luthier-llc PRIVATE
         LuthierToolCodeGen
-        LuthierPatchPCUsagesPassObject
+        LuthierPatchPCUsagesPass
+        LuthierRebaseAppScratchAccessesPass
         LuthierToolIRCompilation
         LuthierPassPlugin
         LuthierIntrinsic

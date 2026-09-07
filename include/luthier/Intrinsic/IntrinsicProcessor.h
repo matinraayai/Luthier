@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_INTRINSIC_INTRINSIC_PROCESSOR_H
 #define LUTHIER_INTRINSIC_INTRINSIC_PROCESSOR_H
+#include "luthier/Intrinsic/ScalarValueArgument.h"
 #include <functional>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
@@ -59,119 +60,6 @@ class MDNode;
 } // namespace llvm
 
 namespace luthier {
-
-/// \brief A set of scalar value arguments Luthier's intrinsic lowering
-/// mechanism can ensure access to
-/// \details These values are only available to the kernel as "arguments"
-/// as they come preloaded in SGPRs on the kernel's start. These values can
-/// be overwritten the moment they are unused by the original kernel; Which
-/// is why to ensure access to these values in instrumentation routines,
-/// Luthier must emit a prologue on top of the kernel's original code to
-/// save these values in the state value array VGPR to preserve them
-enum ScalarValueArgument : uint8_t {
-  /// Wavefront's private segment buffer; Only applies to targets with
-  /// absolute flat scratch or offset flat scratch
-  WAVEFRONT_PRIVATE_SEGMENT_BUFFER = 0,
-  /// Marks the first defined scalar value argument
-  SCALAR_VALUE_ARGUMENT_FIRST = WAVEFRONT_PRIVATE_SEGMENT_BUFFER,
-  /// 64-bit Dispatch ID of the kernel
-  DISPATCH_ID = 1,
-  /// 64-bit flat scratch base address of the wavefront
-  FLAT_SCRATCH = 2,
-  /// 64-bit address of the dispatch packet of the kernel being executed
-  /// TODO: If the original kernel wants the dispatch pointer, we need to
-  /// make it point to the **"original"** packet not the instrumented one
-  DISPATCH_PTR = 3,
-  /// 64-bit address of the HSA queue used to launch the kernel
-  QUEUE_PTR = 4,
-  /// Size of a work-item's private segment
-  WORK_ITEM_PRIVATE_SEGMENT_SIZE = 5,
-  /// 64-bit address of the instrumentation implicit argument buffer
-  IMPLICIT_ARG_BUFFER = 6,
-  /// 32-bit X component of the workgroup ID (preloaded system SGPR)
-  WORKGROUP_ID_X = 7,
-  /// 32-bit Y component of the workgroup ID (preloaded system SGPR)
-  WORKGROUP_ID_Y = 8,
-  /// 32-bit Z component of the workgroup ID (preloaded system SGPR)
-  WORKGROUP_ID_Z = 9,
-  /// 32-bit X component of lane 0's workitem ID at kernel entry
-  WORKITEM_ID_X = 10,
-  /// 32-bit Y component of lane 0's workitem ID at kernel entry
-  WORKITEM_ID_Y = 11,
-  /// 32-bit Z component of lane 0's workitem ID at kernel entry
-  WORKITEM_ID_Z = 12,
-  /// Marks the last defined scalar value argument
-  SCALAR_VALUE_ARGUMENT_LAST = WORKITEM_ID_Z
-  // NOTE: The SVA is exactly saturated on GFX10 (wave32 = 32 lanes), so any
-  // new entry here has to be paid for by dropping an existing one.
-  // /// 64-bit address of the instrumentation routine's argument buffer
-  // USER_ARG_PTR = 15,
-  //   /// 32-bit private segment wave offset
-  // PRIVATE_SEGMENT_WAVE_BYTE_OFFSET = 4,
-};
-
-template <ScalarValueArgument SA> struct ScalarValueArgumentInfo;
-
-template <> struct ScalarValueArgumentInfo<WAVEFRONT_PRIVATE_SEGMENT_BUFFER> {
-  static constexpr uint8_t NumLanes = 4;
-};
-
-template <> struct ScalarValueArgumentInfo<DISPATCH_ID> {
-  static constexpr uint8_t NumLanes = 2;
-};
-
-template <> struct ScalarValueArgumentInfo<FLAT_SCRATCH> {
-  static constexpr uint8_t NumLanes = 2;
-};
-
-// template <> struct ScalarValueArgumentInfo<PRIVATE_SEGMENT_WAVE_BYTE_OFFSET>
-// {
-//   static constexpr uint8_t NumLanes = 1;
-// };
-
-template <> struct ScalarValueArgumentInfo<QUEUE_PTR> {
-  static constexpr uint8_t NumLanes = 2;
-};
-
-template <> struct ScalarValueArgumentInfo<DISPATCH_PTR> {
-  static constexpr uint8_t NumLanes = 2;
-};
-
-template <> struct ScalarValueArgumentInfo<WORK_ITEM_PRIVATE_SEGMENT_SIZE> {
-  static constexpr uint8_t NumLanes = 1;
-};
-
-template <> struct ScalarValueArgumentInfo<IMPLICIT_ARG_BUFFER> {
-  static constexpr uint8_t NumLanes = 2;
-};
-
-template <> struct ScalarValueArgumentInfo<WORKGROUP_ID_X> {
-  static constexpr uint8_t NumLanes = 1;
-};
-
-template <> struct ScalarValueArgumentInfo<WORKGROUP_ID_Y> {
-  static constexpr uint8_t NumLanes = 1;
-};
-
-template <> struct ScalarValueArgumentInfo<WORKGROUP_ID_Z> {
-  static constexpr uint8_t NumLanes = 1;
-};
-
-template <> struct ScalarValueArgumentInfo<WORKITEM_ID_X> {
-  static constexpr uint8_t NumLanes = 1;
-};
-
-template <> struct ScalarValueArgumentInfo<WORKITEM_ID_Y> {
-  static constexpr uint8_t NumLanes = 1;
-};
-
-template <> struct ScalarValueArgumentInfo<WORKITEM_ID_Z> {
-  static constexpr uint8_t NumLanes = 1;
-};
-
-// template <> struct ScalarValueArgumentInfo<USER_ARG_PTR> {
-//   static constexpr uint8_t NumLanes = 2;
-// };
 
 /// \brief Holds the result of the IR processing stage of an intrinsic IR call
 /// instruction, including how all non-constant values used/defined by a Luthier

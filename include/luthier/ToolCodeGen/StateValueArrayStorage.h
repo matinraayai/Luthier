@@ -35,49 +35,45 @@ struct StateValueArrayStorage
     : public std::enable_shared_from_this<StateValueArrayStorage> {
 public:
   enum StorageKind {
-    SVS_SINGLE_VGPR, /// The state value array is stored in a
-                     /// free VGPR
-    SVS_TWO_AGPRs,   /// The state value array is stored in an
-                     /// AGPR, with a free AGPR to use as a temp
-                     /// spill slot for the app's VGPR. Only
-                     /// applicable for pre-gfx908, since they don't
-                     /// support using AGPRs as operands for vector
-                     /// instructions
-    SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908, /// The state value array
-                                                 /// is stored in in an AGPR,
-                                                 /// with two SGPRs holding
-                                                 /// the FLAT SCRATCH base
-                                                 /// address of the thread,
-                                                 /// and one SGPR
-                                                 /// holding the pointer to
-                                                 /// the VGPR emergency spill
-                                                 /// slot at the beginning of
-                                                 /// the instrumentation
-                                                 /// private segment. SGPRs
-                                                 /// are used to spill an app
-                                                 /// VGPR for the state value
-                                                 /// array to be loaded into.
-                                                 /// For targets that don't
-                                                 /// support using an AGPR
-                                                 /// directly as a vector
-                                                 /// operand
-    SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs,    /// The state value array is
-                                                 /// spilled into the emergency
-                                                 /// spill slot in the
-                                                 /// instrumentation private
-                                                 /// segment. Two SGPRs hold the
-    /// thread's flat scratch base and
-    /// a single SGPR points to the
-    /// beginning of the
-    /// instrumentation private
-    /// segment AKA the emergency app
-    /// VGPR spill slot
-    SVS_SPILLED_WITH_ONE_SGPR_architected_fs /// Same as \c
-                                             /// SVS_SPILLED_WITH_THREE_SGPRS
-                                             /// except for targets with
-                                             /// architected FS which does not
-                                             /// require a copy of wave's FS to
-                                             /// be stored
+    /// The state value array is stored in a free VGPR. Costs nothing beyond
+    /// the VGPR itself: no load or store is needed before a payload uses it.
+    SVS_SINGLE_VGPR,
+    /// The state value array is stored in an AGPR, with a second free AGPR to
+    /// use as a temp spill slot for the app's VGPR. Only applicable to targets
+    /// with AGPRs that cannot use them as operands to vector instructions.
+    SVS_TWO_AGPRs,
+    /// The state value array is stored in an AGPR, with two SGPRs shadowing
+    /// the wavefront's flat scratch base and one scratch SGPR. Used to spill
+    /// an app VGPR for the state value array to be loaded into, on targets
+    /// that cannot use an AGPR directly as a vector operand.
+    ///
+    /// GFX9 only, and in practice gfx908 only: gfx90a+ can use AGPRs as vector
+    /// operands, and no GFX10 or later part has AGPRs at all, which is why
+    /// there is no gfx10plus counterpart to this scheme.
+    SVS_SINGLE_AGPR_WITH_THREE_SGPRS_absolute_fs_gfx9,
+    /// The state value array is spilled into the emergency spill slot at the
+    /// bottom of the wavefront's private segment. Two SGPRs shadow the
+    /// wavefront's flat scratch base and a third is a scratch register.
+    ///
+    /// On GFX9 the flat scratch shadow is exchanged with \c FLAT_SCR by an
+    /// XOR swap, which needs no temporary; the third SGPR is instead there to
+    /// hold the zero SADDR, because GFX9 supports neither the ST addressing
+    /// mode nor the \c null SGPR (see \c emitEmergencySlotAccess ).
+    SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs_gfx9,
+    /// As \c SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs_gfx9 , but for GFX10+
+    /// absolute-flat-scratch targets, where the third SGPR pays for the
+    /// opposite half of the problem: the emergency slots need no SADDR (\c
+    /// SGPR_NULL or the ST form covers it), but \c FLAT_SCR is reachable only
+    /// via \c S_GETREG_B32 / \c S_SETREG_B32 , so exchanging it with the
+    /// shadow pair needs a temporary. See \c emitFlatScratchSwap .
+    SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs_gfx10plus,
+    /// The state value array is spilled into the emergency spill slot at the
+    /// bottom of the wavefront's private segment, at no register cost at all.
+    /// Targets with architected flat scratch need no shadow of \c FLAT_SCR
+    /// (the hardware initialises it and the shader cannot override it), and
+    /// all of them support a SADDR-less \c SCRATCH_* , so no scratch SGPR is
+    /// needed either. Being free, this scheme is always constructible.
+    SVS_SPILLED_WITH_NO_SGPRS_architected_fs
   };
 
 private:
@@ -167,9 +163,7 @@ public:
   /// stack-pointer spill lane, the frame-pointer spill lane, and the lo half
   /// of the \c EXEC spill lane (see \c InjectedPayloadPEIPass ). At a
   /// target-module patch point or relaxed branch no payload is executing, so
-  /// all three hold nothing live. The stack-pointer *store* lane is
-  /// deliberately not in the list: it holds the instrumentation stack pointer
-  /// for the lifetime of the wave.
+  /// all three hold nothing live.
   static uint8_t getLongJumpSpillLane(const StateValueArraySpecs &Specs,
                                       unsigned Idx);
 
@@ -359,11 +353,10 @@ public:
 };
 
 /// \brief Describes the state value storage scheme where a single AGPR is used
-/// to store the state value array, with two SGPRs holding the base address of
-/// the wave's flat scratch address, and another SGPR pointing to the
-/// instrumentation private segment's emergency VGPR spill slot.
-/// Only applicable to targets that don't support using AGPRs as an operand
-/// to vector instructions
+/// to store the state value array, with two SGPRs shadowing the base address
+/// of the wave's flat scratch, and a third scratch SGPR. Only applicable to
+/// GFX9 targets that don't support using AGPRs as an operand to vector
+/// instructions.
 struct AGPRWithThreeSGPRSValueStorage : public StateValueArrayStorage {
 public:
   /// Where the state value is stored
@@ -372,21 +365,24 @@ public:
   llvm::MCRegister FlatScratchSGPRHigh{};
   /// Lower 32-bit address of the thread's flat scratch address
   llvm::MCRegister FlatScratchSGPRLow{};
-  /// An SGPR holding the instrumentation stack pointer
-  llvm::MCRegister StackPointer{};
+  /// A scratch SGPR, clobbered freely by this scheme's emission. On GFX9 it
+  /// carries the zero SADDR every emergency-slot access needs; see
+  /// \c SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs_gfx9 .
+  llvm::MCRegister ScratchSGPR{};
 
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
-    return S->getScheme() == SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908;
+    return S->getScheme() == SVS_SINGLE_AGPR_WITH_THREE_SGPRS_absolute_fs_gfx9;
   }
 
   AGPRWithThreeSGPRSValueStorage(llvm::MCRegister StorageAGPR,
                                  llvm::MCRegister FlatScratchSGPRHigh,
                                  llvm::MCRegister FlatScratchSGPRLow,
-                                 llvm::MCRegister StackPointer)
-      : StateValueArrayStorage(SVS_SINGLE_AGPR_WITH_THREE_SGPRS_pre_gfx908),
+                                 llvm::MCRegister ScratchSGPR)
+      : StateValueArrayStorage(
+            SVS_SINGLE_AGPR_WITH_THREE_SGPRS_absolute_fs_gfx9),
         StorageAGPR(StorageAGPR), FlatScratchSGPRHigh(FlatScratchSGPRHigh),
-        FlatScratchSGPRLow(FlatScratchSGPRLow), StackPointer(StackPointer) {};
+        FlatScratchSGPRLow(FlatScratchSGPRLow), ScratchSGPR(ScratchSGPR) {};
 
   llvm::MCRegister getStateValueStorageReg() const override {
     return StorageAGPR;
@@ -429,35 +425,49 @@ public:
     Regs.push_back(StorageAGPR);
     Regs.push_back(FlatScratchSGPRHigh);
     Regs.push_back(FlatScratchSGPRLow);
-    Regs.push_back(StackPointer);
+    Regs.push_back(ScratchSGPR);
   }
 };
 
-/// \brief State value array storage scheme where the SVA is spilled in
-/// the thread's emergency SVA spill slot in the instrumentation's private
-/// segment, and three SGPRs used to spill an app's VGPR to the
-/// instrumentation's private segment before loading the state value array
-/// in its place
+/// \brief State value array storage scheme for absolute-flat-scratch targets,
+/// where the SVA is spilled into the emergency SVA slot at the bottom of the
+/// wavefront's private segment. Two SGPRs shadow the wavefront's flat scratch
+/// base so it can be installed into \c FLAT_SCR around the spill, and a third
+/// is a scratch register.
+///
+/// One class backs both the GFX9 and the GFX10+ scheme kinds: the registers
+/// they hold are identical and only the emission differs, which
+/// \c emitFlatScratchSwap and \c emitEmergencySlotAccess decide from the
+/// subtarget. The two kinds are kept distinct so scheme selection names the
+/// right one per target.
 struct SpilledWithThreeSGPRsValueStorage : public StateValueArrayStorage {
 public:
   /// Upper 32-bit address of the thread's flat scratch address
   llvm::MCRegister FlatScratchSGPRHigh{};
   /// Lower 32-bit address of the thread's flat scratch address
   llvm::MCRegister FlatScratchSGPRLow{};
-  /// Instrumentation stack pointer
-  llvm::MCRegister StackPointer{};
+  /// A scratch SGPR, clobbered freely by this scheme's emission: the zero
+  /// SADDR on GFX9, the \c FLAT_SCR exchange temporary on GFX10+.
+  llvm::MCRegister ScratchSGPR{};
 
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
-    return S->getScheme() == SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs;
+    return S->getScheme() == SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs_gfx9 ||
+           S->getScheme() ==
+               SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs_gfx10plus;
   }
 
-  SpilledWithThreeSGPRsValueStorage(llvm::MCRegister FlatScratchSGPRHigh,
+  SpilledWithThreeSGPRsValueStorage(StorageKind Kind,
+                                    llvm::MCRegister FlatScratchSGPRHigh,
                                     llvm::MCRegister FlatScratchSGPRLow,
-                                    llvm::MCRegister StackPointer)
-      : StateValueArrayStorage(SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs),
-        FlatScratchSGPRHigh(FlatScratchSGPRHigh),
-        FlatScratchSGPRLow(FlatScratchSGPRLow), StackPointer(StackPointer) {};
+                                    llvm::MCRegister ScratchSGPR)
+      : StateValueArrayStorage(Kind), FlatScratchSGPRHigh(FlatScratchSGPRHigh),
+        FlatScratchSGPRLow(FlatScratchSGPRLow), ScratchSGPR(ScratchSGPR) {
+    assert((Kind == SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs_gfx9 ||
+            Kind == SVS_SPILLED_WITH_THREE_SGPRS_absolute_fs_gfx10plus) &&
+           "SpilledWithThreeSGPRsValueStorage backs only the two "
+           "absolute-flat-scratch three-SGPR scheme kinds");
+  };
 
   llvm::MCRegister getStateValueStorageReg() const override { return {}; }
 
@@ -497,28 +507,28 @@ public:
       llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
     Regs.push_back(FlatScratchSGPRHigh);
     Regs.push_back(FlatScratchSGPRLow);
-    Regs.push_back(StackPointer);
+    Regs.push_back(ScratchSGPR);
   }
 };
 
-/// \brief State value array storage scheme for targets with architected
-/// FS, where the SVA is spilled in the thread's emergency SVA spill slot in
-/// the instrumentation's private segment, and only one SGPR is used with FS
-/// to spill an app's VGPR to the instrumentation's private segment before
-/// loading the state value array in its place
-struct SpilledWithOneSGPRsValueStorage : public StateValueArrayStorage {
+/// \brief State value array storage scheme for targets with architected flat
+/// scratch, where the SVA is spilled into the emergency SVA slot at the bottom
+/// of the wavefront's private segment at no register cost.
+///
+/// The hardware initialises \c FLAT_SCRATCH on these targets and the shader
+/// cannot override it, so there is nothing to shadow; and every architected-FS
+/// target can encode a SADDR-less \c SCRATCH_* , so the emergency slots at
+/// offsets 0 and 4 are reachable with no address register. Holding no
+/// registers, this scheme can always be constructed.
+struct SpilledWithNoSGPRsValueStorage : public StateValueArrayStorage {
 public:
-  /// Instrumentation Stack Pointer
-  llvm::MCRegister StackPointer{};
-
   /// method for providing LLVM RTTI
   [[nodiscard]] static bool classof(const StateValueArrayStorage *S) {
-    return S->getScheme() == SVS_SPILLED_WITH_ONE_SGPR_architected_fs;
+    return S->getScheme() == SVS_SPILLED_WITH_NO_SGPRS_architected_fs;
   }
 
-  explicit SpilledWithOneSGPRsValueStorage(llvm::MCRegister StackPointer)
-      : StateValueArrayStorage(SVS_SPILLED_WITH_ONE_SGPR_architected_fs),
-        StackPointer(StackPointer) {};
+  SpilledWithNoSGPRsValueStorage()
+      : StateValueArrayStorage(SVS_SPILLED_WITH_NO_SGPRS_architected_fs) {};
 
   llvm::MCRegister getStateValueStorageReg() const override { return {}; }
 
@@ -555,9 +565,7 @@ public:
                           const StateValueArraySpecs &Specs) const override;
 
   void getAllStorageRegisters(
-      llvm::SmallVectorImpl<llvm::MCRegister> &Regs) const override {
-    Regs.push_back(StackPointer);
-  }
+      llvm::SmallVectorImpl<llvm::MCRegister> &) const override {}
 };
 
 /// \returns the set of storage <tt>SchemeKind</tt>s

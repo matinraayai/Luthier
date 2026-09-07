@@ -3,7 +3,8 @@
 ; Verifies that ToolDeviceCodeOffloadParserPass's device-function-handle
 ; harvester records every host function tagged with the
 ; luthier.function.export_device_handle marker (in @llvm.global.annotations)
-; into the luthier_hip_handles section as a { HostHandle, DeviceName } array,
+; into this TU's luthier_hip_handles_<cuid> section as a
+; { HostHandle, DeviceName } array,
 ; and points the annotated HIP-handle-section begin/end slots at the linker's
 ; __start_/__stop_ boundary symbols.
 ;
@@ -14,7 +15,11 @@
 target triple = "x86_64-unknown-linux-gnu"
 
 ; Minimum HIP machinery so the pass does not bail early (needs
-; __hipRegisterFatBinary) and can locate the embedded bundle.
+; __hipRegisterFatBinary) and can locate the embedded bundle. The
+; __hip_cuid_<id> global is what clang stamps into every HIP host TU and is what
+; the pass names this TU's sections after, so that two bundles in one binary do
+; not share a section or its boundary symbols.
+@__hip_cuid_devfnharvest = internal global i8 0
 declare dso_local ptr @__hipRegisterFatBinary(ptr)
 declare dso_local void @__hipUnregisterFatBinary(ptr)
 @__hip_fatbin = internal constant [16 x i8] c"__CLANG_OFFLOAD_", section ".hip_fatbin"
@@ -84,15 +89,15 @@ define dso_local void @_Z9decoyHookv() {
 ; CHECK-DAG: @[[DEV_SPEC:[._a-zA-Z0-9]+]] = private constant [20 x i8] c"_Z8tmplHookIiET_S0_\00"
 
 ; Exactly three handle records ([3 x ...], so the decoy is excluded), packed
-; into the luthier_hip_handles section, each pairing the host handle with its
+; into the luthier_hip_handles_<cuid> section, each pairing the host handle with its
 ; verbatim device name.
-; CHECK-DAG: @[[HDATA:[._a-zA-Z0-9]+]] = private constant [3 x %"struct.luthier::HipHandleInfo"] [%"struct.luthier::HipHandleInfo" { ptr @_Z6myHookv, ptr @[[DEV_MYHOOK]] }, %"struct.luthier::HipHandleInfo" { ptr @myCHook, ptr @[[DEV_MYCHOOK]] }, %"struct.luthier::HipHandleInfo" { ptr @_Z8tmplHookIiET_S0_, ptr @[[DEV_SPEC]] }], section "luthier_hip_handles"
+; CHECK-DAG: @[[HDATA:[._a-zA-Z0-9]+]] = private constant [3 x %"struct.luthier::HipHandleInfo"] [%"struct.luthier::HipHandleInfo" { ptr @_Z6myHookv, ptr @[[DEV_MYHOOK]] }, %"struct.luthier::HipHandleInfo" { ptr @myCHook, ptr @[[DEV_MYCHOOK]] }, %"struct.luthier::HipHandleInfo" { ptr @_Z8tmplHookIiET_S0_, ptr @[[DEV_SPEC]] }], section "luthier_hip_handles_devfnharvest"
 
 ; The array is retained so it survives --gc-sections.
 ; CHECK-DAG: @llvm.used = {{.*}}@[[HDATA]]
 
 ; The linker boundary symbols and the slots pointed at them.
-; CHECK-DAG: @__start_luthier_hip_handles = external constant i8
-; CHECK-DAG: @__stop_luthier_hip_handles = external constant i8
-; CHECK-DAG: @HipBegin = internal global ptr @__start_luthier_hip_handles
-; CHECK-DAG: @HipEnd = internal global ptr @__stop_luthier_hip_handles
+; CHECK-DAG: @__start_luthier_hip_handles_devfnharvest = external constant i8
+; CHECK-DAG: @__stop_luthier_hip_handles_devfnharvest = external constant i8
+; CHECK-DAG: @HipBegin = internal global ptr @__start_luthier_hip_handles_devfnharvest
+; CHECK-DAG: @HipEnd = internal global ptr @__stop_luthier_hip_handles_devfnharvest

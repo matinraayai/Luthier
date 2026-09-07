@@ -191,11 +191,35 @@ static void deleteAllUses(llvm::Function *Fun) {
   }
 }
 
+/// \brief Find the compilation-unit id clang stamped into this translation unit
+/// and return the section-name suffix built from it.
+static llvm::Expected<std::string> getCompilationUnitSuffix(llvm::Module &M) {
+  constexpr llvm::StringRef CUIDPrefix = "__hip_cuid_";
+  for (const llvm::GlobalVariable &GV : M.globals()) {
+    if (!GV.hasName())
+      continue;
+    llvm::StringRef Name = GV.getName();
+    if (!Name.consume_front(CUIDPrefix))
+      continue;
+    if (Name.empty())
+      break; // Found the global, but it carries no id --- report it below.
+    return Name.str();
+  }
+  return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+      "ToolDeviceCodeOffloadParserPass: module '{0}' embeds an offload bundle "
+      "but has no '{1}<id>' global to name its sections after. Compile it with "
+      "a unique -cuid=<id>; without one its luthier_fatbin section and the "
+      "boundary symbols bracketing it would collide with every other bundle "
+      "linked into the same binary.",
+      M.getName(), CUIDPrefix));
+}
+
 /// \brief This pass harvests the host-handle / device-name pairs from the
 /// \c __hipRegister* calls (and the CXX plugin's exported device functions)
 /// into a \c { void*, const char* } array emitted in the
-/// \c luthier_hip_handles section, and places the embedded bundle in the
-/// \c luthier_fatbin section. It then points the trait's four annotated
+/// \c luthier_hip_handles_<cuid> section, and places the embedded bundle in the
+/// \c luthier_fatbin_<cuid> section --- one pair of sections per translation
+/// unit. It then points the trait's four annotated
 /// section-boundary pointer slots (offload-section and HIP-handle-section
 /// begin/end) at the linker's \c __start_/__stop_ symbols for those sections,
 /// and deletes the host-side HIP registration machinery so the bundle is never
@@ -222,6 +246,15 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
   if (!RFB)
     return llvm::PreservedAnalyses::all();
 
+  auto SuffixOrErr = getCompilationUnitSuffix(M);
+  if (!SuffixOrErr) {
+    C.emitError(llvm::toString(SuffixOrErr.takeError()));
+    return llvm::PreservedAnalyses::none();
+  }
+  const std::string FatBinSection = ("luthier_fatbin_" + *SuffixOrErr);
+  const std::string HipHandleSection =
+      ("luthier_hip_handles_" + *SuffixOrErr);
+
   llvm::StringMap<llvm::SmallVector<llvm::GlobalVariable *, 2>> SectionSlotsMap;
   llvm::SmallVector<llvm::Function *, 8> ExportedDeviceFnHandles;
   llvm::SmallVector<llvm::Function *, 8> SynthesizedDeviceFnHandles;
@@ -231,8 +264,8 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
   llvm::Type *PtrTy = llvm::PointerType::getUnqual(C);
 
   //===--------------------------------------------------------------------===//
-  // Fat binary: place the bundle in the luthier_fatbin section and point the
-  // FatBinaryStart / FatBinaryStop slots at the linker's section-boundary
+  // Fat binary: place the bundle in this TU's luthier_fatbin section and point
+  // the FatBinaryStart / FatBinaryStop slots at that section's boundary
   // symbols.
   //===--------------------------------------------------------------------===//
 
@@ -259,24 +292,26 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
       break;
   }
 
-  /// Place the embedded bundle into the \c luthier_fatbin section and retain
-  /// it, so the linker's \c __start_/__stop_luthier_fatbin boundary symbols
-  /// bracket exactly these bytes and the section survives \c --gc-sections.
-  /// Only possible when the bundle is defined in this TU (the
+  /// Place the embedded bundle into this TU's \c luthier_fatbin_<cuid> section
+  /// and retain it, so the linker's matching \c __start_/__stop_ boundary
+  /// symbols bracket exactly these bytes and the section survives
+  /// \c --gc-sections. Only possible when the bundle is defined in this TU (the
   /// \c -fcuda-include-gpubinary embedding case).
   if (BundleGV && !BundleGV->isDeclaration()) {
-    BundleGV->setSection("luthier_fatbin");
+    BundleGV->setSection(FatBinSection);
     /// Clang embeds the bundle as an anonymous private constant (e.g. \c @1);
     /// \c @llvm.used members must be named, so give it a stable name before
     /// retaining it.
     if (!BundleGV->hasName())
-      BundleGV->setName("__luthier_fatbin");
+      BundleGV->setName("__" + FatBinSection);
     llvm::appendToUsed(M, {BundleGV});
   }
 
   /// External references to the linker-synthesized section-boundary symbols.
   /// Named at global scope (no namespace) so they carry the unmangled symbol
-  /// names the linker defines; their addresses are stored into the slots.
+  /// names the linker defines; their addresses are stored into the slots. The
+  /// names are per-TU (see \c getCompilationUnitSuffix ), so two bundles in one
+  /// binary never share a pair.
   auto getBoundarySymbol = [&](llvm::StringRef Name) -> llvm::GlobalVariable * {
     if (auto *Existing = M.getGlobalVariable(Name))
       return Existing;
@@ -289,7 +324,7 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
     if (auto Err =
             populatePointerSlot(SectionSlotsMap[OffloadSectionBeginAnnotation],
                                 OffloadSectionBeginAnnotation,
-                                getBoundarySymbol("__start_luthier_fatbin"))) {
+                                getBoundarySymbol("__start_" + FatBinSection))) {
       C.emitError(llvm::toString(std::move(Err)));
       return llvm::PreservedAnalyses::none();
     }
@@ -298,7 +333,7 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
     if (auto Err =
             populatePointerSlot(SectionSlotsMap[OffloadSectionEndAnnotation],
                                 OffloadSectionEndAnnotation,
-                                getBoundarySymbol("__stop_luthier_fatbin"))) {
+                                getBoundarySymbol("__stop_" + FatBinSection))) {
       C.emitError(llvm::toString(std::move(Err)));
       return llvm::PreservedAnalyses::none();
     }
@@ -417,11 +452,11 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
     addHandle(Fn, DeviceNameGV);
   }
 
-  /// Emit the harvested handles as one \c { void*, const char* } array into the
-  /// \c luthier_hip_handles section, retained via \c llvm.used so it survives
-  /// \c --gc-sections (\c SHF_GNU_RETAIN). The trait's HipHandleSection begin /
-  /// end pointer slots are pointed at the linker's
-  /// \c __start_/__stop_luthier_hip_handles boundary symbols, from which the
+  /// Emit the harvested handles as one \c { void*, const char* } array into
+  /// this TU's \c luthier_hip_handles_<cuid> section, retained via
+  /// \c llvm.used so it survives \c --gc-sections (\c SHF_GNU_RETAIN). The
+  /// trait's HipHandleSection begin / end pointer slots are pointed at that
+  /// section's \c __start_/__stop_ boundary symbols, from which the
   /// runtime reconstructs the \c ArrayRef<HipHandleInfo>. Only done when the
   /// trait is instantiated in this TU (its slots are present); an empty handle
   /// list still yields a valid empty (zero-length) section.
@@ -433,13 +468,13 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
         M, HandlesArrTy, /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage,
         llvm::ConstantArray::get(HandlesArrTy, Handles),
         ".luthier.hip_handles");
-    HandlesData->setSection("luthier_hip_handles");
+    HandlesData->setSection(HipHandleSection);
     llvm::appendToUsed(M, {HandlesData});
     if (!SectionSlotsMap[HipHandleSectionBeginAnnotation].empty()) {
       if (auto Err = populatePointerSlot(
               SectionSlotsMap[HipHandleSectionBeginAnnotation],
               HipHandleSectionBeginAnnotation,
-              getBoundarySymbol("__start_luthier_hip_handles"))) {
+              getBoundarySymbol("__start_" + HipHandleSection))) {
         C.emitError(llvm::toString(std::move(Err)));
         return llvm::PreservedAnalyses::none();
       }
@@ -448,7 +483,7 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
       if (auto Err = populatePointerSlot(
               SectionSlotsMap[HipHandleSectionEndAnnotation],
               HipHandleSectionEndAnnotation,
-              getBoundarySymbol("__stop_luthier_hip_handles"))) {
+              getBoundarySymbol("__stop_" + HipHandleSection))) {
         C.emitError(llvm::toString(std::move(Err)));
         return llvm::PreservedAnalyses::none();
       }

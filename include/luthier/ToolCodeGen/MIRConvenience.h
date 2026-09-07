@@ -64,6 +64,53 @@ void emitSGPRSwap(llvm::MachineBasicBlock::iterator InsertionPoint,
 void emitSGPRSwap(llvm::MachineBasicBlock &MBB, llvm::MCRegister SrcSGPR,
                   llvm::MCRegister DestSGPR);
 
+/// Exchange the wave's live \c FLAT_SCR pair with the pair of SGPRs a state
+/// value array storage scheme keeps the instrumentation's flat scratch base
+/// in, appending the moves at the end of \p MBB . Calling it a second time
+/// undoes the first, so a scratch access is bracketed by two identical calls.
+///
+/// The mechanism is generation-dependent, which is why the two absolute-flat-
+/// scratch storage schemes are split:
+///   * **GFX9** — \c FLAT_SCR_LO / \c FLAT_SCR_HI are ordinary addressable
+///     SGPRs, so each half is exchanged with a three-\c S_XOR_B32 swap and
+///     \p TempSGPR is not touched.
+///   * **GFX10+** — \c FLAT_SCR is reachable only through
+///     \c S_GETREG_B32 / \c S_SETREG_B32 (see
+///     \c SIFrameLowering::emitEntryFunctionFlatScratchInit ), and neither
+///     can name a second register, so there is no XOR trick available. Each
+///     half becomes a three-move rotation through \p TempSGPR :
+///     <tt>getreg TempSGPR</tt>, <tt>setreg InstFS</tt>,
+///     <tt>InstFS = TempSGPR</tt>.
+///
+/// \param MBB block to append the swap to
+/// \param InstFSLo SGPR holding the lo half of the instrumentation's flat
+/// scratch base on entry, and the application's on exit
+/// \param InstFSHi as \p InstFSLo , for the hi half
+/// \param TempSGPR a scratch SGPR, clobbered; only read on GFX10+
+void emitFlatScratchSwap(llvm::MachineBasicBlock &MBB,
+                         llvm::MCRegister InstFSLo, llvm::MCRegister InstFSHi,
+                         llvm::MCRegister TempSGPR);
+
+/// Park the wave's live \c FLAT_SCR pair in SVA lanes
+/// <tt>[Lane, Lane + 1]</tt> of \p SVAVGPR , appending at the end of
+/// \p MBB .
+///
+/// \p TempSGPR is only read on GFX10+, where \c FLAT_SCR cannot be a
+/// \c V_WRITELANE_B32 source (nor an \c S_MOV_B32 one) and has to be pulled
+/// out with \c S_GETREG_B32 first. On GFX9 the lane moves name \c FLAT_SCR_LO
+/// and \c FLAT_SCR_HI directly and \p TempSGPR may be a null register.
+void emitFlatScratchSaveToSVALanes(llvm::MachineBasicBlock &MBB,
+                                   llvm::MCRegister SVAVGPR, unsigned Lane,
+                                   llvm::MCRegister TempSGPR);
+
+/// Inverse of \c emitFlatScratchSaveToSVALanes : install \c FLAT_SCR from SVA
+/// lanes <tt>[Lane, Lane + 1]</tt> of \p SVAVGPR . Used both to restore a
+/// parked pair and to install the instrumentation's own base out of the SVA's
+/// \c FLAT_SCRATCH scalar-argument lanes.
+void emitFlatScratchLoadFromSVALanes(llvm::MachineBasicBlock &MBB,
+                                     llvm::MCRegister SVAVGPR, unsigned Lane,
+                                     llvm::MCRegister TempSGPR);
+
 /// Swaps the value between \p ScrVGPR and \p DestVGPR by inserting 3
 /// <tt>V_XOR_B32_e32</tt>s before \p InsertionPoint
 void emitVGPRSwap(llvm::MachineBasicBlock::iterator InsertionPoint,
@@ -153,53 +200,74 @@ llvm::MachineBasicBlock::iterator createSCCSafeSequenceOfMIs(
     const std::function<void(llvm::MachineBasicBlock &,
                              const llvm::TargetInstrInfo &)> &MIBuilder);
 
+/// The two emergency slots live at absolute offsets 0 and 4 of the wavefront's
+/// private segment, because the instrumentation stack starts there — see
+/// \c InstrumentationSlotsReservation . Nothing has to be added to reach them,
+/// so these accesses need no address register at all where the hardware can
+/// encode a SADDR-less \c SCRATCH_* .
+///
+/// \p SADDRScratchSGPR is that one exception. GFX9 absolute-flat-scratch
+/// targets support neither the ST addressing mode
+/// ( \c GCNSubtarget::hasFlatScratchSTMode , which needs gfx10.3 or gfx940 )
+/// nor the \c null SGPR, so a real register holding zero has to be handed to
+/// the SADDR operand. Each caller passes the scratch SGPR its storage scheme
+/// reserves for exactly this; the emitter zeroes it immediately before use.
+/// On every other target the argument is ignored and may be a null register.
 void emitLoadFromEmergencyVGPRScratchSpillLocation(
-    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
+    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister SADDRScratchSGPR,
     llvm::MCRegister DestVGPR);
 
 void emitLoadFromEmergencyVGPRScratchSpillLocation(
-    llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
+    llvm::MachineBasicBlock &MBB, llvm::MCRegister SADDRScratchSGPR,
     llvm::MCRegister DestVGPR);
 
 void emitStoreToEmergencyVGPRScratchSpillLocation(
-    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
+    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister SADDRScratchSGPR,
     llvm::MCRegister SrcVGPR, bool KillSource);
 
 void emitStoreToEmergencyVGPRScratchSpillLocation(
-    llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
+    llvm::MachineBasicBlock &MBB, llvm::MCRegister SADDRScratchSGPR,
     llvm::MCRegister SrcVGPR, bool KillSource);
 
 void emitLoadFromEmergencySVSScratchSpillLocation(
-    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
+    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister SADDRScratchSGPR,
     llvm::MCRegister DestVGPR);
 
 void emitLoadFromEmergencySVSScratchSpillLocation(
-    llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
+    llvm::MachineBasicBlock &MBB, llvm::MCRegister SADDRScratchSGPR,
     llvm::MCRegister DestVGPR);
 
 void emitStoreToEmergencySVSScratchSpillLocation(
-    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister StackPtr,
+    llvm::MachineBasicBlock::iterator MI, llvm::MCRegister SADDRScratchSGPR,
     llvm::MCRegister SrcVGPR, bool KillSource);
 
 void emitStoreToEmergencySVSScratchSpillLocation(
-    llvm::MachineBasicBlock &MBB, llvm::MCRegister StackPtr,
+    llvm::MachineBasicBlock &MBB, llvm::MCRegister SADDRScratchSGPR,
     llvm::MCRegister SrcVGPR, bool KillSource);
 
-/// Byte size of the instrumentation stack's reserved two-slot carve-out. The
-/// instrumentation stack pointer points at the *bottom* of the instrumentation
-/// stack, and these two slots sit at the very bottom of it:
-///   * \c [SP+0, SP+4) — emergency \c VGPR0 courier slot.
-///   * \c [SP+4, SP+8) — emergency state-value-array slot.
-/// A payload's own frame therefore begins at \c SP + \c InstrumentationSlotsReservation.
+/// Byte size of the instrumentation stack's reserved two-slot carve-out.
+///
+/// Luthier's instrumentation stack is pinned to the start of the wavefront's
+/// private segment — the instrumentation stack pointer is the constant zero —
+/// and these two slots sit at the very bottom of it:
+///   * \c [0, 4) — emergency \c VGPR0 courier slot.
+///   * \c [4, 8) — emergency state-value-array slot.
+/// A payload's own frame therefore begins at
+/// \c InstrumentationSlotsReservation , and the application's frame begins
+/// above the whole instrumentation reserve —
+/// \c WORK_ITEM_INSTRUMENTATION_PRIVATE_SEGMENT_SIZE bytes up — which is the
+/// displacement \c RebaseAppScratchAccessesPass adds to every application
+/// scratch access.
 inline constexpr unsigned InstrumentationSlotsReservation = 8;
 
 /// Mirrors \c getScratchScaleFactor in LLVM's \c SIFrameLowering.cpp: a stack
 /// pointer register holds a plain byte offset when flat scratch is enabled, and
 /// a wave-swizzled offset (bytes times the wavefront size) when scratch is
-/// addressed through the private segment buffer instead. Every place Luthier
-/// materializes, biases, or hands off an SP value has to agree with the
-/// subtarget's convention, otherwise the payload's LLVM-generated frame code and
-/// Luthier's hand-written scratch accesses disagree about units.
+/// addressed through the private segment buffer instead. Luthier's own
+/// emergency-slot accesses no longer need this — they address absolute offsets
+/// with a flat \c SCRATCH_* instruction — but a payload's \c SGPR32 and any
+/// value shared with LLVM-generated frame code still has to agree with the
+/// subtarget's convention.
 unsigned getScratchScaleFactor(const llvm::GCNSubtarget &ST);
 
 /// Emits an \c S_WAITCNT before \p MI with the given per-counter
