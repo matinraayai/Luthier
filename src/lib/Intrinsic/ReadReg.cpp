@@ -123,8 +123,27 @@ llvm::Error readRegMIRProcessor(
   };
 
   if (SrcRegSize > 32) {
+    // The merged value needs an *allocatable* class. `getPhysRegBaseClass` of a
+    // multi-dword SGPR tuple hands back `SReg_<N>`, which `SRegClass` in
+    // SIRegisterInfo.td marks `isAllocatable = 0` because it unions
+    // `SGPR_<N>` with `TTMP_<N>` --- and it wins the base-class lookup via its
+    // `BaseClassOrder`. Creating a virtual register of that class asserts, so
+    // narrow it to the allocatable subclass (`SGPR_<N>`) first.
+    const llvm::TargetRegisterClass *SrcBaseRC = TRI->getPhysRegBaseClass(Src);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        SrcBaseRC != nullptr,
+        llvm::formatv("luthier::readReg: register {0} has no base register "
+                      "class.",
+                      llvm::printReg(Src, TRI))));
+    const llvm::TargetRegisterClass *MergedRC =
+        TRI->getAllocatableClass(SrcBaseRC);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        MergedRC != nullptr,
+        llvm::formatv("luthier::readReg: register {0}'s class has no "
+                      "allocatable subclass to merge its channels into.",
+                      llvm::printReg(Src, TRI))));
     auto Builder = MIBuilder(llvm::AMDGPU::REG_SEQUENCE);
-    auto MergedReg = VirtRegBuilder(TRI->getPhysRegBaseClass(Src));
+    auto MergedReg = VirtRegBuilder(MergedRC);
     (void)Builder.addReg(MergedReg, llvm::RegState::Define);
 
     size_t NumChannels = SrcRegSize / 32;

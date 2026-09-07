@@ -49,8 +49,13 @@ writeRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
   // The first argument specifies the destination MCRegister enum value.
   auto *DestRegEnum = llvm::dyn_cast<llvm::ConstantInt>(User.getArgOperand(0));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      DestRegEnum != nullptr, "The first operand of the luthier::writeReg "
-                              "intrinsic is not a constant int"));
+      DestRegEnum != nullptr,
+      llvm::formatv("The first operand of the luthier::writeReg intrinsic "
+                    "'{0}' in '{1}' is not a constant int. A register name has "
+                    "to reach the intrinsic as a literal, so every frame "
+                    "between the payload and this call has to have been "
+                    "inlined.",
+                    User, User.getFunction()->getName())));
   llvm::MCRegister DestReg(DestRegEnum->getZExtValue());
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       llvm::MCRegister::isPhysicalRegister(DestReg.id()),

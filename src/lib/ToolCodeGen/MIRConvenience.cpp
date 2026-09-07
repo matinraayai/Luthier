@@ -90,11 +90,34 @@ void emitSGPRSwap(llvm::MachineBasicBlock &MBB, llvm::MCRegister SrcSGPR,
   emitSGPRSwapImpl(MBB, MBB.end(), SrcSGPR, DestSGPR);
 }
 
-/// \return the \c HwregEncoding immediate naming one half of \c FLAT_SCR .
-static int16_t flatScratchHwregEncoding(bool Hi) {
+/// \return the raw 16-bit \c HwregEncoding immediate naming one half of
+/// \c FLAT_SCR .
+///
+/// The two SOPK instructions that consume it disagree on how it is signed, and
+/// \c SIInstrInfo::verifyInstruction rejects the wrong choice:
+/// \c S_GETREG_B32 is in \c SIInstrInfo::sopkIsZext 's list and so needs an
+/// \c isUInt<16> operand, while \c S_SETREG_B32 is not and needs an
+/// \c isInt<16> one. A 32-bit-wide encoding sets the top size bits, so the
+/// value does not fit both; use \c flatScratchGetregImm and
+/// \c flatScratchSetregImm rather than this directly.
+static uint16_t flatScratchHwregEncoding(bool Hi) {
   using namespace llvm::AMDGPU::Hwreg;
-  return static_cast<int16_t>(
+  return static_cast<uint16_t>(
       HwregEncoding::encode(Hi ? ID_FLAT_SCR_HI : ID_FLAT_SCR_LO, 0, 32));
+}
+
+/// \return the \c FLAT_SCR half's hwreg immediate, zero-extended for
+/// \c S_GETREG_B32 .
+static int64_t flatScratchGetregImm(bool Hi) {
+  return static_cast<int64_t>(flatScratchHwregEncoding(Hi));
+}
+
+/// \return the \c FLAT_SCR half's hwreg immediate, sign-extended for
+/// \c S_SETREG_B32 . This is the form LLVM's own
+/// \c SIFrameLowering::emitEntryFunctionFlatScratchInit uses.
+static int64_t flatScratchSetregImm(bool Hi) {
+  return static_cast<int64_t>(
+      static_cast<int16_t>(flatScratchHwregEncoding(Hi)));
 }
 
 void emitFlatScratchSwap(llvm::MachineBasicBlock &MBB,
@@ -116,14 +139,13 @@ void emitFlatScratchSwap(llvm::MachineBasicBlock &MBB,
   // which leaves the application's half in InstFSx, exactly as the GFX9 swap
   // does, so a second call restores it.
   auto SwapHalf = [&](bool Hi, llvm::MCRegister InstFS) {
-    const int16_t Encoded = flatScratchHwregEncoding(Hi);
     (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
                         TII.get(llvm::AMDGPU::S_GETREG_B32), TempSGPR)
-        .addImm(Encoded);
+        .addImm(flatScratchGetregImm(Hi));
     (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
                         TII.get(llvm::AMDGPU::S_SETREG_B32))
         .addReg(InstFS)
-        .addImm(Encoded);
+        .addImm(flatScratchSetregImm(Hi));
     (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
                         TII.get(llvm::AMDGPU::S_MOV_B32), InstFS)
         .addReg(TempSGPR, llvm::RegState::Kill);
@@ -148,7 +170,7 @@ void emitFlatScratchSaveToSVALanes(llvm::MachineBasicBlock &MBB,
   for (unsigned I = 0; I != 2; ++I) {
     (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
                         TII.get(llvm::AMDGPU::S_GETREG_B32), TempSGPR)
-        .addImm(flatScratchHwregEncoding(/*Hi=*/I == 1));
+        .addImm(flatScratchGetregImm(/*Hi=*/I == 1));
     emitMoveFromSGPRToVGPRLane(MBB, TempSGPR, SVAVGPR, Lane + I, true);
   }
 }
@@ -171,7 +193,7 @@ void emitFlatScratchLoadFromSVALanes(llvm::MachineBasicBlock &MBB,
     (void)llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
                         TII.get(llvm::AMDGPU::S_SETREG_B32))
         .addReg(TempSGPR, llvm::RegState::Kill)
-        .addImm(flatScratchHwregEncoding(/*Hi=*/I == 1));
+        .addImm(flatScratchSetregImm(/*Hi=*/I == 1));
   }
 }
 

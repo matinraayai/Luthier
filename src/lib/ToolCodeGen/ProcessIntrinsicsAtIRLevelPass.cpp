@@ -123,6 +123,7 @@ luthier::ProcessIntrinsicsAtIRLevelPass::run(llvm::Module &IModule,
         if (auto Err = IRLoweringInfoOrErr.takeError()) {
           IModule.getContext().emitError(CallInst,
                                          llvm::toString(std::move(Err)));
+          return llvm::PreservedAnalyses::all();
         }
 
         // Build the inline-asm constraint string and operand type/value

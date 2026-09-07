@@ -627,6 +627,20 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
 
   // Linking the payload module in is not free, so hold it off until an
   // application instruction that can reach the private segment turns up.
+  /// Names of every payload the linked module contributed.
+  ///
+  /// Each payload is `__attribute__((used))`, which is what makes the device
+  /// compile emit it into the bundle at all --- nothing in that translation unit
+  /// calls it. The flip side is that the linked module pins all of them via
+  /// `llvm.compiler.used`, so their out-of-line bodies survive into
+  /// `ProcessIntrinsicsAtIRLevelPass`, which rejects them: a payload names the
+  /// register it writes back through its own parameter, and the intrinsic
+  /// lowering needs a literal. `createInjectedPayload` force-inlines the
+  /// payloads this pass actually uses, which fixes them up at the call site,
+  /// but the ones it does not use stay behind. So all of them get unpinned and
+  /// erased once every payload has been built.
+  llvm::SmallVector<std::string, 64> LinkedPayloadNames;
+
   bool Linked = false;
   // The subtarget comes from a target MachineFunction rather than from the
   // instrumentation module's MachineModuleAnalysis: the two always agree (a
@@ -655,10 +669,14 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
     llvm::SmallVector<llvm::GlobalValue *, 64> Used;
     llvm::collectUsedGlobalVariables(*Sub, Used, /*CompilerUsed=*/false);
     llvm::collectUsedGlobalVariables(*Sub, Used, /*CompilerUsed=*/true);
-    for (llvm::GlobalValue *GV : Used)
-      if (auto *F = llvm::dyn_cast<llvm::Function>(GV))
-        if (!F->isDeclaration() && F->hasLocalLinkage())
-          F->setLinkage(llvm::GlobalValue::ExternalLinkage);
+    for (llvm::GlobalValue *GV : Used) {
+      auto *F = llvm::dyn_cast<llvm::Function>(GV);
+      if (!F || F->isDeclaration())
+        continue;
+      if (F->hasLocalLinkage())
+        F->setLinkage(llvm::GlobalValue::ExternalLinkage);
+      LinkedPayloadNames.push_back(F->getName().str());
+    }
     if (llvm::Linker(IModule).linkInModule(std::move(Sub)))
       return LUTHIER_MAKE_GENERIC_ERROR(
           "RebaseAppScratchAccessesPass: failed to link the pass's device-side "
@@ -666,6 +684,7 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
     Linked = true;
     return llvm::Error::success();
   };
+
 
   /// Resolve one of the payload hooks to its \c llvm::Function in the IModule.
   auto hookFor = [&](auto *HostHandle) -> llvm::Expected<llvm::Function *> {
@@ -859,9 +878,14 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
             findNamedOp(MI, llvm::AMDGPU::OpName::soffset);
         const llvm::MachineOperand *SRsrc =
             findNamedOp(MI, llvm::AMDGPU::OpName::srsrc);
+        // The data operand's name is not uniform across the three classes: a
+        // FLAT or SCRATCH load defines `vdst`, while a MUBUF load defines
+        // `vdata` --- the same name its store reads. Try both rather than
+        // keying off the direction.
         const llvm::MachineOperand *Data =
-            findNamedOp(MI, D->IsStore ? llvm::AMDGPU::OpName::vdata
-                                       : llvm::AMDGPU::OpName::vdst);
+            findNamedOp(MI, llvm::AMDGPU::OpName::vdst);
+        if (!Data)
+          Data = findNamedOp(MI, llvm::AMDGPU::OpName::vdata);
         if (!Data || !Data->isReg() || !Data->getReg()) {
           Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
               "RebaseAppScratchAccessesPass: '{0}' in '{1}' has no data "
@@ -984,6 +1008,37 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
       }
     }
     MI->eraseFromParent();
+  }
+
+  // Retire the out-of-line payload bodies; see LinkedPayloadNames above for why
+  // none of them can be left behind.
+  if (!LinkedPayloadNames.empty()) {
+    llvm::SmallPtrSet<llvm::Function *, 32> ToRetire;
+    for (const std::string &Name : LinkedPayloadNames)
+      if (llvm::Function *F = IModule.getFunction(Name))
+        ToRetire.insert(F);
+    llvm::removeFromUsedLists(IModule, [&](llvm::Constant *C) {
+      auto *F = llvm::dyn_cast_or_null<llvm::Function>(
+          C ? C->stripPointerCasts() : nullptr);
+      return F && ToRetire.contains(F);
+    });
+    for (llvm::Function *F : ToRetire) {
+      // Each payload's `appendToCompilerUsed` erases the old llvm.compiler.used
+      // global and builds a new one, but LLVM keeps the superseded
+      // ConstantArrays alive, and each still counts as a use of everything it
+      // referenced. Drop those before concluding anything from use_empty().
+      F->removeDeadConstantUsers();
+      if (!F->use_empty()) {
+        Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+            "RebaseAppScratchAccessesPass: payload '{0}' still has {1} use(s) "
+            "after every injected payload was built; the ones this pass uses "
+            "are force-inlined and the rest are unused, so it should have "
+            "none.",
+            F->getName(), F->getNumUses()))));
+        return llvm::PreservedAnalyses::all();
+      }
+      F->eraseFromParent();
+    }
   }
 
   LLVM_DEBUG(luthier::dbgs()

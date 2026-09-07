@@ -181,10 +181,18 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     // Recompute freshly each time — the initial \c SVAInsertPt often
     // pointed at a \c luthier::readSVA \c INLINEASM the intrinsic
     // lowering loop later erases, which invalidates any captured
-    // iterator. Anchoring on \c SVAImplDef (never erased) and using
-    // \c std::next keeps SVA-related MIs right after the placeholder
-    // def, in dominator order, with a stable in-MBB anchor.
-    return std::next(SVAImplDef->getIterator());
+    // iterator. \c SVAImplDef is never erased, so it is the stable in-MBB
+    // anchor.
+    //
+    // It is used as a *trailing* sentinel, and that matters: \c BuildMI
+    // inserts before the position it is handed, so handing it a fixed
+    // \c std::next(SVAImplDef) would lay successive MIs down in reverse
+    // emission order — which puts a multi-lane \c readSVA 's
+    // \c REG_SEQUENCE ahead of the \c V_READLANE_B32 s it consumes, and
+    // register coalescing then fails with "Use not jointly dominated by
+    // defs". Inserting before the sentinel appends instead. Nothing reads
+    // \c SVAImplDef 's dead anchor vreg, so it is free to end up last.
+    return SVAImplDef->getIterator();
   };
 
   if (!SVAVGPR && IsInjectedPayload) {
@@ -206,9 +214,10 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
     if (!MF.front().isLiveIn(SVAVGPR))
       MF.front().addLiveIn(SVAVGPR);
 
-    // Anchor a dead virtual VGPR for \c svaInsertPt only. Emitting
-    // IMPLICIT_DEF on the physreg itself upsets downstream RA/LiveRegs
-    // bookkeeping; a dead vreg with a properly-defined lifetime is fine.
+    // Anchor a dead virtual VGPR for \c svaInsertPt only, which uses it as a
+    // trailing sentinel. Emitting IMPLICIT_DEF on the physreg itself upsets
+    // downstream RA/LiveRegs bookkeeping; a dead vreg with a properly-defined
+    // lifetime is fine.
     llvm::Register SVAAnchorVReg =
         MRI.createVirtualRegister(&llvm::AMDGPU::VGPR_32RegClass);
     SVAImplDef =
@@ -397,6 +406,20 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
                         llvm::printReg(Root, TRI)))));
       return {llvm::Register(), nullptr};
     }
+    // A reserved register's class is not allocatable, and there is no virtual
+    // register to copy it into --- \c createVirtualRegister asserts on one.
+    // Diagnose it here instead, naming the register: reaching this means some
+    // instrumentation asked to read a register the register allocator does not
+    // manage, which is a bug in the requesting pass rather than a condition to
+    // work around.
+    if (!RootCrossCopyRegClass->isAllocatable()) {
+      Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "Physical register {0} is not allocatable, so its value cannot be "
+          "read into a virtual register. Reading it has to go through the "
+          "state value array instead (see getFrameSVALaneForPhysReg).",
+          llvm::printReg(Root, TRI)))));
+      return {llvm::Register(), nullptr};
+    }
     llvm::Register RootVirtReg =
         MRI.createVirtualRegister(RootCrossCopyRegClass);
     (void)llvm::BuildMI(EntryBlock, EntryBlock.begin(), llvm::MIMetadata(),
@@ -480,6 +503,16 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
           "Channel {0} has no copy reg class", llvm::printReg(Channel, TRI)))));
       return llvm::Register();
     }
+    // See initializeSSAUpdaterForRoot: a reserved register has no allocatable
+    // class to be copied into, and createVirtualRegister asserts on one.
+    if (!RC->isAllocatable()) {
+      Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "Channel {0} is not allocatable, so its value cannot be read into a "
+          "virtual register. Reading it has to go through the state value "
+          "array instead (see getFrameSVALaneForPhysReg).",
+          llvm::printReg(Channel, TRI)))));
+      return llvm::Register();
+    }
     llvm::Register VReg = MRI.createVirtualRegister(RC);
     // Emit the placeholder right before the consuming intrinsic so dominance
     // is trivially satisfied — the resolved vreg in Phase 2 either already
@@ -528,6 +561,16 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
               Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
                   llvm::formatv("Physical register {0} doesn't have a copy "
                                 "reg class",
+                                llvm::printReg(Channel, TRI)))));
+              continue;
+            }
+            if (!ChannelCrossCopyRegClass->isAllocatable()) {
+              Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
+                  llvm::formatv("Physical register {0} is not allocatable, so "
+                                "it cannot be written through a virtual "
+                                "register. Writing it has to go through the "
+                                "state value array instead (see "
+                                "getFrameSVALaneForPhysReg).",
                                 llvm::printReg(Channel, TRI)))));
               continue;
             }
