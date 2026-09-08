@@ -904,8 +904,23 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
     /// the workgroup-ID system SGPRs added below — placed at
     /// \c getNextSystemSGPR() == \c SGPR0+NumUserSGPRs+NumSystemSGPRs — would
     /// alias the registers that hold the preloaded kernargs.
-    for (unsigned I = 0; I < PreloadLength; ++I)
-      (void)MFI->addReservedUserSGPR();
+    /// The first reserved SGPR is the base of the preload block. Record it in
+    /// \c ArgInfo so \c AMDGPUPreloadKernArgProlog can re-emit the
+    /// backward-compatibility prologue for this kernel: it reads
+    /// \c FirstKernArgPreloadReg, and its only upstream writers are
+    /// \c SIMachineFunctionInfo::addPreloadedKernArg (normal argument
+    /// lowering) and MIR deserialization, neither of which runs on a lifted
+    /// kernel. Leaving it unset makes that pass assert on a non-physical
+    /// register. \c TargetModulePatcherPass overwrites this if the
+    /// instrumentation's extra user SGPRs relocate the block.
+    llvm::MCRegister FirstPreloadSGPR;
+    for (unsigned I = 0; I < PreloadLength; ++I) {
+      llvm::Register Reserved = MFI->addReservedUserSGPR();
+      if (I == 0)
+        FirstPreloadSGPR = Reserved.asMCReg();
+    }
+    if (FirstPreloadSGPR)
+      MFI->getArgInfo().FirstKernArgPreloadReg = FirstPreloadSGPR;
 
     F->addFnAttr("amdgpu.kd.kernarg_preload_length",
                  llvm::formatv("{0}", PreloadLength).str());

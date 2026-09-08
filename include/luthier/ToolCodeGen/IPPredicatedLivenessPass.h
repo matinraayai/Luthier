@@ -56,6 +56,8 @@ private:
   friend class IPPredicatedLivenessAnalysis;
   PMBBLiveInsMap ActiveLiveInsByPMBB;
   PMBBLiveInsMap InactiveLiveInsByPMBB;
+  PMBBLiveInsMap ActiveLiveOutsByPMBB;
+  PMBBLiveInsMap InactiveLiveOutsByPMBB;
   /// True iff the dataflow ran in fully-discovered (inter-procedural) mode.
   /// False means it fell back to per-function local mode.
   bool ResultFullyDiscovered{false};
@@ -83,6 +85,35 @@ public:
   getPMBBInactiveLiveIns(const PredicatedMachineBasicBlock &PMBB) const {
     auto It = InactiveLiveInsByPMBB.find(&PMBB);
     return It == InactiveLiveInsByPMBB.end() ? nullptr : It->second.get();
+  }
+
+  /// \return pointer to the converged per-PMBB live-*out* set for the
+  /// EXEC-on (Active) lane partition, or \c nullptr if no entry was
+  /// recorded for \p PMBB
+  ///
+  /// This is the set the dataflow itself used as the starting point for
+  /// \p PMBB 's backward walk, so — unlike a union of the successors'
+  /// live-ins — it already accounts for the local-mode exit seeding: when
+  /// the IPPredCFG is not fully discovered, a PMBB with no successors is
+  /// seeded with its function's whole allocatable GPR pool rather than
+  /// with the empty set. Consumers that need "what is live after this
+  /// PMBB" must use this instead of re-unioning successors, or they will
+  /// silently drop that seed and treat an unresolved exit as if nothing
+  /// were live past it.
+  [[nodiscard]] const llvm::LivePhysRegs *
+  getPMBBActiveLiveOuts(const PredicatedMachineBasicBlock &PMBB) const {
+    auto It = ActiveLiveOutsByPMBB.find(&PMBB);
+    return It == ActiveLiveOutsByPMBB.end() ? nullptr : It->second.get();
+  }
+
+  /// \return pointer to the converged per-PMBB live-*out* set for the
+  /// EXEC-off (Inactive) lane partition, or \c nullptr if no entry was
+  /// recorded for \p PMBB. See \c getPMBBActiveLiveOuts for why this is
+  /// not interchangeable with a union over successors' live-ins.
+  [[nodiscard]] const llvm::LivePhysRegs *
+  getPMBBInactiveLiveOuts(const PredicatedMachineBasicBlock &PMBB) const {
+    auto It = InactiveLiveOutsByPMBB.find(&PMBB);
+    return It == InactiveLiveOutsByPMBB.end() ? nullptr : It->second.get();
   }
 
   [[nodiscard]] const PMBBLiveInsMap &getPMBBActiveLiveInsMap() const {

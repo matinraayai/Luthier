@@ -181,6 +181,38 @@ bool isAppOwnedGPR(const llvm::MachineFunction &MF, llvm::MCRegister Reg) {
   return false;
 }
 
+/// TODO: review this
+/// \return whether \p Reg has a constituent the subtarget cannot address.
+///
+/// \c SGPR_32RegClass spans SGPR0-SGPR105 for every AMDGPU subtarget, but
+/// the top of that range is not addressable everywhere: on gfx9 only
+/// s0-s101 exist, and encodings 102-107 name FLAT_SCR, XNACK_MASK and VCC
+/// instead. Handing one of those out as scratch does not merely overflow
+/// the kernel's SGPR request -- it aliases an architectural register, so
+/// the value written is not the value read back.
+static bool isBeyondAddressableFile(const llvm::MachineFunction &MF,
+                                    llvm::MCRegister Reg) {
+  const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
+  const auto *TRI = ST.getRegisterInfo();
+
+  auto beyond = [](llvm::MCPhysReg Sub, unsigned First, unsigned Count) {
+    return Sub >= First + Count;
+  };
+
+  for (llvm::MCPhysReg Sub : TRI->subregs_inclusive(Reg)) {
+    if (llvm::AMDGPU::SGPR_32RegClass.contains(Sub) &&
+        beyond(Sub, llvm::AMDGPU::SGPR0, ST.getAddressableNumSGPRs()))
+      return true;
+    if (llvm::AMDGPU::VGPR_32RegClass.contains(Sub) &&
+        beyond(Sub, llvm::AMDGPU::VGPR0, ST.getAddressableNumArchVGPRs()))
+      return true;
+    if (llvm::AMDGPU::AGPR_32RegClass.contains(Sub) &&
+        beyond(Sub, llvm::AMDGPU::AGPR0, ST.getAddressableNumArchVGPRs()))
+      return true;
+  }
+  return false;
+}
+
 bool isReservedForApp(const llvm::MachineFunction &MF, llvm::MCRegister Reg) {
   const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
   const auto *TRI = ST.getRegisterInfo();
@@ -193,6 +225,11 @@ bool isReservedForApp(const llvm::MachineFunction &MF, llvm::MCRegister Reg) {
   // Only the first kind is off limits: a GPR the wave was not launched with
   // holds nothing, and instrumentation grows the kernel's register request,
   // so the register will exist by the time the code runs.
+  //
+  // That last step only reaches as far as the register file does, though --
+  // no allocation request conjures up a GPR the subtarget cannot encode.
+  if (isBeyondAddressableFile(MF, Reg))
+    return true;
   return !isGeneralPurposeReg(*TRI, Reg) || isAppOwnedGPR(MF, Reg);
 }
 

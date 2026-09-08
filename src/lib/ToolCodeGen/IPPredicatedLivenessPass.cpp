@@ -264,6 +264,29 @@ IPPredicatedLivenessAnalysis::run(
     }
   }
 
+  // ---- Record the converged live-outs ----------------------------------
+  // Consumers that ask "what is live after this PMBB" must not re-derive it
+  // by unioning the successors' live-ins: that loses the local-mode
+  // \c ExitSeed above, so a successor-less PMBB in a partially-discovered
+  // CFG would look as though nothing were live past it instead of the
+  // function's whole allocatable pool.
+  //
+  // Walk every PMBB in the CFG rather than \c POOrder . \c POOrder is an
+  // RPO traversal from the single \c InitialEntryPointAttr entry, so it
+  // omits PMBBs in lifted functions that no CFG edge reaches (a call's
+  // return-site function is entered via a materialized return address, not
+  // an edge). Those keep empty live-ins because the fixed-point loop never
+  // visits them, but their live-outs are still well defined — an
+  // \c ExitSeed entry for a successor-less block among them is exactly the
+  // conservative answer a consumer needs.
+  for (PredicatedMachineBasicBlock &PMBB : CFG) {
+    auto ActiveOut = std::make_unique<llvm::LivePhysRegs>(TRI);
+    auto InactiveOut = std::make_unique<llvm::LivePhysRegs>(TRI);
+    computeLiveOut(&PMBB, *ActiveOut, *InactiveOut);
+    Out.ActiveLiveOutsByPMBB[&PMBB] = std::move(ActiveOut);
+    Out.InactiveLiveOutsByPMBB[&PMBB] = std::move(InactiveOut);
+  }
+
   return Out;
 }
 

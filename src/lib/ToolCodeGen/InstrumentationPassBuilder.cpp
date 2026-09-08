@@ -208,6 +208,27 @@ namespace {
 
 using namespace llvm;
 
+/// TODO: Remove these
+/// Dump the IP predicated CFG + predicated liveness right after ISEL on the
+/// instrumentation module, so the sets \c InjectedPayloadPreserveLiveRegsPass
+/// consumes can be inspected before anything downstream rewrites them.
+static llvm::cl::opt<bool> PrintIPCFGAndLivenessAfterISEL(
+    "luthier-print-ip-cfg-and-liveness-after-isel",
+    llvm::cl::desc("Print the inter-procedural predicated CFG and predicated "
+                   "liveness immediately after ISEL on the instrumentation "
+                   "module"),
+    llvm::cl::init(false), llvm::cl::Hidden);
+
+/// Same dump, but for the freshly lifted target module — before
+/// \c PatchPCUsagesPass rewrites call sites. Diffing the two shows what the
+/// PC patcher does to the predicated CFG.
+static llvm::cl::opt<bool> PrintIPCFGAndLivenessAfterLifting(
+    "luthier-print-ip-cfg-and-liveness-after-lifting",
+    llvm::cl::desc("Print the inter-procedural predicated CFG and predicated "
+                   "liveness right after CodeDiscoveryPass, before the PC "
+                   "patcher runs"),
+    llvm::cl::init(false), llvm::cl::Hidden);
+
 //=== CL option accessors: read AMDGPU's already-registered opts. ==========//
 
 template <typename OptT> OptT &lookupRegisteredOpt(StringRef Name) {
@@ -613,6 +634,15 @@ Error AMDGPUCodeGenPassBuilder::buildPipeline(PrototypePassManager &PPM) const {
     flushFPMsToMPM(PMW);
 
     PPM.addPass(createRunOnInstrumentationModuleAdaptor(std::move(ISelMPM)));
+  }
+
+  // Debug aid: dump the inter-procedural predicated CFG and the predicated
+  // liveness sets as they stand immediately after ISEL on the
+  // instrumentation module, i.e. before IntrinsicMIRLoweringPass and before
+  // InjectedPayloadPreserveLiveRegsPass consumes the liveness result.
+  if (PrintIPCFGAndLivenessAfterISEL) {
+    PPM.addPass(IPPredCFGPrinter(llvm::outs()));
+    PPM.addPass(IPPredicatedLivenessPrinter(llvm::outs()));
   }
 
   // ---- Stage 2: MIR-intrinsic lowering at Prototype level. -----------------
@@ -1416,6 +1446,16 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
   /// Add the code discovery pass
   PPM.addPass(CodeDiscoveryPass());
 
+  // Debug aid: dump the IP predicated CFG + predicated liveness for the
+  // freshly lifted target module, before RebaseAppScratchAccessesPass and
+  // PatchPCUsagesPass get a chance to rewrite any control flow. Pair this
+  // with -luthier-print-ip-cfg-and-liveness-after-isel to diff what the
+  // PC patcher does to the CFG.
+  if (PrintIPCFGAndLivenessAfterLifting) {
+    PPM.addPass(IPPredCFGPrinter(llvm::outs()));
+    PPM.addPass(IPPredicatedLivenessPrinter(llvm::outs()));
+  }
+
   /// Ivoke pre-instrumentation callbacks
   for (auto &CB: PreInstrumentationCallbacks) {
     CB(PPM, Level);
@@ -1481,6 +1521,32 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
 
   // Final target-module patch step.
   PPM.addPass(TargetModulePatcherPass());
+
+  // Re-establish the kernarg-preload backward-compatibility prologue on the
+  // lifted kernels.
+  //
+  // A kernel whose KD carries a non-zero kernarg_preload length has two entry
+  // points: the compatibility prologue that AMDGPUPreloadKernArgProlog emits
+  // at kernel_code_entry_byte_offset, and the real one 256 bytes later, which
+  // is where firmware that implements preloading starts the wave. The lifted
+  // kernel keeps the original's preload length (so its KD still advertises
+  // preloading), but the copy of the AMDGPU codegen pipeline above runs under
+  // an instrumentation-module adaptor and so never sees the target module —
+  // leaving the instrumented kernel advertising preload with no prologue and
+  // no padding, and the CP therefore starting the wave 256 bytes into the
+  // middle of the injected prologue.
+  //
+  // Running the pass here — after the patcher has installed the injected
+  // prologue and settled the user-SGPR layout — puts the compatibility block
+  // and its padding ahead of that prologue, so the real entry lands exactly
+  // 256 bytes in. The pass no-ops on kernels whose preload was disabled (the
+  // patcher zeroes NumKernargPreloadSGPRs and emits manual S_LOAD_DWORDs
+  // instead) and on subtargets that don't need the prologue.
+  addTargetModulePass(PPM,
+                      llvm::createModuleToFunctionPassAdaptor(
+                          llvm::createFunctionToMachineFunctionPassAdaptor(
+                              AMDGPUPreloadKernArgPrologPass())));
+
   if (Out)
     addTargetModulePass(PPM, NewPMAsmPrinter(FileType, *Out, true));
 

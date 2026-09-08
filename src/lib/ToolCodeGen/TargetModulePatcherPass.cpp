@@ -1304,19 +1304,32 @@ struct PartialCallgraphSVSHandoffPlan {
   /// SVS live at the entry of a non-kernel MF, or null when this MF needs
   /// no callee-side pickOff.
   const StateValueArrayStorage *PickOffSVS = nullptr;
-  /// The last call / indirect-branch / non-\c S_ENDPGM return of each MBB
-  /// that existed before patching, paired with the SVS live in that MBB.
-  llvm::SmallVector<
-      std::pair<llvm::MachineInstr *, const StateValueArrayStorage *>, 4>
-      HandOffs;
+  /// One hand-off site: the last call / indirect-branch / non-\c S_ENDPGM
+  /// return of an MBB that existed before patching.
+  struct Site {
+    /// The MI the caller-side \c handOffSVA is emitted before.
+    llvm::MachineInstr *MI;
+    /// The SVS live in the MBB \c MI belongs to.
+    const StateValueArrayStorage *SVS;
+    /// Whether control comes back to the instruction after \c MI , and a
+    /// matching caller-side \c pickOffSVA therefore has to be emitted
+    /// there. True for calls; false for returns and indirect branches,
+    /// which do not come back.
+    bool ReturnsHere;
+  };
+  llvm::SmallVector<Site, 4> HandOffs;
 };
 
 /// Resolve the partial-callgraph V0-courier handoff sites of \p MF into
 /// \p Plan:
 ///
 ///  1. Fast path — if \c SVLoc reports a single fixed SVS across every
-///     target MF, no handoff is needed (the SVA VGPR is unused by all
-///     functions and survives across calls). Leave \p Plan empty.
+///     target MF, no handoff is needed and \p Plan is left empty. Every
+///     function, discovered or not, then finds the SVA in the same place:
+///     one that Luthier instrumented reads it out of the storage the fixed
+///     scheme names, and one it did not instrument never looks at the SVA
+///     at all. There is nothing for \c V0 to shuttle either way, so this
+///     does not care whether the CFG came out fully discovered.
 ///
 ///  2. Callee side — a device function (non-kernel) receives the SVA in
 ///     \c V0 from its caller's \c handOffSVA, so record the entry-block
@@ -1324,27 +1337,21 @@ struct PartialCallgraphSVSHandoffPlan {
 ///
 ///  3. Caller side — every MBB may cross into an unknown callee. Record
 ///     the last call, indirect-branch or non-\c S_ENDPGM return MI of the
-///     block together with the block's SVS.
+///     block together with the block's SVS, and note whether control comes
+///     back to the MI after it — a call needs the matching pick-off there,
+///     a return or indirect branch has nowhere to put one.
 ///
 /// Must run before \c emitSVSSwitchesForMF for \p Plan to be meaningful;
 /// see \c PartialCallgraphSVSHandoffPlan.
 void capturePartialCallgraphSVSHandoffPlan(
-    llvm::MachineFunction &MF, const IPPredicatedCFG &IPCFG,
-    const SVStorageAndLoadLocations &SVLoc,
+    llvm::MachineFunction &MF, const SVStorageAndLoadLocations &SVLoc,
     PartialCallgraphSVSHandoffPlan &Plan) {
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   "
                                 "capturePartialCallgraphSVSHandoffPlan MF='"
                              << MF.getName() << "'\n");
-  bool CFGFullyDiscovered = true;
-  for (const PredicatedMachineBasicBlock &PMBB : IPCFG) {
-    if (PMBB.hasUnresolvedEdges()) {
-      CFGFullyDiscovered = false;
-      break;
-    }
-  }
-  if (SVLoc.hasFixedStorageAcrossAllFunctions() && CFGFullyDiscovered) {
+  if (SVLoc.hasFixedStorageAcrossAllFunctions()) {
     LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
-                                  "SVS is fixed and CFG fully discovered; "
+                                  "SVS is fixed across all functions; "
                                   "skipping handoff for MF '"
                                << MF.getName() << "'\n");
     return;
@@ -1371,11 +1378,24 @@ void capturePartialCallgraphSVSHandoffPlan(
   // \c V0 holds at that point — its return value — into the courier slot and
   // puts the SVA in \c V0 for its caller, exactly mirroring the call
   // direction. \c V0 never holds the SVA and the return value at the same
-  // time. That only works if the caller emits the matching pickOff right
-  // after the call, which is what \c PickOffsAfterCall below records.
+  // time. That only works because the caller pairs every call site with a
+  // \c pickOffSVA on the far side of it — \c Site::ReturnsHere marks the
+  // sites that get one, and \c emitPartialCallgraphSVSHandoffWraps emits it.
   for (llvm::MachineBasicBlock &MBB : MF) {
     llvm::MachineInstr *TargetMI = nullptr;
     for (auto It = MBB.rbegin(), End = MBB.rend(); It != End; ++It) {
+      // \c PATCHPOINT carries \c isCall in its LLVM instruction description,
+      // but an instrumentation marker is not an application control transfer
+      // and must not be wrapped. The payload it stands for is Luthier's own
+      // code, compiled against this MF's SVS, so it already knows where the
+      // SVA is and needs nothing couriered to it. Wrapping it is also unsafe
+      // in the return direction: a payload is free to clobber \c V0 (it is
+      // holding instrumentation state, not an application value, across the
+      // injection), and \c pickOffSVA would then copy that garbage into the
+      // SVS storage register and lose the state value array for the rest of
+      // the function.
+      if (It->getOpcode() == llvm::TargetOpcode::PATCHPOINT)
+        continue;
       if (It->isCall() || It->isIndirectBranch() ||
           (It->isReturn() && It->getOpcode() != llvm::AMDGPU::S_ENDPGM)) {
         TargetMI = &*It;
@@ -1396,7 +1416,8 @@ void capturePartialCallgraphSVSHandoffPlan(
     auto Segs = SVLoc.getStorageIntervals(MBB);
     assert(!Segs.empty() && "Empty SVStorage Segment");
 
-    Plan.HandOffs.emplace_back(TargetMI, &Segs.back().getSVS());
+    Plan.HandOffs.push_back({TargetMI, &Segs.back().getSVS(),
+                             TargetMI->isCall()});
     LLVM_DEBUG(luthier::dbgs()
                << "[TargetModulePatcherPass]     "
                   "handOffSVA planned before "
@@ -1417,6 +1438,17 @@ void capturePartialCallgraphSVSHandoffPlan(
 /// slot. Caller side: \c handOffSVA spills \c V0's app value to the SVS's
 /// emergency slot and loads the SVA into \c V0, so the callee sees
 /// \c V0 == SVA.
+///
+/// Every call site gets a second, caller-side \c pickOffSVA on the far side
+/// of the call, which is the exact mirror of the callee's entry one: the
+/// callee hands the SVA back in \c V0 at its return and leaves \c V0's
+/// app value — its return value, by then — in the courier slot, so the
+/// caller has to run the same two steps to put both back where the
+/// application expects them. Without it \c V0 stays loaded with the SVA for
+/// the rest of the block and every later application read of \c V0 gets the
+/// state value array instead of its own value. The pick-off is also what
+/// re-seeds this block's SVS storage register, which the callee is free to
+/// have clobbered — it may run a different storage scheme entirely.
 void emitPartialCallgraphSVSHandoffWraps(
     llvm::MachineFunction &MF, const PartialCallgraphSVSHandoffPlan &Plan,
     const StateValueArraySpecs &Specs) {
@@ -1435,12 +1467,39 @@ void emitPartialCallgraphSVSHandoffWraps(
     Plan.PickOffSVS->pickOffSVA(MF.front().front(), Specs, ST);
   }
 
-  for (const auto &[TargetMI, BlockSVS] : Plan.HandOffs) {
+  const llvm::TargetInstrInfo &TII = *ST.getInstrInfo();
+  for (const auto &[TargetMI, BlockSVS, ReturnsHere] : Plan.HandOffs) {
     LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]     "
                                   "handOffSVA before call/indirect-branch in "
                                << llvm::printMBBReference(*TargetMI->getParent())
                                << "\n");
+    // Resolve the pick-off's anchor before the hand-off runs. Both go
+    // through createSCCSafeSequenceOfMIs, which splits the block at its
+    // insertion point; the MIs move between blocks but keep their order and
+    // their addresses, so a pointer taken here stays the right one.
+    llvm::MachineInstr *PickOffAt = nullptr;
+    if (ReturnsHere) {
+      llvm::MachineBasicBlock &MBB = *TargetMI->getParent();
+      auto AfterCall = std::next(TargetMI->getIterator());
+      // A call that ends its block has nothing to anchor on. Give it an
+      // S_NOP to sit before rather than reaching into the successor: the
+      // pick-off has to run on the return path only, and a successor block
+      // can be reached from elsewhere too.
+      PickOffAt = AfterCall != MBB.end()
+                      ? &*AfterCall
+                      : llvm::BuildMI(MBB, MBB.end(), llvm::DebugLoc(),
+                                      TII.get(llvm::AMDGPU::S_NOP))
+                            .addImm(0)
+                            .getInstr();
+    }
     BlockSVS->handOffSVA(*TargetMI, Specs, ST);
+    if (PickOffAt) {
+      LLVM_DEBUG(luthier::dbgs()
+                 << "[TargetModulePatcherPass]     "
+                    "pickOffSVA after call in "
+                 << llvm::printMBBReference(*PickOffAt->getParent()) << "\n");
+      BlockSVS->pickOffSVA(*PickOffAt, Specs, ST);
+    }
   }
 
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass]   emitted "
@@ -1572,11 +1631,17 @@ static bool isDeadAndTakeableAt(const llvm::MachineFunction &MF,
 /// enclosing MBB's live-outs (populated upstream via
 /// \c IPPredicatedLiveness / \c IPPredCFG ) and stepped backward to \p MI ,
 /// with \c luthier::isReservedForApp standing in for \c MRI.isReserved so
-/// registers above the application's launch budget stay eligible. Both
-/// scans walk their register class in reverse so those above-budget
-/// registers are tried first and tier 1 succeeds as often as possible —
-/// same ordering \c SVStorageAndLoadLocations uses when it scavenges SVA
-/// storage.
+/// registers above the application's launch budget stay eligible.
+///
+/// Every scan walks its register class forward, lowest-numbered register
+/// first. Note that TableGen appends \c VCC to \c SGPR_64 ( \c SIRegisterInfo.td :
+/// <tt>def SGPR_64 : ... (add SGPR_64Regs, VCC)</tt> ), so VCC is the class's
+/// *last* member. Walking in reverse therefore offered VCC as the very first
+/// candidate, and since \c isReservedForApp only rejects registers
+/// \c MRI.isReserved already covers, a dead VCC was accepted — handing the
+/// site's \c S_SWAPPC_B64 a return-address/call-target pair that any VALU
+/// instruction in the callee implicitly overwrites. Forward order keeps VCC
+/// as the last resort it should be.
 ///
 /// SVA-storage overlap is tested with \c TRI.regsOverlap , so a paired
 /// candidate whose halves alias an individually-claimed SGPR is rejected.
@@ -1620,7 +1685,7 @@ scavengeSGPRsAtSite(const llvm::MachineInstr &MI,
     return !OverlapsSVA(R) && !luthier::isReservedForApp(MF, R);
   };
 
-  for (llvm::MCPhysReg Reg : llvm::reverse(llvm::AMDGPU::SGPR_64RegClass)) {
+  for (llvm::MCPhysReg Reg : llvm::AMDGPU::SGPR_64RegClass) {
     if (IsSpillablePair(Reg) && isDeadAndTakeableAt(MF, TRI, Live, Reg)) {
       Out.Pair = llvm::MCRegister(Reg);
       break;
@@ -1637,7 +1702,7 @@ scavengeSGPRsAtSite(const llvm::MachineInstr &MI,
           "instrumentation point, so there is nowhere to spill one. Every "
           "MI in InjectedPayloadAndInstPoint should have one.",
           MF.getName(), MBB.getNumber()));
-    for (llvm::MCPhysReg Reg : llvm::reverse(llvm::AMDGPU::SGPR_64RegClass)) {
+    for (llvm::MCPhysReg Reg : llvm::AMDGPU::SGPR_64RegClass) {
       if (IsSpillablePair(Reg)) {
         Out.Pair = llvm::MCRegister(Reg);
         Out.NeedsSVASpill = true;
@@ -1661,14 +1726,14 @@ scavengeSGPRsAtSite(const llvm::MachineInstr &MI,
     auto IsSpillableSCCSave = [&](llvm::MCPhysReg R) {
       return IsSpillablePair(R) && !TRI.regsOverlap(R, Out.Pair);
     };
-    for (llvm::MCPhysReg Reg : llvm::reverse(llvm::AMDGPU::SGPR_32RegClass)) {
+    for (llvm::MCPhysReg Reg : llvm::AMDGPU::SGPR_32RegClass) {
       if (IsSpillableSCCSave(Reg) && isDeadAndTakeableAt(MF, TRI, Live, Reg)) {
         Out.SCCSave = llvm::MCRegister(Reg);
         break;
       }
     }
     if (!Out.SCCSave && Out.SVS) {
-      for (llvm::MCPhysReg Reg : llvm::reverse(llvm::AMDGPU::SGPR_32RegClass)) {
+      for (llvm::MCPhysReg Reg : llvm::AMDGPU::SGPR_32RegClass) {
         if (IsSpillableSCCSave(Reg)) {
           Out.SCCSave = llvm::MCRegister(Reg);
           Out.NeedsSVASpill = true;
@@ -3017,14 +3082,56 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
              "preload disabled: (new fixed user SGPRs) + preload > HW ceiling; "
              "emitting manual S_LOAD_DWORD for "
           << OrigPreloadLength << " preload dword(s)\n");
-      llvm::MCRegister KernargSegPtr = SIMFI.getPreloadedReg(
-          llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR);
+      /// Base the fallback loads on the ORIGINAL (pre-aggregator) kernarg
+      /// segment pointer, not the post-aggregator one. The restore-move
+      /// loop above has already copied the pointer back to its original
+      /// physreg, and that physreg is guaranteed to sit outside
+      /// \c [OrigPreloadStartSGPR, +OrigPreloadLength): in the app kernel's
+      /// original layout the kernarg pointer is a user SGPR and the preload
+      /// block sits at the tail of the user SGPRs, so the pointer is
+      /// strictly below the block.
+      ///
+      /// Using the post-aggregator position instead can land the base
+      /// *inside* the destination range — e.g. a forced
+      /// PRIVATE_SEGMENT_BUFFER at SGPR0_SGPR3 shifts the kernarg pointer
+      /// to SGPR4_SGPR5 while the block still starts at SGPR2 — in which
+      /// case iterations I=2,3 overwrite the base that iterations I>=4
+      /// read. There is only one \c S_WAITCNT, after the loop, so nothing
+      /// orders those writebacks against the later issues and the base
+      /// tears mid-sequence.
+      llvm::MCRegister KernargSegPtr;
+      for (const auto &[Class, OldReg] : PreloadedArgSnapshot) {
+        if (Class == llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR) {
+          KernargSegPtr = OldReg;
+          break;
+        }
+      }
+      if (!KernargSegPtr)
+        KernargSegPtr = SIMFI.getPreloadedReg(
+            llvm::AMDGPUFunctionArgInfo::KERNARG_SEGMENT_PTR);
       if (!KernargSegPtr)
         return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
             "TargetModulePatcherPass: kernel '{0}' needs manual kernarg "
             "S_LOAD_DWORD fallback but KERNARG_SEGMENT_PTR was not "
             "installed by the aggregator",
             KernelMF.getName()));
+      /// Enforce the non-overlap invariant instead of silently emitting a
+      /// load sequence that clobbers its own base pointer.
+      const unsigned FirstDstID = FR.OrigPreloadStartSGPR.id();
+      const unsigned LastDstID = FirstDstID + OrigPreloadLength - 1;
+      for (unsigned SubIdx : {llvm::AMDGPU::sub0, llvm::AMDGPU::sub1}) {
+        llvm::MCRegister BaseSub = TRIR.getSubReg(KernargSegPtr, SubIdx);
+        if (!BaseSub)
+          continue;
+        if (BaseSub.id() >= FirstDstID && BaseSub.id() <= LastDstID)
+          return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+              "TargetModulePatcherPass: kernel '{0}' manual kernarg "
+              "S_LOAD_DWORD fallback base {1} overlaps its own preload "
+              "destination range {2}..{3}",
+              KernelMF.getName(), TRIR.getName(BaseSub),
+              TRIR.getName(FR.OrigPreloadStartSGPR),
+              TRIR.getName(llvm::MCRegister::from(LastDstID))));
+      }
       // Read the original preload dword offset from the KD attr
       // (populated by CodeDiscoveryPass). A missing attr means the
       // original KD had offset 0.
@@ -3061,6 +3168,18 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
             KernelMF.getName(), NewNumUsedUserSGPRs, OrigPreloadLength));
       const llvm::MCRegister NewPreloadStartSGPR = llvm::MCRegister::from(
           llvm::AMDGPU::SGPR0 + NewNumUsedUserSGPRs - OrigPreloadLength);
+
+      /// Publish the preload block's new base into \c ArgInfo so
+      /// \c AMDGPUPreloadKernArgProlog — which runs on the target module right
+      /// after this pass — can emit the backward-compatibility prologue and
+      /// its 256-byte padding. That pass reads \c FirstKernArgPreloadReg
+      /// (see \c AMDGPUPreloadKernArgProlog::addBackCompatLoads), and the only
+      /// upstream writers are \c SIMachineFunctionInfo::addPreloadedKernArg
+      /// (normal argument lowering) and MIR deserialization — neither of which
+      /// runs on a lifted kernel, so without this the field stays
+      /// \c NoRegister and the prologue would load into SGPR0.
+      SIMFI.getArgInfo().FirstKernArgPreloadReg = NewPreloadStartSGPR;
+
       if (NewPreloadStartSGPR != FR.OrigPreloadStartSGPR) {
         LLVM_DEBUG(luthier::dbgs()
                    << "[TargetModulePatcherPass]     "
@@ -3574,7 +3693,7 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
       continue;
     llvm::MachineFunction &MF =
         TargetFAM.getResult<llvm::MachineFunctionAnalysis>(F).getMF();
-    capturePartialCallgraphSVSHandoffPlan(MF, IPCFG, SVLocations,
+    capturePartialCallgraphSVSHandoffPlan(MF, SVLocations,
                                           HandoffPlans[&MF]);
   }
 

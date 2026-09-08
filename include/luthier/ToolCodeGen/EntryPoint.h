@@ -64,24 +64,68 @@ public:
     return nullptr;
   }
 
-  /// \returns the kernel descriptor's entry address if the entry point is a
-  /// kernel descriptor, otherwise the device address
-  [[nodiscard]] uint64_t getEntryPointAddress() const {
-    if (isDeviceAddress()) {
+  /// Size of the kernarg-preload backward-compatibility prologue that
+  /// \c AMDGPUPreloadKernArgProlog emits ahead of a preloading kernel's real
+  /// entry point.
+  ///
+  /// A kernel that asks the CP to preload kernargs is emitted with *two* entry
+  /// points. The one named by \c kernel_code_entry_byte_offset is a
+  /// compatibility block that re-materializes the preloaded kernargs with
+  /// \c s_load instructions (for firmware that doesn't implement preloading)
+  /// and then branches to the real entry; it is padded out to this size so
+  /// that firmware which *does* implement preloading can skip it by starting
+  /// the wave exactly this many bytes further in.
+  ///
+  /// See \c llvm/lib/Target/AMDGPU/AMDGPUPreloadKernArgProlog.cpp.
+  static constexpr uint64_t KernargPreloadBackCompatPrologSize = 256;
+
+  /// \returns the number of kernarg dwords this entry point's kernel asks the
+  /// CP to preload into SGPRs; 0 if this is not a kernel, or if the kernel
+  /// does not use kernarg preloading
+  [[nodiscard]] unsigned getKernargPreloadLength() const {
+    const auto *KD = getKernelDescriptor();
+    if (!KD)
+      return 0;
+    return AMDHSA_BITS_GET(KD->kernarg_preload,
+                           llvm::amdhsa::KERNARG_PRELOAD_SPEC_LENGTH);
+  }
+
+  /// \returns the address the wave actually begins executing at: the device
+  /// address if this entry point is one, otherwise the start of the kernel's
+  /// code as derived from its descriptor
+  ///
+  /// \param TargetNeedsKernargPreloadProlog whether the subtarget emits the
+  /// backward-compatibility prologue for preloading kernels — i.e.
+  /// \c GCNSubtarget::needsKernArgPreloadProlog(), true for every target with
+  /// the kernarg-preload feature except GFX1250+. Defaults to \c true, which
+  /// is correct for every such target; pass the subtarget's answer explicitly
+  /// when it is available.
+  ///
+  /// For a preloading kernel the code does *not* start at
+  /// \c kernel_code_entry_byte_offset — that names the compatibility prologue,
+  /// which the CP skips (see \c KernargPreloadBackCompatPrologSize). Reporting
+  /// the prologue as the kernel's start makes the lifted entry block the
+  /// compatibility block, whose \c s_load instructions *define* the preload
+  /// SGPRs and so make the kernel's live-in kernargs look dead at its entry.
+  [[nodiscard]] uint64_t
+  getEntryPointAddress(bool TargetNeedsKernargPreloadProlog = true) const {
+    if (isDeviceAddress())
       return std::get<uint64_t>(EP);
-    } else {
-      const auto *KD = getKernelDescriptor();
 
-      const auto KDAddress = reinterpret_cast<uint64_t>(KD);
-      const auto ByteOffset =
-          static_cast<uint64_t>(KD->kernel_code_entry_byte_offset);
+    const auto *KD = getKernelDescriptor();
+    const auto KDAddress = reinterpret_cast<uint64_t>(KD);
 
-      assert(KDAddress > ByteOffset &&
-             "kernel descriptor's entry byte offset is greater than its base "
-             "address");
-      return KD->kernel_code_entry_byte_offset > 0 ? KDAddress + ByteOffset
-                                                   : KDAddress - ByteOffset;
-    }
+    /// \c kernel_code_entry_byte_offset is a *signed* displacement from the
+    /// descriptor's own address — the code may sit either after (positive) or
+    /// before (negative) the descriptor — so it has to be applied with signed
+    /// arithmetic rather than branching on its sign.
+    uint64_t Addr = KDAddress + static_cast<uint64_t>(static_cast<int64_t>(
+                                    KD->kernel_code_entry_byte_offset));
+
+    if (TargetNeedsKernargPreloadProlog && getKernargPreloadLength() != 0)
+      Addr += KernargPreloadBackCompatPrologSize;
+
+    return Addr;
   }
 
   [[nodiscard]] uint64_t getRawAddress() const {

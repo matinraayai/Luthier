@@ -37,6 +37,7 @@
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/CodeGen/MachineInstrBuilder.h>
 #include <llvm/CodeGen/MachineOperand.h>
+#include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/CodeGen/MachineRegisterInfo.h>
 #include <llvm/CodeGen/TargetOpcodes.h>
 #include <llvm/CodeGen/TargetRegisterInfo.h>
@@ -77,6 +78,13 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
 
   bool Changed = false;
 
+  // Payload MFs this pass splices a new entry block into. Their cached
+  // MachineFunction analyses are invalidated at the end of the pass: a new
+  // MachineBasicBlock invalidates every block-numbered analysis, and there is
+  // no other route by which a Prototype-level pass can reach the
+  // instrumentation module's MachineFunctionAnalysisManager.
+  llvm::SmallPtrSet<llvm::MachineFunction *, 8> CFGChangedPayloads;
+
   // Iterate PATCHPOINT markers in the target module directly. For each, compute
   // the live-out at the PATCHPOINT — that is the set the payload must preserve
   // — by unioning successor PMBBs' Active live-ins and stepping backward
@@ -113,21 +121,29 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
         continue;
       const PredicatedMachineBasicBlock &PMBB = CFG.at(MBB);
 
-      // MBB live-out (Active partition) = union of successor PMBBs' Active
-      // and Inactive live-ins. Boundary semantics: control flow may converge
-      // from paths whose EXEC-on/off partitions have swapped, so Active_out
-      // gets both partitions of each successor.
+      // MBB live-out: take the converged live-out \c IPPredicatedLiveness
+      // recorded for this PMBB, unioning both lane partitions. Boundary
+      // semantics: control flow may converge from paths whose EXEC-on/off
+      // partitions have swapped, so Active_out gets both partitions.
+      //
+      // Do NOT re-derive this by unioning the successors' live-ins. The
+      // analysis applies a local-mode exit seed — when the IPPredCFG is not
+      // fully discovered, a PMBB with no successors starts from its
+      // function's whole allocatable GPR pool instead of the empty set —
+      // and a successor union silently drops it. A patchpoint sitting in
+      // such a block (e.g. an indirect call site whose callee was never
+      // resolved, so the block has no CFG successor at all) would then
+      // compute an empty live-out and let the payload clobber registers the
+      // application still needs past the call.
       llvm::LivePhysRegs Live(TargetTRI);
-      for (const PredicatedMachineBasicBlock &Succ : PMBB.successors()) {
-        if (const llvm::LivePhysRegs *SuccLive =
-                Liveness.getPMBBActiveLiveIns(Succ))
-          for (llvm::MCPhysReg R : *SuccLive)
-            Live.addReg(R);
-        if (const llvm::LivePhysRegs *SuccLive =
-                Liveness.getPMBBInactiveLiveIns(Succ))
-          for (llvm::MCPhysReg R : *SuccLive)
-            Live.addReg(R);
-      }
+      if (const llvm::LivePhysRegs *ActiveOut =
+              Liveness.getPMBBActiveLiveOuts(PMBB))
+        for (llvm::MCPhysReg R : *ActiveOut)
+          Live.addReg(R);
+      if (const llvm::LivePhysRegs *InactiveOut =
+              Liveness.getPMBBInactiveLiveOuts(PMBB))
+        for (llvm::MCPhysReg R : *InactiveOut)
+          Live.addReg(R);
 
       for (auto MIt = MBB.rbegin(), MEnd = MBB.rend(); MIt != MEnd; ++MIt) {
         llvm::MachineInstr &MI = *MIt;
@@ -361,6 +377,7 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
           (void)llvm::BuildMI(*NewEntry, NewEntry->end(), llvm::DebugLoc(),
                               TII->get(llvm::AMDGPU::S_BRANCH))
               .addMBB(&Body);
+          CFGChangedPayloads.insert(MF);
         }
 
         llvm::MachineBasicBlock &EntryMBB = MF->front();
@@ -498,9 +515,40 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
           // program order.
           if (!EntryMBB.isLiveIn(PhysReg))
             EntryMBB.addLiveIn(PhysReg);
-          (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
-                              TII->get(llvm::AMDGPU::IMPLICIT_DEF))
-              .addReg(PhysReg, llvm::RegState::Define);
+          // ... except for \c $scc , where the dummy def is actively harmful.
+          //
+          // \c ProcessImplicitDefsPass propagates an \c IMPLICIT_DEF into the
+          // uses it dominates and marks them \c undef . For every other
+          // preserved register that is survivable: the save COPY becomes
+          // <tt>%vreg = COPY undef $physreg</tt>, both halves of the pair get
+          // coalesced onto the same physreg, and the whole thing folds away as
+          // an identity copy — a no-op preservation of a register the payload
+          // never clobbered.
+          //
+          // \c $scc cannot take that path. Its cross-copy class is
+          // \c SReg_32 , so save and restore straddle a class boundary and
+          // cannot be coalesced. The \c undef save is deleted on its own and
+          // the restore survives alone, reading a register that now has no def
+          // anywhere in the module and writing it into \c $scc on the way
+          // out. Observed on HeCBench adam-hip at \c -O1 : the payload
+          // returned with <tt>$scc = (s58 != 0)</tt> for an s58 that nothing
+          // ever wrote, and the application's inner-loop \c S_CBRANCH_SCC1
+          // consumed it — skipping the block holding its stores, its induction
+          // update and its only \c S_ENDPGM path, so the kernel never
+          // terminated.
+          //
+          // The live-in declaration added above is what actually carries the
+          // truth, and for \c $scc it has to carry it alone. That is sound
+          // here for the same reason it is sound for SelectionDAG's
+          // argument \c CopyFromReg copies: these saves sit in a block with no
+          // predecessors (the pass splices a fresh entry block above), so
+          // \c LiveIntervals manufactures the reaching def from the entry
+          // block's live-in list and the coalescer has nothing to complain
+          // about.
+          if (PhysReg != llvm::AMDGPU::SCC)
+            (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
+                                TII->get(llvm::AMDGPU::IMPLICIT_DEF))
+                .addReg(PhysReg, llvm::RegState::Define);
           Preserved.push_back(
               {PhysReg, MRI.createVirtualRegister(CrossCopyRC),
                IsWholeWave ? MRI.createVirtualRegister(CrossCopyRC)
@@ -580,6 +628,47 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
 
   if (!Changed)
     return llvm::PreservedAnalyses::all();
+
+  // Drop the cached MachineFunction analyses of every payload whose CFG
+  // changed above.
+  //
+  // The splice adds a MachineBasicBlock, which invalidates every analysis
+  // keyed on block numbers — \c MachineDominatorTree ,
+  // \c MachinePostDominatorTree , \c MachineLoopInfo and friends. Their
+  // \c DomTreeNodes vectors are sized \c getMaxNumber(MF)+1 at build time
+  // (\c GenericDomTree.h ), so the new block's index lands one past the end.
+  // \c SILowerControlFlowPass takes both trees from the cache unchecked
+  // (\c getCachedResult ), and \c removeMBBifRedundant then feeds the new
+  // block into \c PDT->applyUpdates() , whose delete-edge DFS walks a
+  // \c DomTreeNodeBase that was never allocated and segfaults. The
+  // "dominator tree used with outdated block numbers" assert that would
+  // catch it is compiled out of a release LLVM.
+  //
+  // This has to be done by hand. Returning a \c PreservedAnalyses that
+  // withholds \c IModuleMachineFunctionAnalysisManagerPrototypeProxy does
+  // nothing: that proxy is registered but never requested, so no \c Result
+  // of it is ever cached on the PrototypeAnalysisManager and its
+  // \c InnerAM->clear() hook cannot fire. The other route in,
+  // \c llvm::MachineFunctionAnalysisManagerModuleProxy on the
+  // instrumentation module, is deliberately re-preserved before every
+  // \c MAM.invalidate in \c runModulePass (Prototype.cpp) because its hook
+  // clears the whole manager.
+  //
+  // Clearing per-MF entries here does not endanger the MachineFunctions:
+  // \c llvm::MachineFunctionAnalysis is a *Function*-level analysis and owns
+  // the MF from the instrumentation module's FunctionAnalysisManager, which
+  // is left untouched.
+  if (!CFGChangedPayloads.empty()) {
+    llvm::MachineFunctionAnalysisManager &IModuleMFAM =
+        MAM.getResult<llvm::MachineFunctionAnalysisManagerModuleProxy>(IModule)
+            .getManager();
+    for (llvm::MachineFunction *MF : CFGChangedPayloads) {
+      LLVM_DEBUG(luthier::dbgs()
+                 << "Invalidating cached MachineFunction analyses of payload '"
+                 << MF->getName() << "' after entry-block splice\n");
+      IModuleMFAM.invalidate(*MF, llvm::PreservedAnalyses::none());
+    }
+  }
 
   // Preserve the outer MAM proxy so the Prototype adaptor doesn't
   // wipe every cached module-level analysis for both modules on the way out —
