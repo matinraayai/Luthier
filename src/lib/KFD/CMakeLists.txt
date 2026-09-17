@@ -103,7 +103,6 @@ target_link_libraries(luthier-kfd-queue-wrapper PRIVATE
 add_library(LuthierKFDTooling OBJECT
         KfdAllocationResolver.cpp
         IsaInfo.cpp
-        KfdAgent.cpp
         KfdTargetMachine.cpp
         Topology.cpp
 )

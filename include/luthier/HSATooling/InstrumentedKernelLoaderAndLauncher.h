@@ -184,7 +184,7 @@ public:
   /// memory its descriptors live in without HSA's involvement, so pointer info
   /// reports \c HSA_EXT_POINTER_TYPE_UNKNOWN and there is no owner to read. Such
   /// a caller does know the device, though -- from the queue the dispatch arrived
-  /// on -- and \c luthier::kfd::agentForGpuId turns that into an agent. Omitting
+  /// on -- and \c luthier::hsa::agentForGpuId turns that into an agent. Omitting
   /// this argument preserves the previous behaviour exactly.
   llvm::Expected<hsa_executable_symbol_t>
   loadInstrumented(std::unique_ptr<llvm::MemoryBuffer> Relocatable,

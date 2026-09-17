@@ -27,8 +27,8 @@
 /// all: HSA appears here as the *oracle*, never as a dependency of the code
 /// under test.
 //===----------------------------------------------------------------------===//
+#include "luthier/HSA/Agent.h"
 #include "luthier/KFD/IsaInfo.h"
-#include "luthier/KFD/KfdAgent.h"
 #include "luthier/KFD/KfdTargetMachine.h"
 #include "luthier/KFD/Topology.h"
 
@@ -375,7 +375,7 @@ TEST(KfdTargetMachine, UnknownDeviceIsAnError) {
 /// perfectly well and resolves the wrong device. On a single-GPU machine a
 /// swapped mapping would even pass; this asserts per agent, so a multi-GPU box
 /// catches it.
-TEST(KfdAgent, EveryGpuAgentRoundTripsThroughItsGpuId) {
+TEST(AgentForGpuId, EveryGpuAgentRoundTripsThroughItsGpuId) {
   if (!luthier::test::hsaGpuAvailable())
     GTEST_SKIP() << "no HSA GPU on this machine";
 
@@ -385,7 +385,7 @@ TEST(KfdAgent, EveryGpuAgentRoundTripsThroughItsGpuId) {
 
   unsigned Checked = 0;
   for (const uint32_t Id : allGpuIds()) {
-    auto AgentOrErr = luthier::kfd::agentForGpuId(Core, Id);
+    auto AgentOrErr = luthier::hsa::agentForGpuId(Core, Id);
     ASSERT_TRUE(static_cast<bool>(AgentOrErr))
         << "gpu_id " << Id << ": " << errorMessage(AgentOrErr.takeError());
 
@@ -407,14 +407,14 @@ TEST(KfdAgent, EveryGpuAgentRoundTripsThroughItsGpuId) {
 }
 
 /// A device the driver does not have must be an error, not some other agent.
-TEST(KfdAgent, UnknownGpuIdIsAnError) {
+TEST(AgentForGpuId, UnknownGpuIdIsAnError) {
   if (!luthier::test::hsaGpuAvailable())
     GTEST_SKIP() << "no HSA GPU on this machine";
   ASSERT_EQ(HSA_STATUS_SUCCESS, hsa_init());
   ::CoreApiTable Table = luthier::test::buildCoreApiTable();
   const luthier::hsa::ApiTableContainer<::CoreApiTable> Core(Table);
 
-  auto AgentOrErr = luthier::kfd::agentForGpuId(Core, 0xFFFFFFFFU);
+  auto AgentOrErr = luthier::hsa::agentForGpuId(Core, 0xFFFFFFFFU);
   ASSERT_FALSE(static_cast<bool>(AgentOrErr));
   const std::string Msg = errorMessage(AgentOrErr.takeError());
   EXPECT_NE(std::string::npos, Msg.find("4294967295"));

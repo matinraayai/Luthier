@@ -21,6 +21,7 @@
 #ifndef LUTHIER_KFD_KFD_TOOL_H
 #define LUTHIER_KFD_KFD_TOOL_H
 #include "luthier/Common/Singleton.h"
+#include "luthier/HSA/Agent.h"
 #include "luthier/HSA/hsa.h"
 
 #include <hsa/hsa.h>
@@ -30,7 +31,6 @@
 #include "luthier/HSATooling/LLVMUserTrait.h"
 #include "luthier/HSATooling/LoadedCodeObjectCache.h"
 #include "luthier/KFD/FdSharing.h"
-#include "luthier/KFD/KfdAgent.h"
 #include "luthier/KFD/KfdAllocationResolver.h"
 #include "luthier/KFD/KfdPacketMonitorTrait.h"
 #include "luthier/KFD/KfdTargetMachine.h"
@@ -210,7 +210,7 @@ public:
           "No dispatch is in flight on this thread, so the GPU it would run on "
           "is unknown. Outside a packet callback there is nothing that names the "
           "device.");
-    return kfd::agentForGpuId(this->getCoreApiTableSnapshot().getTable(), GpuId);
+    return hsa::agentForGpuId(this->getCoreApiTableSnapshot().getTable(), GpuId);
   }
 
   /// \brief The accessor this tool's pipeline uses.

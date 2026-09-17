@@ -887,7 +887,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
                       "allocation. If this descriptor belongs to an application "
                       "that allocated it through the driver rather than through "
                       "HSA, pass the agent explicitly -- see "
-                      "luthier::kfd::agentForGpuId.",
+                      "luthier::hsa::agentForGpuId.",
                       KDAddr)));
     Agent = PointerInfo.agentOwner;
   }

@@ -18,15 +18,6 @@
 /// Records GPU memory allocations made directly through KFD \c ioctl calls, so
 /// an address can be resolved back to the allocation that contains it.
 ///
-/// \par Why this exists
-/// A dispatch packet identifies its kernel by a bare address (\c kernel_object).
-/// To instrument that kernel Luthier must read its instructions, which first
-/// requires knowing which allocation the address falls in, how large it is and
-/// which GPU owns it. On the HSA path \c hsa_amd_pointer_info answers that (see
-/// \c HsaMemoryAllocationAccessor). Below HSA nothing does, and the driver offers
-/// no "what is allocated?" query -- which is why both userspace layers keep their
-/// own books, and why we must too.
-///
 /// \par Reference implementation
 /// \c libhsakmt/src/fmm.c, which tracks the same ioctls one layer up. Its
 /// \c vm_object (\c fmm.c:91) is the model for \c Allocation, and

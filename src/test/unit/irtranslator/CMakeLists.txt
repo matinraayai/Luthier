@@ -9,6 +9,10 @@ add_executable(InstrSemanticFuzzer
   FuzzerDriver.cpp
   $<TARGET_OBJECTS:LuthierToolCodeGen>
   $<TARGET_OBJECTS:LuthierHSA>
+  # hsa::agentForGpuId bridges an agent to the driver's gpu_id through
+  # sysfs. Not linked via LuthierKFDTooling, which would drag in the rest
+  # of the KFD layer; this one file has no dependencies of its own.
+  ${CMAKE_SOURCE_DIR}/src/lib/KFD/Topology.cpp
 )
 
 target_compile_definitions(InstrSemanticFuzzer PRIVATE ${LLVM_DEFINITIONS})

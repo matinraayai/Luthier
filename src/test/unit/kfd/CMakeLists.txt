@@ -46,7 +46,8 @@ add_llvm_executable(KFDUnitTests
         ${CMAKE_SOURCE_DIR}/src/lib/KFD/KfdAllocationResolver.cpp
         ${CMAKE_SOURCE_DIR}/src/lib/KFD/Topology.cpp
         ${CMAKE_SOURCE_DIR}/src/lib/KFD/IsaInfo.cpp
-        ${CMAKE_SOURCE_DIR}/src/lib/KFD/KfdAgent.cpp
+        ${CMAKE_SOURCE_DIR}/src/lib/HSA/Agent.cpp
+        ${CMAKE_SOURCE_DIR}/src/lib/HSA/Region.cpp
         ${CMAKE_SOURCE_DIR}/src/lib/KFD/KfdTargetMachine.cpp
         ${CMAKE_SOURCE_DIR}/src/lib/HSA/HsaError.cpp
         ${CMAKE_SOURCE_DIR}/src/lib/LLVM/LLVMError.cpp

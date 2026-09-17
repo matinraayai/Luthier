@@ -94,6 +94,12 @@ getAllAgentsWithDeviceType(const ApiTableContainer<::CoreApiTable> &CoreApi,
 llvm::Error getAllAgents(const ApiTableContainer<::CoreApiTable> &CoreApi,
                          llvm::SmallVectorImpl<hsa_agent_t> &Agents);
 
+/// \brief The HSA agent for the \p GpuId from KFD
+/// \return the agent, or an \c llvm::Error naming \p GpuId when no HSA agent
+/// maps to it.
+[[nodiscard]] llvm::Expected<hsa_agent_t>
+agentForGpuId(const ApiTableContainer<::CoreApiTable> &CoreApi, uint32_t GpuId);
+
 //===----------------------------------------------------------------------===//
 // Agent info queries
 //===----------------------------------------------------------------------===//
