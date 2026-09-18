@@ -38,10 +38,12 @@ add_llvm_executable(KFDUnitTests
         KfdTargetMachineTest.cpp
         AllocationChainTest.cpp
         ${CMAKE_SOURCE_DIR}/src/test/kfd/Verify.cpp
-        # The wrapper's logic, not the shared library. The interposer that
-        # redefines ioctl lives in a separate file, so linking this in does not
-        # interpose on the test process itself.
-        ${CMAKE_SOURCE_DIR}/src/lib/KFD/QueueWrapper.cpp
+        # QueueWrapper.cpp used to be listed here, for its side of the driver
+        # boundary. It is gone: that logic is now luthier::PacketMonitorTrait's
+        # fields and methods, in a header, and nothing installs an interception
+        # hook until a tool is loaded as an audit_hook plugin -- so there is no
+        # longer anything to keep out of the test process by leaving a file out
+        # of this list.
         ${CMAKE_SOURCE_DIR}/src/lib/KFD/AllocationTracker.cpp
         ${CMAKE_SOURCE_DIR}/src/lib/KFD/KfdAllocationResolver.cpp
         ${CMAKE_SOURCE_DIR}/src/lib/KFD/Topology.cpp

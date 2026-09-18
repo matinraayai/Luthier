@@ -30,11 +30,10 @@
 #include "luthier/HSATooling/InstrumentedKernelLoaderAndLauncher.h"
 #include "luthier/HSATooling/LLVMUserTrait.h"
 #include "luthier/HSATooling/LoadedCodeObjectCache.h"
+#include "luthier/HSATooling/PacketMonitorTrait.h"
 #include "luthier/KFD/FdSharing.h"
 #include "luthier/KFD/KfdAllocationResolver.h"
-#include "luthier/KFD/KfdPacketMonitorTrait.h"
 #include "luthier/KFD/KfdTargetMachine.h"
-#include "luthier/KFD/QueueWrapper.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 
@@ -57,9 +56,13 @@ namespace luthier {
 ///
 /// | \c HSATool trait | here |
 /// | --- | --- |
-/// | \c PacketMonitorTrait | replaced by \c KfdPacketMonitorTrait, which reads the ring buffer the preloaded wrapper substituted |
+/// | \c PacketMonitorTrait | the same trait, doing more: as well as wrapping \c hsa_queue_create it intercepts the driver boundary and substitutes each queue's ring buffer |
 /// | \c ToolDeviceCodeOffloadParserTrait | \b opt-in, see below |
 /// | everything else | the same |
+///
+/// That first row used to name a second trait, \c KfdPacketMonitorTrait. The two
+/// merged: a tool wants the same thing from both doors, and keeping two traits in
+/// agreement by hand is what the merge removed.
 ///
 /// That table used to be longer. The loaded-code-object cache and the
 /// instrumented-kernel loader were both dropped on the belief that HSA could not
@@ -103,18 +106,35 @@ namespace luthier {
 ///     \c HSA_ENABLE_INTERRUPT=0, which makes it use busy-wait signals rather
 ///     than the KFD events that need the page.
 ///
-/// \c ensureHsaInitialized does all of this, once, on the first dispatch.
+/// \c PacketMonitorTrait::ensureHsaInitializedInApplication does all of this,
+/// once.
 ///
-/// \par Why initialization is late rather than from a constructor
+/// \par Why initialization is late, and why it is not this class's job any more
 /// The application must claim those resources first. Initializing HSA first does
 /// not avoid the collisions, it only moves them onto the application -- measured,
 /// the application's \c ACQUIRE_VM then fails with \c EBUSY, and tinygrad does
 /// not guard that call. A failure on our side can be reported; a failure on
 /// theirs is a crash in someone else's program.
 ///
+/// It moved into the trait because the trait is what can see the right moment.
+/// This class could only react to the first \e dispatch; the trait hooks
+/// \c open, so it reacts to the application first touching \c /dev/kfd -- earlier,
+/// and still after the application has claimed what it needs. The trait also
+/// loads the runtime with \c dlmopen into \c LM_ID_BASE, because a tool is an
+/// audit_hook plugin and therefore lives in the auditor's linker namespace; HSA
+/// has to come up in the \e application's namespace, where the descriptors it
+/// needs actually exist.
+///
 /// \par Construction
-/// \p Derived must provide
-/// <tt>onDispatchPacket(const kfd::QueueInfo &, uint64_t, hsa::AqlPacket &)</tt>.
+/// \p Derived must provide both of \c PacketMonitorTrait's callbacks, because
+/// the trait opens both doors and fires each unconditionally:
+/// <tt>onDispatchPacket(const typename PacketMonitorTrait<Derived>::QueueInfo &,
+/// uint64_t, hsa::AqlPacket &)</tt> for packets copied out of a substituted
+/// ring, and
+/// <tt>onPackets(const hsa_queue_t &, uint64_t, llvm::ArrayRef<hsa::AqlPacket>,
+/// hsa_amd_queue_intercept_packet_writer)</tt> for batches from an HSA intercept
+/// queue -- which this kind of application does produce, once HSA has been
+/// brought up inside it to load an instrumented kernel.
 /// A tool that injects payloads must additionally provide
 /// <tt>run(Prototype &, PrototypeAnalysisManager &)</tt> and a source for the
 /// instrumentation module -- either \c ToolDeviceCodeOffloadParserTrait, which
@@ -128,7 +148,7 @@ class KFDTool : public Singleton<Derived>,
                 public InstrumentedKernelLoaderAndLauncherTrait<Derived>,
                 public IntrinsicProcessorRegistryTraitBase<Derived>,
                 public InstrumentationPipelineTrait<Derived, TargetUnitT>,
-                public KfdPacketMonitorTrait<Derived> {
+                public PacketMonitorTrait<Derived> {
 public:
   KFDTool(typename Singleton<Derived>::CreationKey,
           const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
@@ -140,77 +160,36 @@ public:
         LoadedCodeObjectCacheTrait<Derived>(CoreApi, VenLoader, Err),
         InstrumentedKernelLoaderAndLauncherTrait<Derived>(CoreApi, AmdExt,
                                                          VenLoader, Err),
-        KfdPacketMonitorTrait<Derived>(Err) {}
+        PacketMonitorTrait<Derived>(CoreApi, AmdExt, VenLoader, Err) {}
 
-  /// \brief Bring HSA up inside this application, once.
+  /// \brief Bring HSA up in the application's linker namespace, once.
   ///
-  /// Called on the first dispatch rather than from a constructor: the application
-  /// has to claim the driver's per-process resources first, or it is the party
-  /// that fails. See the class comment for the three collisions this works
+  /// Kept as a name a tool can call, but the work is the trait's: it hooks
+  /// \c open, so it already knows when the application first touches the driver,
+  /// and it is what holds the tool region that keeps the runtime's own queues out
+  /// of our callback. See the class comment for the three collisions this works
   /// around and why each needs a different mechanism.
   ///
   /// \note Safe to call repeatedly; only the first call does anything.
   llvm::Error ensureHsaInitialized() {
-    llvm::Error Err = llvm::Error::success();
-    std::call_once(HsaInitOnce, [&] {
-      // Everything HSA does from here creates queues and allocations inside an
-      // application that did not ask for them. Without this the wrapper would
-      // treat the runtime's own queues as the application's and feed our
-      // dispatches to our own callback.
-      //
-      // Process-wide, not the per-thread region: bringing the runtime up creates
-      // queues on threads it spawns itself, so a thread-local flag does not
-      // cover them. Measured -- with the per-thread region the runtime's queue
-      // was wrapped as the process's second queue.
-      kfd::ProcessWideToolRegion Region;
-
-      // Redirect HSA's render-node opens onto the descriptor the application
-      // already had bound. Enabled now rather than at load time because there is
-      // nothing to redirect to until the application has claimed a GPU.
-      kfd::enableFdSharing();
-
-      // Keep ROCr off the application's KFD event page. It reads its flags while
-      // constructing the runtime, which happens inside hsa_init, so setting this
-      // here is in time.
-      setenv("HSA_ENABLE_INTERRUPT", "0", /*overwrite=*/1);
-
-      // Called directly rather than through a captured API table, which is the
-      // convention everywhere else in a Luthier tool. It cannot be followed
-      // here: the tables are captured *by* HSA initializing, so reading the
-      // snapshot first is circular -- and reading one that was never captured is
-      // a fatal error, so the circularity presents as the tool killing the
-      // application from inside a packet callback rather than as a bad result.
-      //
-      // The convention exists to stop a tool re-entering its own wrappers. That
-      // risk does not apply to this one call, because there is nothing wrapped
-      // until it returns.
-      const hsa_status_t St = ::hsa_init();
-      if (St != HSA_STATUS_SUCCESS)
-        Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-            "hsa_init failed with status {0} inside an application that drives "
-            "the KFD driver. Run with LUTHIER_VERBOSE=1: the wrapper prints "
-            "every failing KFD ioctl with its number and errno, which is what "
-            "identifies a per-process driver resource the application already "
-            "claimed.",
-            static_cast<int>(St)));
-    });
-    return Err;
+    return PacketMonitorTrait<Derived>::ensureHsaInitializedInApplication();
   }
 
-  /// \brief The HSA agent for the GPU whose dispatch is being handled.
+  /// \brief The HSA agent for the GPU that owns \p KD.
   ///
-  /// The loader needs an agent, and cannot get one from the kernel descriptor:
-  /// an application that allocates through the driver leaves
-  /// \c hsa_amd_pointer_info reporting the descriptor as owned by nothing. The
-  /// queue names the device instead.
-  llvm::Expected<hsa_agent_t> agentForCurrentDispatch() {
-    const uint32_t GpuId = KfdPacketMonitorTrait<Derived>::getDispatchGpuId();
-    if (GpuId == 0)
-      return LUTHIER_MAKE_GENERIC_ERROR(
-          "No dispatch is in flight on this thread, so the GPU it would run on "
-          "is unknown. Outside a packet callback there is nothing that names the "
-          "device.");
-    return hsa::agentForGpuId(this->getCoreApiTableSnapshot().getTable(), GpuId);
+  /// The loader needs an agent, and cannot get one from HSA: an application that
+  /// allocates through the driver leaves \c hsa_amd_pointer_info reporting the
+  /// descriptor as owned by nothing. The driver does know, though -- the
+  /// \c ALLOC_MEMORY_OF_GPU that produced the descriptor's memory named a
+  /// \c gpu_id, and the allocation map recorded it -- so the descriptor's own
+  /// address is what names the device.
+  llvm::Expected<hsa_agent_t>
+  agentForKernelDescriptor(const llvm::amdhsa::kernel_descriptor_t *KD) {
+    auto GpuIdOrErr = PacketMonitorTrait<Derived>::gpuIdForAddress(
+        reinterpret_cast<uint64_t>(KD));
+    LUTHIER_RETURN_ON_ERROR(GpuIdOrErr.takeError());
+    return hsa::agentForGpuId(this->getCoreApiTableSnapshot().getTable(),
+                              *GpuIdOrErr);
   }
 
   /// \brief The accessor this tool's pipeline uses.
@@ -242,23 +221,19 @@ public:
   ///
   /// The device comes from the queue the packet arrived on, not from \p KD: a
   /// kernel descriptor does not say where it will run, and below HSA there is no
-  /// agent owning its allocation to ask. \c KfdPacketMonitorTrait records the
-  /// \c gpu_id for the duration of the callback, which is the only window in
-  /// which this question has an answer.
+  /// agent owning its allocation to ask. The driver does know: the allocation
+  /// \p KD sits in was created by an \c ALLOC_MEMORY_OF_GPU naming a \c gpu_id,
+  /// and \c PacketMonitorTrait's allocation map recorded it.
   llvm::Expected<std::unique_ptr<llvm::TargetMachine>>
   buildTargetMachineForKD(const llvm::amdhsa::kernel_descriptor_t *KD) {
     // Still from sysfs rather than from the agent, even though an agent is now
     // reachable. Nothing is gained by routing it through HSA, and the sysfs path
     // is checked against HSA's own answer by
     // KfdIsaInfo.AgreesWithWhatHsaReports.
-    const uint32_t GpuId = KfdPacketMonitorTrait<Derived>::getDispatchGpuId();
-    if (GpuId == 0)
-      return LUTHIER_MAKE_GENERIC_ERROR(
-          "No dispatch is in flight on this thread, so the GPU a kernel would "
-          "run on is unknown. A target machine can only be built while handling "
-          "the packet that dispatches the kernel -- unlike the HSA path, where "
-          "the kernel descriptor's owning agent names the device at any time.");
-    return buildTargetMachineForKfdDispatch(GpuId, *KD);
+    auto GpuIdOrErr = PacketMonitorTrait<Derived>::gpuIdForAddress(
+        reinterpret_cast<uint64_t>(KD));
+    LUTHIER_RETURN_ON_ERROR(GpuIdOrErr.takeError());
+    return buildTargetMachineForKfdDispatch(*GpuIdOrErr, *KD);
   }
 
 
@@ -288,10 +263,6 @@ public:
         *NameOrErr, KD, Preset);
   }
 
-private:
-  /// Guards \c ensureHsaInitialized. The first dispatch on any thread brings HSA
-  /// up; the rest go straight through.
-  std::once_flag HsaInitOnce;
 };
 
 } // namespace luthier

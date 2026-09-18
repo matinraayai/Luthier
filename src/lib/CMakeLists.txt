@@ -1,3 +1,4 @@
+add_subdirectory(Audit)
 add_subdirectory(AMDGPU)
 add_subdirectory(LLVM)
 add_subdirectory(Linker)

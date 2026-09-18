@@ -13,10 +13,14 @@ add_library(LuthierTooling SHARED
         $<TARGET_OBJECTS:LuthierLinker>
         $<TARGET_OBJECTS:LuthierPatchPCUsagesPass>
         $<TARGET_OBJECTS:LuthierRebaseAppScratchAccessesPass>
-        # The KFD module's LLVM-facing half: the MemoryAllocationAccessor over
-        # allocations observed at the ioctl boundary. Only this half -- LuthierKFD
-        # itself is the preloadable wrapper's logic and must stay out of here, or
-        # linking Luthier would drag in an ioctl interceptor.
+        # Both halves of the KFD module. LuthierKFD used to be excluded, because
+        # it carried an ioctl interceptor that linking Luthier would then have
+        # installed process-wide. It no longer does: interception is LD_AUDIT, so
+        # nothing is installed until the tool is named in AH_PLUGINS and the
+        # application is started under LD_AUDIT. What is left here is the
+        # allocation map and the DRM descriptor sharing, which PacketMonitorTrait
+        # calls directly.
+        $<TARGET_OBJECTS:LuthierKFD>
         $<TARGET_OBJECTS:LuthierKFDTooling>
 )
 
@@ -34,7 +38,14 @@ target_include_directories(LuthierTooling
 )
 
 target_link_libraries(LuthierTooling
-        PUBLIC hip::host rocprofiler-sdk::rocprofiler-sdk hsa-runtime64::hsa-runtime64 LuthierAMDGPU
+        # PUBLIC, because PacketMonitorTrait.h includes the audit_hook header and
+        # every tool includes that header: a Luthier tool *is* an audit_hook
+        # plugin, and ah_register_hook lives in this library. Loaded out of
+        # AH_PLUGINS into the auditor's linker namespace, where the LD_AUDIT
+        # engine already sits, so this DT_NEEDED resolves to the engine itself
+        # rather than to a second copy.
+        PUBLIC LuthierAudit
+        hip::host rocprofiler-sdk::rocprofiler-sdk hsa-runtime64::hsa-runtime64 LuthierAMDGPU
         LLVMAMDGPUAsmParser LLVMAMDGPUDesc LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA
         LLVMAMDGPUUtils LLVMAMDGPUCodeGen
         PRIVATE
@@ -42,9 +53,9 @@ target_link_libraries(LuthierTooling
         LLVMSymbolize LLVMDebugInfoDWARF LLVMCodeGenTypes LLVMMC LLVMMCA LLVMMCDisassembler LLVMObject
         LLVMSupport LLVMTarget LLVMTargetParser LLVMTransformUtils LLVMBitReader LLVMAnalysis LLVMAsmPrinter
         LLVMCore LLVMPasses LLVMCodeGen LLVMLinker LLVMIRReader
-        # LuthierKFDTooling resolves the KFD tracker's exports with dlsym, so that a
-        # tool reads the map the preloaded wrapper actually filled rather than a
-        # second, permanently empty one of its own.
+        # dlmopen, for loading the HSA runtime into the application's linker
+        # namespace rather than the auditor's -- see
+        # PacketMonitorTrait::ensureHsaInitializedInApplication.
         ${CMAKE_DL_LIBS})
 
 if (${LUTHIER_ENABLE_SPIRV})
