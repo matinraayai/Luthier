@@ -20,6 +20,7 @@
 #ifndef LUTHIER_HSA_TOOLING_HSA_MEMORY_ALLOCATION_ACCESSOR_H
 #define LUTHIER_HSA_TOOLING_HSA_MEMORY_ALLOCATION_ACCESSOR_H
 #include "luthier/HSATooling/LoadedCodeObjectCache.h"
+#include "luthier/KFD/AllocationTracker.h"
 #include "luthier/ToolCodeGen/DriverAllocationResolver.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 
@@ -43,9 +44,9 @@ namespace luthier {
 ///
 /// \par Why the order is precise-first rather than complete-first
 /// Sitting lower in the software stack makes a source see \e more allocations
-/// and describe each of them \e more coarsely, because the driver cannot see how
-/// a runtime subdivides what it handed out. \c InstructionTraces disassembles
-/// forward until it reaches the end of the reported allocation
+/// and describe each of them \e more coarsely, because the driver cannot see
+/// how a runtime subdivides what it handed out. \c InstructionTraces
+/// disassembles forward until it reaches the end of the reported allocation
 /// (\c InstructionTracesAnalysis.cpp:105-106), so a coarse answer sends it
 /// running for megabytes past the end of the kernel, through other kernels and
 /// data. Asking the complete source first would mean it always answers, and
@@ -57,14 +58,14 @@ namespace luthier {
 ///
 /// \par A non-empty HSA answer is final, even without a code object
 /// \c hsa_amd_pointer_info reports a real allocation but never a parsed code
-/// object, and it is tempting to treat that as a half-answer worth improving on.
-/// It is not, for two reasons. The resolver's answer would be \e coarser, per
-/// the paragraph above. And downstream, \c CodeDiscoveryPass treats "code object
-/// present but no symbol at that offset" as a hard error
+/// object, and it is tempting to treat that as a half-answer worth improving
+/// on. It is not, for two reasons. The resolver's answer would be \e coarser,
+/// per the paragraph above. And downstream, \c CodeDiscoveryPass treats "code
+/// object present but no symbol at that offset" as a hard error
 /// (\c CodeDiscoveryPass.cpp:743-745) while falling back gracefully to a
 /// synthetic \c kernel-<addr> name when there is no code object at all
-/// (\c :761) -- so a missing code object is a supported outcome, not a defect to
-/// route around.
+/// (\c :761) -- so a missing code object is a supported outcome, not a defect
+/// to route around.
 ///
 /// \par Why HSA may be entirely unavailable, and why that is not an error
 /// An application that drives the KFD driver itself holds the DRM virtual
@@ -95,6 +96,17 @@ class HsaMemoryAllocationAccessor : public MemoryAllocationAccessor {
   /// initializes. See the class comment.
   const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
       &VenLoaderSnapshot;
+
+  /// \brief The driver boundary, watched here rather than reached by symbol.
+  ///
+  /// Non-owning, and deliberately not a member by value: this accessor is built
+  /// and destroyed once per pipeline run, whereas the tracker installs a
+  /// process-wide audit hook in its constructor and must outlive every run. The
+  /// tool owns it; this is where the pipeline reaches it.
+  ///
+  /// Null means nothing in this process is watching the driver, which is the
+  /// ordinary case for a tool attached to an HSA application.
+  const kfd::AllocationTracker *AllocTracker{nullptr};
 
   /// The last source, consulted only when HSA does not recognise an address.
   /// May be null, which simply means there is no driver-level source in this
@@ -129,16 +141,25 @@ public:
 
   /// \param DriverResolver an optional last source for addresses HSA does not
   /// manage. Passing \c nullptr gives an HSA-only accessor.
+  /// \param AllocTracker the driver-boundary watcher the resolver reads, kept
+  /// here so the pipeline has one place to reach it. Not owned.
   HsaMemoryAllocationAccessor(
       const LoadedCodeObjectCache &COC,
       const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreTable,
       const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExtTable,
       const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
           &VenLoaderSnapshot,
-      std::unique_ptr<DriverAllocationResolver> DriverResolver = nullptr)
+      std::unique_ptr<DriverAllocationResolver> DriverResolver = nullptr,
+      const kfd::AllocationTracker *AllocTracker = nullptr)
       : COC(COC), CoreTable(CoreTable), AmdExtTable(AmdExtTable),
-        VenLoaderSnapshot(VenLoaderSnapshot),
+        VenLoaderSnapshot(VenLoaderSnapshot), AllocTracker(AllocTracker),
         DriverResolver(std::move(DriverResolver)) {};
+
+  /// \brief The allocation tracker this accessor reads the driver boundary
+  /// through, or \c nullptr if there is none in this process.
+  [[nodiscard]] const kfd::AllocationTracker *getAllocationTracker() const {
+    return AllocTracker;
+  }
 
   ~HsaMemoryAllocationAccessor() override = default;
 };

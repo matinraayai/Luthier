@@ -16,7 +16,7 @@
 ///
 /// \file
 /// Implements \c luthier::KfdAllocationResolver. See its header for why the
-/// tracker is reached through \c dlsym and how the host mapping is obtained.
+/// tracker is reached and how the host mapping is obtained.
 ///
 /// \note Kept in its own translation unit, separate from \c AllocationTracker.cpp,
 /// because that file is deliberately LLVM-free so it can be preloaded into any
@@ -39,21 +39,9 @@
 
 namespace luthier {
 
-KfdAllocationResolver::KfdAllocationResolver(kfd::FindAllocationFn Find,
-                                             kfd::GpuDrmFdFn GetDrmFd)
-    : Find(Find), GetDrmFd(GetDrmFd) {
-  // RTLD_DEFAULT rather than a link-time dependency: the records live in whatever
-  // module intercepted the ioctls, which is loaded by LD_PRELOAD and is not
-  // something we can link against. A null result is not fatal here -- it is
-  // reported through isAvailable(), so a caller can skip this source rather than
-  // mistaking an unwatched process for one that allocated nothing.
-  if (this->Find == nullptr)
-    this->Find = reinterpret_cast<kfd::FindAllocationFn>(
-        dlsym(RTLD_DEFAULT, "luthierKfdFindAllocation"));
-  if (this->GetDrmFd == nullptr)
-    this->GetDrmFd = reinterpret_cast<kfd::GpuDrmFdFn>(
-        dlsym(RTLD_DEFAULT, "luthierKfdGpuDrmFd"));
-}
+KfdAllocationResolver::KfdAllocationResolver(
+    const kfd::AllocationTracker *Tracker)
+    : Tracker(Tracker) {}
 
 KfdAllocationResolver::~KfdAllocationResolver() {
   for (const auto &Entry : Mappings)
@@ -72,14 +60,14 @@ llvm::Expected<void *> KfdAllocationResolver::mapAllocation(
   // The application's descriptor, not one of ours. An mmap offset only resolves
   // on the DRM file that created the allocation: opening this GPU's render node
   // ourselves and mapping a valid offset through it fails with EACCES, measured.
-  if (GetDrmFd == nullptr)
+  if (Tracker == nullptr)
     return LUTHIER_MAKE_GENERIC_ERROR(
-        "luthierKfdGpuDrmFd was not found in this process, so the DRM "
+        "No KFD allocation tracker is attached in this process, so the DRM "
         "descriptor the application bound its GPU memory to is unknown. A host "
         "mapping is impossible without it: an mmap offset only resolves on the "
         "descriptor that created the allocation.");
 
-  const int Fd = GetDrmFd(GpuId);
+  const int Fd = Tracker->gpuDrmFd(GpuId);
   if (Fd < 0) {
     std::optional<std::string> Path = kfd::renderNodeForGpuId(GpuId);
     return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
@@ -123,16 +111,21 @@ KfdAllocationResolver::resolve(uint64_t DeviceAddr) const {
   // Empty rather than an error, even though this resolver can answer nothing at
   // all: isAvailable() is how a caller learns the difference, and it can check it
   // once instead of on every lookup along a disassembly walk.
-  if (Find == nullptr)
+  if (Tracker == nullptr)
     return Allocation();
 
-  unsigned long long Base = 0, Size = 0, MmapOffset = 0;
-  unsigned Flags = 0, GpuId = 0;
-  if (Find(DeviceAddr, &Base, &Size, &Flags, &GpuId, &MmapOffset) != 1) {
+  const std::optional<kfd::Allocation> Found =
+      Tracker->findAllocation(DeviceAddr);
+  if (!Found) {
     // Not an error. Legitimately happens for SVM and imported memory, which no
     // allocation ioctl of ours ever sees.
     return Allocation();
   }
+  const uint64_t Base = Found->Base;
+  const uint64_t Size = Found->Size;
+  const uint64_t MmapOffset = Found->MmapOffset;
+  const uint32_t Flags = Found->Flags;
+  const uint32_t GpuId = Found->GpuId;
 
   // A registered host allocation is already host memory: the application
   // allocated it itself and handed the driver the pointer, so the "device"

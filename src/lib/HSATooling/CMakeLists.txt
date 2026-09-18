@@ -5,6 +5,10 @@ add_library(LuthierHSATooling OBJECT
         HsaMemoryAllocationAccessor.cpp
         InstrumentedKernelLoaderAndLauncher.cpp
         LoadedCodeObjectCache.cpp
+        # The non-templated half of the packet monitor. Compiled once here rather
+        # than in every tool that instantiates PacketMonitorTrait, which is also
+        # what keeps linux/kfd_ioctl.h out of the public headers.
+        PacketMonitorTrait.cpp
 )
 
 target_compile_definitions(LuthierHSATooling PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})

@@ -15,11 +15,12 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Implements \c luthier/KFD/FdSharing.h. See that header for why the descriptor
-/// that matters is the one \c ACQUIRE_VM carries rather than the first one opened.
+/// Implements \c luthier/KFD/FdSharing.h. See that header for why the
+/// descriptor that matters is the one \c ACQUIRE_VM carries rather than the
+/// first one opened.
 ///
-/// \note Deliberately free of LLVM, like the rest of \c LuthierKFD: this ships in
-/// the library preloaded into arbitrary applications.
+/// \note Deliberately free of LLVM, like the rest of \c LuthierKFD: this ships
+/// in the library preloaded into arbitrary applications.
 //===----------------------------------------------------------------------===//
 #include "luthier/KFD/FdSharing.h"
 
@@ -36,8 +37,8 @@ namespace {
 
 constexpr const char RenderNodePrefix[] = "/dev/dri/renderD";
 
-/// Highest topology node index scanned. Matches the bound used elsewhere for the
-/// same walk; the count is small and the files are tiny.
+/// Highest topology node index scanned. Matches the bound used elsewhere for
+/// the same walk; the count is small and the files are tiny.
 constexpr unsigned MaxTopologyNodes = 64;
 
 std::atomic<bool> SharingEnabled{false};
@@ -57,7 +58,8 @@ uint32_t gpuIdForRenderNodePath(const char *Path) {
   char *End = nullptr;
   const unsigned long Minor = strtoul(MinorText, &End, 10);
   // Reject trailing junk rather than accepting a prefix match: "renderD128foo"
-  // is not renderD128, and treating it as such would redirect an unrelated open.
+  // is not renderD128, and treating it as such would redirect an unrelated
+  // open.
   if (End == MinorText || *End != '\0')
     return 0;
 
@@ -108,7 +110,10 @@ int borrowBoundRenderNodeFd(const char *Path) {
   // The descriptor ACQUIRE_VM bound for this GPU, which the tracker captured
   // from the ioctl itself. Nothing else in the process knows which of several
   // opens of the same node the driver actually bound.
-  const int Bound = gpuDrmFd(GpuId);
+  const AllocationTracker *Tracker = AllocationTracker::active();
+  if (Tracker == nullptr)
+    return -1;
+  const int Bound = Tracker->gpuDrmFd(GpuId);
   if (Bound < 0)
     return -1;
 
@@ -131,7 +136,8 @@ extern "C" {
 /// this at run time. A tool calls it once, immediately before initializing HSA.
 void luthierKfdEnableFdSharing() { luthier::kfd::enableFdSharing(); }
 
-/// \brief Whether redirection is on. For a test to assert the tool asked for it.
+/// \brief Whether redirection is on. For a test to assert the tool asked for
+/// it.
 int luthierKfdFdSharingEnabled() {
   return luthier::kfd::isFdSharingEnabled() ? 1 : 0;
 }

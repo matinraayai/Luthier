@@ -29,11 +29,16 @@ add_library(LuthierKFD OBJECT
 
 target_compile_definitions(LuthierKFD PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
 
+# LLVM's includes are needed now that the allocation tracker reports failures as
+# llvm::Error. This target used to be deliberately LLVM-free so it could go into
+# a library preloaded into arbitrary processes; there is no such library any more
+# -- the tool is an audit_hook plugin and already links LLVM.
 target_include_directories(LuthierKFD
         PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
         PRIVATE
+        ${LLVM_INCLUDE_DIRS}
         ${hsa-runtime64_INCLUDE_DIRS}
 )
 

@@ -100,11 +100,13 @@ namespace luthier {
 /// \li \b runtime \b enable -- refused with \c EEXIST once queues exist. Absorbed
 ///     in the wrapper, because \c EEXIST means the runtime is enabled and the
 ///     caller is merely late;
-/// \li the \b event \b page -- per-process, and hsakmt allocates its own before
-///     the ioctl and then indexes into it, so the page cannot be shared the way
-///     the descriptor was. Resolved by keeping ROCr away from it entirely with
-///     \c HSA_ENABLE_INTERRUPT=0, which makes it use busy-wait signals rather
-///     than the KFD events that need the page.
+/// \li the \b event \b page -- one per process, and only the party that supplies
+///     it may do so. Resolved by \e ordering rather than by a flag: HSA is
+///     brought up on the application's first \c /dev/kfd open, so hsakmt
+///     supplies the page first and every later caller is given a slot in it.
+///     \c HSA_ENABLE_INTERRUPT=0 is now only a fallback for an application that
+///     already held a descriptor before the tool attached -- see
+///     \c PacketMonitor::applicationClaimedEventPage.
 ///
 /// \c PacketMonitorTrait::ensureHsaInitializedInApplication does all of this,
 /// once.
@@ -160,7 +162,8 @@ public:
         LoadedCodeObjectCacheTrait<Derived>(CoreApi, VenLoader, Err),
         InstrumentedKernelLoaderAndLauncherTrait<Derived>(CoreApi, AmdExt,
                                                          VenLoader, Err),
-        PacketMonitorTrait<Derived>(CoreApi, AmdExt, VenLoader, Err) {}
+        PacketMonitorTrait<Derived>(CoreApi, AmdExt, VenLoader, Err),
+        AllocTracker(Err) {}
 
   /// \brief Bring HSA up in the application's linker namespace, once.
   ///
@@ -185,8 +188,7 @@ public:
   /// address is what names the device.
   llvm::Expected<hsa_agent_t>
   agentForKernelDescriptor(const llvm::amdhsa::kernel_descriptor_t *KD) {
-    auto GpuIdOrErr = PacketMonitorTrait<Derived>::gpuIdForAddress(
-        reinterpret_cast<uint64_t>(KD));
+    auto GpuIdOrErr = gpuIdOwning(reinterpret_cast<uint64_t>(KD));
     LUTHIER_RETURN_ON_ERROR(GpuIdOrErr.takeError());
     return hsa::agentForGpuId(this->getCoreApiTableSnapshot().getTable(),
                               *GpuIdOrErr);
@@ -214,7 +216,17 @@ public:
         static_cast<const LoadedCodeObjectCache &>(D),
         this->getCoreApiTableSnapshot(), this->getAmdExtTableSnapshot(),
         this->getLoaderTableSnapshot(),
-        std::make_unique<KfdAllocationResolver>());
+        std::make_unique<KfdAllocationResolver>(&AllocTracker),
+        &AllocTracker);
+  }
+
+  /// \brief The driver-boundary watcher this tool owns.
+  ///
+  /// Owned here rather than by the accessor, which is rebuilt once per pipeline
+  /// run: the tracker installs a process-wide audit hook in its constructor, so a
+  /// per-run instance would register a hook per dispatch.
+  [[nodiscard]] const kfd::AllocationTracker &getAllocationTracker() const {
+    return AllocTracker;
   }
 
   /// \brief Build the \c TargetMachine for the kernel described by \p KD.
@@ -223,19 +235,45 @@ public:
   /// kernel descriptor does not say where it will run, and below HSA there is no
   /// agent owning its allocation to ask. The driver does know: the allocation
   /// \p KD sits in was created by an \c ALLOC_MEMORY_OF_GPU naming a \c gpu_id,
-  /// and \c PacketMonitorTrait's allocation map recorded it.
+  /// and \c kfd::AllocationTracker recorded it.
   llvm::Expected<std::unique_ptr<llvm::TargetMachine>>
   buildTargetMachineForKD(const llvm::amdhsa::kernel_descriptor_t *KD) {
     // Still from sysfs rather than from the agent, even though an agent is now
     // reachable. Nothing is gained by routing it through HSA, and the sysfs path
     // is checked against HSA's own answer by
     // KfdIsaInfo.AgreesWithWhatHsaReports.
-    auto GpuIdOrErr = PacketMonitorTrait<Derived>::gpuIdForAddress(
-        reinterpret_cast<uint64_t>(KD));
+    auto GpuIdOrErr = gpuIdOwning(reinterpret_cast<uint64_t>(KD));
     LUTHIER_RETURN_ON_ERROR(GpuIdOrErr.takeError());
     return buildTargetMachineForKfdDispatch(*GpuIdOrErr, *KD);
   }
 
+
+  /// \brief The GPU that owns the driver allocation \p Addr falls inside.
+  ///
+  /// \par Why the allocation and not the queue
+  /// The pipeline reaches a tool as <tt>buildTargetMachineForKD(KD)</tt>, and a
+  /// kernel descriptor does not say which device it will run on. On the HSA path
+  /// that is recovered from the descriptor's owning agent. Below HSA there is no
+  /// agent, but there is still an owner: \c ALLOC_MEMORY_OF_GPU carries a
+  /// \c gpu_id, and the tracker recorded it when the application made the call.
+  ///
+  /// This replaced a thread-local holding the queue's \c gpu_id for the duration
+  /// of a packet callback. The allocation is the better source on three counts:
+  /// it is a property of the memory rather than of which thread is asking, so it
+  /// survives the tool handing work to another thread; it answers for any
+  /// address, not only while a callback is on the stack; and it cannot report the
+  /// wrong device for a kernel allocated on one GPU and dispatched from a queue
+  /// on another.
+  llvm::Expected<uint32_t> gpuIdOwning(uint64_t Addr) const {
+    if (auto A = AllocTracker.findAllocation(Addr))
+      return A->GpuId;
+    return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+        "No KFD allocation tracked by this tool contains address {0:x}, so the "
+        "GPU that owns it is unknown. Either the allocation was made before the "
+        "tool attached -- the map only records ALLOC_MEMORY_OF_GPU calls it "
+        "observed -- or the address is not device memory.",
+        Addr));
+  }
 
   /// Bring the launcher's name-based device-global lookup into scope alongside
   /// the host-handle overload below.

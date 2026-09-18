@@ -28,17 +28,21 @@
 /// record of the ioctl stream, and the HSA accessor consults it as its last
 /// source.
 ///
-/// \par Why the tracker is reached through \c dlsym rather than linked
-/// The records live in whichever module intercepted the ioctls -- in practice
-/// \c libluthier-kfd-queue-wrapper.so, preloaded into the application. The
-/// tracker's storage is a function-local \c static
-/// (\c AllocationTracker.cpp:116), and a \c static in a shared library is per
-/// \e library, not per process. So linking the tracker into this module as well
-/// would give it a \b second, permanently empty map -- which is worse than an
-/// error, because "no allocations" is a legal answer that reads exactly like an
-/// application which allocated nothing. The process-wide instance is therefore
-/// located at run time, the same way \c HsaOracleMain finds
-/// \c luthierKfdSetPacketCallback.
+/// \par Why the tracker is held by reference
+/// It used to be reached by \c dlsym, because the records lived in whichever
+/// module intercepted the ioctls -- a preloaded library this one could not link
+/// against -- and the tracker's storage was a function-local \c static, which in
+/// a shared library is per \e library rather than per process. Linking it in
+/// twice would have produced a second, permanently empty map, and "no
+/// allocations" is a legal answer that reads exactly like an application which
+/// allocated nothing.
+///
+/// Neither premise holds now. The tracker is an ordinary object with instance
+/// state, owned by the tool, and it installs its own \c ioctl hook through
+/// audit_hook -- so there is one to point at and no symbol to look up. A null
+/// pointer here means "no driver-level source in this process", which is a
+/// different statement from a lookup that failed, and \c isAvailable() reports
+/// it.
 ///
 /// \par How the host-readable view is obtained
 /// A caller needs a host-readable pointer, because the code lifter dereferences
@@ -92,6 +96,7 @@
 #ifndef LUTHIER_KFD_KFD_ALLOCATION_RESOLVER_H
 #define LUTHIER_KFD_KFD_ALLOCATION_RESOLVER_H
 #include "luthier/KFD/Topology.h"
+#include "luthier/KFD/AllocationTracker.h"
 #include "luthier/ToolCodeGen/DriverAllocationResolver.h"
 
 #include <llvm/ADT/DenseMap.h>
@@ -100,31 +105,16 @@
 
 namespace luthier {
 
-namespace kfd {
-
-/// \brief Signature of \c luthierKfdFindAllocation, resolved at run time.
-using FindAllocationFn = int (*)(unsigned long long Addr,
-                                 unsigned long long *Base,
-                                 unsigned long long *Size, unsigned *Flags,
-                                 unsigned *GpuId,
-                                 unsigned long long *MmapOffset);
-
-/// \brief Signature of \c luthierKfdGpuDrmFd, resolved at run time.
-using GpuDrmFdFn = int (*)(unsigned GpuId);
-
-} // namespace kfd
-
 /// \brief \c DriverAllocationResolver over allocations observed at the KFD ioctl
 /// boundary. See the file comment for the mechanism and its limits.
 class KfdAllocationResolver final : public DriverAllocationResolver {
 public:
-  /// \param Find the allocation lookup to use. Defaults to resolving
-  /// \c luthierKfdFindAllocation from the process at construction time; passing
-  /// one explicitly is how tests drive the resolver without a preloaded wrapper.
-  /// \param GetDrmFd where the application's DRM descriptor comes from; defaults
-  /// to resolving \c luthierKfdGpuDrmFd the same way.
-  explicit KfdAllocationResolver(kfd::FindAllocationFn Find = nullptr,
-                                 kfd::GpuDrmFdFn GetDrmFd = nullptr);
+  /// \param Tracker where allocations and DRM descriptors are read from, or
+  /// \c nullptr when nothing in this process is watching the driver boundary.
+  /// Held by reference rather than resolved by symbol: the tracker is an object
+  /// the tool owns, and a null pointer says "no driver-level source here" rather
+  /// than "the lookup could not be found".
+  explicit KfdAllocationResolver(const kfd::AllocationTracker *Tracker);
 
   ~KfdAllocationResolver() override;
 
@@ -134,10 +124,10 @@ public:
   [[nodiscard]] llvm::Expected<Allocation>
   resolve(uint64_t DeviceAddr) const override;
 
-  /// \brief Whether the tracker was found in this process. False means no module
-  /// is recording KFD allocations -- normally because the wrapper was not
-  /// preloaded -- and a caller should not read anything into an empty result.
-  [[nodiscard]] bool isAvailable() const override { return Find != nullptr; }
+  /// \brief Whether there is a tracker to ask. False means nothing in this
+  /// process is recording KFD allocations, and a caller should not read anything
+  /// into an empty result.
+  [[nodiscard]] bool isAvailable() const override { return Tracker != nullptr; }
 
 private:
   /// One host mapping of one allocation, unmapped when the resolver dies.
@@ -146,9 +136,9 @@ private:
     size_t Length{0};
   };
 
-  kfd::FindAllocationFn Find{nullptr};
-
-  kfd::GpuDrmFdFn GetDrmFd{nullptr};
+  /// Non-owning. The tool owns the tracker; this resolver is rebuilt per
+  /// pipeline run and must not outlive it.
+  const kfd::AllocationTracker *Tracker{nullptr};
 
   /// Keyed on the allocation's base. Mappings are cached because each one costs an
   /// \c mmap and a file descriptor, and the lifter queries the same allocation

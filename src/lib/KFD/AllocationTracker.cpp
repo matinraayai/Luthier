@@ -20,19 +20,17 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/KFD/AllocationTracker.h"
 
-#include <cstdint>
+#include "luthier/Common/GenericLuthierError.h"
+
+#include <llvm/Support/FormatVariadic.h>
+
+#include <linux/kfd_ioctl.h>
 #include <unistd.h>
 
+#include <cstdint>
 #include <map>
-
 #include <mutex>
 #include <shared_mutex>
-
-namespace {
-/// Clears the C-linkage binding side-tables. Declared here and defined next to
-/// those tables, which sit below the function that needs it.
-void clearCBindings();
-} // namespace
 
 namespace luthier::kfd {
 
@@ -103,75 +101,6 @@ void AllocationMap::clear() {
 
 } // namespace detail
 
-//===----------------------------------------------------------------------===//
-// The process-wide instance
-//===----------------------------------------------------------------------===//
-
-namespace {
-
-/// Function-local statics, so construction happens on first use rather than in
-/// static-init order. This library is preloaded into arbitrary processes and its
-/// first ioctl can arrive before any of our own initialisation would otherwise
-/// have run.
-detail::AllocationMap &theMap() {
-  static detail::AllocationMap M;
-  return M;
-}
-
-/// Lookups are far more frequent than mutations, and ioctls genuinely arrive on
-/// several threads, so a shared mutex rather than a plain one.
-///
-/// \c std::shared_mutex rather than \c llvm::sys::RWMutex, which is Luthier's
-/// convention elsewhere: this module is deliberately LLVM-free so it can be
-/// preloaded into any process, and its build target does not carry LLVM's include
-/// directories.
-std::shared_mutex &theMutex() {
-  static std::shared_mutex M;
-  return M;
-}
-
-} // namespace
-
-void recordAllocation(const Allocation &A) {
-  std::unique_lock Lock(theMutex());
-  theMap().record(A);
-}
-
-bool forgetAllocation(uint64_t Handle) {
-  std::unique_lock Lock(theMutex());
-  return theMap().forget(Handle);
-}
-
-std::optional<Allocation> findAllocation(uint64_t Addr) {
-  std::shared_lock Lock(theMutex());
-  return theMap().find(Addr);
-}
-
-uint64_t liveAllocationCount() {
-  std::shared_lock Lock(theMutex());
-  return theMap().liveCount();
-}
-
-uint64_t recordedAllocationTotal() {
-  std::shared_lock Lock(theMutex());
-  return theMap().recordedTotal();
-}
-
-namespace {
-
-/// gpu_id -> duplicated DRM render-node descriptor. A plain map because a process
-/// has a handful of GPUs, and it is written once per GPU during initialisation.
-std::map<uint32_t, int> &theDrmFds() {
-  static std::map<uint32_t, int> M;
-  return M;
-}
-
-} // namespace
-
-//===----------------------------------------------------------------------===//
-// The observer chains
-//===----------------------------------------------------------------------===//
-
 namespace detail {
 
 unsigned orderAllocationChain(const AllocationCallbackEntry *Entries,
@@ -208,17 +137,18 @@ unsigned orderAllocationChain(const AllocationCallbackEntry *Entries,
 
 namespace {
 
-detail::AllocationCallbackEntry AllocCallbacks[MaxAllocationCallbacks];
-detail::AllocationCallbackEntry FreeCallbacks[MaxAllocationCallbacks];
-unsigned long long NextSeq = 1;
+constexpr int FreeHandleBias = static_cast<int>(MaxAllocationCallbacks);
+
+} // namespace
 
 /// Add to a chain under the caller's lock.
 ///
-/// Handles encode which chain they belong to, so removing a free observer with the
-/// allocation remover cannot silently unhook the wrong entry: allocation handles
-/// are non-negative and free handles are offset past the array.
-int addToChain(detail::AllocationCallbackEntry *Chain, void *CB, void *UserData,
-               int Priority, int HandleBias) {
+/// Handles encode which chain they belong to, so removing a free observer with
+/// the allocation remover cannot silently unhook the wrong entry: allocation
+/// handles are non-negative and free handles are offset past the array.
+int AllocationTracker::addToChain(detail::AllocationCallbackEntry *Chain,
+                                  void *CB, void *UserData, int Priority,
+                                  int HandleBias) {
   if (CB == nullptr)
     return InvalidAllocationCallbackHandle;
   for (unsigned I = 0; I < MaxAllocationCallbacks; I++) {
@@ -233,41 +163,185 @@ int addToChain(detail::AllocationCallbackEntry *Chain, void *CB, void *UserData,
   return InvalidAllocationCallbackHandle;
 }
 
-constexpr int FreeHandleBias = static_cast<int>(MaxAllocationCallbacks);
+
+//===----------------------------------------------------------------------===//
+// Installation
+//===----------------------------------------------------------------------===//
+
+AllocationTracker::AllocationTracker(llvm::Error &Err) {
+  llvm::ErrorAsOutParameter EAO(Err);
+  Active = this;
+  const int R = audit_hooks::register_wrap<&AllocationTracker::ioctlHook,
+                                           &AllocationTracker::RealIoctl>(
+      IoctlToolName, "ioctl");
+  if (R != 0) {
+    Active = nullptr;
+    Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+        "ah_register_hook(\"{0}\", \"ioctl\") returned {1}, so no GPU "
+        "allocation will be observed and every address lookup will miss. Check "
+        "that the application was started under LD_AUDIT=libLuthierAudit.so "
+        "with this tool named in AH_PLUGINS.",
+        IoctlToolName, R));
+    return;
+  }
+  Err = llvm::Error::success();
+}
+
+AllocationTracker::~AllocationTracker() {
+  // The hook stays installed -- audit_hook has no unregister call -- so clearing
+  // the slot is what makes a later call forward untouched rather than reach
+  // freed state.
+  if (Active == this)
+    Active = nullptr;
+  reset();
+}
+
+int AllocationTracker::ioctlHook(int Fd, unsigned long Request, void *Arg) {
+  AllocationTracker *T = Active;
+  if (T == nullptr)
+    return RealIoctl(Fd, Request, Arg);
+  return T->handleIoctl(Fd, Request, Arg);
+}
+
+//===----------------------------------------------------------------------===//
+// Decoding the boundary
+//
+// Request decoding is hand-rolled because <sys/ioctl.h> cannot be included
+// alongside the driver's own request definitions.
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+constexpr unsigned ioctlNr(unsigned long Request) {
+  return static_cast<unsigned>(Request & 0xFFu);
+}
+constexpr unsigned AcquireVmNr = AMDKFD_IOC_ACQUIRE_VM & 0xFFu;
+constexpr unsigned AllocMemoryNr = AMDKFD_IOC_ALLOC_MEMORY_OF_GPU & 0xFFu;
+constexpr unsigned FreeMemoryNr = AMDKFD_IOC_FREE_MEMORY_OF_GPU & 0xFFu;
 
 } // namespace
 
-AllocationCallbackHandle addAllocationCallback(AllocationCallback CB,
+int AllocationTracker::handleIoctl(int Fd, unsigned long Request, void *Arg) {
+  const unsigned Nr = ioctlNr(Request);
+
+  // No /dev/kfd descriptor check here, unlike the packet monitor's hook. These
+  // three request numbers are read from the KFD ioctl space, and Arg is only
+  // dereferenced after the number matches -- so a same-numbered request on some
+  // other device would be misread. That is the one thing this shares with the
+  // monitor's Assumption A2, and the reason the monitor keeps its fstat: it acts
+  // on the arguments, whereas this only records them.
+  if (Arg == nullptr)
+    return RealIoctl(Fd, Request, Arg);
+
+  // Remember which DRM descriptor each GPU's memory is bound to. Observed rather
+  // than opened, because an mmap offset only resolves on the descriptor that
+  // created the allocation -- see recordGpuDrmFd.
+  if (Nr == AcquireVmNr) {
+    const auto *V = static_cast<const struct kfd_ioctl_acquire_vm_args *>(Arg);
+    const int Ret = RealIoctl(Fd, Request, Arg);
+    if (Ret == 0)
+      recordGpuDrmFd(V->gpu_id, static_cast<int>(V->drm_fd));
+    return Ret;
+  }
+
+  if (Nr == AllocMemoryNr)
+    return handleAllocMemory(Fd, Request, Arg);
+  if (Nr == FreeMemoryNr)
+    return handleFreeMemory(Fd, Request, Arg);
+
+  return RealIoctl(Fd, Request, Arg);
+}
+
+int AllocationTracker::handleAllocMemory(int Fd, unsigned long Request,
+                                         void *Arg) {
+  const int Ret = RealIoctl(Fd, Request, Arg);
+  if (Ret != 0)
+    return Ret;
+
+  const auto *A =
+      static_cast<const struct kfd_ioctl_alloc_memory_of_gpu_args *>(Arg);
+  const Allocation Recorded{A->va_addr, A->size,   A->flags,
+                            A->gpu_id,  A->handle, A->mmap_offset};
+  recordAllocation(Recorded);
+  // After recording, so an observer that immediately looks the address up finds
+  // it.
+  runAllocationCallbacks(Recorded);
+  return Ret;
+}
+
+int AllocationTracker::handleFreeMemory(int Fd, unsigned long Request,
+                                        void *Arg) {
+  const auto *F =
+      static_cast<const struct kfd_ioctl_free_memory_of_gpu_args *>(Arg);
+  const uint64_t Handle = F->handle;
+
+  const int Ret = RealIoctl(Fd, Request, Arg);
+  if (Ret != 0)
+    return Ret;
+
+  forgetAllocation(Handle);
+  // Notified whether or not we had a record: an observer may be tracking
+  // allocations we never saw, for instance because it attached earlier than we
+  // did.
+  runAllocationFreeCallbacks(Handle);
+  return Ret;
+}
+
+
+void AllocationTracker::recordAllocation(const Allocation &A) {
+  std::unique_lock Lock(Mutex);
+  Map.record(A);
+}
+
+bool AllocationTracker::forgetAllocation(uint64_t Handle) {
+  std::unique_lock Lock(Mutex);
+  return Map.forget(Handle);
+}
+
+std::optional<Allocation> AllocationTracker::findAllocation(uint64_t Addr) const {
+  std::shared_lock Lock(Mutex);
+  return Map.find(Addr);
+}
+
+uint64_t AllocationTracker::liveAllocationCount() const {
+  std::shared_lock Lock(Mutex);
+  return Map.liveCount();
+}
+
+uint64_t AllocationTracker::recordedAllocationTotal() const {
+  std::shared_lock Lock(Mutex);
+  return Map.recordedTotal();
+}
+
+AllocationCallbackHandle AllocationTracker::addAllocationCallback(AllocationCallback CB,
                                                void *UserData, int Priority) {
-  std::unique_lock Lock(theMutex());
+  std::unique_lock Lock(Mutex);
   return addToChain(AllocCallbacks, reinterpret_cast<void *>(CB), UserData,
                     Priority, 0);
 }
 
-AllocationCallbackHandle addAllocationFreeCallback(AllocationFreeCallback CB,
+AllocationCallbackHandle AllocationTracker::addAllocationFreeCallback(AllocationFreeCallback CB,
                                                    void *UserData,
                                                    int Priority) {
-  std::unique_lock Lock(theMutex());
+  std::unique_lock Lock(Mutex);
   return addToChain(FreeCallbacks, reinterpret_cast<void *>(CB), UserData,
                     Priority, FreeHandleBias);
 }
 
-/// \return what was unhooked, so a C-linkage trampoline can release the binding
-/// slot it owns -- and \e only that one. See luthierKfdRemoveAllocationCallback.
-UnhookedCallback removeAllocationCallback(AllocationCallbackHandle H) {
+UnhookedCallback AllocationTracker::removeAllocationCallback(AllocationCallbackHandle H) {
   if (H < 0 || H >= FreeHandleBias)
     return {};
-  std::unique_lock Lock(theMutex());
+  std::unique_lock Lock(Mutex);
   const UnhookedCallback Was{AllocCallbacks[H].CB, AllocCallbacks[H].UserData};
   AllocCallbacks[H].CB = nullptr;
   return Was;
 }
 
-UnhookedCallback removeAllocationFreeCallback(AllocationCallbackHandle H) {
+UnhookedCallback AllocationTracker::removeAllocationFreeCallback(AllocationCallbackHandle H) {
   const int Idx = H - FreeHandleBias;
   if (Idx < 0 || Idx >= static_cast<int>(MaxAllocationCallbacks))
     return {};
-  std::unique_lock Lock(theMutex());
+  std::unique_lock Lock(Mutex);
   const UnhookedCallback Was{FreeCallbacks[Idx].CB,
                              FreeCallbacks[Idx].UserData};
   FreeCallbacks[Idx].CB = nullptr;
@@ -279,12 +353,12 @@ UnhookedCallback removeAllocationFreeCallback(AllocationCallbackHandle H) {
 /// An observer is arbitrary code: it may allocate GPU memory, and so re-enter this
 /// module. Holding the lock across the call would deadlock on the first observer
 /// that does -- and \c std::shared_mutex is not recursive.
-void runAllocationCallbacks(const Allocation &A) {
+void AllocationTracker::runAllocationCallbacks(const Allocation &A) {
   detail::AllocationCallbackEntry Snapshot[MaxAllocationCallbacks];
   unsigned Order[MaxAllocationCallbacks];
   unsigned N;
   {
-    std::shared_lock Lock(theMutex());
+    std::shared_lock Lock(Mutex);
     for (unsigned I = 0; I < MaxAllocationCallbacks; I++)
       Snapshot[I] = AllocCallbacks[I];
     N = detail::orderAllocationChain(Snapshot, MaxAllocationCallbacks, Order);
@@ -295,12 +369,12 @@ void runAllocationCallbacks(const Allocation &A) {
   }
 }
 
-void runAllocationFreeCallbacks(uint64_t Handle) {
+void AllocationTracker::runAllocationFreeCallbacks(uint64_t Handle) {
   detail::AllocationCallbackEntry Snapshot[MaxAllocationCallbacks];
   unsigned Order[MaxAllocationCallbacks];
   unsigned N;
   {
-    std::shared_lock Lock(theMutex());
+    std::shared_lock Lock(Mutex);
     for (unsigned I = 0; I < MaxAllocationCallbacks; I++)
       Snapshot[I] = FreeCallbacks[I];
     N = detail::orderAllocationChain(Snapshot, MaxAllocationCallbacks, Order);
@@ -311,11 +385,11 @@ void runAllocationFreeCallbacks(uint64_t Handle) {
   }
 }
 
-void recordGpuDrmFd(uint32_t GpuId, int DrmFd) {
+void AllocationTracker::recordGpuDrmFd(uint32_t GpuId, int DrmFd) {
   if (DrmFd < 0)
     return;
-  std::unique_lock Lock(theMutex());
-  auto &Fds = theDrmFds();
+  std::unique_lock Lock(Mutex);
+  auto &Fds = DrmFds;
   if (Fds.count(GpuId) != 0)
     return; // first one wins; re-acquiring the same VM changes nothing for us
 
@@ -327,154 +401,25 @@ void recordGpuDrmFd(uint32_t GpuId, int DrmFd) {
     Fds[GpuId] = Copy;
 }
 
-int gpuDrmFd(uint32_t GpuId) {
-  std::shared_lock Lock(theMutex());
-  auto It = theDrmFds().find(GpuId);
-  return It == theDrmFds().end() ? -1 : It->second;
+int AllocationTracker::gpuDrmFd(uint32_t GpuId) const {
+  std::shared_lock Lock(Mutex);
+  auto It = DrmFds.find(GpuId);
+  return It == DrmFds.end() ? -1 : It->second;
 }
 
-void resetAllocationTracker() {
-  std::unique_lock Lock(theMutex());
-  theMap().clear();
-  for (auto &Entry : theDrmFds())
+void AllocationTracker::reset() {
+  std::unique_lock Lock(Mutex);
+  Map.clear();
+  for (auto &Entry : DrmFds)
     if (Entry.second >= 0)
       close(Entry.second);
-  theDrmFds().clear();
+  DrmFds.clear();
   for (unsigned I = 0; I < MaxAllocationCallbacks; I++) {
     AllocCallbacks[I] = detail::AllocationCallbackEntry{};
     FreeCallbacks[I] = detail::AllocationCallbackEntry{};
   }
   NextSeq = 1;
-  // The chains and the C-linkage binding arrays are two separate pools, and an
-  // earlier version cleared only the first. A test using the C API twice then
-  // exhausted the bindings while the chain still reported free slots.
-  clearCBindings();
 }
+
 
 } // namespace luthier::kfd
-
-extern "C" int luthierKfdFindAllocation(unsigned long long Addr,
-                                        unsigned long long *Base,
-                                        unsigned long long *Size,
-                                        unsigned *Flags, unsigned *GpuId,
-                                        unsigned long long *MmapOffset) {
-  auto A = luthier::kfd::findAllocation(Addr);
-  if (!A)
-    return 0;
-  if (Base != nullptr)
-    *Base = A->Base;
-  if (Size != nullptr)
-    *Size = A->Size;
-  if (Flags != nullptr)
-    *Flags = A->Flags;
-  if (GpuId != nullptr)
-    *GpuId = A->GpuId;
-  if (MmapOffset != nullptr)
-    *MmapOffset = A->MmapOffset;
-  return 1;
-}
-
-namespace {
-
-/// Trampolines for the C-linkage registrations. The scalar signature keeps a
-/// component from depending on struct Allocation's layout.
-using CAllocFn = void (*)(unsigned long long, unsigned long long, unsigned,
-                          unsigned, unsigned long long, unsigned long long,
-                          void *);
-
-struct CAllocBinding {
-  CAllocFn CB;
-  void *UserData;
-};
-
-/// One binding per slot, since the C callback needs somewhere to keep both its own
-/// function and its user pointer while the chain stores only one void*.
-CAllocBinding CAllocBindings[luthier::kfd::MaxAllocationCallbacks];
-
-void cAllocTrampoline(const luthier::kfd::Allocation &A, void *Slot) {
-  const auto *B = static_cast<const CAllocBinding *>(Slot);
-  B->CB(A.Base, A.Size, A.Flags, A.GpuId, A.Handle, A.MmapOffset, B->UserData);
-}
-
-using CFreeFn = void (*)(unsigned long long, void *);
-
-struct CFreeBinding {
-  CFreeFn CB;
-  void *UserData;
-};
-
-CFreeBinding CFreeBindings[luthier::kfd::MaxAllocationCallbacks];
-
-void cFreeTrampoline(uint64_t Handle, void *Slot) {
-  const auto *B = static_cast<const CFreeBinding *>(Slot);
-  B->CB(Handle, B->UserData);
-}
-
-void clearCBindings() {
-  for (unsigned I = 0; I < luthier::kfd::MaxAllocationCallbacks; I++) {
-    CAllocBindings[I] = CAllocBinding{};
-    CFreeBindings[I] = CFreeBinding{};
-  }
-}
-
-} // namespace
-
-extern "C" int luthierKfdAddAllocationCallback(CAllocFn CB, void *UserData,
-                                               int Priority) {
-  if (CB == nullptr)
-    return luthier::kfd::InvalidAllocationCallbackHandle;
-  // Find a free binding slot first: registering succeeds or it does not, and a
-  // half-registered observer would be worse than a refusal.
-  for (unsigned I = 0; I < luthier::kfd::MaxAllocationCallbacks; I++) {
-    if (CAllocBindings[I].CB != nullptr)
-      continue;
-    CAllocBindings[I] = CAllocBinding{CB, UserData};
-    const int H = luthier::kfd::addAllocationCallback(
-        cAllocTrampoline, &CAllocBindings[I], Priority);
-    if (H == luthier::kfd::InvalidAllocationCallbackHandle)
-      CAllocBindings[I] = CAllocBinding{};
-    return H;
-  }
-  return luthier::kfd::InvalidAllocationCallbackHandle;
-}
-
-extern "C" int luthierKfdAddAllocationFreeCallback(CFreeFn CB, void *UserData,
-                                                   int Priority) {
-  if (CB == nullptr)
-    return luthier::kfd::InvalidAllocationCallbackHandle;
-  for (unsigned I = 0; I < luthier::kfd::MaxAllocationCallbacks; I++) {
-    if (CFreeBindings[I].CB != nullptr)
-      continue;
-    CFreeBindings[I] = CFreeBinding{CB, UserData};
-    const int H = luthier::kfd::addAllocationFreeCallback(
-        cFreeTrampoline, &CFreeBindings[I], Priority);
-    if (H == luthier::kfd::InvalidAllocationCallbackHandle)
-      CFreeBindings[I] = CFreeBinding{};
-    return H;
-  }
-  return luthier::kfd::InvalidAllocationCallbackHandle;
-}
-
-extern "C" void luthierKfdRemoveAllocationCallback(int Handle) {
-  const luthier::kfd::UnhookedCallback Was =
-      luthier::kfd::removeAllocationCallback(Handle);
-  // Release the binding slot -- but only if what came off the chain was this
-  // trampoline. A C++ registration's UserData belongs to its own caller, and
-  // treating it as a binding pointer would corrupt unrelated state.
-  if (Was.CB == reinterpret_cast<void *>(&cAllocTrampoline) &&
-      Was.UserData != nullptr)
-    *static_cast<CAllocBinding *>(Was.UserData) = CAllocBinding{};
-}
-
-extern "C" void luthierKfdRemoveAllocationFreeCallback(int Handle) {
-  const luthier::kfd::UnhookedCallback Was =
-      luthier::kfd::removeAllocationFreeCallback(Handle);
-  if (Was.CB == reinterpret_cast<void *>(&cFreeTrampoline) &&
-      Was.UserData != nullptr)
-    *static_cast<CFreeBinding *>(Was.UserData) = CFreeBinding{};
-}
-
-extern "C" int luthierKfdGpuDrmFd(unsigned GpuId) {
-  return luthier::kfd::gpuDrmFd(static_cast<uint32_t>(GpuId));
-}
-
