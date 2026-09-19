@@ -15,115 +15,39 @@
 //===----------------------------------------------------------------------===//
 /// \file
 /// Defines the \c ApiTableRegistrationCallbackProvider class which provide
-/// a callback to its user or sub-classes when an API table is registered with
-/// rocprofiler-sdk.
+/// the rocprofiler-sdk API table registration callback to its user or
+/// sub-classes.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_ROCPROFILER_API_TABLE_REGISTRATION_CALLBACK_PROVIDER_H
 #define LUTHIER_ROCPROFILER_API_TABLE_REGISTRATION_CALLBACK_PROVIDER_H
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
-#include "luthier/LLVM/streams.h"
 #include "luthier/Rocprofiler/ApiTableEnumInfo.h"
 #include "luthier/Rocprofiler/RocprofilerError.h"
-#include <atomic>
-#include <exception>
-#include <mutex>
 #include <rocprofiler-sdk/intercept_table.h>
 #include <rocprofiler-sdk/registration.h>
-#include <type_traits>
 
 namespace luthier::rocprofiler {
 
-/// \c ApiTableEnumInfo is the library-specific customization point declared in
-/// ApiTableEnumInfo.h. Its specializations live in HsaApiTableEnumInfo.h and
-/// HipApiTableEnumInfo.h; this header depends only on the primary template, so
-/// it pulls in neither HSA nor HIP headers.
-
-/// \brief a generic class used to safely request a callback to be invoked when
-/// an Api table is registered with rocprofiler-sdk. Can be either used as is
-/// or inherited by a sub-class
+/// \brief a generic class used to request a callback to be invoked when
+/// an Api table is registered with rocprofiler-sdk.
+/// \note After creation, the object must not be destroyed until it is
+/// confirmed that rocprofiler-sdk in the application space has been finalized.
 template <rocprofiler_intercept_table_t TableType>
 class ApiTableRegistrationCallbackProvider {
-private:
-  /// Set to \c true the first time \c std::terminate fires after
-  /// \c installHostAbortedSentinelOnce runs. Read by the destructor to
-  /// distinguish "the host aborted before rocprofiler could call our
-  /// callback" (warning-worthy) from "rocprofiler is up but never called
-  /// us" (programming bug). We need a side channel because by the time
-  /// the destructor runs, the C++ runtime has cleared the in-flight
-  /// exception (LLVM's signal handler intercepts \c SIGABRT and exits
-  /// cleanly, triggering normal static-destructor unwind — so
-  /// \c std::uncaught_exceptions() returns 0).
-  ///
-  /// Each template instantiation has its own copy; that's fine because
-  /// the chained terminate handlers below set every instantiation's
-  /// flag in order, so all destructors observe the abort regardless of
-  /// which one's handler was the outermost.
-  inline static std::atomic<bool> HostAbortedDuringExecution{false};
-  /// Previous terminate handler captured at install time so this
-  /// instantiation's handler can chain to it. \c std::set_terminate
-  /// takes a plain function pointer (not a \c std::function), so the
-  /// handler can't close over this — it has to be a static field the
-  /// handler reads directly.
-  inline static std::atomic<std::terminate_handler> PrevTerminateHandler{
-      nullptr};
-
-  /// Both sentinels have static storage duration and are read/written by the
-  /// chained terminate handler, which can fire arbitrarily late during program
-  /// shutdown. Keeping them trivially destructible guarantees no static
-  /// destructor is registered for them, so the handler can never touch a
-  /// destroyed object during exit.
-  static_assert(
-      std::is_trivially_destructible_v<decltype(HostAbortedDuringExecution)>,
-      "HostAbortedDuringExecution must remain trivially destructible");
-  static_assert(
-      std::is_trivially_destructible_v<decltype(PrevTerminateHandler)>,
-      "PrevTerminateHandler must remain trivially destructible");
-
-  static void hostAbortedTerminateHandler() noexcept {
-    HostAbortedDuringExecution.store(true);
-    if (auto Prev = PrevTerminateHandler.load())
-      Prev();
-    std::abort();
-  }
-
-  static void installHostAbortedSentinelOnce() {
-    static std::once_flag Installed;
-    std::call_once(Installed, [] {
-      /// Chain to whatever terminate handler is currently installed so
-      /// we don't suppress LLVM's stack-trace dump or another
-      /// instantiation's sentinel — we just observe and pass through.
-      PrevTerminateHandler.store(
-          std::set_terminate(hostAbortedTerminateHandler));
-    });
-  }
-
-  /// Whether \c rocprofiler_at_intercept_table_registration succeeded for this
-  /// object. If registration failed, rocprofiler never stored our \c this
-  /// pointer, hence it is safe to destroy the object
-  bool SuccessfullyRegistered = false;
-
-protected:
-  /// Keeps track of whether the registration callback has been invoked by
-  /// rocprofiler-sdk
-  std::atomic<bool> WasRegistrationInvoked{false};
-
+public:
   using CallbackType = std::function<void(
-      llvm::ArrayRef<typename ApiTableEnumInfo<TableType>::ApiTableType *>
-          Tables,
-      uint64_t LibVersion, uint64_t LibInstance)>;
+    llvm::ArrayRef<typename ApiTableEnumInfo<TableType>::ApiTableType *>
+        Tables,
+    uint64_t LibVersion, uint64_t LibInstance)>;
+private:
 
   /// Callback invoked inside the registration callback
   const CallbackType Callback;
 
-  /// API table registration callback for used by rocprofiler-sdk
-  /// \note Declared \c noexcept: rocprofiler-sdk invokes this from C code
-  /// (\c execute_intercepts) between a raw \c mutex.lock()/unlock() with no
-  /// RAII, so an exception escaping here would both leave that mutex locked
-  /// (deadlocking later registrations) and unwind across the C ABI (undefined
-  /// behavior). \c noexcept turns any unexpected escape (e.g. a \c
-  /// std::bad_alloc from \c llvm::formatv under OOM) into a clean
-  /// \c std::terminate instead.
+  /// API table registration callback consumed by rocprofiler-sdk
+  /// \note Declared \c noexcept to turns any unexpected exceptions into a
+  /// \c std::terminate.
   static void apiRegistrationCallback(rocprofiler_intercept_table_t Type,
                                       uint64_t LibVersion, uint64_t LibInstance,
                                       void **Tables, uint64_t NumTables,
@@ -163,13 +87,11 @@ protected:
     }
 
     RegProvider.Callback(TablesAsArrayRef, LibVersion, LibInstance);
-    RegProvider.WasRegistrationInvoked.store(true);
   }
 
 public:
   /// Constructor
-  /// \note Must only be invoked before rocprofiler-sdk has been
-  /// fully configured (i.e, inside the \c rocprofiler_configure function)
+  /// \note Must only be invoked inside the \c rocprofiler_configure function
   /// \param CB The callback to be invoked once rocprofiler-sdk has reported
   /// back with the requested API table. The callback provides the following
   /// arguments: a) A list of pointers of the API tables passed by
@@ -185,10 +107,6 @@ public:
   ApiTableRegistrationCallbackProvider(CallbackType CB, llvm::Error &Err)
       : Callback(std::move(CB)) {
     llvm::ErrorAsOutParameter EAO(Err);
-    /// Install once on first construction so the destructor can later
-    /// distinguish a host-side abort from a real "rocprofiler never
-    /// called us" bug.
-    installHostAbortedSentinelOnce();
     Err = std::move(LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
         rocprofiler_at_intercept_table_registration(
             ApiTableRegistrationCallbackProvider::apiRegistrationCallback,
@@ -197,102 +115,10 @@ public:
                       "initialization from "
                       "rocprofiler-sdk",
                       ApiTableEnumInfo<TableType>::ApiTableName)));
-    SuccessfullyRegistered = !Err.operator bool();
   };
 
-  /// Destructor
-  /// \note The object must only be destroyed only if: a) rocprofiler is
-  /// finalizing or finalized - the registration callback can no longer fire,
-  /// since \c rocprofiler_set_api_table is ignored once finalization has begun;
-  /// or b) the destructor is running while the host is aborting (stack
-  /// unwinding from an uncaught exception / \c std::terminate) — the program is
-  /// on its way out, so an unfulfilled callback is a symptom of the abort, not
-  /// a Luthier bug.
-  ///
-  /// Destroying outside these cases is a use-after-free hazard: rocprofiler-sdk
-  /// cannot de-register the callback (it stores this object's \c this pointer
-  /// in an append-only list) and will invoke it with the dangling pointer the
-  /// next time the runtime registers its API table.
-  /// \note Having already received the callback is NOT a safe-to-destroy
-  /// condition: rocprofiler re-invokes it on every subsequent registration
-  /// (e.g. an HSA finalize→re-init bumps the library instance and re-fires),
-  /// so finalization is the only state in which it can no longer fire.
-  /// \note If registration with rocprofiler-sdk failed in the constructor, none
-  /// of the above applies — rocprofiler never stored our \c this, so the object
-  /// is unconditionally safe to destroy.
-  virtual ~ApiTableRegistrationCallbackProvider() {
-    /// Registration never took effect, so rocprofiler-sdk holds no pointer to
-    /// this object — there is nothing to reconcile.
-    if (!SuccessfullyRegistered)
-      return;
 
-    int RocprofilerFiniStatus = 0;
-    /// Abort rather than exit: this runs in a destructor that may execute
-    /// during program shutdown, where exit() would re-enter the exit sequence.
-    LUTHIER_ABORT_ON_FATAL_ERROR(LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
-        rocprofiler_is_finalized(&RocprofilerFiniStatus),
-        "Failed to check rocprofiler's finalization status."));
-    /// Case (a): rocprofiler is finalizing or finalized — expected
-    /// shutdown path, regardless of whether our callback fired.
-    if (RocprofilerFiniStatus != 0)
-      return;
-
-    /// Case (b): the host called \c std::terminate (typically via an
-    /// uncaught exception, a noexcept violation, or an unhandled
-    /// signal that the runtime translated into a terminate). The
-    /// program is on its way out via abort; an unfulfilled callback in
-    /// that path is a consequence of the host crashing, not a Luthier
-    /// bug. We can't rely on \c std::uncaught_exceptions() here
-    /// because by the time our destructor runs (via static-destructor
-    /// unwind from LLVM's signal handler's exit path) the exception
-    /// state has already been cleared — so we use a side-channel flag
-    /// recorded by a chained \c std::set_terminate handler.
-    if (HostAbortedDuringExecution.load()) {
-      luthier::errs() << "[ApiTableRegistrationCallbackProvider] warning: "
-                      << "destroyed after host-side std::terminate; "
-                      << "rocprofiler-sdk had not invoked the registration "
-                      << "callback yet\n";
-      return;
-    }
-
-    /// Rocprofiler is not finalizing and the host is not aborting, but the
-    /// callback was never invoked — destroying now leaves a dangling
-    /// registration that rocprofiler will invoke on the next API table
-    /// registration. Abort (not exit) since we may be inside shutdown.
-    LUTHIER_ABORT_ON_FATAL_ERROR(LUTHIER_MAKE_ROCPROFILER_ERROR(
-        "ApiTableRegistrationCallbackProvider destroyed while "
-        "rocprofiler-sdk is not finalizing, but the "
-        "registration callback was never invoked."));
-  }
-
-  /// Checks whether rocprofiler-sdk has invoked the registration callback and
-  /// the requested user callback has been invoked
-  [[nodiscard]] bool wasRegistrationCallbackInvoked() const {
-    return WasRegistrationInvoked.load();
-  }
-
-  /// If the API table has not been registered yet, forces the underlying
-  /// library to initialize by invoking an entry point that brings the runtime
-  /// up (\c hsa_init for HSA, or the first dispatch-table access for HIP),
-  /// which in turn drives rocprofiler-sdk's registration of the table.
-  /// \note Only use when absolutely sure the underlying library is not going to
-  /// be initialized otherwise.
-  /// \warning Must NOT be called from within a rocprofiler-sdk
-  /// \c rocprofiler_configure or tool-\c initialize callback. The trigger
-  /// re-enters the runtime's init path, which calls back into rocprofiler-sdk's
-  /// \c rocprofiler_set_api_table — re-entering the same \c std::call_once that
-  /// is already running on this thread is undefined behavior (deadlock or \c
-  /// std::system_error). Call it only after rocprofiler-sdk configuration has
-  /// completed (e.g. from the host application's normal flow).
-  /// \note Only available for tables whose \c ApiTableEnumInfo specialization
-  /// defines \c triggerInitialization() (e.g. HSA and the HIP runtime, but not
-  /// the HIP compiler table); SFINAE removes this overload otherwise.
-  template <rocprofiler_intercept_table_t T = TableType,
-            typename = decltype(ApiTableEnumInfo<T>::triggerInitialization())>
-  void forceTriggerApiTableCallback() {
-    if (!WasRegistrationInvoked.load())
-      ApiTableEnumInfo<T>::triggerInitialization();
-  }
+  virtual ~ApiTableRegistrationCallbackProvider() = default;
 };
 
 } // namespace luthier::rocprofiler
