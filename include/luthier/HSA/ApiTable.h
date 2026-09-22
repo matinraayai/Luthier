@@ -19,8 +19,9 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_HSA_API_TABLE_H
 #define LUTHIER_HSA_API_TABLE_H
-#include "luthier/HSA/HsaError.h"
+#include "luthier/Common/DynamicLibraryFunctionEntry.h"
 #include "luthier/Common/ErrorCheck.h"
+#include "luthier/HSA/HsaError.h"
 #include <hsa/hsa_api_trace.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
@@ -31,17 +32,19 @@ namespace luthier::hsa {
 /// HSA runtime.
 /// \details This struct is primarily used by the \c ApiTableContainer class
 /// to provide direct
-template <auto ApiFunc> struct ApiInfo;
+template <auto ApiFunc> struct ApiInfo : DynamicLibraryFunctionEntry<ApiFunc>;
 
 #define DEFINE_HSA_API_INFO(ApiTableName, HsaFunc)                             \
   template <> struct ApiInfo<HsaFunc> {                                        \
     using ApiTable = ApiTableName;                                             \
+    using ApiType = decltype(&(HsaFunc));                                      \
     static constexpr auto ApiName = #HsaFunc;                                  \
     static constexpr auto ApiTablePointerToMember = &ApiTable::HsaFunc##_fn;   \
     static constexpr auto ApiTableOffset = offsetof(ApiTable, HsaFunc##_fn);   \
   };                                                                           \
   template <> struct ApiInfo<&ApiTableName::HsaFunc##_fn> {                    \
     using ApiTable = ApiTableName;                                             \
+    using ApiType = decltype(&ApiTableName::HsaFunc##_fn);                     \
     static constexpr auto ApiName = #HsaFunc;                                  \
     static constexpr auto ApiTablePointerToMember = &ApiTable::HsaFunc##_fn;   \
     static constexpr auto ApiTableOffset = offsetof(ApiTable, HsaFunc##_fn);   \

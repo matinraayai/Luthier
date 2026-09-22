@@ -16,12 +16,11 @@
 ///
 /// \file
 /// Defines \c luthier::DynamicLibrary, an owning wrapper around the \c void*
-/// handle returned by \c dlopen / \c dlmopen, and
-/// \c luthier::DynamicLibraryFunctionEntry, the customization point mapping an
-/// API entry to the symbol name it is looked up under.
+/// handle returned by \c dlopen / \c dlmopen.
 ///
-/// Together they make a dynamically-resolved call look like a direct one: with
-/// an entry registered for \c hsa_init, a caller writes
+/// Together with \c luthier::DynamicLibraryFunctionEntry, they make a
+/// dynamically-resolved call look like a direct one: with an entry registered
+/// for \c hsa_init, a caller writes
 /// \code
 ///   Lib.callFunction<hsa_init>();
 /// \endcode
@@ -34,24 +33,13 @@
 #define _GNU_SOURCE
 #endif
 
+#include "luthier/Common/DynamicLibraryFunctionEntry.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include <dlfcn.h>
 #include <llvm/Support/Error.h>
 #include <utility>
 
 namespace luthier {
-
-/// \brief Primary template (customization point) giving the symbol name and
-/// the function type an API entry is dynamically resolved under.
-template <auto Func> struct DynamicLibraryFunctionEntry;
-
-/// \brief Registers \p NAME as a dynamically-resolvable API entry, mapping it
-/// to its own name as a string and to its declared type.
-#define LUTHIER_DYNAMIC_LIBRARY_FUNCTION_ENTRY(NAME)                           \
-  template <> struct ::luthier::DynamicLibraryFunctionEntry<&NAME> {           \
-    using FunctionType = decltype(NAME);                                       \
-    static constexpr const char *FunctionName = #NAME;                         \
-  };
 
 /// \brief A wrapper around a dynamically loaded library.
 class DynamicLibrary {
@@ -138,8 +126,8 @@ public:
   /// library does not export it
   template <auto Func> [[nodiscard]] auto *getFunction() const {
     using Entry = DynamicLibraryFunctionEntry<Func>;
-    return reinterpret_cast<typename Entry::FunctionType *>(
-        ::dlsym(Handle, Entry::FunctionName));
+    return reinterpret_cast<typename Entry::ApiType *>(
+        ::dlsym(Handle, Entry::ApiName));
   }
 
   /// \return whether this library exports the API entry \p Func
@@ -158,7 +146,7 @@ public:
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         F != nullptr,
         llvm::formatv("Failed to find the function {0} in the dynamic library",
-                      DynamicLibraryFunctionEntry<Func>::FunctionName)));
+                      DynamicLibraryFunctionEntry<Func>::ApiName)));
     return getFunction<Func>()(std::forward<ArgsT>(Arguments)...);
   }
 };
