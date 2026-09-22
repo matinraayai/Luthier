@@ -18,7 +18,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_ROCPROFILER_ROCPROFILER_SDK_LIBRARY_H
 #define LUTHIER_ROCPROFILER_ROCPROFILER_SDK_LIBRARY_H
-#include "luthier/Common/DynamicLibrary.h"
+#include "luthier/Common/DynamicLibraryFunctionEntry.h"
 #include <rocprofiler-sdk/agent.h>
 #include <rocprofiler-sdk/buffer.h>
 #include <rocprofiler-sdk/buffer_tracing.h>
