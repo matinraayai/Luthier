@@ -71,6 +71,8 @@ MACHINE_FUNCTION_PASS("luthier-sva-phys-vgpr-pin", SVAPhysVGPRPinPass())
 #define PROTOTYPE_PASS(NAME, CREATE_PASS)
 #endif
 PROTOTYPE_PASS("luthier-code-discovery", CodeDiscoveryPass())
+PROTOTYPE_PASS("luthier-populate-debug-info", DebugInfoPass())
+PROTOTYPE_PASS("luthier-print-debug-info", DebugInfoPrinterPass(llvm::outs()))
 PROTOTYPE_PASS("luthier-intrinsic-mir-lowering", IntrinsicMIRLoweringPass())
 PROTOTYPE_PASS("luthier-injected-payload-preserve-live-regs",
                InjectedPayloadPreserveLiveRegsPass())
