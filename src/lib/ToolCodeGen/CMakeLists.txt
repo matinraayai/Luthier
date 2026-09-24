@@ -88,6 +88,7 @@ foreach (_DEVICE_TARGET IN LISTS LuthierRebaseAppScratchAccessesPass_DEVICE_TARG
 endforeach ()
 
 add_library(LuthierToolCodeGen OBJECT
+        DebugInfoPass.cpp
         ToolDeviceCodeParser.cpp
         PseudoOpcodeAndRegMapper.cpp
         TargetMachineInstrMDNode.cpp

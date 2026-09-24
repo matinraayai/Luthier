@@ -40,6 +40,7 @@
 #include "luthier/ToolCodeGen/RebaseAppScratchAccessesPass.h"
 #include "luthier/ToolCodeGen/TargetModulePatcherPass.h"
 #include "luthier/ToolCodeGen/TraceFunctionTranslationAnalysis.h"
+#include "luthier/ToolCodeGen/DebugInfoPass.h"
 
 #include <AMDGPU.h>
 #include <AMDGPUCtorDtorLowering.h>
