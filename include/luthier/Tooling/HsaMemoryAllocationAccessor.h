@@ -21,6 +21,7 @@
 #define LUTHIER_HSA_TOOLING_HSA_MEMORY_ALLOCATION_ACCESSOR_H
 #include "luthier/HSATooling/LoadedCodeObjectCache.h"
 #include "luthier/KFD/AllocationTracker.h"
+#include "luthier/Rocprofiler/HsaApiTableSnapshot.h"
 #include "luthier/ToolCodeGen/DriverAllocationResolver.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 
