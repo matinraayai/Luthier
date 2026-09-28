@@ -86,6 +86,10 @@ struct LiftLaunchedKernelsTool
                               luthier::PrototypeAnalysisManager &) {
     return llvm::PreservedAnalyses::all();
   }
+ 
+  /// A dummy device function is needed so the backend generates the necessary
+  /// attributes to run this tool.
+  __attribute__((device, used)) static void dummyDeviceMarker() {}
 };
 
 LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(LiftLaunchedKernelsTool)
