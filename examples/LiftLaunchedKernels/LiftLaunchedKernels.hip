@@ -79,13 +79,17 @@ struct LiftLaunchedKernelsTool
   void onPackets(const hsa_queue_t &Queue, uint64_t PacketIdx,
                  llvm::ArrayRef<luthier::hsa::AqlPacket> Packets,
                  hsa_amd_queue_intercept_packet_writer PacketWriter);
-
+  
   /// No-op: the tool only lifts and prints, never injects payloads. Nothing is
   /// mutated, so every analysis stays valid.
   llvm::PreservedAnalyses run(luthier::Prototype &,
                               luthier::PrototypeAnalysisManager &) {
     return llvm::PreservedAnalyses::all();
   }
+  
+  /// A dummy device function is needed so the backend generates the necessary
+  /// attributes to run this tool.
+  __attribute__((device, used)) static void dummyDeviceMarker() {}
 };
 
 LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(LiftLaunchedKernelsTool)
