@@ -40,8 +40,9 @@ struct InstrProfile {
   unsigned Opcode;
   llvm::StringRef Name; ///< Instruction mnemonic name.
 
-  llvm::SmallVector<OperandInfo, 4> Inputs;
-  llvm::SmallVector<OperandInfo, 2> Outputs;
+  //https://rocm.docs.amd.com/projects/llvm-project/en/docs-6.3.3/LLVM/llvm/html/AMDGPU/AMDGPUAsmGFX10.html#flat
+  llvm::SmallVector<OperandInfo, 4> Inputs; // potential 4 inputs: SRC0, SRC1, SRC2, MODIFIERS
+  llvm::SmallVector<OperandInfo, 2> Outputs; // potential 2 outputs: DST0, DST1
 
   llvm::SmallVector<llvm::MCRegister, 4> ImplicitDefs;
   llvm::SmallVector<llvm::MCRegister, 4> ImplicitUses;
@@ -95,21 +96,13 @@ struct AddressConfig {
   uint32_t ScratchOffset = 0; ///< Scratch byte offset.
 };
 
-/// 128-bit buffer resource descriptor (V#) for MUBUF/SMEM.
-struct VSharpDescriptor {
-  uint32_t Words[4] = {};
-
-  /// Construct a raw buffer descriptor pointing at \p BaseAddr with
-  /// \p NumBytes accessible.
-  static VSharpDescriptor createRaw(uint64_t BaseAddr, uint32_t NumBytes) {
-    VSharpDescriptor V;
-    V.Words[0] = static_cast<uint32_t>(BaseAddr);
-    V.Words[1] = static_cast<uint32_t>(BaseAddr >> 32) & 0xFFFF;
-    V.Words[2] = NumBytes;
-    V.Words[3] = 0x00027FAC; // GFX9 raw buffer, 32-bit float format.
-    return V;
-  }
-};
+// A host-side VSharpDescriptor helper used to live here, hardcoding word 3 as
+// the GFX9 raw-buffer value. It had no callers, and the constant is wrong from
+// GFX10 on (that generation replaced the num_format/data_format pair with a
+// unified FORMAT field and added RESOURCE_LEVEL / OOB_SELECT), so it was a trap
+// waiting for its first user. The buffer builders assemble the V# in-kernel and
+// get word 3 from luthier::test::vSharpWord3, which derives it from the
+// subtarget; that is the single source of truth for the descriptor layout.
 
 /// Classify the memory test requirements for an instruction.
 MemoryTestSetup classifyMemoryTest(const InstrProfile &Profile);

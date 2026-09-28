@@ -70,6 +70,12 @@ public:
   /// \returns Info for the GPU agent at index \p Idx.
   const GpuAgentInfo &getGpuAgent(size_t Idx) const { return GpuAgents[Idx]; }
 
+  /// \returns The target name (e.g. "gfx908") of the first discovered agent,
+  /// or an empty string if none were found.
+  llvm::StringRef getGpuTarget() const {
+    return GpuAgents.empty() ? llvm::StringRef() : llvm::StringRef(GpuAgents[0].Name);
+  }
+
   /// Allocate \p Size bytes from the kernarg region of \p Agent.
   llvm::Expected<void *> allocKernarg(const GpuAgentInfo &Agent, size_t Size);
 
