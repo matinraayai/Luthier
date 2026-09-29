@@ -22,10 +22,6 @@ struct MITraceEntry {
 using MIToTraceMapping =
     llvm::DenseMap<const llvm::MachineInstr *, MITraceEntry>;
 
-using CodeObjectFunctionToDISP = llvm::DenseMap<
-    luthier::object::AMDGCNObjectFile *,
-    llvm::DenseMap<const char* , llvm::DISubprogram *>>;
-
 class DebugInfoPass : public llvm::PassInfoMixin<DebugInfoPass> {
 public:
   DebugInfoPass() = default;

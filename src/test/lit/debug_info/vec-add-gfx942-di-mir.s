@@ -36,9 +36,22 @@
 // CHECK-SAME: file: [[FILE]]
 // CHECK-SAME: unit: [[CU]]
 
-// [[LOC]] was captured from an IR instruction above. Verify the DILocation
-// entry in the metadata table is well-formed and scoped to the subprogram.
-// CHECK: [[LOC]] = !DILocation(line: {{[0-9]+}}, column: {{[0-9]+}}, scope: [[SP]])
+// [[LOC]] was captured from the kernel's first IR instruction above. That code
+// comes from `blockDim.x`, which HIP implements as two helpers in
+// amd_hip_runtime.h that get inlined into the kernel. A DILocation takes its
+// file from its scope, so the location must be scoped to the innermost inlined
+// helper, with an inlinedAt chain that ends at the kernel's subprogram:
+//   [[LOC]]       scope: __hip_get_block_dim_x   (amd_hip_runtime.h:264)
+//   inlinedAt ->  scope: __get_x                 (amd_hip_runtime.h:296)
+//   inlinedAt ->  scope: vecAdd = [[SP]]         (the blockDim.x use, line 6)
+// CHECK: [[LOC]] = !DILocation(line: 264, column: 116, scope: [[INNER_SP:![0-9]+]], inlinedAt: [[CALL1:![0-9]+]])
+// CHECK: [[INNER_SP]] = distinct !DISubprogram(name: "__hip_get_block_dim_x"
+// CHECK-SAME: file: [[HDR:![0-9]+]]
+// CHECK: [[HDR]] = !DIFile(filename: "amd_hip_runtime.h"
+// CHECK: [[CALL1]] = !DILocation(line: 296, column: 160, scope: [[MID_SP:![0-9]+]], inlinedAt: [[CALL2:![0-9]+]])
+// CHECK: [[MID_SP]] = distinct !DISubprogram(name: "__get_x"
+// CHECK-SAME: file: [[HDR]]
+// CHECK: [[CALL2]] = !DILocation(line: 6, column: 24, scope: [[SP]])
 
 // === Per-MI debug-location attachment verified at both ends of the kernel ===
 
