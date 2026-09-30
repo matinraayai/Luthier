@@ -89,6 +89,7 @@ endforeach ()
 
 add_library(LuthierToolCodeGen OBJECT
         DebugInfoPass.cpp
+        MachineInstrTraceAddressAnalysis.cpp
         ToolDeviceCodeParser.cpp
         PseudoOpcodeAndRegMapper.cpp
         TargetMachineInstrMDNode.cpp

@@ -10,26 +10,11 @@
 
 namespace luthier {
 
-struct MITraceEntry {
-  uint64_t TraceAddr;
-  uint64_t DWARFOffset;
-};
-
-using MIToTraceMapping =
-    llvm::DenseMap<const llvm::MachineInstr *, MITraceEntry>;
-
 class DebugInfoPass : public llvm::PassInfoMixin<DebugInfoPass> {
 public:
   DebugInfoPass() = default;
 
   llvm::PreservedAnalyses run(Prototype &IP, PrototypeAnalysisManager &IPAM);
-
-  [[nodiscard]] const MIToTraceMapping &getMIToTraceMapping() const {
-    return MIToTrace;
-  }
-
-private:
-  MIToTraceMapping MIToTrace;
 };
 
 class DebugInfoPrinterPass : public llvm::PassInfoMixin<DebugInfoPrinterPass> {

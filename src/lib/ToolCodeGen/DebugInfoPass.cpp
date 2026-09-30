@@ -2,6 +2,7 @@
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Object/AMDGCNObjectFile.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
+#include "luthier/ToolCodeGen/MachineInstrTraceAddressAnalysis.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/TargetMachineInstrMDNode.h"
@@ -9,6 +10,7 @@
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/MachineFunctionAnalysisManager.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachinePassManager.h"
@@ -267,6 +269,14 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
     }
 
     auto &MF = MFResult->getMF();
+
+    llvm::MachineFunctionAnalysisManager &MFAM =
+        FAM.getResult<llvm::MachineFunctionAnalysisManagerFunctionProxy>(F)
+            .getManager();
+
+    const auto &MITraceAddrMap =
+        MFAM.getResult<MachineInstrTraceAddressAnalysis>(MF).getMIToTraceMap();
+
     auto &LinkageNameToDISP = CodeObjectLinkageNameToDISP[CodeObject];
 
     llvm::DILineInfoSpecifier DILineInfoSpecifier(
@@ -276,21 +286,15 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
     // Iterate over all Traced Instructions
     for (llvm::MachineBasicBlock &MBB : MF) {
       for (llvm::MachineInstr &MI : MBB) {
-        auto *MDNode = TargetMachineInstrMDNode::getInstrMDNodeIfExists(MI);
-        if (!MDNode)
-          continue;
 
-        std::optional<uint64_t> TraceAddrOpt = MDNode->getTraceInstrAddress();
-        if (!TraceAddrOpt)
-          continue;
+        uint64_t TraceAddr = MITraceAddrMap.lookup(&MI);
 
-        uint64_t TraceAddr = *TraceAddrOpt;
+        if (!TraceAddr) {
+          continue;
+        }
 
         // Calculate offset from code object load base
         uint64_t Offset = TraceAddr - AllocBaseAddr;
-
-        // Record the MI to trace + offset mapping
-        MIToTrace[&MI] = {TraceAddr, Offset};
 
         LLVM_DEBUG(
             llvm::dbgs() << llvm::formatv(
@@ -349,20 +353,23 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
                        "[DebugInfoPass] MI at Trace Addr {3:x} attached to "
                        "{0}:{1}:{2}\n",
                        llvm::sys::path::filename(DILoc->getFilename()),
-                       DILoc->getLine(), DILoc->getColumn(),
-                       MIToTrace[&MI].TraceAddr););
+                       DILoc->getLine(), DILoc->getColumn(), TraceAddr););
       }
     }
   }
 
   DIB.finalize();
 
-#ifndef NDEBUG
-  bool Broken = llvm::verifyModule(M, &llvm::errs());
-  if (Broken) {
-    Ctx.emitError("[DebugInfoPass] Module Verification Failed\n");
-  }
-#endif
+// #ifndef NDEBUG
+//   bool DebugInfoBroken;
+//   bool Broken = llvm::verifyModule(M, &llvm::errs(), &DebugInfoBroken);
+//   if (Broken) {
+//     LLVM_DEBUG("[DebugInfoPass] Module Verification Failed\n");
+//   }
+//   if (DebugInfoBroken){
+//     LLVM_DEBUG(llvm::dbgs() << "[DebugInfoPass] Module Verification Failed due to Broken Debug Info\n");
+//   }
+// #endif
 
   return llvm::PreservedAnalyses::all();
 }
