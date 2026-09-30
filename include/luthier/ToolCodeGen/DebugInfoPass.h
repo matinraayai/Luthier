@@ -1,13 +1,9 @@
 #ifndef LUTHIER_DEBUG_INFO_PASS_H
 #define LUTHIER_DEBUG_INFO_PASS_H
 
-#include "luthier/Object/AMDGCNObjectFile.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/CodeGen/MachineInstr.h"
-#include "llvm/DebugInfo/DIContext.h"
-#include "llvm/IR/DebugInfoMetadata.h"
-#include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdint>

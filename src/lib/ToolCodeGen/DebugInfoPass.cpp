@@ -1,5 +1,4 @@
 #include "luthier/ToolCodeGen/DebugInfoPass.h"
-#include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Object/AMDGCNObjectFile.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
@@ -10,7 +9,6 @@
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/MachineFunctionAnalysisManager.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachinePassManager.h"
@@ -25,8 +23,8 @@
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include <cstdint>
@@ -54,11 +52,9 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
   llvm::FunctionAnalysisManager &FAM =
       MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(M).getManager();
 
+  // TODO: Must have 1 DIB per CU, not 1 per Module
+  // ! assert DIBuilder.cpp:152
   llvm::DIBuilder DIB(M);
-
-  llvm::DenseMap<const luthier::object::AMDGCNObjectFile *,
-                 std::unique_ptr<llvm::DWARFContext>>
-      CodeObjectToDWARFCtx;
 
   // Avoid CU offset collision when multiple ObjectFiles are present
   llvm::DenseMap<const luthier::object::AMDGCNObjectFile *,
@@ -68,6 +64,10 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
   llvm::DenseMap<const luthier::object::AMDGCNObjectFile *,
                  llvm::DenseMap<llvm::StringRef, llvm::DISubprogram *>>
       CodeObjectLinkageNameToDISP;
+
+  llvm::DenseMap<const luthier::object::AMDGCNObjectFile *,
+                 std::unique_ptr<llvm::DWARFContext>>
+      CodeObjectToDWARFCtx;
 
   for (llvm::Function &F : M) {
     auto EntryPoint = getFunctionEntryPoint(F);
@@ -143,10 +143,21 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
           switch (Die.getTag()) {
           case (llvm::dwarf::DW_TAG_subprogram): {
             llvm::StringRef LinkageNameRef(Die.getLinkageName());
-            if (LinkageNameRef.empty()) {
+            llvm::StringRef ShortNameRef(Die.getShortName());
+            // ShortName fallback
+            llvm::StringRef FunctionName =
+                LinkageNameRef.empty() ? ShortNameRef : LinkageNameRef;
+
+            if (FunctionName.empty()) {
               break;
             }
-            llvm::StringRef ShortNameRef(Die.getShortName());
+
+            if (Die.find(llvm::dwarf::DW_AT_declaration)) {
+              LLVM_DEBUG(llvm::dbgs()
+                         << "[DebugInfoPass] Skipping Function Declaration "
+                         << FunctionName << "\n");
+              continue;
+            }
 
             uint32_t LineNumber = Die.getDeclLine();
 
@@ -174,9 +185,15 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
                 SubType, LineNumber, llvm::DINode::FlagZero,
                 llvm::DISubprogram::SPFlagDefinition);
 
+            if (CodeObjectLinkageNameToDISP[CodeObject].lookup(FunctionName)) {
+              LLVM_DEBUG(llvm::dbgs()
+                         << "[DebugInfoPass] Function " << FunctionName
+                         << " will overwrite a cached DISubprogram entry\n");
+            }
+
             // Add DISubprogram to ObjectFile -> {LinkageName, DISubprogram}
             // cache
-            CodeObjectLinkageNameToDISP[CodeObject][LinkageNameRef] = DISP;
+            CodeObjectLinkageNameToDISP[CodeObject][FunctionName] = DISP;
 
             LLVM_DEBUG(llvm::dbgs()
                        << "[DebugInfoPass] Subprogram DIE: short='"
@@ -185,7 +202,7 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
                        << UnitFile->getFilename() << "'\n");
 
             // Link DISubprogram to current Function if linkage name matches
-            if (LinkageNameRef == F.getName()) {
+            if (FunctionName == F.getName()) {
               FuncDISP = DISP;
               F.setSubprogram(FuncDISP);
 
@@ -193,6 +210,7 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
                          << "[DebugInfoPass] Function: " << F.getName()
                          << " has attached a DISubprogram\n");
             }
+            break;
           }
 
             // TODO: populate other Die types
@@ -243,7 +261,8 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
 
     if (!MFResult) {
       Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-          "No MachineFunction found for function {0}", F.getName()))));
+          "[DebugInfoPass] No MachineFunction found for function {0}\n",
+          F.getName()))));
       continue;
     }
 
@@ -337,6 +356,13 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
   }
 
   DIB.finalize();
+
+#ifndef NDEBUG
+  bool Broken = llvm::verifyModule(M, &llvm::errs());
+  if (Broken) {
+    Ctx.emitError("[DebugInfoPass] Module Verification Failed\n");
+  }
+#endif
 
   return llvm::PreservedAnalyses::all();
 }
