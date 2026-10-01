@@ -58,9 +58,9 @@ namespace dh_comms {
 
 std::atomic<std::size_t> dh_comms::dh_comms_id_counter_{0};
 
-dh_comms_mem_mgr::dh_comms_mem_mgr() { return; }
+dh_comms_mem_mgr::dh_comms_mem_mgr() = default;
 
-dh_comms_mem_mgr::~dh_comms_mem_mgr() {}
+dh_comms_mem_mgr::~dh_comms_mem_mgr() = default;
 
 void *dh_comms_mem_mgr::calloc(std::size_t size) {
   hip_runtime_loader::init();
