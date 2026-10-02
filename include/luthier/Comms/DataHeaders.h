@@ -37,6 +37,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMS_DATA_HEADERS_H
 #define LUTHIER_COMMS_DATA_HEADERS_H
+#include <cstdint>
 #include <vector>
 
 namespace luthier {
