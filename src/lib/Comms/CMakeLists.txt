@@ -1,10 +1,9 @@
 
 add_library(LuthierComms OBJECT
-        dh_comms.cpp
+        DhComms.cpp
         data_headers.cpp
         message.cpp
         message_handlers.cpp
-        hip_runtime_loader.cpp
 )
 
 target_compile_definitions(LuthierComms PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
