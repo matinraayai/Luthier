@@ -9,8 +9,8 @@
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
 //
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
 //
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -39,70 +39,55 @@
 static constexpr unsigned int hipHostMallocCoherent = 0x4;
 static constexpr int hipMemcpyHostToDevice = 1;
 
-namespace {
-using namespace dh_comms::hip_runtime_loader;
-
-inline int checkHipError(hipError_t err, const char *cmd) {
-  if (err) {
-    init(); // ensure pfn_hipGetErrorString is resolved
-    printf("HIP error in command '%s'\n", cmd);
-    printf("Error message: %s\n", pfn_hipGetErrorString(err));
-  }
-  return err;
-}
-} // unnamed namespace
-
-#define CHK_HIP_ERR(cmd) checkHipError(cmd, #cmd)
+#define CHK_HIP_ERR(cmd)
 
 namespace dh_comms {
 
 std::atomic<std::size_t> dh_comms::dh_comms_id_counter_{0};
 
-dh_comms_mem_mgr::dh_comms_mem_mgr() = default;
+CommsMemManager::CommsMemManager() = default;
 
-dh_comms_mem_mgr::~dh_comms_mem_mgr() = default;
+CommsMemManager::~CommsMemManager() = default;
 
-void *dh_comms_mem_mgr::calloc(std::size_t size) {
-  hip_runtime_loader::init();
+llvm::Expected<void *> CommsMemManager::calloc(std::size_t size) {
   void *buffer;
-  CHK_HIP_ERR(hip_runtime_loader::pfn_hipHostMalloc(&buffer, size, hipHostMallocCoherent));
+  CHK_HIP_ERR(hip_runtime_loader::pfn_hipHostMalloc(&buffer, size,
+                                                    hipHostMallocCoherent));
   zero((char *)buffer, size);
   return buffer;
 }
 
-void *dh_comms_mem_mgr::calloc_device_memory(std::size_t size) {
-  hip_runtime_loader::init();
-  void *result = NULL;
+void *CommsMemManager::calloc_device_memory(std::size_t size) {
+  void *result = nullptr;
   CHK_HIP_ERR(hip_runtime_loader::pfn_hipMalloc(&result, size));
   zero_device_memory(result, size);
   return result;
 }
 
-void *dh_comms_mem_mgr::copy_to_device(void *dst, const void *src, std::size_t size) {
-  hip_runtime_loader::init();
-  CHK_HIP_ERR(hip_runtime_loader::pfn_hipMemcpy(dst, src, size, hipMemcpyHostToDevice));
+void *CommsMemManager::copy_to_device(void *dst, const void *src,
+                                      std::size_t size) {
+  CHK_HIP_ERR(
+      hip_runtime_loader::pfn_hipMemcpy(dst, src, size, hipMemcpyHostToDevice));
   return dst;
 }
 
-void dh_comms_mem_mgr::free(void *ptr) {
-  hip_runtime_loader::init();
+void CommsMemManager::free(void *ptr) {
   CHK_HIP_ERR(hip_runtime_loader::pfn_hipFree(ptr));
-  return;
 }
 
-void dh_comms_mem_mgr::free_device_memory(void *ptr) { this->free(ptr); }
+void CommsMemManager::free_device_memory(void *ptr) { this->free(ptr); }
 
-void *dh_comms_mem_mgr::copy(void *dst, void *src, std::size_t size) {
+void *CommsMemManager::copy(void *dst, void *src, std::size_t size) {
   memcpy(dst, src, size);
   return dst;
 }
 
-void dh_comms_mem_mgr::zero(void *buffer, std::size_t size) {
+void CommsMemManager::zero(void *buffer, std::size_t size) {
   std::vector<char> zeros(size);
   std::copy(zeros.cbegin(), zeros.cend(), (char *)buffer);
 }
 
-void dh_comms_mem_mgr::zero_device_memory(void *buffer, std::size_t size) {
+void CommsMemManager::zero_device_memory(void *buffer, std::size_t size) {
   std::vector<char> zeros(size);
   copy_to_device(buffer, zeros.data(), size);
 }
@@ -111,7 +96,8 @@ void dh_comms_mem_mgr::zero_device_memory(void *buffer, std::size_t size) {
 namespace {
 constexpr bool shared_buffers_are_host_pinned = true;
 
-template <typename T> T *clone_to_device(const T &host_data, dh_comms::dh_comms_mem_mgr &mgr) {
+template <typename T>
+T *clone_to_device(const T &host_data, dh_comms::CommsMemManager &mgr) {
   T *device_data;
   device_data = reinterpret_cast<T *>(mgr.calloc_device_memory(sizeof(T)));
   mgr.copy_to_device(device_data, &host_data, sizeof(T));
@@ -121,15 +107,20 @@ template <typename T> T *clone_to_device(const T &host_data, dh_comms::dh_comms_
 } // unnamed namespace
 
 namespace dh_comms {
-dh_comms_resources::dh_comms_resources(std::size_t no_sub_buffers, std::size_t sub_buffer_capacity,
-                                       dh_comms_mem_mgr &mgr)
+dh_comms_resources::dh_comms_resources(std::size_t no_sub_buffers,
+                                       std::size_t sub_buffer_capacity,
+                                       CommsMemManager &mgr)
     : desc_({no_sub_buffers, sub_buffer_capacity,
-             (decltype(desc_.buffer_))mgr.calloc(no_sub_buffers * sub_buffer_capacity),
-             (decltype(desc_.sub_buffer_sizes_))mgr.calloc(no_sub_buffers * sizeof(decltype(*desc_.sub_buffer_sizes_))),
-             (decltype(desc_.error_bits_))mgr.calloc(sizeof(decltype(*desc_.error_bits_))),
-             (decltype(desc_.atomic_flags_d_))mgr.calloc_device_memory(no_sub_buffers *
-                                                                       sizeof(decltype(*desc_.atomic_flags_d_))),
-             (decltype(desc_.atomic_flags_hd_))mgr.calloc(no_sub_buffers * sizeof(decltype(*desc_.atomic_flags_hd_)))}),
+             (decltype(desc_.buffer_))mgr.calloc(no_sub_buffers *
+                                                 sub_buffer_capacity),
+             (decltype(desc_.sub_buffer_sizes_))mgr.calloc(
+                 no_sub_buffers * sizeof(decltype(*desc_.sub_buffer_sizes_))),
+             (decltype(desc_.error_bits_))mgr.calloc(
+                 sizeof(decltype(*desc_.error_bits_))),
+             (decltype(desc_.atomic_flags_d_))mgr.calloc_device_memory(
+                 no_sub_buffers * sizeof(decltype(*desc_.atomic_flags_d_))),
+             (decltype(desc_.atomic_flags_hd_))mgr.calloc(
+                 no_sub_buffers * sizeof(decltype(*desc_.atomic_flags_hd_)))}),
       mgr_(mgr) {}
 
 dh_comms_resources::~dh_comms_resources() {
@@ -148,17 +139,20 @@ bool dh_comms::message_passes_filter(const wave_header_t &header) const {
 
   // Check each enabled filter
   if (filter_x_.enabled) {
-    if (header.block_idx_x < filter_x_.min || header.block_idx_x >= filter_x_.max) {
+    if (header.block_idx_x < filter_x_.min ||
+        header.block_idx_x >= filter_x_.max) {
       return false;
     }
   }
   if (filter_y_.enabled) {
-    if (header.block_idx_y < filter_y_.min || header.block_idx_y >= filter_y_.max) {
+    if (header.block_idx_y < filter_y_.min ||
+        header.block_idx_y >= filter_y_.max) {
       return false;
     }
   }
   if (filter_z_.enabled) {
-    if (header.block_idx_z < filter_z_.min || header.block_idx_z >= filter_z_.max) {
+    if (header.block_idx_z < filter_z_.min ||
+        header.block_idx_z >= filter_z_.max) {
       return false;
     }
   }
@@ -169,7 +163,7 @@ bool dh_comms::message_passes_filter(const wave_header_t &header) const {
 block_idx_filter_t dh_comms::parse_filter_env(const char *env_value) {
   block_idx_filter_t filter;
   if (env_value == nullptr || env_value[0] == '\0') {
-    return filter;  // Not set, filtering disabled
+    return filter; // Not set, filtering disabled
   }
 
   std::string value(env_value);
@@ -181,11 +175,13 @@ block_idx_filter_t dh_comms::parse_filter_env(const char *env_value) {
       int max_val = std::stoi(value.substr(colon_pos + 1));
 
       if (min_val < 0 || max_val < 0) {
-        std::cerr << "Warning: Invalid filter range '" << value << "' (negative values). Filter disabled." << std::endl;
+        std::cerr << "Warning: Invalid filter range '" << value
+                  << "' (negative values). Filter disabled." << std::endl;
         return filter;
       }
       if (min_val > max_val) {
-        std::cerr << "Warning: Invalid filter range '" << value << "' (min > max). Filter disabled." << std::endl;
+        std::cerr << "Warning: Invalid filter range '" << value
+                  << "' (min > max). Filter disabled." << std::endl;
         return filter;
       }
 
@@ -196,7 +192,8 @@ block_idx_filter_t dh_comms::parse_filter_env(const char *env_value) {
       // Single value format: "N" -> range [N, N+1)
       int single_val = std::stoi(value);
       if (single_val < 0) {
-        std::cerr << "Warning: Invalid filter value '" << value << "' (negative). Filter disabled." << std::endl;
+        std::cerr << "Warning: Invalid filter value '" << value
+                  << "' (negative). Filter disabled." << std::endl;
         return filter;
       }
 
@@ -205,39 +202,40 @@ block_idx_filter_t dh_comms::parse_filter_env(const char *env_value) {
       filter.max = static_cast<uint16_t>(single_val + 1);
     }
   } catch (const std::exception &e) {
-    std::cerr << "Warning: Failed to parse filter value '" << value << "': " << e.what() << ". Filter disabled."
-              << std::endl;
+    std::cerr << "Warning: Failed to parse filter value '" << value
+              << "': " << e.what() << ". Filter disabled." << std::endl;
   }
 
   return filter;
 }
 
-dh_comms::dh_comms(std::size_t no_sub_buffers, std::size_t sub_buffer_capacity, bool verbose,
-                   bool install_default_handlers, dh_comms_mem_mgr *mgr, bool handlers_pass_through)
+dh_comms::dh_comms(std::size_t no_sub_buffers, std::size_t sub_buffer_capacity,
+                   bool verbose, bool install_default_handlers,
+                   CommsMemManager *mgr, bool handlers_pass_through)
     : mgr_(mgr ? mgr : &default_mgr_),
       rsrc_(no_sub_buffers, sub_buffer_capacity, *mgr_),
-      dev_rsrc_p_(clone_to_device(rsrc_.desc_, *mgr_)),
-      running_(false),
-      verbose_(verbose),
-      message_handler_chain_(handlers_pass_through),
-      sub_buffer_processor_(),
-      start_time_(),
-      stop_time_(),
-      dh_comms_id_(dh_comms_id_counter_.fetch_add(1, std::memory_order_relaxed)),
+      dev_rsrc_p_(clone_to_device(rsrc_.desc_, *mgr_)), running_(false),
+      verbose_(verbose), message_handler_chain_(handlers_pass_through),
+      sub_buffer_processor_(), start_time_(), stop_time_(),
+      dh_comms_id_(
+          dh_comms_id_counter_.fetch_add(1, std::memory_order_relaxed)),
       filter_x_(parse_filter_env(std::getenv("DH_COMMS_GROUP_FILTER_X"))),
       filter_y_(parse_filter_env(std::getenv("DH_COMMS_GROUP_FILTER_Y"))),
       filter_z_(parse_filter_env(std::getenv("DH_COMMS_GROUP_FILTER_Z"))),
-      any_filter_enabled_(filter_x_.enabled || filter_y_.enabled || filter_z_.enabled) {
+      any_filter_enabled_(filter_x_.enabled || filter_y_.enabled ||
+                          filter_z_.enabled) {
   if (install_default_handlers) {
     install_default_message_handlers();
   }
   if (verbose_) {
     if constexpr (shared_buffers_are_host_pinned) {
-      printf("%s:%d:\n\t Buffers accessed from both host and device are allocated in pinned host memory\n", __FILE__,
-             __LINE__);
+      printf("%s:%d:\n\t Buffers accessed from both host and device are "
+             "allocated in pinned host memory\n",
+             __FILE__, __LINE__);
     } else {
-      printf("%s:%d:\n\t Buffers accessed from both host and device are allocated in device memory\n", __FILE__,
-             __LINE__);
+      printf("%s:%d:\n\t Buffers accessed from both host and device are "
+             "allocated in device memory\n",
+             __FILE__, __LINE__);
     }
   }
   if (any_filter_enabled_ && verbose_) {
@@ -254,12 +252,13 @@ dh_comms::dh_comms(std::size_t no_sub_buffers, std::size_t sub_buffer_capacity, 
 
 dh_comms::~dh_comms() {
   if (running_) {
-    // if processing threads are still running, stop/join them, to avoid the program
-    // to hang.
+    // if processing threads are still running, stop/join them, to avoid the
+    // program to hang.
     stop();
   }
   if (*rsrc_.desc_.error_bits_ & 1) {
-    std::cerr << "Error detected: data from device dropped because message size was larger than sub-buffer size"
+    std::cerr << "Error detected: data from device dropped because message "
+                 "size was larger than sub-buffer size"
               << std::endl;
   }
   mgr_->free_device_memory(dev_rsrc_p_);
@@ -300,16 +299,19 @@ void dh_comms::delete_handlers() {
 void dh_comms::report(bool auto_clear_states) {
   message_handler_chain_.report();
 
-  const std::chrono::duration<double> processing_time = stop_time_ - start_time_;
+  const std::chrono::duration<double> processing_time =
+      stop_time_ - start_time_;
   double MiBps = bytes_processed_ / processing_time.count() / 1.0e6;
-  printf("%zu bytes processed in %lf seconds (%.1lf MiB/s)\n", bytes_processed_, processing_time.count(), MiBps);
+  printf("%zu bytes processed in %lf seconds (%.1lf MiB/s)\n", bytes_processed_,
+         processing_time.count(), MiBps);
 
   if (auto_clear_states) {
     clear_handler_states();
   }
 }
 
-void dh_comms::append_handler(std::unique_ptr<message_handler_base> &&message_handler) {
+void dh_comms::append_handler(
+    std::unique_ptr<message_handler_base> &&message_handler) {
   assert(not running_);
   assert(message_handler);
   message_handler_chain_.add_handler(std::move(message_handler));
@@ -327,14 +329,18 @@ void dh_comms::processing_loop(bool is_final_loop) {
     // is done processing the sub-buffer) or 2 (if it doesn't want control back,
     // and instead allows any wave to take control of the sub-buffer)
 
-    // in the final processing loop, sub-buffers are either empty or partially filled,
-    // but not full, and we expect the flag to be zero.
-    uint8_t flag = __atomic_load_n(&rsrc_.desc_.atomic_flags_hd_[i], __ATOMIC_ACQUIRE);
+    // in the final processing loop, sub-buffers are either empty or partially
+    // filled, but not full, and we expect the flag to be zero.
+    uint8_t flag =
+        __atomic_load_n(&rsrc_.desc_.atomic_flags_hd_[i], __ATOMIC_ACQUIRE);
     if (is_final_loop or flag == 1) // process and reset
     {
-      if (is_final_loop and flag != 0) // Should not happen, indicates a missing atomic release from device code
+      if (is_final_loop and flag != 0) // Should not happen, indicates a missing
+                                       // atomic release from device code
       {
-        printf("Found non-zero flag for sub-buffer %lu in final processing loop\n", i);
+        printf(
+            "Found non-zero flag for sub-buffer %lu in final processing loop\n",
+            i);
       }
       // process data
       size_t size = rsrc_.desc_.sub_buffer_sizes_[i];
@@ -353,9 +359,11 @@ void dh_comms::processing_loop(bool is_final_loop) {
       }
 
       rsrc_.desc_.sub_buffer_sizes_[i] = 0;
-      if (!is_final_loop) { // give control over the sub-buffer back to the wave that gave it to us
+      if (!is_final_loop) { // give control over the sub-buffer back to the wave
+                            // that gave it to us
         flag = 0;
-        __atomic_store_n(&rsrc_.desc_.atomic_flags_hd_[i], flag, __ATOMIC_RELEASE);
+        __atomic_store_n(&rsrc_.desc_.atomic_flags_hd_[i], flag,
+                         __ATOMIC_RELEASE);
       }
     }
   }
