@@ -43,7 +43,7 @@ class message_handler_base {
 public:
   message_handler_base() = default;
   message_handler_base(const message_handler_base &) = default;
-  virtual ~message_handler_base() = 0;
+  virtual ~message_handler_base() = default;
   //! A derived class implementing handle() must handle a message if it can and
   //! return true, or, if it cannot handle the message, return false.
   virtual bool handle(const message_t &message) = 0;

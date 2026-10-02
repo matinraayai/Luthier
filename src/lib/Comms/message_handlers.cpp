@@ -25,7 +25,6 @@
 #include <cassert>
 
 namespace luthier {
-message_handler_base::~message_handler_base() {}
 
 message_handler_chain_t::message_handler_chain_t(bool pass_through)
     : pass_through_(pass_through) {}
