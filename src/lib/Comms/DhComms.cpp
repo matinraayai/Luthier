@@ -1,3 +1,18 @@
+//===-- DHComms.cpp -------------------------------------------------------===//
+// Copyright @ Northeastern University Computer Architecture Lab
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
 // MIT License
 //
 // Copyright (c) 2026 Advanced Micro Devices, Inc. All rights reserved.
@@ -19,12 +34,17 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
+//===----------------------------------------------------------------------===//
 
 #include "luthier/Comms/DhComms.h"
 
 #include "luthier/Comms/data_headers.h"
-#include "luthier/Comms/hip_runtime_loader.h"
 #include "luthier/Comms/message.h"
+#include "luthier/Common/ErrorCheck.h"
+#include "luthier/Common/GenericLuthierError.h"
+#include "luthier/HSA/Memory.h"
+#include "luthier/HSA/MemoryPool.h"
+#include <llvm/Support/FormatVariadic.h>
 
 #include <algorithm>
 #include <cassert>
@@ -35,64 +55,84 @@
 #include <string>
 #include <vector>
 
-// HIP enum constants (avoid pulling in hip_runtime.h for host-only code)
-static constexpr unsigned int hipHostMallocCoherent = 0x4;
-static constexpr int hipMemcpyHostToDevice = 1;
-
-#define CHK_HIP_ERR(cmd)
-
 namespace luthier {
 
 std::atomic<std::size_t> dh_comms::dh_comms_id_counter_{0};
 
 CommsMemManager::CommsMemManager(
     rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
-    rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExtApi)
-    : CoreApi(CoreApi), AmdExtApi(AmdExtApi) {};
+    rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExtApi,
+    hsa_agent_t Agent)
+    : CoreApi(CoreApi), AmdExtApi(AmdExtApi), Agent(Agent) {};
 
 CommsMemManager::~CommsMemManager() = default;
 
 llvm::Expected<void *> CommsMemManager::calloc(std::size_t size) {
-  void *buffer;
-  CHK_HIP_ERR(hip_runtime_loader::pfn_hipHostMalloc(&buffer, size,
-                                                    hipHostMallocCoherent));
-  zero((char *)buffer, size);
-  return buffer;
+  auto AmdExt = AmdExtApi.getTable();
+  auto PoolOrErr = hsa::findHostFineGrainedPool(CoreApi.getTable(), AmdExt);
+  LUTHIER_RETURN_ON_ERROR(PoolOrErr.takeError());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      PoolOrErr->has_value(),
+      "No fine-grained memory pool was found for the host."));
+
+  auto BufferOrErr = hsa::memoryPoolAllocate(AmdExt, **PoolOrErr, size);
+  LUTHIER_RETURN_ON_ERROR(BufferOrErr.takeError());
+
+  if (llvm::Error Err = hsa::agentsAllowAccess(AmdExt, {Agent}, *BufferOrErr))
+    return llvm::joinErrors(std::move(Err),
+                            hsa::memoryPoolFree(AmdExt, *BufferOrErr));
+
+  zero((char *)*BufferOrErr, size);
+  return *BufferOrErr;
 }
 
-void *CommsMemManager::calloc_device_memory(std::size_t size) {
-  void *result = nullptr;
-  CHK_HIP_ERR(hip_runtime_loader::pfn_hipMalloc(&result, size));
-  zero_device_memory(result, size);
-  return result;
+llvm::Expected<void *> CommsMemManager::calloc_device_memory(std::size_t size) {
+  auto AmdExt = AmdExtApi.getTable();
+  auto PoolOrErr = hsa::agentFindCoarseGrainedPool(AmdExt, Agent);
+  LUTHIER_RETURN_ON_ERROR(PoolOrErr.takeError());
+  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+      PoolOrErr->has_value(),
+      llvm::formatv("Agent {0:x} exposes no coarse-grained memory pool",
+                    Agent.handle)));
+
+  auto ResultOrErr = hsa::memoryPoolAllocate(AmdExt, **PoolOrErr, size);
+  LUTHIER_RETURN_ON_ERROR(ResultOrErr.takeError());
+
+  if (llvm::Error Err = zero_device_memory(*ResultOrErr, size))
+    return llvm::joinErrors(std::move(Err),
+                            hsa::memoryPoolFree(AmdExt, *ResultOrErr));
+  return *ResultOrErr;
 }
 
-void *CommsMemManager::copy_to_device(void *dst, const void *src,
-                                      std::size_t size) {
-  CHK_HIP_ERR(
-      hip_runtime_loader::pfn_hipMemcpy(dst, src, size, hipMemcpyHostToDevice));
+llvm::Expected<void *> CommsMemManager::copy_to_device(void *dst,
+                                                       const void *src,
+                                                       std::size_t size) {
+  LUTHIER_RETURN_ON_ERROR(hsa::memoryCopy(CoreApi.getTable(), dst, src, size));
   return dst;
 }
 
-void CommsMemManager::free(void *ptr) {
-  CHK_HIP_ERR(hip_runtime_loader::pfn_hipFree(ptr));
+llvm::Error CommsMemManager::free(void *ptr) {
+  return hsa::memoryPoolFree(AmdExtApi.getTable(), ptr);
 }
 
-void CommsMemManager::free_device_memory(void *ptr) { this->free(ptr); }
+llvm::Error CommsMemManager::free_device_memory(void *ptr) {
+  return this->free(ptr);
+}
 
 void *CommsMemManager::copy(void *dst, void *src, std::size_t size) {
-  memcpy(dst, src, size);
+  std::memcpy(dst, src, size);
   return dst;
 }
 
 void CommsMemManager::zero(void *buffer, std::size_t size) {
   std::vector<char> zeros(size);
-  std::copy(zeros.cbegin(), zeros.cend(), (char *)buffer);
+  std::ranges::copy(std::as_const(zeros), (char *)buffer);
 }
 
-void CommsMemManager::zero_device_memory(void *buffer, std::size_t size) {
+llvm::Error CommsMemManager::zero_device_memory(void *buffer,
+                                                std::size_t size) {
   std::vector<char> zeros(size);
-  copy_to_device(buffer, zeros.data(), size);
+  return copy_to_device(buffer, zeros.data(), size).takeError();
 }
 } // namespace dh_comms
 
@@ -100,11 +140,13 @@ namespace {
 constexpr bool shared_buffers_are_host_pinned = true;
 
 template <typename T>
-T *clone_to_device(const T &host_data, luthier::CommsMemManager &mgr) {
-  T *device_data;
-  device_data = reinterpret_cast<T *>(mgr.calloc_device_memory(sizeof(T)));
-  mgr.copy_to_device(device_data, &host_data, sizeof(T));
-  return device_data;
+llvm::Expected<T *> clone_to_device(const T &host_data, luthier::CommsMemManager &mgr) {
+  void *device_data = nullptr;
+  LUTHIER_RETURN_ON_ERROR(
+      mgr.calloc_device_memory(sizeof(T)).moveInto(device_data));
+  LUTHIER_RETURN_ON_ERROR(
+      mgr.copy_to_device(device_data, &host_data, sizeof(T)).takeError());
+  return static_cast<T *>(device_data);
 }
 
 } // unnamed namespace
@@ -163,8 +205,8 @@ bool dh_comms::message_passes_filter(const wave_header_t &header) const {
   return true;
 }
 
-block_idx_filter_t dh_comms::parse_filter_env(const char *env_value) {
-  block_idx_filter_t filter;
+BlockIdxFilterT dh_comms::parse_filter_env(const char *env_value) {
+  BlockIdxFilterT filter;
   if (env_value == nullptr || env_value[0] == '\0') {
     return filter; // Not set, filtering disabled
   }

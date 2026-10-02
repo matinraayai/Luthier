@@ -46,6 +46,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <hsa/hsa.h>
+#include <llvm/Support/Error.h>
 #include <thread>
 #include <vector>
 
@@ -55,28 +57,34 @@ namespace luthier {
 //!
 //! Used to filter messages based on block_idx values. When enabled, only
 //! messages with block_idx in the range [min, max) pass the filter.
-struct block_idx_filter_t {
+struct BlockIdxFilterT {
   bool enabled = false; //!< Whether filtering is enabled for this dimension
   uint16_t min = 0;     //!< Minimum block_idx value (inclusive)
   uint16_t max = 0;     //!< Maximum block_idx value (exclusive)
 };
 
 class CommsMemManager {
+  /// HSA API tables needed for allocating/deallocating memory
   rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi;
   rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExtApi;
+  /// The GPU agent
+  hsa_agent_t Agent;
 
 public:
   CommsMemManager(rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
-                  rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExtApi);
+                  rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExtApi,
+                  hsa_agent_t Agent);
   virtual ~CommsMemManager();
+
   virtual llvm::Expected<void *> calloc(std::size_t size);
-  virtual void *calloc_device_memory(std::size_t size);
-  virtual void free(void *);
-  virtual void free_device_memory(void *);
+  virtual llvm::Expected<void *> calloc_device_memory(std::size_t size);
+  virtual llvm::Error free(void *);
+  virtual llvm::Error free_device_memory(void *);
   virtual void *copy(void *dst, void *src, std::size_t size);
-  virtual void *copy_to_device(void *dst, const void *src, std::size_t size);
+  virtual llvm::Expected<void *> copy_to_device(void *dst, const void *src,
+                                                std::size_t size);
   virtual void zero(void *buffer, std::size_t size);
-  virtual void zero_device_memory(void *buffer, std::size_t size);
+  virtual llvm::Error zero_device_memory(void *buffer, std::size_t size);
 };
 
 struct dh_comms_descriptor {
@@ -175,7 +183,7 @@ private:
   //!
   //! Accepts formats: "N" (single value, range [N, N+1)) or "N:M" (range [N,
   //! M)). Returns a filter with enabled=false if the value is empty or invalid.
-  static block_idx_filter_t parse_filter_env(const char *env_value);
+  static BlockIdxFilterT parse_filter_env(const char *env_value);
 
   //! \brief Check if a message passes all configured block_idx filters.
   //!
@@ -199,9 +207,9 @@ private:
   static std::atomic<std::size_t> dh_comms_id_counter_;
 
   // Block index filters - parsed from DH_COMMS_GROUP_FILTER_{X,Y,Z} env vars
-  block_idx_filter_t filter_x_;
-  block_idx_filter_t filter_y_;
-  block_idx_filter_t filter_z_;
+  BlockIdxFilterT filter_x_;
+  BlockIdxFilterT filter_y_;
+  BlockIdxFilterT filter_z_;
   bool any_filter_enabled_; //!< Fast-path check: true if any filter is enabled
 };
 
