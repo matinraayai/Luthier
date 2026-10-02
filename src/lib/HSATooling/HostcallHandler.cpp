@@ -93,29 +93,6 @@ void reportServiceError(llvm::Error Err) {
   llvm::logAllUnhandledErrors(std::move(Err), llvm::errs(),
                               "Luthier hostcall service: ");
 }
-
-/// Finds a host memory pool that can back a hostcall buffer: fine-grained (so
-/// the device sees the host's writes without an explicit copy) and open to
-/// runtime allocation.
-llvm::Expected<hsa_amd_memory_pool_t>
-findHostFineGrainedPool(const hsa::ApiTableContainer<::CoreApiTable> &CoreApi,
-                        const hsa::ApiTableContainer<::AmdExtTable> &AmdExt) {
-  llvm::SmallVector<hsa_agent_t, 1> CpuAgents;
-  LUTHIER_RETURN_ON_ERROR(
-      hsa::getAllAgentsWithDeviceType<HSA_DEVICE_TYPE_CPU>(CoreApi, CpuAgents));
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      !CpuAgents.empty(),
-      "No CPU agent available to back a hostcall buffer."));
-
-  auto FoundOrErr = hsa::agentFindFineGrainedPool(AmdExt, CpuAgents.front());
-  LUTHIER_RETURN_ON_ERROR(FoundOrErr.takeError());
-  LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      FoundOrErr->has_value(),
-      "No host fine-grained memory pool available to back a hostcall "
-      "buffer."));
-  return **FoundOrErr;
-}
-
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -411,9 +388,13 @@ HostcallBufferAllocation::create(
 
   auto PoolOrErr = findHostFineGrainedPool(CoreApi, AmdExt);
   LUTHIER_RETURN_ON_ERROR(PoolOrErr.takeError());
+  if (!PoolOrErr->has_value()) {
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        "No fine-grained memory pool was found for the host.");
+  }
 
   auto AlignmentOrErr =
-      hsa::memoryPoolGetRuntimeAllocAlignment(AmdExt, *PoolOrErr);
+      hsa::memoryPoolGetRuntimeAllocAlignment(AmdExt, **PoolOrErr);
   LUTHIER_RETURN_ON_ERROR(AlignmentOrErr.takeError());
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       *AlignmentOrErr >= HostcallBuffer::getRequiredAlignment(),
@@ -433,7 +414,7 @@ HostcallBufferAllocation::create(
   LUTHIER_RETURN_ON_ERROR(DeviceMemoryAlignmentOrErr.takeError());
 
   const size_t Size = HostcallBuffer::getRequiredSize(NumPackets);
-  auto AllocOrErr = hsa::memoryPoolAllocate(AmdExt, *PoolOrErr, Size);
+  auto AllocOrErr = hsa::memoryPoolAllocate(AmdExt, **PoolOrErr, Size);
   LUTHIER_RETURN_ON_ERROR(AllocOrErr.takeError());
 
   auto Fail = [&](llvm::Error E) -> llvm::Error {

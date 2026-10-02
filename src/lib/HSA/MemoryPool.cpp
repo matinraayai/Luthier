@@ -17,6 +17,8 @@
 /// Implements wrappers for HSA \c hsa_amd_memory_pool_t queries and operations.
 //===----------------------------------------------------------------------===//
 #include "luthier/HSA/MemoryPool.h"
+
+#include "luthier/HSA/Agent.h"
 #include "luthier/HSA/HsaError.h"
 #include <llvm/Support/FormatVariadic.h>
 
@@ -227,6 +229,20 @@ llvm::Expected<std::optional<hsa_amd_memory_pool_t>>
 agentFindFineGrainedPool(const ApiTableContainer<::AmdExtTable> &AmdExt,
                          hsa_agent_t Agent) {
   return findAllocatablePool(AmdExt, Agent, memoryPoolIsFineGrained);
+}
+
+llvm::Expected<std::optional<hsa_amd_memory_pool_t>>
+findHostFineGrainedPool(const ApiTableContainer<CoreApiTable> &CoreApi,
+                        const ApiTableContainer<AmdExtTable> &AmdExt) {
+  llvm::SmallVector<hsa_agent_t, 1> CpuAgents;
+  LUTHIER_RETURN_ON_ERROR(
+      hsa::getAllAgentsWithDeviceType<HSA_DEVICE_TYPE_CPU>(CoreApi, CpuAgents));
+  if (CpuAgents.empty())
+    return std::nullopt;
+
+  auto FoundOrErr = agentFindFineGrainedPool(AmdExt, CpuAgents.front());
+  LUTHIER_RETURN_ON_ERROR(FoundOrErr.takeError());
+  return *FoundOrErr;
 }
 
 //===----------------------------------------------------------------------===//

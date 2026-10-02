@@ -192,6 +192,12 @@ llvm::Expected<std::optional<hsa_amd_memory_pool_t>>
 agentFindFineGrainedPool(const ApiTableContainer<::AmdExtTable> &AmdExt,
                          hsa_agent_t Agent);
 
+
+/// Finds the first fine-grained memory allocation pool available to the host
+llvm::Expected<std::optional<hsa_amd_memory_pool_t>>
+findHostFineGrainedPool(const ApiTableContainer<::CoreApiTable> &CoreApi,
+                        const ApiTableContainer<::AmdExtTable> &AmdExt);
+
 //===----------------------------------------------------------------------===//
 // Allocation
 //===----------------------------------------------------------------------===//
