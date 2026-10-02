@@ -37,8 +37,8 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMS_DH_COMMS_H
 #define LUTHIER_COMMS_DH_COMMS_H
+#include "luthier/Comms/DataHeaders.h"
 #include "luthier/Comms/MessageHandlers.h"
-#include "luthier/Comms/data_headers.h"
 #include "luthier/Rocprofiler/HsaApiTableSnapshot.h"
 
 #include <atomic>

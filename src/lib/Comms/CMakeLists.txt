@@ -1,7 +1,7 @@
 
 add_library(LuthierComms OBJECT
         DhComms.cpp
-        data_headers.cpp
+        DataHeaders.cpp
         message.cpp
         MessageHandlers.cpp
 )

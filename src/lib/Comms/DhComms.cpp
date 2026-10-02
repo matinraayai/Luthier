@@ -38,10 +38,10 @@
 
 #include "luthier/Comms/DhComms.h"
 
-#include "luthier/Comms/data_headers.h"
-#include "luthier/Comms/message.h"
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
+#include "luthier/Comms/DataHeaders.h"
+#include "luthier/Comms/message.h"
 #include "luthier/HSA/Memory.h"
 #include "luthier/HSA/MemoryPool.h"
 #include <llvm/Support/FormatVariadic.h>
