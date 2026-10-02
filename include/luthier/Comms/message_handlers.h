@@ -27,7 +27,7 @@
 #include <memory>
 #include <vector>
 
-namespace dh_comms {
+namespace luthier {
 //! \brief Base class for message handlers on the host. KernelDB-free.
 //!
 //! dh_comms maintains a chain of message handlers. These message handlers get

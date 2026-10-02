@@ -24,7 +24,7 @@
 
 #include <cassert>
 
-namespace dh_comms {
+namespace luthier {
 message_handler_base::~message_handler_base() {}
 
 message_handler_chain_t::message_handler_chain_t(bool pass_through)
