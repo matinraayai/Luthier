@@ -23,7 +23,7 @@
 #pragma once
 #include <vector>
 
-namespace dh_comms {
+namespace luthier {
 //! \brief Messages start with a wave header containing information that partains to the whole wave.
 //!
 //! User device code does not use wave headers directly, but user host code may.

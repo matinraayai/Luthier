@@ -26,7 +26,7 @@
 
 #include <vector>
 
-namespace dh_comms {
+namespace luthier {
 
 namespace message_type {
 enum : uint32_t { address = 0, time_interval = 1, basic_block_start = 2, undefined = 0xffffffff };
