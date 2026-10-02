@@ -3,7 +3,7 @@ add_library(LuthierComms OBJECT
         DhComms.cpp
         data_headers.cpp
         message.cpp
-        message_handlers.cpp
+        MessageHandlers.cpp
 )
 
 target_compile_definitions(LuthierComms PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})

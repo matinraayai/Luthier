@@ -37,9 +37,9 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMS_DH_COMMS_H
 #define LUTHIER_COMMS_DH_COMMS_H
+#include "luthier/Comms/MessageHandlers.h"
 #include "luthier/Comms/data_headers.h"
 #include "luthier/Rocprofiler/HsaApiTableSnapshot.h"
-#include "luthier/Comms/message_handlers.h"
 
 #include <atomic>
 #include <chrono>
