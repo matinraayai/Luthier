@@ -28,8 +28,7 @@
 #include <vector>
 
 namespace luthier {
-//! \brief Base class for message handlers on the host. KernelDB-free.
-//!
+//! \brief Base class for message handlers on the host.
 //! dh_comms maintains a chain of message handlers. These message handlers get
 //! to look at the message, and determine whether they can handle it by
 //! inspecting the wave header, and in most cases, the user_type field of the
