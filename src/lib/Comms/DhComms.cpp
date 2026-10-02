@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#include "luthier/Comms/dh_comms.h"
+#include "luthier/Comms/DhComms.h"
 
 #include "luthier/Comms/data_headers.h"
 #include "luthier/Comms/hip_runtime_loader.h"
@@ -41,11 +41,14 @@ static constexpr int hipMemcpyHostToDevice = 1;
 
 #define CHK_HIP_ERR(cmd)
 
-namespace dh_comms {
+namespace luthier {
 
 std::atomic<std::size_t> dh_comms::dh_comms_id_counter_{0};
 
-CommsMemManager::CommsMemManager() = default;
+CommsMemManager::CommsMemManager(
+    rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
+    rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExtApi)
+    : CoreApi(CoreApi), AmdExtApi(AmdExtApi) {};
 
 CommsMemManager::~CommsMemManager() = default;
 
@@ -97,7 +100,7 @@ namespace {
 constexpr bool shared_buffers_are_host_pinned = true;
 
 template <typename T>
-T *clone_to_device(const T &host_data, dh_comms::CommsMemManager &mgr) {
+T *clone_to_device(const T &host_data, luthier::CommsMemManager &mgr) {
   T *device_data;
   device_data = reinterpret_cast<T *>(mgr.calloc_device_memory(sizeof(T)));
   mgr.copy_to_device(device_data, &host_data, sizeof(T));
@@ -106,7 +109,7 @@ T *clone_to_device(const T &host_data, dh_comms::CommsMemManager &mgr) {
 
 } // unnamed namespace
 
-namespace dh_comms {
+namespace luthier {
 dh_comms_resources::dh_comms_resources(std::size_t no_sub_buffers,
                                        std::size_t sub_buffer_capacity,
                                        CommsMemManager &mgr)

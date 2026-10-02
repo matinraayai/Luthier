@@ -49,7 +49,7 @@
 #include <thread>
 #include <vector>
 
-namespace dh_comms {
+namespace luthier {
 
 //! \brief Filter configuration for a single dimension (X, Y, or Z).
 //!
@@ -61,14 +61,15 @@ struct block_idx_filter_t {
   uint16_t max = 0;     //!< Maximum block_idx value (exclusive)
 };
 
-class dh_comms_mem_mgr {
-  luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi;
-  luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExtApi;
+class CommsMemManager {
+  rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi;
+  rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExtApi;
 
 public:
-  dh_comms_mem_mgr();
-  virtual ~dh_comms_mem_mgr();
-  virtual void *calloc(std::size_t size);
+  CommsMemManager(rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
+                  rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExtApi);
+  virtual ~CommsMemManager();
+  virtual llvm::Expected<void *> calloc(std::size_t size);
   virtual void *calloc_device_memory(std::size_t size);
   virtual void free(void *);
   virtual void free_device_memory(void *);
@@ -107,11 +108,11 @@ struct dh_comms_descriptor {
 //! are serialized using atomics.
 struct dh_comms_resources {
   dh_comms_descriptor desc_;
-  dh_comms_mem_mgr &mgr_;
+  CommsMemManager &mgr_;
 
   //! Constructor; allocates memory resources based on its arguments.
   dh_comms_resources(std::size_t no_sub_buffers,
-                     std::size_t sub_buffer_capacity, dh_comms_mem_mgr &mgr);
+                     std::size_t sub_buffer_capacity, CommsMemManager &mgr);
   dh_comms_resources(const dh_comms_resources &) = delete;
   dh_comms_resources &operator=(const dh_comms_resources &) = delete;
   //! Destructor; releases allocated memory.
@@ -128,7 +129,7 @@ public:
       std::size_t sub_buffer_capacity, //!< The maximum number of bytes each of
                                        //!< the sub-buffers can hold.
       bool verbose = false,            //!< Controls how chatty the code is.
-      bool install_default_handlers = false, dh_comms_mem_mgr *mgr = NULL,
+      bool install_default_handlers = false, CommsMemManager *mgr = nullptr,
       bool handlers_pass_through = true);
   ~dh_comms();
   dh_comms(const dh_comms &) = delete;
@@ -183,8 +184,8 @@ private:
   bool message_passes_filter(const wave_header_t &header) const;
 
 private:
-  dh_comms_mem_mgr default_mgr_;
-  dh_comms_mem_mgr *mgr_;
+  CommsMemManager default_mgr_;
+  CommsMemManager *mgr_;
   dh_comms_resources rsrc_;
   dh_comms_descriptor *dev_rsrc_p_;
   volatile bool running_;
