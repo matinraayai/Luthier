@@ -68,7 +68,20 @@ install(TARGETS luthier-llc
         RUNTIME DESTINATION ${CMAKE_INSTALL_BIN_DIR})
 
 install(EXPORT luthierTargets
+        NAMESPACE luthier::
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/luthier/)
 
+# Build tree package ===================================================================================================
+# Lets find_package(luthier) work against this build tree, both from the in-tree examples and from separate projects
+# pointed at it with -Dluthier_DIR=<build>/lib/cmake/luthier
+
+# The targets file is only written at generate time; Make sure it exists during the first configure
+if (NOT EXISTS "${CMAKE_BINARY_DIR}/lib/cmake/luthier/luthierTargets.cmake")
+  file(TOUCH "${CMAKE_BINARY_DIR}/lib/cmake/luthier/luthierTargets.cmake")
+endif ()
+
 export(EXPORT luthierTargets
+        NAMESPACE luthier::
         FILE "${CMAKE_BINARY_DIR}/lib/cmake/luthier/luthierTargets.cmake")
+
+set(luthier_DIR "${CMAKE_BINARY_DIR}/lib/cmake/luthier" CACHE PATH "luthier build tree package directory" FORCE)

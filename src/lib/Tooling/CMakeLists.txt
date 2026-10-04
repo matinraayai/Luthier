@@ -42,3 +42,5 @@ target_link_libraries(LuthierTooling
 if (${LUTHIER_ENABLE_SPIRV})
     target_link_libraries(LuthierTooling PRIVATE Luthier::LLVMSPIRVTranslator)
 endif ()
+
+add_library(luthier::LuthierTooling ALIAS LuthierTooling)

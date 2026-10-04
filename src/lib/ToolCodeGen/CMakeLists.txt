@@ -33,14 +33,11 @@ target_include_directories(LuthierPatchPCUsagesPass
         ${LLVM_INCLUDE_DIRS}
         ${CMAKE_CURRENT_BINARY_DIR}
         ${hsa-runtime64_INCLUDE_DIRS}
-        ${hip_INCLUDE_DIRS}
         PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
-
-target_compile_definitions(LuthierPatchPCUsagesPass PRIVATE ${hip_COMPILE_DEFINITIONS})
 
 target_link_libraries(LuthierPatchPCUsagesPass PUBLIC LuthierAMDGPU)
 
@@ -50,9 +47,7 @@ foreach (_DEVICE_TARGET IN LISTS LuthierPatchPCUsagesPass_DEVICE_TARGETS)
             ${LLVM_INCLUDE_DIRS}
             "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
             "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
-            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include/luthier/AMDGPU>"
-            ${hip_device_INCLUDE_DIRS})
-    target_compile_definitions(${_DEVICE_TARGET} PRIVATE ${hip_device_COMPILE_DEFINITIONS})
+            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include/luthier/AMDGPU>")
     add_dependencies(${_DEVICE_TARGET} LuthierAMDGPU)
 endforeach ()
 
@@ -72,14 +67,11 @@ target_include_directories(LuthierRebaseAppScratchAccessesPass
         ${LLVM_INCLUDE_DIRS}
         ${CMAKE_CURRENT_BINARY_DIR}
         ${hsa-runtime64_INCLUDE_DIRS}
-        ${hip_INCLUDE_DIRS}
         PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
-
-target_compile_definitions(LuthierRebaseAppScratchAccessesPass PRIVATE ${hip_COMPILE_DEFINITIONS})
 
 target_link_libraries(LuthierRebaseAppScratchAccessesPass PUBLIC LuthierAMDGPU)
 
@@ -89,9 +81,7 @@ foreach (_DEVICE_TARGET IN LISTS LuthierRebaseAppScratchAccessesPass_DEVICE_TARG
             ${LLVM_INCLUDE_DIRS}
             "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
             "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
-            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include/luthier/AMDGPU>"
-            ${hip_device_INCLUDE_DIRS})
-    target_compile_definitions(${_DEVICE_TARGET} PRIVATE ${hip_device_COMPILE_DEFINITIONS})
+            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include/luthier/AMDGPU>")
     add_dependencies(${_DEVICE_TARGET} LuthierAMDGPU)
 endforeach ()
 

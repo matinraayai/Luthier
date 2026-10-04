@@ -9,3 +9,5 @@ target_include_directories(LuthierToolIRCompilationPlugin PRIVATE
 
 target_link_libraries(LuthierToolIRCompilationPlugin PRIVATE
         LLVMSymbolize LLVMDebugInfoDWARF LLVMObject)
+
+add_library(luthier::LuthierToolIRCompilationPlugin ALIAS LuthierToolIRCompilationPlugin)
