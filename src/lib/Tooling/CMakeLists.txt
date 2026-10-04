@@ -15,11 +15,12 @@ add_library(LuthierTooling SHARED
         $<TARGET_OBJECTS:LuthierRebaseAppScratchAccessesPass>
 )
 
-target_compile_definitions(LuthierTooling PUBLIC AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
+target_compile_definitions(LuthierTooling PUBLIC AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS} ${hip_COMPILE_DEFINITIONS})
 
 target_include_directories(LuthierTooling
         PUBLIC
         ${LLVM_INCLUDE_DIRS}
+        ${hip_INCLUDE_DIRS}
         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
@@ -29,7 +30,7 @@ target_include_directories(LuthierTooling
 )
 
 target_link_libraries(LuthierTooling
-        PUBLIC hip::host rocprofiler-sdk::rocprofiler-sdk hsa-runtime64::hsa-runtime64 LuthierAMDGPU
+        PUBLIC rocprofiler-sdk::rocprofiler-sdk LuthierAMDGPU
         LLVMAMDGPUAsmParser LLVMAMDGPUDesc LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA
         LLVMAMDGPUUtils LLVMAMDGPUCodeGen
         PRIVATE
