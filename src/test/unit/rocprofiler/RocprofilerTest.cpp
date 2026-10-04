@@ -57,14 +57,6 @@ void discard(llvm::Error E) { llvm::consumeError(std::move(E)); }
 // Compile-time traits / SFINAE
 //===----------------------------------------------------------------------===//
 
-// Detector for ApiTableEnumInfo<T>::triggerInitialization().
-template <rocprofiler_intercept_table_t T, typename = void>
-struct HasTrigger : std::false_type {};
-template <rocprofiler_intercept_table_t T>
-struct HasTrigger<
-    T, std::void_t<decltype(ApiTableEnumInfo<T>::triggerInitialization())>>
-    : std::true_type {};
-
 static_assert(
     std::is_same_v<ApiTableEnumInfo<ROCPROFILER_HSA_TABLE>::ApiTableType,
                    ::HsaApiTable>);
@@ -75,10 +67,6 @@ static_assert(std::is_same_v<
               ApiTableEnumInfo<ROCPROFILER_HIP_COMPILER_TABLE>::ApiTableType,
               ::HipCompilerDispatchTable>);
 static_assert(ApiTableEnumInfo<ROCPROFILER_HSA_TABLE>::NumApiTables == 1);
-// HSA and the HIP runtime can be force-triggered; the HIP compiler cannot.
-static_assert(HasTrigger<ROCPROFILER_HSA_TABLE>::value);
-static_assert(HasTrigger<ROCPROFILER_HIP_RUNTIME_TABLE>::value);
-static_assert(!HasTrigger<ROCPROFILER_HIP_COMPILER_TABLE>::value);
 
 TEST(RocprofilerTraits, EnumInfoNames) {
   EXPECT_STREQ(ApiTableEnumInfo<ROCPROFILER_HSA_TABLE>::ApiTableName, "HSA");

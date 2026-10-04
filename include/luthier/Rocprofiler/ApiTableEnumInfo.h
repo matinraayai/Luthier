@@ -27,8 +27,7 @@ namespace luthier::rocprofiler {
 /// \brief Primary template (customization point) providing static information
 /// about a \c rocprofiler_intercept_table_t: its concrete C API table type
 /// (\c ApiTableType), the number of tables rocprofiler-sdk registers for it
-/// (\c NumApiTables), a human-readable \c ApiTableName, and — for tables that
-/// can be force-initialized — a static \c triggerInitialization() function.
+/// (\c NumApiTables), a human-readable \c ApiTableName
 ///
 /// \details This is the single seam carrying all HSA/HIP-specific knowledge.
 /// The base \c ApiTableRegistrationCallbackProvider depends only on this

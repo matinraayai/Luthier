@@ -270,29 +270,6 @@ public:
   [[nodiscard]] bool wasRegistrationCallbackInvoked() const {
     return WasRegistrationInvoked.load();
   }
-
-  /// If the API table has not been registered yet, forces the underlying
-  /// library to initialize by invoking an entry point that brings the runtime
-  /// up (\c hsa_init for HSA, or the first dispatch-table access for HIP),
-  /// which in turn drives rocprofiler-sdk's registration of the table.
-  /// \note Only use when absolutely sure the underlying library is not going to
-  /// be initialized otherwise.
-  /// \warning Must NOT be called from within a rocprofiler-sdk
-  /// \c rocprofiler_configure or tool-\c initialize callback. The trigger
-  /// re-enters the runtime's init path, which calls back into rocprofiler-sdk's
-  /// \c rocprofiler_set_api_table — re-entering the same \c std::call_once that
-  /// is already running on this thread is undefined behavior (deadlock or \c
-  /// std::system_error). Call it only after rocprofiler-sdk configuration has
-  /// completed (e.g. from the host application's normal flow).
-  /// \note Only available for tables whose \c ApiTableEnumInfo specialization
-  /// defines \c triggerInitialization() (e.g. HSA and the HIP runtime, but not
-  /// the HIP compiler table); SFINAE removes this overload otherwise.
-  template <rocprofiler_intercept_table_t T = TableType,
-            typename = decltype(ApiTableEnumInfo<T>::triggerInitialization())>
-  void forceTriggerApiTableCallback() {
-    if (!WasRegistrationInvoked.load())
-      ApiTableEnumInfo<T>::triggerInitialization();
-  }
 };
 
 } // namespace luthier::rocprofiler
