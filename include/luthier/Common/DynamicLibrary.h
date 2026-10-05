@@ -121,7 +121,7 @@ public:
   /// \brief Resolves the API entry \p Func under the name its
   /// \c DynamicLibraryFunctionEntry gives it.
   /// \tparam Func a function registered with
-  /// \c LUTHIER_DYNAMIC_LIBRARY_FUNCTION_ENTRY
+  /// \c DynamicLibraryFunctionEntry
   /// \return a pointer to the library's definition, or \c nullptr if the
   /// library does not export it
   template <auto Func> [[nodiscard]] auto getFunction() const {
@@ -137,7 +137,7 @@ public:
 
   /// \brief Resolves the API entry \p Func and calls it with \p Arguments.
   /// \tparam Func a function registered with
-  /// \c LUTHIER_DYNAMIC_LIBRARY_FUNCTION_ENTRY
+  /// \c DynamicLibraryFunctionEntry
   /// \param Arguments the arguments to forward to \p Func
   /// \return whatever \p Func returns
   template <auto Func, typename... ArgsT>
