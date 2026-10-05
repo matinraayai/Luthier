@@ -1448,6 +1448,7 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
   }
   /// Add the code discovery pass
   PPM.addPass(CodeDiscoveryPass());
+  PPM.addPass(DebugInfoPass());
 
   // Debug aid: dump the IP predicated CFG + predicated liveness for the
   // freshly lifted target module, before RebaseAppScratchAccessesPass and

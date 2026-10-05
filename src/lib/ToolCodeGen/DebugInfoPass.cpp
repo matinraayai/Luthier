@@ -360,16 +360,22 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
 
   DIB.finalize();
 
-// #ifndef NDEBUG
-//   bool DebugInfoBroken;
-//   bool Broken = llvm::verifyModule(M, &llvm::errs(), &DebugInfoBroken);
-//   if (Broken) {
-//     LLVM_DEBUG("[DebugInfoPass] Module Verification Failed\n");
-//   }
-//   if (DebugInfoBroken){
-//     LLVM_DEBUG(llvm::dbgs() << "[DebugInfoPass] Module Verification Failed due to Broken Debug Info\n");
-//   }
-// #endif
+  // TODO: prototype level verification + our own rules + module and mir level
+  // verification
+  // #ifndef NDEBUG
+  //   bool DebugInfoBroken;
+  //   bool Broken = llvm::verifyModule(M, &llvm::errs(), &DebugInfoBroken);
+  //   if (Broken) {
+  //     // Ctx.emitError("[DebugInfoPass] Module Verification Failed\n");
+  //     LLVM_DEBUG(llvm::dbgs() << "[DebugInfoPass] Module Verification
+  //     Failed\n");
+  //   }
+  //   if (DebugInfoBroken) {
+  //     LLVM_DEBUG(llvm::dbgs() << "[DebugInfoPass] Module Verification Failed
+  //     due "
+  //                                "to Broken Debug Info\n");
+  //   }
+  // #endif
 
   return llvm::PreservedAnalyses::all();
 }

@@ -5,6 +5,7 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionAnalysisManager.h"
 #include "llvm/CodeGen/MachinePassManager.h"
+#include "llvm/IR/Analysis.h"
 #include <cstdlib>
 
 #undef DEBUG_TYPE
@@ -18,7 +19,7 @@ bool MachineInstrTraceAddressAnalysis::Result::invalidate(
     llvm::MachineFunction &MF, const llvm::PreservedAnalyses &PA,
     llvm::MachineFunctionAnalysisManager::Invalidator &Inv) {
   auto PAC = PA.getChecker<MachineInstrTraceAddressAnalysis>();
-  return !PAC.preservedWhenStateless();
+  return !PAC.preserved() && !PAC.preservedSet<llvm::AllAnalysesOn<llvm::MachineFunction>>();
 }
 
 MachineInstrTraceAddressAnalysis::Result MachineInstrTraceAddressAnalysis::run(
