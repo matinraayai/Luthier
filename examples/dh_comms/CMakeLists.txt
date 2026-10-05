@@ -33,6 +33,7 @@ add_library(LuthierDhComms SHARED
         $<TARGET_OBJECTS:LuthierDhCommsObject>
         src/SharedBuffers.cpp
         src/MessageProcessor.cpp
-        src/AccessIndexHandler.cpp)
+        src/AccessIndexHandler.cpp
+        src/CoalescingHandler.cpp)
 target_include_directories(LuthierDhComms PRIVATE ${DH_COMMS_INCLUDE_DIR})
 target_link_libraries(LuthierDhComms PUBLIC LuthierTooling hip::host)

@@ -39,6 +39,7 @@
 ///   --kernel-begin-interval / --kernel-end-interval
 //===----------------------------------------------------------------------===//
 #include "dh_comms/AccessIndexHandler.h"
+#include "dh_comms/CoalescingHandler.h"
 #include "dh_comms/DeviceSubmit.h"
 #include "dh_comms/MessageProcessor.h"
 #include "dh_comms/SharedBuffers.h"
@@ -160,6 +161,15 @@ struct DhCommsTool
         "dh-comms-num-rows",
         llvm::cl::desc("Number of rows, for the in-range check"),
         llvm::cl::init(1024), llvm::cl::cat(Cat)};
+    llvm::cl::opt<unsigned> LanesPerCycle{
+        "dh-comms-lanes-per-cycle",
+        llvm::cl::desc("Lanes the hardware issues together for one VMEM "
+                       "instruction (coalescing granularity)"),
+        llvm::cl::init(16), llvm::cl::cat(Cat)};
+    llvm::cl::opt<unsigned> CacheLineBytes{
+        "dh-comms-cache-line-bytes",
+        llvm::cl::desc("Cache line size for the coalescing analysis"),
+        llvm::cl::init(128), llvm::cl::cat(Cat)};
     llvm::cl::opt<bool> NoopHooks{
         "dh-comms-noop-hooks",
         llvm::cl::desc("Diagnostic: inject argument-only hooks instead of "
@@ -199,6 +209,7 @@ struct DhCommsTool
 
   std::unique_ptr<dhc::SharedBuffers> Buffers;
   std::unique_ptr<dhc::AccessIndexHandler> Handler;
+  std::unique_ptr<dhc::CoalescingHandler> Coalescing;
   std::unique_ptr<dhc::MessageProcessor> Processor;
   uint32_t DroppedMessageErrors = 0;
 
@@ -446,7 +457,11 @@ void DhCommsTool::ensureCommsReady() {
   Buffers = std::move(*BuffersOrErr);
   Handler = std::make_unique<dhc::AccessIndexHandler>(Opts.RowLength,
                                                       Opts.NumRows);
-  Processor = std::make_unique<dhc::MessageProcessor>(*Buffers, *Handler);
+  Coalescing = std::make_unique<dhc::CoalescingHandler>(Opts.LanesPerCycle,
+                                                        Opts.CacheLineBytes);
+  Processor = std::make_unique<dhc::MessageProcessor>(
+      *Buffers,
+      std::vector<dhc::MessageHandler *>{Handler.get(), Coalescing.get()});
   luthier::errs() << llvm::formatv(
       "[dh_comms] {0} sub-buffers x {1} bytes of fine-grained host memory\n",
       Buffers->numSubBuffers(), Buffers->subBufferCapacity());
@@ -595,6 +610,7 @@ void DhCommsTool::onPackets(
                       << ": resolving kernel-argument buffers\n";
       resolveKernelArgBuffers(AppPacket, *OriginalKD, D);
       writeDeviceGlobal(DhCommsTool::Desc, &D, sizeof(D), OriginalKD);
+      Coalescing->beginDispatch(D);
       static const uint32_t ZeroLocks[dhc::MaxSubBuffers] = {};
       writeDeviceGlobal(DhCommsTool::Locks, ZeroLocks, sizeof(ZeroLocks),
                         OriginalKD);
@@ -656,6 +672,7 @@ void DhCommsTool::printReport() const {
                       "in range = every row < {1} and every col < {0}\n",
                       unsigned(Opts.RowLength), unsigned(Opts.NumRows));
   const bool Ok = Handler->report(OS, Accesses);
+  Coalescing->report(OS, Accesses);
   OS << "[dh_comms] verdict: "
      << (Ok ? "all indices in range" : "SOME INDICES OUT OF RANGE") << "\n";
 }
@@ -722,6 +739,11 @@ static void atToolInit(void *) {
       LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
           llvm::isPowerOf2_32(T.Opts.ElementSize),
           "--dh-comms-element-size must be a power of two"));
+      LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+          T.Opts.LanesPerCycle >= 1 && T.Opts.LanesPerCycle <= 64 &&
+              T.Opts.CacheLineBytes >= 1,
+          "--dh-comms-lanes-per-cycle must be 1..64 and "
+          "--dh-comms-cache-line-bytes positive"));
     });
     llvm::EnablePrettyStackTrace();
     luthier::printStackTraceOnFatalSignal();

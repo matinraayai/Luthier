@@ -91,7 +91,8 @@ void MessageProcessor::drain(uint32_t Sb) {
         Scratch[L].ElementIndex = Dwords[0 * Lanes + L];
         Scratch[L].BufferId = Dwords[1 * Lanes + L];
       }
-      Handler.handle(H, Scratch);
+      for (MessageHandler *Handler : Handlers)
+        Handler->handle(H, Scratch);
       ++Messages;
       Cursor = Data + H.DataSize;
     }

@@ -17,7 +17,7 @@
 /// \file
 /// The consumer half of dh_comms. While a kernel runs, a background thread
 /// watches the host hand-off flags; when the GPU marks a sub-buffer full it
-/// parses every message in it, passes each to a \c MessageHandler, empties
+/// parses every message in it, passes each to the \c MessageHandler s, empties
 /// the sub-buffer and clears the flag so the waiting wave can continue.
 /// After the kernel finishes, \c stop() drains whatever is left in partially
 /// filled sub-buffers. Port of dh_comms' \c processing_loop /
@@ -52,8 +52,11 @@ public:
 
 class MessageProcessor {
 public:
-  MessageProcessor(SharedBuffers &Buffers, MessageHandler &Handler)
-      : Buffers(Buffers), Handler(Handler) {}
+  /// Every message is passed to each of \p Handlers, in order (dh_comms'
+  /// handler chain).
+  MessageProcessor(SharedBuffers &Buffers,
+                   std::vector<MessageHandler *> Handlers)
+      : Buffers(Buffers), Handlers(std::move(Handlers)) {}
   ~MessageProcessor();
   MessageProcessor(const MessageProcessor &) = delete;
   MessageProcessor &operator=(const MessageProcessor &) = delete;
@@ -79,7 +82,7 @@ private:
   void drain(uint32_t Sb);
 
   SharedBuffers &Buffers;
-  MessageHandler &Handler;
+  std::vector<MessageHandler *> Handlers;
   std::atomic<bool> Running{false};
   std::thread Worker;
   std::chrono::steady_clock::time_point StartTime;

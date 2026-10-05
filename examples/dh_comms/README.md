@@ -59,6 +59,29 @@ Options go in `LUTHIER_ARGS`:
 | `--dh-comms-noop-hooks` | off | diagnostic: same arguments, no protocol |
 | `--dh-comms-dump-object=<path>` | — | diagnostic: write each instrumented code object |
 
+## Uncoalesced accesses
+
+**What.** CDNA issues a 64-lane VMEM instruction 16 lanes per cycle. A group
+is coalesced if it touches no more 128-byte cache lines than its bytes need;
+a wave-instruction is uncoalesced if any group wastes a line.
+
+**Counters.** `uncoalesced = SQ_INSTS_VMEM - TD_COALESCABLE_WAVEFRONT_sum`.
+
+**Implementation.** `CoalescingHandler` rebuilds each lane's address
+(buffer base + index × element size) and applies the rule above.
+Options: `--dh-comms-lanes-per-cycle` (16), `--dh-comms-cache-line-bytes` (128).
+
+**Results** (`mmm`, 1024³ SGEMM, gfx908; `tests/Highly-optimised/compile.sh`):
+
+|                        | rocprofv3 | tool    |
+|------------------------|-----------|---------|
+| VMEM wave-instructions | 344,064   | 344,064 |
+| coalesced              | 278,528   | 278,528 |
+| uncoalesced            | 65,536    | 65,536  |
+
+All 65,536 are the `A` load: adjacent lanes step a row (4 KB) apart, so a wave
+touches 64 lines where 8 suffice. Validated on this kernel only.
+
 ## Things that differ from dh_comms, and why
 
 * **Spin loops are wave-uniform.** In a Luthier payload a spin loop run by a
