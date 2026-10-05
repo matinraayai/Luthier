@@ -108,17 +108,20 @@ class HSATool : public Singleton<Derived>,
                 public PacketMonitorTrait<Derived> {
 public:
   HSATool(typename Singleton<Derived>::CreationKey,
+          const DynamicLibrary &RocprofilerLib,
           const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
           const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExt,
           const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
               &VenLoader,
           llvm::Error &Err)
       : Singleton<Derived>(), LLVMUserTrait<Derived>(),
-        LoadedCodeObjectCacheTrait<Derived>(CoreApi, VenLoader, Err),
+        LoadedCodeObjectCacheTrait<Derived>(RocprofilerLib, CoreApi, VenLoader,
+                                            Err),
         ToolDeviceCodeOffloadParserTrait<Derived>(Err),
-        InstrumentedKernelLoaderAndLauncherTrait<Derived>(CoreApi, AmdExt,
-                                                          VenLoader, Err),
-        PacketMonitorTrait<Derived>(CoreApi, AmdExt, VenLoader, Err) {}
+        InstrumentedKernelLoaderAndLauncherTrait<Derived>(
+            RocprofilerLib, CoreApi, AmdExt, VenLoader, Err),
+        PacketMonitorTrait<Derived>(RocprofilerLib, CoreApi, AmdExt, VenLoader,
+                                    Err) {}
 
   /// \note There is no longer a single "pipeline driver" pass to hand a target
   /// module pass manager. The instrumentation pipeline now runs over a

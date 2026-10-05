@@ -56,9 +56,12 @@ public:
   /// On initialization, requests a snapshot of the HSA API table to be provided
   /// by rocprofiler-sdk
   /// \note Must only be invoked during rocprofiler-sdk's configuration stage
+  /// \param RocprofilerLib the rocprofiler-sdk library of the target
+  /// application; Must outlive this object
   /// \param Err an external \c llvm::Error that will hold any errors
   /// encountered by the constructor
-  explicit HsaApiTableSnapshot(llvm::Error &Err)
+  explicit HsaApiTableSnapshot(const DynamicLibrary &RocprofilerLib,
+                               llvm::Error &Err)
       : ApiTableRegistrationCallbackProvider(
             [this](llvm::ArrayRef<::HsaApiTable *> Tables, uint64_t, uint64_t) {
               /// Capture only the first registration. When the application
@@ -112,7 +115,7 @@ public:
                         hsa::ApiTableInfo<HsaApiTableType>::Name)));
               }
             },
-            Err) {
+            RocprofilerLib, Err) {
     /// Need to poulate the correct API table version here, otherwise the HSA
     /// copy table routine will fail
     ApiTable.version.major_id = hsa::ApiTableInfo<HsaApiTableType>::MajorVer;
@@ -153,9 +156,12 @@ public:
   /// HSA library to be provided once the HSA API table has been captured
   /// by rocprofiler-sdk
   /// \note Must only be invoked during rocprofiler-sdk's configuration stage
+  /// \param RocprofilerLib the rocprofiler-sdk library of the target
+  /// application; Must outlive this object
   /// \param Err an external \c llvm::Error that will hold any errors
   /// encountered by the constructor
-  explicit HsaExtensionTableSnapshot(llvm::Error &Err)
+  explicit HsaExtensionTableSnapshot(const DynamicLibrary &RocprofilerLib,
+                                     llvm::Error &Err)
       : ApiTableRegistrationCallbackProvider(
             [this](llvm::ArrayRef<::HsaApiTable *> Tables, uint64_t,
                    uint64_t Instance) {
@@ -212,7 +218,7 @@ public:
                       sizeof(ExtensionTable), &ExtensionTable),
                   "Failed to get the extension table"));
             },
-            Err) {};
+            RocprofilerLib, Err) {};
 
   ~HsaExtensionTableSnapshot() override = default;
 

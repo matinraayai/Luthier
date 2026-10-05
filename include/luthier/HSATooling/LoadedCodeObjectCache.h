@@ -186,6 +186,7 @@ private:
 
 public:
   LoadedCodeObjectCacheTrait(
+      const DynamicLibrary &RocprofilerLib,
       const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
       const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
           &VenLoader,
@@ -194,7 +195,7 @@ public:
     llvm::ErrorAsOutParameter EAO(Err);
     HsaWrapperInstaller = std::make_unique<
         rocprofiler::HsaApiTableWrapperInstaller<::CoreApiTable>>(
-        Err,
+        RocprofilerLib, Err,
         std::make_tuple(
             &::CoreApiTable::hsa_executable_load_agent_code_object_fn,
             std::ref(UnderlyingHsaExecutableLoadAgentCodeObjectFn),

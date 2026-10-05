@@ -845,6 +845,7 @@ private:
 
 public:
   InstrumentedKernelLoaderAndLauncherTrait(
+      const DynamicLibrary &RocprofilerLib,
       const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
       const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExt,
       const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
@@ -854,9 +855,10 @@ public:
     llvm::ErrorAsOutParameter EAO(Err);
     HsaWrapperInstaller = std::make_unique<
         rocprofiler::HsaApiTableWrapperInstaller<::CoreApiTable>>(
-        Err, std::make_tuple(&::CoreApiTable::hsa_executable_destroy_fn,
-                             std::ref(UnderlyingHsaExecutableDestroyFn),
-                             hsaExecutableDestroyWrapper));
+        RocprofilerLib, Err,
+        std::make_tuple(&::CoreApiTable::hsa_executable_destroy_fn,
+                        std::ref(UnderlyingHsaExecutableDestroyFn),
+                        hsaExecutableDestroyWrapper));
   }
 
   ~InstrumentedKernelLoaderAndLauncherTrait() = default;

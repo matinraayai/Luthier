@@ -128,6 +128,7 @@ private:
 
 public:
   PacketMonitorTrait(
+      const DynamicLibrary &RocprofilerLib,
       const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
       const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExt,
       const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
@@ -138,9 +139,10 @@ public:
     llvm::ErrorAsOutParameter EAO(Err);
     HsaApiTableInterceptor = std::make_unique<
         rocprofiler::HsaApiTableWrapperInstaller<::CoreApiTable>>(
-        Err, std::make_tuple(&::CoreApiTable::hsa_queue_create_fn,
-                             std::ref(UnderlyingHsaQueueCreateFn),
-                             hsaQueueCreateWrapper));
+        RocprofilerLib, Err,
+        std::make_tuple(&::CoreApiTable::hsa_queue_create_fn,
+                        std::ref(UnderlyingHsaQueueCreateFn),
+                        hsaQueueCreateWrapper));
   }
 
   /// Wrappers are intentionally NOT uninstalled. See file header.

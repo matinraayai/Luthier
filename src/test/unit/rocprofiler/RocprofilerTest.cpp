@@ -34,6 +34,7 @@
 
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
 #include "luthier/Rocprofiler/ApiTableWrapperInstaller.h"
+#include "luthier/Rocprofiler/RocprofilerSdkLibrary.h"
 
 #include <gtest/gtest.h>
 #include <llvm/Support/Error.h>
@@ -52,6 +53,18 @@ namespace {
 
 /// Consumes the (possibly-failure) Error an out-param ctor leaves behind.
 void discard(llvm::Error E) { llvm::consumeError(std::move(E)); }
+
+/// The rocprofiler-sdk library handle shared by all providers in this test;
+/// Intentionally leaked since leaked providers reference it
+const luthier::DynamicLibrary &rocprofilerLib() {
+  static auto *Lib = [] {
+    auto LibOrErr = openRocprofilerSdkLibrary();
+    if (!LibOrErr)
+      llvm::report_fatal_error(LibOrErr.takeError());
+    return new luthier::DynamicLibrary(std::move(*LibOrErr));
+  }();
+  return *Lib;
+}
 
 //===----------------------------------------------------------------------===//
 // Compile-time traits / SFINAE
@@ -82,8 +95,8 @@ TEST(RocprofilerTraits, EnumInfoNames) {
 
 TEST(HsaApiTableSnapshotTest, CapturesFirstAndIgnoresReinit) {
   llvm::Error Err = llvm::Error::success();
-  auto *Snap =
-      new HsaApiTableSnapshot<::CoreApiTable>(Err); // leaked on purpose
+  auto *Snap = new HsaApiTableSnapshot<::CoreApiTable>(
+      rocprofilerLib(), Err); // leaked on purpose
   discard(std::move(Err));
 
   ::CoreApiTable CoreA = buildCoreApiTable(); // hsa_init_fn == &hsa_init
@@ -115,8 +128,8 @@ TEST(HsaApiTableSnapshotTest, CapturesFirstAndIgnoresReinit) {
 
 TEST(HipApiTableSnapshotTest, CapturesFirstAndIgnoresReinit) {
   llvm::Error Err = llvm::Error::success();
-  auto *Snap =
-      new HipApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE>(Err); // leaked
+  auto *Snap = new HipApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE>(
+      rocprofilerLib(), Err); // leaked
   discard(std::move(Err));
 
   ::HipDispatchTable A = buildHipDispatchTable();
@@ -144,8 +157,8 @@ TEST(HipApiTableSnapshotTest, OversizedRuntimeTableDoesNotOverflow) {
   // claims to be larger. The bounded memcpy must copy only sizeof(...) bytes
   // (caught by ASan if it over-reads the source allocation).
   llvm::Error Err = llvm::Error::success();
-  auto *Snap =
-      new HipApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE>(Err); // leaked
+  auto *Snap = new HipApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE>(
+      rocprofilerLib(), Err); // leaked
   discard(std::move(Err));
 
   auto *Src = new ::HipDispatchTable(buildHipDispatchTable());
@@ -176,8 +189,8 @@ TEST(HsaApiTableWrapperInstallerTest, InstallsAndReinstalls) {
       &::CoreApiTable::hsa_init_fn, Underlying, Wrapper);
 
   llvm::Error Err = llvm::Error::success();
-  auto *Inst =
-      new HsaApiTableWrapperInstaller<::CoreApiTable>(Err, Spec); // leaked
+  auto *Inst = new HsaApiTableWrapperInstaller<::CoreApiTable>(
+      rocprofilerLib(), Err, Spec); // leaked
   discard(std::move(Err));
 
   // First registration: a pristine table whose hsa_init_fn is &hsa_init.
@@ -208,7 +221,7 @@ TEST(RocprofilerDeathTest, WrongNumTablesFatals) {
   EXPECT_DEATH(
       {
         llvm::Error Err = llvm::Error::success();
-        HsaApiTableSnapshot<::CoreApiTable> Snap(Err);
+        HsaApiTableSnapshot<::CoreApiTable> Snap(rocprofilerLib(), Err);
         discard(std::move(Err));
         ::CoreApiTable Core = buildCoreApiTable();
         ::HsaApiTable Tbl = buildHsaApiTable(&Core);
@@ -224,7 +237,7 @@ TEST(RocprofilerDeathTest, WrongTableTypeFatals) {
   EXPECT_DEATH(
       {
         llvm::Error Err = llvm::Error::success();
-        HsaApiTableSnapshot<::CoreApiTable> Snap(Err);
+        HsaApiTableSnapshot<::CoreApiTable> Snap(rocprofilerLib(), Err);
         discard(std::move(Err));
         ::CoreApiTable Core = buildCoreApiTable();
         ::HsaApiTable Tbl = buildHsaApiTable(&Core);
@@ -240,7 +253,7 @@ TEST(RocprofilerDeathTest, NullSubTablePointerFatals) {
   EXPECT_DEATH(
       {
         llvm::Error Err = llvm::Error::success();
-        HsaApiTableSnapshot<::CoreApiTable> Snap(Err);
+        HsaApiTableSnapshot<::CoreApiTable> Snap(rocprofilerLib(), Err);
         discard(std::move(Err));
         ::HsaApiTable Tbl = buildHsaApiTable(/*Core=*/nullptr); // null core_
         ::HsaApiTable *Arr[1] = {&Tbl};
@@ -255,7 +268,7 @@ TEST(RocprofilerDeathTest, WrongMajorVersionFatals) {
   EXPECT_DEATH(
       {
         llvm::Error Err = llvm::Error::success();
-        HsaApiTableSnapshot<::CoreApiTable> Snap(Err);
+        HsaApiTableSnapshot<::CoreApiTable> Snap(rocprofilerLib(), Err);
         discard(std::move(Err));
         ::CoreApiTable Core = buildCoreApiTable();
         ::HsaApiTable Tbl = buildHsaApiTable(&Core);
@@ -276,7 +289,7 @@ TEST(RocprofilerDeathTest, DestroyWhileNotFinalizingAborts) {
   EXPECT_DEATH(
       {
         llvm::Error Err = llvm::Error::success();
-        HsaApiTableSnapshot<::CoreApiTable> Snap(Err);
+        HsaApiTableSnapshot<::CoreApiTable> Snap(rocprofilerLib(), Err);
         discard(std::move(Err));
         // Snap destructs at end of scope -> abort.
       },

@@ -21,6 +21,7 @@ target_include_directories(LuthierTooling
         PUBLIC
         ${LLVM_INCLUDE_DIRS}
         ${hip_INCLUDE_DIRS}
+        ${rocprofiler-sdk_INCLUDE_DIRS}
         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
@@ -30,7 +31,7 @@ target_include_directories(LuthierTooling
 )
 
 target_link_libraries(LuthierTooling
-        PUBLIC rocprofiler-sdk::rocprofiler-sdk LuthierAMDGPU
+        PUBLIC LuthierAMDGPU ${CMAKE_DL_LIBS}
         LLVMAMDGPUAsmParser LLVMAMDGPUDesc LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA
         LLVMAMDGPUUtils LLVMAMDGPUCodeGen
         PRIVATE

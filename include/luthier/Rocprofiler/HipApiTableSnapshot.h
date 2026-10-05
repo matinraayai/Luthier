@@ -37,7 +37,8 @@ private:
   typename ApiTableEnumInfo<TableType>::ApiTableType ApiTable{};
 
 public:
-  explicit HipApiTableSnapshot(llvm::Error &Err)
+  explicit HipApiTableSnapshot(const DynamicLibrary &RocprofilerLib,
+                               llvm::Error &Err)
       : ApiTableRegistrationCallbackProvider<TableType>(
             [this](llvm::ArrayRef<
                        typename ApiTableEnumInfo<TableType>::ApiTableType *>
@@ -63,7 +64,7 @@ public:
                           std::min(sizeof(ApiTable),
                                    static_cast<size_t>(Tables[0]->size)));
             },
-            Err) {};
+            RocprofilerLib, Err) {};
 
   ~HipApiTableSnapshot() override = default;
 

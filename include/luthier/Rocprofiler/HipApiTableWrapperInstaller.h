@@ -59,7 +59,8 @@ private:
 
 public:
   template <typename... Tuples>
-  explicit HipApiTableWrapperInstaller(llvm::Error &Err,
+  explicit HipApiTableWrapperInstaller(const DynamicLibrary &RocprofilerLib,
+                                       llvm::Error &Err,
                                        const Tuples &...WrapperSpecs)
       : ApiTableRegistrationCallbackProvider<TableType>(
             [=](llvm::ArrayRef<
@@ -81,7 +82,7 @@ public:
                                    std::get<2>(WrapperSpecs)),
                ...);
             },
-            Err){};
+            RocprofilerLib, Err) {};
 
   ~HipApiTableWrapperInstaller() override = default;
 };

@@ -1,5 +1,6 @@
 add_library(LuthierRocprofilerSDK OBJECT
         RocprofilerError.cpp
+        RocprofilerSdkLibrary.cpp
 )
 
 target_compile_definitions(LuthierRocprofilerSDK PRIVATE ${LLVM_DEFINITIONS} ${hip_COMPILE_DEFINITIONS})
