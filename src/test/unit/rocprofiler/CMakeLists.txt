@@ -5,7 +5,8 @@ set(LUTHIER_ROCPROFILER_TEST_SUPPORT
         ${CMAKE_SOURCE_DIR}/src/lib/LLVM/streams.cpp
         ${CMAKE_SOURCE_DIR}/src/lib/HSA/HsaError.cpp
         ${CMAKE_SOURCE_DIR}/src/lib/HIP/HipError.cpp
-        ${CMAKE_SOURCE_DIR}/src/lib/Rocprofiler/RocprofilerError.cpp)
+        ${CMAKE_SOURCE_DIR}/src/lib/Rocprofiler/RocprofilerError.cpp
+        ${CMAKE_SOURCE_DIR}/src/lib/Rocprofiler/RocprofilerSdkLibrary.cpp)
 
 #===------------------------------------------------------------------------===#
 # GPU-free unit tests (always run): traits, callback logic, death tests.

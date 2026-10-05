@@ -42,6 +42,7 @@
 #include <luthier/Intrinsic/Intrinsics.h>
 #include <luthier/LLVM/streams.h>
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
+#include <luthier/Rocprofiler/RocprofilerSdkLibrary.h>
 #include <luthier/ToolCodeGen/CodeDiscoveryPass.h>
 #include <luthier/ToolCodeGen/EntryPoint.h>
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
@@ -108,6 +109,9 @@ KernelInstrumentTool::instrumentationHook(llvm::MCRegister Reg, uint32_t Val) {
 
 LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(KernelInstrumentTool)
 
+/// rocprofiler-sdk library of the application; Must outlive the snapshots
+/// and the tool
+static luthier::DynamicLibrary *RocprofilerLib{nullptr};
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
 static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable> *AmdExtSnapshot{
@@ -272,6 +276,8 @@ static void atToolFini(void *) {
     AmdExtSnapshot = nullptr;
     delete CoreApiSnapshot;
     CoreApiSnapshot = nullptr;
+    delete RocprofilerLib;
+    RocprofilerLib = nullptr;
     luthier::finalizeStreams();
   });
 }
@@ -286,21 +292,30 @@ static void atToolInit(void *) {
     std::atexit(atToolFini);
 
     llvm::Error Err = llvm::Error::success();
+    auto RocprofilerLibOrErr =
+        luthier::rocprofiler::openRocprofilerSdkLibrary();
+    if (!RocprofilerLibOrErr)
+      llvm::report_fatal_error(RocprofilerLibOrErr.takeError());
+    RocprofilerLib =
+        new luthier::DynamicLibrary(std::move(*RocprofilerLibOrErr));
+
     CoreApiSnapshot =
-        new luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>(Err);
+        new luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>(
+            *RocprofilerLib, Err);
     if (Err)
       llvm::report_fatal_error(std::move(Err));
     AmdExtSnapshot =
-        new luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>(Err);
+        new luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>(
+            *RocprofilerLib, Err);
     if (Err)
       llvm::report_fatal_error(std::move(Err));
     LoaderSnapshot = new luthier::rocprofiler::HsaExtensionTableSnapshot<
-        HSA_EXTENSION_AMD_LOADER>(Err);
+        HSA_EXTENSION_AMD_LOADER>(*RocprofilerLib, Err);
     if (Err)
       llvm::report_fatal_error(std::move(Err));
 
-    KernelInstrumentTool::createInstance(*CoreApiSnapshot, *AmdExtSnapshot,
-                                         *LoaderSnapshot, Err);
+    KernelInstrumentTool::createInstance(*RocprofilerLib, *CoreApiSnapshot,
+                                         *AmdExtSnapshot, *LoaderSnapshot, Err);
     if (Err)
       llvm::report_fatal_error(std::move(Err));
 

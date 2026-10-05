@@ -1,5 +1,6 @@
 add_library(LuthierCommon OBJECT
         Debug.cpp
+        DynamicLibrary.cpp
         GenericLuthierError.cpp
         LuthierError.cpp
         ROCmLibraryError.cpp
@@ -16,3 +17,5 @@ target_include_directories(LuthierCommon
         ${LLVM_INCLUDE_DIRS}
         ${hsa-runtime64_INCLUDE_DIRS}
 )
+
+target_link_libraries(LuthierCommon PUBLIC ${CMAKE_DL_LIBS})

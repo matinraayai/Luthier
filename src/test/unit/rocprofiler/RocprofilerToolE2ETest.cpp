@@ -24,6 +24,7 @@
 
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
 #include "luthier/Rocprofiler/ApiTableWrapperInstaller.h"
+#include "luthier/Rocprofiler/RocprofilerSdkLibrary.h"
 
 #include <gtest/gtest.h>
 #include <llvm/Support/Error.h>
@@ -43,6 +44,17 @@ namespace {
 //===----------------------------------------------------------------------===//
 // In-process tool state (created during rocprofiler configuration)
 //===----------------------------------------------------------------------===//
+
+/// The rocprofiler-sdk library handle shared by all providers in this test;
+/// Intentionally leaked since the providers reference it until finalization
+const luthier::DynamicLibrary &rocprofilerLib() {
+  static auto *Lib = [] {
+    auto LibOrErr = openRocprofilerSdkLibrary();
+    LUTHIER_ABORT_ON_FATAL_ERROR(LibOrErr.takeError());
+    return new luthier::DynamicLibrary(std::move(*LibOrErr));
+  }();
+  return *Lib;
+}
 
 HsaApiTableSnapshot<::CoreApiTable> *CoreSnapshot = nullptr;
 HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER> *LoaderSnapshot = nullptr;
@@ -86,24 +98,29 @@ uint64_t maxObservedInstance() {
 
 void toolInit() {
   llvm::Error Err = llvm::Error::success();
-  CoreSnapshot = new HsaApiTableSnapshot<::CoreApiTable>(Err);
+  CoreSnapshot = new HsaApiTableSnapshot<::CoreApiTable>(rocprofilerLib(), Err);
   LUTHIER_ABORT_ON_FATAL_ERROR(Err);
-  LoaderSnapshot = new HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>(Err);
+  LoaderSnapshot = new HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>(
+      rocprofilerLib(), Err);
   LUTHIER_ABORT_ON_FATAL_ERROR(Err);
-  ImageSnapshot = new HsaExtensionTableSnapshot<HSA_EXTENSION_IMAGES>(Err);
+  ImageSnapshot = new HsaExtensionTableSnapshot<HSA_EXTENSION_IMAGES>(
+      rocprofilerLib(), Err);
   LUTHIER_ABORT_ON_FATAL_ERROR(Err);
 
   std::tuple<HsaInitFnMemberPtr, HsaInitFn &, HsaInitFn> Spec(
       &::CoreApiTable::hsa_init_fn, UnderlyingInit, &hsaInitWrapper);
-  Wrapper = new HsaApiTableWrapperInstaller<::CoreApiTable>(Err, Spec);
+  Wrapper = new HsaApiTableWrapperInstaller<::CoreApiTable>(rocprofilerLib(),
+                                                            Err, Spec);
   LUTHIER_ABORT_ON_FATAL_ERROR(Err);
 
-  HipSnapshot = new HipApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE>(Err);
+  HipSnapshot = new HipApiTableSnapshot<ROCPROFILER_HIP_RUNTIME_TABLE>(
+      rocprofilerLib(), Err);
   LUTHIER_ABORT_ON_FATAL_ERROR(Err);
 
   // Independent witness of lib_instance progression.
-  (void)rocprofiler_at_intercept_table_registration(
-      &hsaInstanceObserver, ROCPROFILER_HSA_TABLE, nullptr);
+  (void)rocprofilerLib()
+      .callFunction<rocprofiler_at_intercept_table_registration>(
+          &hsaInstanceObserver, ROCPROFILER_HSA_TABLE, nullptr);
 }
 
 void toolFini(void *) {
@@ -137,7 +154,8 @@ protected:
   static void SetUpTestSuite() {
     // Register this binary as an in-process rocprofiler tool. This succeeds and
     // initializes rocprofiler regardless of GPU availability.
-    ASSERT_EQ(rocprofiler_force_configure(&toolConfigure),
+    ASSERT_EQ(rocprofilerLib().callFunction<rocprofiler_force_configure>(
+                  &toolConfigure),
               ROCPROFILER_STATUS_SUCCESS);
     // Bring up HSA: this is what triggers rocprofiler's HSA table registration
     // (and therefore our snapshot/wrapper callbacks). Fails with no GPU/kfd.
@@ -159,8 +177,9 @@ protected:
 // destroy (no dangling registration, no abort). Needs no GPU.
 TEST_F(RocprofilerToolE2E, RegistrationFailureIsSafeToDestroy) {
   llvm::Error Err = llvm::Error::success();
-  auto *Snap = new HsaApiTableSnapshot<::CoreApiTable>(Err);
-  EXPECT_TRUE(static_cast<bool>(Err)) << "expected registration to be locked";
+  auto *Snap = new HsaApiTableSnapshot<::CoreApiTable>(rocprofilerLib(), Err);
+  EXPECT_TRUE(static_cast<bool>(rocprofilerLib(), Err))
+      << "expected registration to be locked";
   llvm::consumeError(std::move(Err));
   delete Snap; // must not abort
   SUCCEED();

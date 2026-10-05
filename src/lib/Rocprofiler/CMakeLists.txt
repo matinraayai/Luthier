@@ -1,8 +1,9 @@
 add_library(LuthierRocprofilerSDK OBJECT
         RocprofilerError.cpp
+        RocprofilerSdkLibrary.cpp
 )
 
-target_compile_definitions(LuthierRocprofilerSDK PRIVATE ${LLVM_DEFINITIONS})
+target_compile_definitions(LuthierRocprofilerSDK PRIVATE ${LLVM_DEFINITIONS} ${hip_COMPILE_DEFINITIONS})
 
 target_include_directories(LuthierRocprofilerSDK
         PUBLIC
@@ -11,6 +12,5 @@ target_include_directories(LuthierRocprofilerSDK
         PRIVATE
         ${rocprofiler-sdk_INCLUDE_DIR}
         ${LLVM_INCLUDE_DIRS}
+        ${hip_INCLUDE_DIRS}
 )
-
-target_link_libraries(LuthierRocprofilerSDK PRIVATE hip::host)

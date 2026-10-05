@@ -63,6 +63,21 @@ endif ()
 # Get the include directory of hsa-runtime64
 get_target_property(hsa-runtime64_INCLUDE_DIRS hsa-runtime64::hsa-runtime64 INTERFACE_INCLUDE_DIRECTORIES)
 
+# Get the include directories of rocprofiler-sdk
+set(rocprofiler-sdk_INCLUDE_DIRS "$<TARGET_PROPERTY:rocprofiler-sdk::rocprofiler-sdk,INTERFACE_INCLUDE_DIRECTORIES>")
+
+# Get the include directories of hip::host
+set(hip_INCLUDE_DIRS "$<TARGET_PROPERTY:hip::host,INTERFACE_INCLUDE_DIRECTORIES>")
+
+# Get the compile definitions of hip::host
+set(hip_COMPILE_DEFINITIONS "$<TARGET_PROPERTY:hip::host,INTERFACE_COMPILE_DEFINITIONS>")
+
+# Get the include directories of hip::device
+set(hip_device_INCLUDE_DIRS "$<TARGET_PROPERTY:hip::device,INTERFACE_INCLUDE_DIRECTORIES>")
+
+# Get the compile definitions of hip::device
+set(hip_device_COMPILE_DEFINITIONS "$<TARGET_PROPERTY:hip::device,INTERFACE_COMPILE_DEFINITIONS>")
+
 add_subdirectory(bin)
 add_subdirectory(lib)
 

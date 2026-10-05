@@ -1,4 +1,4 @@
-//===-- HsaApiTableEnumInfo.h -----------------------------------*- C++ -*-===//
+//===-- DynamicLibraryFunctionEntry.h ---------------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,22 +14,18 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Provides the \c ApiTableEnumInfo specialization for the HSA API table.
+/// Defines \c luthier::DynamicLibraryFunctionEntry, the customization point
+/// mapping an API entry to the symbol name, used by
+/// \c luthier::DynamicLibrary for looked up.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_ROCPROFILER_HSA_API_TABLE_ENUM_INFO_H
-#define LUTHIER_ROCPROFILER_HSA_API_TABLE_ENUM_INFO_H
-#include "luthier/Rocprofiler/ApiTableEnumInfo.h"
-#include <hsa/hsa.h>
-#include <hsa/hsa_api_trace.h>
+#ifndef LUTHIER_COMMON_DYNAMIC_LIBRARY_FUNCTION_ENTRY_H
+#define LUTHIER_COMMON_DYNAMIC_LIBRARY_FUNCTION_ENTRY_H
 
-namespace luthier::rocprofiler {
+namespace luthier {
+/// \brief Primary template (customization point) giving the symbol name and
+/// the function type an API entry is dynamically resolved under.
+template <auto Func> struct DynamicLibraryFunctionEntry;
 
-template <> struct ApiTableEnumInfo<ROCPROFILER_HSA_TABLE> {
-  using ApiTableType = ::HsaApiTable;
-  constexpr static auto NumApiTables = 1;
-  constexpr static auto ApiTableName = "HSA";
-};
-
-} // namespace luthier::rocprofiler
+} // namespace luthier
 
 #endif

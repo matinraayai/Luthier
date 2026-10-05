@@ -34,18 +34,12 @@ template <> struct ApiTableEnumInfo<ROCPROFILER_HIP_COMPILER_TABLE> {
   using ApiTableType = ::HipCompilerDispatchTable;
   constexpr static auto NumApiTables = 1;
   constexpr static auto ApiTableName = "HIP Compiler";
-  /// No \c triggerInitialization: the HIP compiler table cannot be
-  /// force-initialized via a harmless library call.
 };
 
 template <> struct ApiTableEnumInfo<ROCPROFILER_HIP_RUNTIME_TABLE> {
   using ApiTableType = ::HipDispatchTable;
   constexpr static auto NumApiTables = 1;
   constexpr static auto ApiTableName = "HIP Runtime";
-
-  /// Forces the HIP runtime to initialize (and therefore register its API
-  /// table with rocprofiler-sdk) by calling a harmless query function.
-  static void triggerInitialization() { (void)hipApiName(0); }
 };
 
 } // namespace luthier::rocprofiler

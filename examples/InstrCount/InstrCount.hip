@@ -44,6 +44,7 @@
 #include <llvm/Support/SmallVectorMemoryBuffer.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
+#include <llvm/Transforms/Utils/ModuleUtils.h>
 #include <luthier/Common/Debug.h>
 #include <luthier/Common/ErrorCheck.h>
 #include <luthier/Common/Stacktrace.h>
@@ -57,19 +58,19 @@
 #include <luthier/LLVM/CodeGenHelpers.h>
 #include <luthier/LLVM/streams.h>
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
+#include <luthier/Rocprofiler/RocprofilerSdkLibrary.h>
 #include <luthier/ToolCodeGen/CodeDiscoveryPass.h>
-#include <luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h>
 #include <luthier/ToolCodeGen/EntryPoint.h>
 #include <luthier/ToolCodeGen/FunctionAnnotations.h>
 #include <luthier/ToolCodeGen/IPPredicatedCFG.h>
 #include <luthier/ToolCodeGen/InitialEntryPointAnalysis.h>
 #include <luthier/ToolCodeGen/InitialExecutionPointAnalysis.h>
+#include <luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h>
 #include <luthier/ToolCodeGen/InstructionTracesAnalysis.h>
 #include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
 #include <luthier/ToolCodeGen/MetadataParserAnalysis.h>
 #include <luthier/ToolCodeGen/NewPMAsmPrinter.h>
 #include <luthier/ToolCodeGen/PrototypeCallGraph.h>
-#include <llvm/Transforms/Utils/ModuleUtils.h>
 #include <memory>
 #include <mutex>
 
@@ -430,6 +431,7 @@ __attribute__((device, used)) void InstrCountTool::countInstructionsScalar() {
 
 LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(InstrCountTool)
 
+static luthier::DynamicLibrary *RocprofilerLib{nullptr};
 static luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>
     *CoreApiSnapshot{nullptr};
 static luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable> *AmdExtSnapshot{
@@ -715,6 +717,8 @@ static void atToolFini(void *) {
     AmdExtSnapshot = nullptr;
     delete CoreApiSnapshot;
     CoreApiSnapshot = nullptr;
+    delete RocprofilerLib;
+    RocprofilerLib = nullptr;
     luthier::finalizeStreams();
   });
 }
@@ -745,21 +749,30 @@ static void atToolInit(void *) {
     std::atexit(atToolFini);
 
     llvm::Error Err = llvm::Error::success();
+    auto RocprofilerLibOrErr =
+        luthier::rocprofiler::openRocprofilerSdkLibrary();
+    if (!RocprofilerLibOrErr)
+      llvm::report_fatal_error(RocprofilerLibOrErr.takeError());
+    RocprofilerLib =
+        new luthier::DynamicLibrary(std::move(*RocprofilerLibOrErr));
+
     CoreApiSnapshot =
-        new luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>(Err);
+        new luthier::rocprofiler::HsaApiTableSnapshot<::CoreApiTable>(
+            *RocprofilerLib, Err);
     if (Err)
       llvm::report_fatal_error(std::move(Err));
     AmdExtSnapshot =
-        new luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>(Err);
+        new luthier::rocprofiler::HsaApiTableSnapshot<::AmdExtTable>(
+            *RocprofilerLib, Err);
     if (Err)
       llvm::report_fatal_error(std::move(Err));
     LoaderSnapshot = new luthier::rocprofiler::HsaExtensionTableSnapshot<
-        HSA_EXTENSION_AMD_LOADER>(Err);
+        HSA_EXTENSION_AMD_LOADER>(*RocprofilerLib, Err);
     if (Err)
       llvm::report_fatal_error(std::move(Err));
 
-    InstrCountTool::createInstance(*CoreApiSnapshot, *AmdExtSnapshot,
-                                   *LoaderSnapshot, Err);
+    InstrCountTool::createInstance(*RocprofilerLib, *CoreApiSnapshot,
+                                   *AmdExtSnapshot, *LoaderSnapshot, Err);
     if (Err)
       llvm::report_fatal_error(std::move(Err));
 

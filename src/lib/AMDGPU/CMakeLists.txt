@@ -29,6 +29,7 @@ add_public_tablegen_target(LuthierAMDGPUTableGen)
 
 # Create a target for all the internal amdgpu headers
 add_library(LuthierAMDGPU INTERFACE)
+add_library(luthier::LuthierAMDGPU ALIAS LuthierAMDGPU)
 
 target_sources(LuthierAMDGPU
         INTERFACE

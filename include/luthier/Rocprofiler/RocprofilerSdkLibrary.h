@@ -1,4 +1,4 @@
-//===-- HsaApiTableEnumInfo.h -----------------------------------*- C++ -*-===//
+//===-- RocprofilerSdkLibrary.h ---------------------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,21 +14,24 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Provides the \c ApiTableEnumInfo specialization for the HSA API table.
+/// Declares utilities for obtaining a \c luthier::DynamicLibrary handle to
+/// the rocprofiler-sdk library used by the target application.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_ROCPROFILER_HSA_API_TABLE_ENUM_INFO_H
-#define LUTHIER_ROCPROFILER_HSA_API_TABLE_ENUM_INFO_H
-#include "luthier/Rocprofiler/ApiTableEnumInfo.h"
-#include <hsa/hsa.h>
-#include <hsa/hsa_api_trace.h>
+#ifndef LUTHIER_ROCPROFILER_ROCPROFILER_SDK_LIBRARY_H
+#define LUTHIER_ROCPROFILER_ROCPROFILER_SDK_LIBRARY_H
+#include "luthier/Common/DynamicLibrary.h"
+#include "luthier/Rocprofiler/ApiTable.h"
+#include <llvm/Support/Error.h>
 
 namespace luthier::rocprofiler {
 
-template <> struct ApiTableEnumInfo<ROCPROFILER_HSA_TABLE> {
-  using ApiTableType = ::HsaApiTable;
-  constexpr static auto NumApiTables = 1;
-  constexpr static auto ApiTableName = "HSA";
-};
+/// \brief Opens the rocprofiler-sdk library inside the linker namespace
+/// \p Lmid, which by default is the namespace of the target application
+/// \param Lmid the linker namespace to open rocprofiler-sdk in
+/// \return an owning \c DynamicLibrary of rocprofiler-sdk, or an
+/// \c llvm::Error if the library failed to open
+llvm::Expected<DynamicLibrary>
+openRocprofilerSdkLibrary(Lmid_t Lmid = LM_ID_BASE);
 
 } // namespace luthier::rocprofiler
 

@@ -20,16 +20,16 @@
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_ROCPROFILER_API_TABLE_REGISTRATION_CALLBACK_PROVIDER_H
 #define LUTHIER_ROCPROFILER_API_TABLE_REGISTRATION_CALLBACK_PROVIDER_H
+#include "luthier/Common/DynamicLibrary.h"
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
+#include "luthier/Rocprofiler/ApiTable.h"
 #include "luthier/Rocprofiler/ApiTableEnumInfo.h"
 #include "luthier/Rocprofiler/RocprofilerError.h"
 #include <atomic>
 #include <exception>
 #include <mutex>
-#include <rocprofiler-sdk/intercept_table.h>
-#include <rocprofiler-sdk/registration.h>
 #include <type_traits>
 
 namespace luthier::rocprofiler {
@@ -104,6 +104,9 @@ private:
   bool SuccessfullyRegistered = false;
 
 protected:
+  /// The rocprofiler-sdk library used to request the registration callback.
+  const DynamicLibrary &RocprofilerLib;
+
   /// Keeps track of whether the registration callback has been invoked by
   /// rocprofiler-sdk
   std::atomic<bool> WasRegistrationInvoked{false};
@@ -180,19 +183,24 @@ public:
   /// class also checks if rocprofiler-sdk has passed the correct number of
   /// tables expected for the library of choice, as described in the \c
   /// ApiTableEnumInfo of the \c TableType before invoking the \p CB
+  /// \param RocprofilerLib the rocprofiler-sdk library of the target
+  /// application used to request the callback; Must outlive this object
   /// \param Err an externally initialized \c llvm::Error that will report
   /// back any errors encountered by this constructor
-  ApiTableRegistrationCallbackProvider(CallbackType CB, llvm::Error &Err)
-      : Callback(std::move(CB)) {
+  ApiTableRegistrationCallbackProvider(CallbackType CB,
+                                       const DynamicLibrary &RocprofilerLib,
+                                       llvm::Error &Err)
+      : RocprofilerLib(RocprofilerLib), Callback(std::move(CB)) {
     llvm::ErrorAsOutParameter EAO(Err);
     /// Install once on first construction so the destructor can later
     /// distinguish a host-side abort from a real "rocprofiler never
     /// called us" bug.
     installHostAbortedSentinelOnce();
     Err = std::move(LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
-        rocprofiler_at_intercept_table_registration(
-            ApiTableRegistrationCallbackProvider::apiRegistrationCallback,
-            TableType, this),
+        RocprofilerLib
+            .callFunction<rocprofiler_at_intercept_table_registration>(
+                ApiTableRegistrationCallbackProvider::apiRegistrationCallback,
+                TableType, this),
         llvm::formatv("Failed to request a callback on {0} API table "
                       "initialization from "
                       "rocprofiler-sdk",
@@ -230,7 +238,8 @@ public:
     /// Abort rather than exit: this runs in a destructor that may execute
     /// during program shutdown, where exit() would re-enter the exit sequence.
     LUTHIER_ABORT_ON_FATAL_ERROR(LUTHIER_ROCPROFILER_CALL_ERROR_CHECK(
-        rocprofiler_is_finalized(&RocprofilerFiniStatus),
+        RocprofilerLib.callFunction<rocprofiler_is_finalized>(
+            &RocprofilerFiniStatus),
         "Failed to check rocprofiler's finalization status."));
     /// Case (a): rocprofiler is finalizing or finalized — expected
     /// shutdown path, regardless of whether our callback fired.
@@ -269,29 +278,6 @@ public:
   /// the requested user callback has been invoked
   [[nodiscard]] bool wasRegistrationCallbackInvoked() const {
     return WasRegistrationInvoked.load();
-  }
-
-  /// If the API table has not been registered yet, forces the underlying
-  /// library to initialize by invoking an entry point that brings the runtime
-  /// up (\c hsa_init for HSA, or the first dispatch-table access for HIP),
-  /// which in turn drives rocprofiler-sdk's registration of the table.
-  /// \note Only use when absolutely sure the underlying library is not going to
-  /// be initialized otherwise.
-  /// \warning Must NOT be called from within a rocprofiler-sdk
-  /// \c rocprofiler_configure or tool-\c initialize callback. The trigger
-  /// re-enters the runtime's init path, which calls back into rocprofiler-sdk's
-  /// \c rocprofiler_set_api_table — re-entering the same \c std::call_once that
-  /// is already running on this thread is undefined behavior (deadlock or \c
-  /// std::system_error). Call it only after rocprofiler-sdk configuration has
-  /// completed (e.g. from the host application's normal flow).
-  /// \note Only available for tables whose \c ApiTableEnumInfo specialization
-  /// defines \c triggerInitialization() (e.g. HSA and the HIP runtime, but not
-  /// the HIP compiler table); SFINAE removes this overload otherwise.
-  template <rocprofiler_intercept_table_t T = TableType,
-            typename = decltype(ApiTableEnumInfo<T>::triggerInitialization())>
-  void forceTriggerApiTableCallback() {
-    if (!WasRegistrationInvoked.load())
-      ApiTableEnumInfo<T>::triggerInitialization();
   }
 };
 

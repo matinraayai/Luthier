@@ -58,7 +58,8 @@ endfunction()
 #   - A HIP OBJECT library host target, which compiles the host side of the same source with the produced `.hipfb`
 #     spliced in.
 # Both the device and the host targets are unlinked OBJECT libraries, and can be returned to the caller for further
-# customization.
+# customization. The device targets get hip::device's include directories and compile definitions, and the host target
+# gets hip::host's.
 #
 # - target: The host file's OBJECT library to be created by this function.
 # - source: The HIP source file.
@@ -169,6 +170,16 @@ function(luthier_create_offload_bundle target source)
     get_filename_component(_SPIRV_DIR "${LUTHIER_LLVM_SPIRV_TRANSLATOR}" DIRECTORY)
   endif ()
 
+  # hip's headers and compile definitions.
+  if (NOT TARGET hip::host OR NOT TARGET hip::device)
+    message(FATAL_ERROR
+            "luthier_create_offload_bundle(${target}): hip::host and hip::device were not found.")
+  endif ()
+  set(_HIP_HOST_INCLUDE_DIRS "$<TARGET_PROPERTY:hip::host,INTERFACE_INCLUDE_DIRECTORIES>")
+  set(_HIP_HOST_COMPILE_DEFINITIONS "$<TARGET_PROPERTY:hip::host,INTERFACE_COMPILE_DEFINITIONS>")
+  set(_HIP_DEVICE_INCLUDE_DIRS "$<TARGET_PROPERTY:hip::device,INTERFACE_INCLUDE_DIRECTORIES>")
+  set(_HIP_DEVICE_COMPILE_DEFINITIONS "$<TARGET_PROPERTY:hip::device,INTERFACE_COMPILE_DEFINITIONS>")
+
   #---------------------------------------------------------------------------------------------------------------------
   # Device Targets
   #---------------------------------------------------------------------------------------------------------------------
@@ -212,6 +223,8 @@ function(luthier_create_offload_bundle target source)
             --cuda-device-only -emit-llvm --no-gpu-bundle-output -g0
             -fgpu-allow-device-init
             ${_EXTRA_FLAGS} -fpass-plugin=${_LUTHIER_IR_PLUGIN})
+    target_include_directories(${_SLICE_TGT} PRIVATE ${_HIP_DEVICE_INCLUDE_DIRS})
+    target_compile_definitions(${_SLICE_TGT} PRIVATE ${_HIP_DEVICE_COMPILE_DEFINITIONS})
     add_dependencies(${_SLICE_TGT} ${_LUTHIER_IR_PLUGIN_TARGET})
 
     list(APPEND _DEV_TARGETS "${_SLICE_TGT}")
@@ -233,6 +246,8 @@ function(luthier_create_offload_bundle target source)
             --cuda-device-only --no-gpu-bundle-output -g0 -B "${_SPIRV_DIR}"
             -fgpu-allow-device-init
             -fpass-plugin=${_LUTHIER_IR_PLUGIN} -U SPIRV)
+    target_include_directories(${_SPIRV_TARGET} PRIVATE ${_HIP_DEVICE_INCLUDE_DIRS})
+    target_compile_definitions(${_SPIRV_TARGET} PRIVATE ${_HIP_DEVICE_COMPILE_DEFINITIONS})
     add_dependencies(${_SPIRV_TARGET} ${_LUTHIER_IR_PLUGIN_TARGET})
 
     list(APPEND _DEV_TARGETS "${_SPIRV_TARGET}")
@@ -293,6 +308,8 @@ function(luthier_create_offload_bundle target source)
           -fpass-plugin=${_LUTHIER_IR_PLUGIN}
           -fplugin=${_LUTHIER_CXX_PLUGIN}
           "SHELL:-Xclang -add-plugin -Xclang luthier-emit-device-function-host-handle")
+  target_include_directories(${target} PRIVATE ${_HIP_HOST_INCLUDE_DIRS})
+  target_compile_definitions(${target} PRIVATE ${_HIP_HOST_COMPILE_DEFINITIONS})
 
   add_dependencies(${target}
           ${target}-fatbin

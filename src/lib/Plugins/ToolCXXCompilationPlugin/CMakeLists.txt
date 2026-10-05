@@ -19,3 +19,5 @@ target_link_libraries(LuthierToolCXXCompilationPlugin PRIVATE
 
 set_target_properties(LuthierToolCXXCompilationPlugin
         PROPERTIES CXX_RTTI OFF)
+
+add_library(luthier::LuthierToolCXXCompilationPlugin ALIAS LuthierToolCXXCompilationPlugin)

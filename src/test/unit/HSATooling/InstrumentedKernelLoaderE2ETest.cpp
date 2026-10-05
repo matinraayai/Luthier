@@ -42,6 +42,7 @@
 #include "luthier/HSA/Queue.h"
 #include "luthier/HSATooling/InstrumentedKernelLoaderAndLauncher.h"
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
+#include "luthier/Rocprofiler/RocprofilerSdkLibrary.h"
 
 #include <gtest/gtest.h>
 
@@ -64,6 +65,17 @@ namespace {
 // In-process rocprofiler tool
 //===----------------------------------------------------------------------===//
 
+/// The rocprofiler-sdk library handle shared by all providers in this test;
+/// Intentionally leaked since the providers reference it until finalization
+const DynamicLibrary &rocprofilerLib() {
+  static auto *Lib = [] {
+    auto LibOrErr = rocprofiler::openRocprofilerSdkLibrary();
+    LUTHIER_ABORT_ON_FATAL_ERROR(LibOrErr.takeError());
+    return new DynamicLibrary(std::move(*LibOrErr));
+  }();
+  return *Lib;
+}
+
 rocprofiler::HsaApiTableSnapshot<::CoreApiTable> *CoreSnapshot = nullptr;
 rocprofiler::HsaApiTableSnapshot<::AmdExtTable> *AmdExtSnapshot = nullptr;
 rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
@@ -71,12 +83,15 @@ rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
 
 void toolInit() {
   llvm::Error Err = llvm::Error::success();
-  CoreSnapshot = new rocprofiler::HsaApiTableSnapshot<::CoreApiTable>(Err);
+  CoreSnapshot = new rocprofiler::HsaApiTableSnapshot<::CoreApiTable>(
+      rocprofilerLib(), Err);
   LUTHIER_ABORT_ON_FATAL_ERROR(Err);
-  AmdExtSnapshot = new rocprofiler::HsaApiTableSnapshot<::AmdExtTable>(Err);
+  AmdExtSnapshot = new rocprofiler::HsaApiTableSnapshot<::AmdExtTable>(
+      rocprofilerLib(), Err);
   LUTHIER_ABORT_ON_FATAL_ERROR(Err);
   LoaderSnapshot =
-      new rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>(Err);
+      new rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>(
+          rocprofilerLib(), Err);
   LUTHIER_ABORT_ON_FATAL_ERROR(Err);
 }
 
@@ -105,7 +120,8 @@ protected:
   inline static bool HsaUp = false;
 
   static void SetUpTestSuite() {
-    ASSERT_EQ(rocprofiler_force_configure(&toolConfigure),
+    ASSERT_EQ(rocprofilerLib().callFunction<rocprofiler_force_configure>(
+                  &toolConfigure),
               ROCPROFILER_STATUS_SUCCESS);
     HsaUp = (hsa_init() == HSA_STATUS_SUCCESS);
   }

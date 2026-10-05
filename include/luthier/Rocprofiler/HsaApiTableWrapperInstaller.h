@@ -64,13 +64,16 @@ public:
   /// configuration
   /// \tparam Tuples Variadic tuple type for different entries to be wrapped
   /// in the target table
+  /// \param RocprofilerLib the rocprofiler-sdk library of the target
+  /// application; Must outlive this object
   /// \param Err an external \c llvm::Error that will hold any errors
   /// encountered in the constructor
   /// \param WrapperSpecs a variadic set of 3-entry tuples, with each tuple
   /// specifying an entry inside the target API table to be wrapped
   /// \sa installWrapperEntry
   template <typename... Tuples>
-  explicit HsaApiTableWrapperInstaller(llvm::Error &Err,
+  explicit HsaApiTableWrapperInstaller(const DynamicLibrary &RocprofilerLib,
+                                       llvm::Error &Err,
                                        const Tuples &...WrapperSpecs)
       : ApiTableRegistrationCallbackProvider(
             [=, this](llvm::ArrayRef<::HsaApiTable *> Tables,
@@ -107,7 +110,7 @@ public:
                    std::get<1>(WrapperSpecs), std::get<2>(WrapperSpecs)),
                ...);
             },
-            Err){};
+            RocprofilerLib, Err) {};
 
   ~HsaApiTableWrapperInstaller() override = default;
 };

@@ -39,7 +39,7 @@ target_include_directories(LuthierPatchPCUsagesPass
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
 
-target_link_libraries(LuthierPatchPCUsagesPass PUBLIC hip::host LuthierAMDGPU)
+target_link_libraries(LuthierPatchPCUsagesPass PUBLIC LuthierAMDGPU)
 
 foreach (_DEVICE_TARGET IN LISTS LuthierPatchPCUsagesPass_DEVICE_TARGETS)
     target_include_directories(${_DEVICE_TARGET}
@@ -48,7 +48,6 @@ foreach (_DEVICE_TARGET IN LISTS LuthierPatchPCUsagesPass_DEVICE_TARGETS)
             "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
             "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
             "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include/luthier/AMDGPU>")
-    target_link_libraries(${_DEVICE_TARGET} PRIVATE hip::device)
     add_dependencies(${_DEVICE_TARGET} LuthierAMDGPU)
 endforeach ()
 
@@ -74,7 +73,7 @@ target_include_directories(LuthierRebaseAppScratchAccessesPass
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
 
-target_link_libraries(LuthierRebaseAppScratchAccessesPass PUBLIC hip::host LuthierAMDGPU)
+target_link_libraries(LuthierRebaseAppScratchAccessesPass PUBLIC LuthierAMDGPU)
 
 foreach (_DEVICE_TARGET IN LISTS LuthierRebaseAppScratchAccessesPass_DEVICE_TARGETS)
     target_include_directories(${_DEVICE_TARGET}
@@ -83,7 +82,6 @@ foreach (_DEVICE_TARGET IN LISTS LuthierRebaseAppScratchAccessesPass_DEVICE_TARG
             "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
             "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
             "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include/luthier/AMDGPU>")
-    target_link_libraries(${_DEVICE_TARGET} PRIVATE hip::device)
     add_dependencies(${_DEVICE_TARGET} LuthierAMDGPU)
 endforeach ()
 
