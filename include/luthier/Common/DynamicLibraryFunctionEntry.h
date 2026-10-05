@@ -26,13 +26,6 @@ namespace luthier {
 /// the function type an API entry is dynamically resolved under.
 template <auto Func> struct DynamicLibraryFunctionEntry;
 
-/// \brief Registers \p NAME as a dynamically-resolvable API entry, mapping it
-/// to its own name as a string and to its declared type.
-#define LUTHIER_DYNAMIC_LIBRARY_FUNCTION_ENTRY(NAME)                           \
-  template <> struct ::luthier::DynamicLibraryFunctionEntry<NAME> {            \
-    using ApiType = decltype(&(NAME));                                         \
-    static constexpr auto ApiName = #NAME;                                     \
-  };
 } // namespace luthier
 
 #endif
