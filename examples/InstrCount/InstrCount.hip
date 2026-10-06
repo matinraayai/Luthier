@@ -180,9 +180,6 @@ struct InstrCountTool
   // target module.
   //===---------------------------------------------------------------===//
 
-  /// Prototype-level entry point: payload creation reads the target module's
-  /// MIR and writes into the instrumentation module, so it needs both halves of
-  /// the prototype.
   llvm::PreservedAnalyses run(luthier::Prototype &P,
                               luthier::PrototypeAnalysisManager &PAM);
 };
@@ -190,12 +187,6 @@ struct InstrCountTool
 
 __attribute__((device)) uint64_t InstrCountTool::Counter;
 
-//===----------------------------------------------------------------------===//
-// File-scope statics: API-table snapshots + the tool itself. The snapshots
-// must outlive the tool (the tool ctor takes them by reference) and must be
-// constructed during rocprofiler-sdk's configure phase before any other
-// component requests them.
-//===----------------------------------------------------------------------===//
 
 LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(InstrCountTool)
 
