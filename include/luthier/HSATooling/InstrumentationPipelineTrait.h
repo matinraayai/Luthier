@@ -98,6 +98,199 @@ class InstrumentationPipelineTrait {
     static bool isRequired() { return true; }
   };
 
+  /// Host-side resolver for the AMD hostcall FUNCTION_CALL service the
+  /// PatchPCUsagesPass runtime resolver falls back to on a wave-side map
+  /// miss. Drives Luthier's instrumentation pipeline synchronously against
+  /// the callee whose runtime address is \p In[0], loads the resulting
+  /// object, publishes the mapping into the on-device resolver table (so
+  /// subsequent waves hit the fast path), and hands the instrumented
+  /// entry-point address back to the wave in \p Out[0].
+  ///
+  /// In[] layout (from patchRegMultiFallback):
+  ///   In[0] = current callee-reg value (original device-function address)
+  ///   In[1] = dispatch packet address
+  ///   In[2] = &EntryPointToTraceFunctionAddrMap on the device
+  ///   In[3] = &EntryPointToTraceFunctionAddrMapSize on the device
+  ///   In[4] = &EntryPointToTraceFunctionAddrMapMaxSize on the device —
+  ///           unused (only read for logging).
+  ///
+  /// The newly-instrumented code object's \c
+  /// initEntryPointToTraceFunctionAddrMap ctor appends its own seed entry
+  /// to the runtime table (grow-if-needed) at load time — the callback
+  /// itself never writes the map. It only reads the (possibly-grown) map
+  /// back after the load and returns the \c FnHandleAddr the ctor
+  /// installed for \c CalleeAddr in \p Out[0] .
+  static void patchPCUsagesHostCallback(std::uint64_t Out[2],
+                                        const std::uint64_t In[7]) {
+    Out[0] = 0;
+    Out[1] = 0;
+
+    const uint64_t CalleeAddr = In[0];
+    const uint64_t DispatchPacketAddr = In[1];
+    const uint64_t MapPtrLocation = In[2];
+    const uint64_t MapSizeLocation = In[3];
+
+    if (DispatchPacketAddr == 0 || CalleeAddr == 0) {
+      luthier::errs() << "[InstrCountTool] patchPCUsagesHostCallback: null "
+                         "dispatch packet or callee address; giving up\n";
+      return;
+    }
+
+    const auto *DispatchPacket =
+        reinterpret_cast<const hsa_kernel_dispatch_packet_t *>(
+            DispatchPacketAddr);
+    // What the wave is actually running: by the time this callback fires,
+    // overrideWithInstrumented has already rewritten kernel_object, so the
+    // packet names the *instrumented* KD. Normalized to the application's KD
+    // below — see getOriginalKernelDescriptor.
+    const auto *DispatchedKD =
+        reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
+            DispatchPacket->kernel_object);
+
+    Singleton<Derived>::withInstance(
+        [&](Derived &T) {
+          const auto Core = T.getCoreApiTableSnapshot().getTable();
+
+          // The enclosing kernel for everything below has to be the *original*
+          // application KD, not the instrumented one the packet points at. The
+          // launcher's caches are keyed by the original KD, and
+          // CodeDiscoveryPass takes the initial execution point from it — a
+          // device function lifted against the instrumented KD would inherit
+          // the instrumented kernel's register usage as the application's
+          // launch budget (luthier-app-num-vgpr / -sgpr) instead of what the
+          // wave really launched with.
+          const llvm::amdhsa::kernel_descriptor_t *EnclosingKD =
+              T.getOriginalKernelDescriptor(DispatchedKD);
+          if (EnclosingKD == nullptr) {
+            luthier::errs()
+                << "[InstrCountTool] patchPCUsagesHostCallback: dispatched "
+                   "kernel_object 0x"
+                << llvm::utohexstr(reinterpret_cast<uint64_t>(DispatchedKD))
+                << " maps to no cached original kernel descriptor; giving up\n";
+            return;
+          }
+
+          struct EntryPointTraceFunctionEntry {
+            uint64_t TraceAddr;
+            uint64_t FnHandleAddr;
+          };
+
+          auto DevRead = [&](uint64_t DevAddr, void *HostBuf, size_t Bytes) {
+            return Core.template callFunction<hsa_memory_copy>(
+                HostBuf, reinterpret_cast<void *>(DevAddr), Bytes);
+          };
+
+          // Walk the on-device resolver table for \c TraceAddr == \c CalleeAddr
+          // and return the matching \c FnHandleAddr . The runtime table is the
+          // single source of truth for the caller/callee mapping — no
+          // host-side loader cache to consult. Returns \c true iff we found
+          // the entry and wrote its handle into \c Out[0] .
+          auto TryResolveFromDevice = [&]() -> bool {
+            uint64_t MapPtr = 0;
+            uint32_t Size = 0;
+            if (DevRead(MapPtrLocation, &MapPtr, sizeof(MapPtr)) !=
+                    HSA_STATUS_SUCCESS ||
+                DevRead(MapSizeLocation, &Size, sizeof(Size)) !=
+                    HSA_STATUS_SUCCESS) {
+              luthier::errs() << "[InstrCountTool] callback: failed to read "
+                                 "on-device map metadata\n";
+              return false;
+            }
+            const uint64_t EntryStride = sizeof(EntryPointTraceFunctionEntry);
+            EntryPointTraceFunctionEntry Entry{};
+            for (uint32_t I = 0; I < Size; ++I) {
+              if (DevRead(MapPtr + I * EntryStride, &Entry, EntryStride) !=
+                  HSA_STATUS_SUCCESS) {
+                luthier::errs() << "[InstrCountTool] callback: failed to read "
+                                   "on-device map entry "
+                                << I << "\n";
+                return false;
+              }
+              if (Entry.TraceAddr == CalleeAddr) {
+                Out[0] = Entry.FnHandleAddr;
+                return true;
+              }
+            }
+            return false;
+          };
+
+          // Fast path: another wave brought this callee up under the same lock
+          // hold, so its (CalleeAddr → FnHandleAddr) entry is already in the
+          // table. This can happen when concurrent misses converge — the
+          // device-side loop already runs before the host call, but that
+          // walked the pre-append table; re-checking here after re-acquiring
+          // the (still-held) lock catches the race.
+          if (TryResolveFromDevice()) {
+            luthier::errs() << "[InstrCountTool] callback: table hit for 0x"
+                            << llvm::utohexstr(CalleeAddr) << " -> 0x"
+                            << llvm::utohexstr(Out[0]) << "\n";
+            return;
+          }
+
+          // Run the instrumentation pipeline over the device function starting
+          // at CalleeAddr. Same TargetMachine / segment context as the
+          // dispatch's enclosing kernel.
+          std::unique_ptr<llvm::MemoryBuffer> ObjBuf;
+          if (auto E = T.runInstrumentationPipelineForDeviceFunction(
+                            *EnclosingKD, CalleeAddr)
+                           .moveInto(ObjBuf)) {
+            luthier::errs()
+                << "[InstrCountTool] callback: pipeline failed for 0x"
+                << llvm::utohexstr(CalleeAddr) << ": "
+                << llvm::toString(std::move(E)) << "\n";
+            return;
+          }
+
+          // Dump the pipeline output for offline inspection.
+          {
+            static std::atomic<unsigned> Seq{0};
+            unsigned Idx = Seq.fetch_add(1);
+            std::string Path =
+                (llvm::Twine("/tmp/luthier-devfn-") + llvm::Twine(Idx) + ".o")
+                    .str();
+            std::error_code EC;
+            llvm::raw_fd_ostream OS(Path, EC);
+            if (!EC) {
+              OS.write(ObjBuf->getBufferStart(), ObjBuf->getBufferSize());
+              luthier::errs()
+                  << "[InstrCountTool] callback: dumped devfn "
+                  << ObjBuf->getBufferSize() << " bytes to " << Path << "\n";
+            }
+          }
+
+          // Load the object linked against the enclosing kernel's
+          // already-loaded Luthier globals. The load fires the new code
+          // object's
+          // \c initEntryPointToTraceFunctionAddrMap ctor, which appends its
+          // (CalleeAddr → \c FnHandleAddr ) seed entry to the existing runtime
+          // table under the caller's already-held map lock — that publish is
+          // the entire point of loading here; the loader itself no longer
+          // hands back an entry-point address.
+          if (auto E = T.loadInstrumentedDeviceFunction(std::move(ObjBuf),
+                                                        EnclosingKD, 0)) {
+            luthier::errs() << "[InstrCountTool] callback: load failed for 0x"
+                            << llvm::utohexstr(CalleeAddr) << ": "
+                            << llvm::toString(std::move(E)) << "\n";
+            return;
+          }
+
+          // The device table now carries the ctor-installed mapping. Read it
+          // back (the ctor may have reallocated the base pointer during a
+          // grow step, so \c MapPtr we sampled before the load — had we —
+          // could have been stale). Do the lookup fresh.
+          if (!TryResolveFromDevice()) {
+            luthier::errs()
+                << "[InstrCountTool] callback: no map entry for 0x"
+                << llvm::utohexstr(CalleeAddr)
+                << " after load; the new code object's ctor did not seed one\n";
+            return;
+          }
+          luthier::errs() << "[InstrCountTool] callback: mapped 0x"
+                          << llvm::utohexstr(CalleeAddr) << " -> 0x"
+                          << llvm::utohexstr(Out[0]) << "\n";
+        });
+  }
+
 public:
   /// Register the common set of instrumentation analyses on \p MAM / \p MFAM
   /// for the kernel described by \p KD. \p MMI and \p MDParser must outlive the
@@ -171,9 +364,8 @@ public:
       const llvm::amdhsa::kernel_descriptor_t &EnclosingKD,
       uint64_t DevFuncAddr,
       llvm::OptimizationLevel Level = llvm::OptimizationLevel::O3) {
-    return runInstrumentationPipelineImpl(EnclosingKD,
-                                          luthier::EntryPoint(DevFuncAddr),
-                                          Level);
+    return runInstrumentationPipelineImpl(
+        EnclosingKD, luthier::EntryPoint(DevFuncAddr), Level);
   }
 
 private:
@@ -321,8 +513,8 @@ private:
                         })
             D.preIROptimizationPasses(PPM);
         },
-        D.getPatchPCUsagesHostCallback(),
-        Level, llvm::CodeGenFileType::ObjectFile, CGPBO, &ObjOS, &PIC));
+        patchPCUsagesHostCallback, Level, llvm::CodeGenFileType::ObjectFile,
+        CGPBO, &ObjOS, &PIC));
 
     // ParentPrototypeAnalysis is consumed via getCachedResult, so materialize
     // it for both modules up front, each in its own manager.
