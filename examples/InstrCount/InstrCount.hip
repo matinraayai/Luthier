@@ -75,31 +75,39 @@ struct InstrCountTool
     : public luthier::Tool<InstrCountTool, llvm::MachineFunction> {
   using Tool::Tool;
 
-  /// Per-agent instruction counter, device-resident. Read after each
-  /// kernel via \c hsa_memory_copy from the host (see \c onPackets);
-  /// `__managed__` was previously used but its host-shadow pointer
-  /// indirection adds a memory load to every increment site that
-  /// drives RA toward a calling-convention mismatch on
-  /// `luthier::sAtomicAdd`. A plain `__device__` global avoids the
-  /// indirection — host I/O goes through HSA explicit copies.
+  /// Device-accessible buffer to count instructions on the running
+  /// kernel.
   __attribute__((device)) static uint64_t Counter;
 
-  /// Wave-fronts-as-warps counter hook. Atomically increments \c Counter
-  /// by either 1 (wavefront-level) or by the active-lane count.
+  /// Used to count the number of vector instructions executed. If 
+  /// \c CountWaveFrontLevel is set to \c true then the value of the
+  /// execute mask is counted as the number of instructions; Otherwise,
+  /// the instruction is counted iff a single active thread executes
+  /// it.
   __attribute__((device, used)) static void
-  countInstructionsVector(bool CountWaveFrontLevel);
+  countInstructionsVector(bool CountWaveFrontLevel) {
+    unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
+    const uint32_t LaneId = __lane_id() + 1;
+    uint32_t FirstActiveThreadId = __ffsll(ExecMask);
+    uint32_t NumActiveThreads = __popcll(ExecMask);
 
-  /// Scalar counter hook. Single-lane atomic increment of \c Counter.
-  __attribute__((device, used)) static void countInstructionsScalar();
+    if (FirstActiveThreadId == LaneId) {
+      if (CountWaveFrontLevel) {
+        if (NumActiveThreads > 0)
+          atomicAdd(&InstrCountTool::Counter, 1);
+      } else {
+        atomicAdd(&InstrCountTool::Counter, NumActiveThreads);
+      }
+    }
+  }
 
-  //===---------------------------------------------------------------===//
-  // Host-side state. All previously file-static fields move here as
-  // non-static members so destruction order is controlled by \c delete
-  // on the tool.
-  //===---------------------------------------------------------------===//
+  /// Used to count the number of scalar instructions (i.e., 
+  /// instructions that execute regardless of the execute mask). 
+  __attribute__((device, used)) static void countInstructionsScalar() {
+    atomicAdd(&InstrCountTool::Counter, 1ULL);
+  }
 
-  /// Per-tool CLI options. Owns its own \c OptionCategory plus the
-  /// \c InstrumentationPMDriverOptions consumed by the pipeline.
+  /// Per-tool CLI options. 
   struct Options {
     llvm::cl::OptionCategory Cat{"Instruction Count Tool Options"};
 
@@ -143,6 +151,9 @@ struct InstrCountTool
 
   } Opts;
 
+  /// Mutex to force serialize the launch of the kernels so that
+  /// only as single instrumented kernel is using the \c Counter buffer 
+  /// at the same time.
   std::recursive_mutex Mutex;
 
   /// Number of kernels dispatched so far.
@@ -176,32 +187,8 @@ struct InstrCountTool
                               luthier::PrototypeAnalysisManager &PAM);
 };
 
-//===----------------------------------------------------------------------===//
-// Out-of-line static device member definitions
-//===----------------------------------------------------------------------===//
 
 __attribute__((device)) uint64_t InstrCountTool::Counter;
-
-__attribute__((device, used)) void
-InstrCountTool::countInstructionsVector(bool CountWaveFrontLevel) {
-  unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
-  const uint32_t LaneId = __lane_id() + 1;
-  uint32_t FirstActiveThreadId = __ffsll(ExecMask);
-  uint32_t NumActiveThreads = __popcll(ExecMask);
-
-  if (FirstActiveThreadId == LaneId) {
-    if (CountWaveFrontLevel) {
-      if (NumActiveThreads > 0)
-        atomicAdd(&InstrCountTool::Counter, 1);
-    } else {
-      atomicAdd(&InstrCountTool::Counter, NumActiveThreads);
-    }
-  }
-}
-
-__attribute__((device, used)) void InstrCountTool::countInstructionsScalar() {
-  atomicAdd(&InstrCountTool::Counter, 1ULL);
-}
 
 //===----------------------------------------------------------------------===//
 // File-scope statics: API-table snapshots + the tool itself. The snapshots
@@ -354,10 +341,6 @@ void InstrCountTool::onPackets(
     const bool ActiveRegion = NumKernelLaunched >= Opts.KernelBeginInterval &&
                               NumKernelLaunched < Opts.KernelEndInterval;
 
-    // The launcher's cache is keyed by the *original* kernel descriptor, and
-    // overrideWithInstrumented rewrites Packet.kernel_object in place. Capture
-    // the key before that happens: the counter read-back below needs it, and by
-    // then DispatchPacket->kernel_object names the instrumented variant.
     const auto *OriginalKD =
         reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
             DispatchPacket->kernel_object);
