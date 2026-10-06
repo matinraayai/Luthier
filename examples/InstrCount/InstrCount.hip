@@ -15,13 +15,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Instruction-counter tool migrated to the per-tool \c Tool singleton
-/// design. Inspired by NVBit's instruction counter. The tool intercepts AQL
-/// kernel-dispatch packets, runs the instrumentation pipeline against the
-/// dispatched kernel (\c CodeDiscoveryPass → \c InstrumentationPMDriver →
-/// \c NewPMAsmPrinter), loads the resulting relocatable through
-/// \c InstrumentedKernelLoaderAndLauncher, and overrides the dispatched
-/// packet to point at the instrumented variant.
+/// An example instruction counter Luthier tool.
 //===----------------------------------------------------------------------===//
 #include <SIInstrInfo.h>
 #include <chrono>
