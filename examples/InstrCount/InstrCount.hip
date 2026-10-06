@@ -71,21 +71,9 @@
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-instr-counter-tool"
 
-//===----------------------------------------------------------------------===//
-// InstrCountTool — per-tool singleton subclass of Tool
-//===----------------------------------------------------------------------===//
-
 struct InstrCountTool
     : public luthier::Tool<InstrCountTool, llvm::MachineFunction> {
   using Tool::Tool;
-
-  //===---------------------------------------------------------------===//
-  // Device-side state. Hooks and device globals live as static members
-  // of the tool class so the host shadow handles are addressable as
-  // \c &InstrCountTool::countInstructionsScalar / \c &InstrCountTool::Counter
-  // and HIP-Clang's \c __hipRegisterFunction / \c __hipRegisterVar emit
-  // entries for them into the loader's slot table.
-  //===---------------------------------------------------------------===//
 
   /// Per-agent instruction counter, device-resident. Read after each
   /// kernel via \c hsa_memory_copy from the host (see \c onPackets);
