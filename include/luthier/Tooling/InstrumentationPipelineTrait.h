@@ -31,8 +31,8 @@
 #define LUTHIER_TOOLING_INSTRUMENTATION_PIPELINE_TRAIT_H
 
 #include "luthier/Common/ErrorCheck.h"
-#include "luthier/HSATooling/HsaMemoryAllocationAccessor.h"
-#include "luthier/HSATooling/LoadedCodeObjectCache.h"
+#include "luthier/Tooling/HsaMemoryAllocationAccessor.h"
+#include "luthier/Tooling/LoadedCodeObjectCache.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
 #include "luthier/ToolCodeGen/EntryPoint.h"
@@ -70,12 +70,12 @@ namespace luthier {
 
 /// \brief CRTP trait that runs Luthier's per-dispatch instrumentation pipeline.
 ///
-/// \tparam Derived the concrete tool (an \c HSATool subclass). It must provide
+/// \tparam Derived the concrete tool (an \c Tool subclass). It must provide
 /// \c buildTargetMachineForKD, \c parseModule,
 /// \c getIntrinsicProcessorRegistry, and be an \c InstrumentationPass for the
-/// payload-injection adapter cast to succeed — all of which \c HSATool already
+/// payload-injection adapter cast to succeed — all of which \c Tool already
 /// supplies.
-/// \tparam TargetUnitT the instrumentation target unit (matches \c HSATool's).
+/// \tparam TargetUnitT the instrumentation target unit (matches \c Tool's).
 template <typename Derived, typename TargetUnitT = llvm::MachineFunction>
 class InstrumentationPipelineTrait {
   Derived &derived() { return static_cast<Derived &>(*this); }

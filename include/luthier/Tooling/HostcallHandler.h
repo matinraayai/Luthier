@@ -41,8 +41,8 @@
 /// \warning \c HostcallBuffer 's leading fields are a hard ABI shared with
 /// the device libraries. Do not reorder or resize them.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_TOOLING_HOSTCALL_HANDLER_H
-#define LUTHIER_HSA_TOOLING_HOSTCALL_HANDLER_H
+#ifndef LUTHIER_TOOLING_HOSTCALL_HANDLER_H
+#define LUTHIER_TOOLING_HOSTCALL_HANDLER_H
 
 #include "luthier/HSA/ApiTable.h"
 
@@ -327,4 +327,4 @@ private:
 
 } // namespace luthier
 
-#endif // LUTHIER_HSA_TOOLING_HOSTCALL_HANDLER_H
+#endif // LUTHIER_TOOLING_HOSTCALL_HANDLER_H

@@ -8,25 +8,25 @@ set(LLVM_LINK_COMPONENTS
 # hidden-argument fill are all host logic over fixed ABIs, so they run
 # everywhere.
 #===------------------------------------------------------------------------===#
-add_llvm_executable(HSAToolingTest
+add_llvm_executable(ToolingTest
         PARTIAL_SOURCES_INTENDED
         DevicePrintfTest.cpp
         HiddenArgumentsTest.cpp
         HostcallProtocolTest.cpp)
 
-target_compile_definitions(HSAToolingTest PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
+target_compile_definitions(ToolingTest PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
 
-target_include_directories(HSAToolingTest PRIVATE
+target_include_directories(ToolingTest PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src/test/unit
         ${LLVM_INCLUDE_DIRS}
         ${hsa-runtime64_INCLUDE_DIRS})
 
-target_link_libraries(HSAToolingTest PRIVATE
+target_link_libraries(ToolingTest PRIVATE
         gtest gtest_main LuthierTooling ${CMAKE_DL_LIBS}
         hip::host hsa-runtime64::hsa-runtime64)
 
-gtest_discover_tests(HSAToolingTest)
+gtest_discover_tests(ToolingTest)
 
 #===------------------------------------------------------------------------===#
 # Device relocatables for the end-to-end loader test.
@@ -94,7 +94,7 @@ if (_LUTHIER_TEST_HIP_ARCH AND CMAKE_HIP_COMPILER)
             AddendumNoKernel
             "${CMAKE_CURRENT_SOURCE_DIR}/AdditionalCodeObject.hip")
 
-    add_custom_target(HSAToolingTestInitFiniObject
+    add_custom_target(ToolingTestInitFiniObject
             DEPENDS "${_LUTHIER_TEST_INIT_FINI_OBJECT}"
             "${_LUTHIER_TEST_ADDENDUM_OBJECT}"
             "${_LUTHIER_TEST_ADDENDUM_NO_KERNEL_OBJECT}")
@@ -109,7 +109,7 @@ else ()
             "${CMAKE_CURRENT_BINARY_DIR}/AddendumNoKernel-unavailable.o")
     set(_LUTHIER_TEST_HIP_ARCH "none")
     message(STATUS
-            "HSATooling: no HIP compiler / CMAKE_HIP_ARCHITECTURES; the "
+            "Tooling: no HIP compiler / CMAKE_HIP_ARCHITECTURES; the "
             "instrumented-kernel-loader end-to-end tests will skip.")
 endif ()
 
@@ -139,8 +139,8 @@ target_link_libraries(InstrumentedKernelLoaderE2ETest PRIVATE
         gtest gtest_main LuthierTooling ${CMAKE_DL_LIBS}
         hip::host hsa-runtime64::hsa-runtime64 rocprofiler-sdk::rocprofiler-sdk)
 
-if (TARGET HSAToolingTestInitFiniObject)
-    add_dependencies(InstrumentedKernelLoaderE2ETest HSAToolingTestInitFiniObject)
+if (TARGET ToolingTestInitFiniObject)
+    add_dependencies(InstrumentedKernelLoaderE2ETest ToolingTestInitFiniObject)
 endif ()
 
 gtest_discover_tests(InstrumentedKernelLoaderE2ETest)

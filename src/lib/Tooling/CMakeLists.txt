@@ -1,4 +1,10 @@
 add_library(LuthierTooling SHARED
+        DevicePrintf.cpp
+        HiddenArgBuffers.cpp
+        HostcallHandler.cpp
+        HsaMemoryAllocationAccessor.cpp
+        InstrumentedKernelLoaderAndLauncher.cpp
+        LoadedCodeObjectCache.cpp
         $<TARGET_OBJECTS:LuthierObject>
         $<TARGET_OBJECTS:LuthierRocprofilerSDK>
         $<TARGET_OBJECTS:LuthierHSA>
@@ -9,16 +15,19 @@ add_library(LuthierTooling SHARED
         $<TARGET_OBJECTS:LuthierToolCodeGen>
         $<TARGET_OBJECTS:LuthierToolIRCompilation>
         $<TARGET_OBJECTS:LuthierPassPlugin>
-        $<TARGET_OBJECTS:LuthierHSATooling>
         $<TARGET_OBJECTS:LuthierLinker>
         $<TARGET_OBJECTS:LuthierPatchPCUsagesPass>
         $<TARGET_OBJECTS:LuthierRebaseAppScratchAccessesPass>
 )
 
-target_compile_definitions(LuthierTooling PUBLIC AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS} ${hip_COMPILE_DEFINITIONS})
+target_compile_definitions(LuthierTooling PUBLIC AMD_INTERNAL_BUILD
+        ${LLVM_DEFINITIONS} ${hip_COMPILE_DEFINITIONS})
 
 target_include_directories(LuthierTooling
+        PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}
         PUBLIC
+        ${hsa-runtime64_INCLUDE_DIRS}
         ${LLVM_INCLUDE_DIRS}
         ${hip_INCLUDE_DIRS}
         ${rocprofiler-sdk_INCLUDE_DIRS}

@@ -1,4 +1,4 @@
-//===-- PacketMonitorTrait.h - HSATool packet-monitor trait -----*- C++ -*-===//
+//===-- PacketMonitorTrait.h - Tool packet-monitor trait --------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");

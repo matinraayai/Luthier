@@ -33,8 +33,8 @@
 #include <luthier/Common/ErrorCheck.h>
 #include <luthier/Common/Stacktrace.h>
 #include <luthier/HSA/AqlPacket.h>
-#include <luthier/HSATooling/HSATool.h>
-#include <luthier/HSATooling/HsaMemoryAllocationAccessor.h>
+#include <luthier/Tooling/Tool.h>
+#include <luthier/Tooling/HsaMemoryAllocationAccessor.h>
 #include <luthier/LLVM/streams.h>
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
 #include <luthier/Rocprofiler/RocprofilerSdkLibrary.h>
@@ -55,8 +55,8 @@
 #define DEBUG_TYPE "luthier-lift-launched-kernels-tool"
 
 struct LiftLaunchedKernelsTool
-    : public luthier::HSATool<LiftLaunchedKernelsTool, llvm::MachineFunction> {
-  using HSATool::HSATool;
+    : public luthier::Tool<LiftLaunchedKernelsTool, llvm::MachineFunction> {
+  using Tool::Tool;
 
   static void patchPCUsagesHostCallback(std::uint64_t Out[2],
                                                const std::uint64_t /*In*/[7]) {

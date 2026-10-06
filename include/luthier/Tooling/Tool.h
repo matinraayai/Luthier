@@ -1,4 +1,4 @@
-//===-- HSATool.h - Luthier HSA Tool Trait ----------------------*- C++ -*-===//
+//===-- Tool.h - Luthier Tool Trait -----------------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,22 +14,22 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 ///
-/// \file HSATool.h
+/// \file Tool.h
 /// CRTP base class for static Luthier HSA tools. Composes the per-tool traits
 /// and exposes frequently used methods in tools written in HIP.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_TOOLING_HSA_TOOL_H
-#define LUTHIER_TOOLING_HSA_TOOL_H
+#ifndef LUTHIER_TOOLING_TOOL_H
+#define LUTHIER_TOOLING_TOOL_H
 
 #include "luthier/Common/Singleton.h"
 #include "luthier/HSA/Agent.h"
 #include "luthier/HSA/HsaError.h"
 #include "luthier/HSA/ISA.h"
-#include "luthier/HSATooling/InstrumentationPipelineTrait.h"
-#include "luthier/HSATooling/InstrumentedKernelLoaderAndLauncher.h"
-#include "luthier/HSATooling/LLVMUserTrait.h"
-#include "luthier/HSATooling/LoadedCodeObjectCache.h"
-#include "luthier/HSATooling/PacketMonitorTrait.h"
+#include "luthier/Tooling/InstrumentationPipelineTrait.h"
+#include "luthier/Tooling/InstrumentedKernelLoaderAndLauncher.h"
+#include "luthier/Tooling/LLVMUserTrait.h"
+#include "luthier/Tooling/LoadedCodeObjectCache.h"
+#include "luthier/Tooling/PacketMonitorTrait.h"
 #include "luthier/PassPlugin/LuthierPassPlugin.h"
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
@@ -80,7 +80,7 @@ public:
 ///
 /// \par Construction/teardown (see \c Singleton)
 /// Because the trait constructors install HSA API-table interceptors that may
-/// fire on runtime threads, an \c HSATool must be constructed and destroyed via
+/// fire on runtime threads, an \c Tool must be constructed and destroyed via
 /// \c createInstance and \c destroyInstance from inside \c rocprofiler's
 /// configure callback.
 ///
@@ -98,22 +98,22 @@ public:
 /// \c forceTriggerApiTableCallback method to force initialize the snapshot
 /// tables before using them if needed.
 template <typename Derived, typename TargetUnitT = llvm::MachineFunction>
-class HSATool : public Singleton<Derived>,
-                public LLVMUserTrait<Derived>,
-                public LoadedCodeObjectCacheTrait<Derived>,
-                public ToolDeviceCodeOffloadParserTrait<Derived>,
-                public InstrumentedKernelLoaderAndLauncherTrait<Derived>,
-                public IntrinsicProcessorRegistryTraitBase<Derived>,
-                public InstrumentationPipelineTrait<Derived, TargetUnitT>,
-                public PacketMonitorTrait<Derived> {
+class Tool : public Singleton<Derived>,
+             public LLVMUserTrait<Derived>,
+             public LoadedCodeObjectCacheTrait<Derived>,
+             public ToolDeviceCodeOffloadParserTrait<Derived>,
+             public InstrumentedKernelLoaderAndLauncherTrait<Derived>,
+             public IntrinsicProcessorRegistryTraitBase<Derived>,
+             public InstrumentationPipelineTrait<Derived, TargetUnitT>,
+             public PacketMonitorTrait<Derived> {
 public:
-  HSATool(typename Singleton<Derived>::CreationKey,
-          const DynamicLibrary &RocprofilerLib,
-          const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
-          const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExt,
-          const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
-              &VenLoader,
-          llvm::Error &Err)
+  Tool(typename Singleton<Derived>::CreationKey,
+       const DynamicLibrary &RocprofilerLib,
+       const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
+       const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExt,
+       const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+           &VenLoader,
+       llvm::Error &Err)
       : Singleton<Derived>(), LLVMUserTrait<Derived>(),
         LoadedCodeObjectCacheTrait<Derived>(RocprofilerLib, CoreApi, VenLoader,
                                             Err),
@@ -328,4 +328,4 @@ public:
 
 } // namespace luthier
 
-#endif // LUTHIER_TOOLING_HSA_TOOL_H
+#endif // LUTHIER_TOOLING_TOOL_H

@@ -22,8 +22,8 @@
 /// the device-enqueue scheduler, so the field order and widths are not
 /// Luthier's to choose. Each struct names the definition it mirrors.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_TOOLING_HIDDEN_ARG_BUFFERS_H
-#define LUTHIER_HSA_TOOLING_HIDDEN_ARG_BUFFERS_H
+#ifndef LUTHIER_TOOLING_HIDDEN_ARG_BUFFERS_H
+#define LUTHIER_TOOLING_HIDDEN_ARG_BUFFERS_H
 
 #include "luthier/HSA/ApiTable.h"
 
@@ -183,4 +183,4 @@ void initializeCompletionAction(DeviceAqlWrap &Wrap);
 
 } // namespace luthier
 
-#endif // LUTHIER_HSA_TOOLING_HIDDEN_ARG_BUFFERS_H
+#endif // LUTHIER_TOOLING_HIDDEN_ARG_BUFFERS_H

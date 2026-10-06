@@ -19,7 +19,7 @@
 /// for cache invalidation are installed by LoadedCodeObjectCacheTrait, not
 /// here.
 //===----------------------------------------------------------------------===//
-#include "luthier/HSATooling/LoadedCodeObjectCache.h"
+#include "luthier/Tooling/LoadedCodeObjectCache.h"
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/HSA/LoadedCodeObject.h"
 #include "luthier/Object/AMDGCNObjectFile.h"

@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Instruction-counter tool migrated to the per-tool \c HSATool singleton
+/// Instruction-counter tool migrated to the per-tool \c Tool singleton
 /// design. Inspired by NVBit's instruction counter. The tool intercepts AQL
 /// kernel-dispatch packets, runs the instrumentation pipeline against the
 /// dispatched kernel (\c CodeDiscoveryPass → \c InstrumentationPMDriver →
@@ -52,8 +52,8 @@
 #include <luthier/HSA/AqlPacket.h>
 #include <luthier/HSA/HsaError.h>
 #include <luthier/HSA/ISA.h>
-#include <luthier/HSATooling/HSATool.h>
-#include <luthier/HSATooling/HsaMemoryAllocationAccessor.h>
+#include <luthier/Tooling/Tool.h>
+#include <luthier/Tooling/HsaMemoryAllocationAccessor.h>
 #include <luthier/Intrinsic/Intrinsics.h>
 #include <luthier/LLVM/CodeGenHelpers.h>
 #include <luthier/LLVM/streams.h>
@@ -78,12 +78,12 @@
 #define DEBUG_TYPE "luthier-instr-counter-tool"
 
 //===----------------------------------------------------------------------===//
-// InstrCountTool — per-tool singleton subclass of HSATool
+// InstrCountTool — per-tool singleton subclass of Tool
 //===----------------------------------------------------------------------===//
 
 struct InstrCountTool
-    : public luthier::HSATool<InstrCountTool, llvm::MachineFunction> {
-  using HSATool::HSATool;
+    : public luthier::Tool<InstrCountTool, llvm::MachineFunction> {
+  using Tool::Tool;
 
   //===---------------------------------------------------------------===//
   // Device-side state. Hooks and device globals live as static members

@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-#include "luthier/HSATooling/HostcallHandler.h"
+#include "luthier/Tooling/HostcallHandler.h"
 
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
@@ -21,7 +21,7 @@
 #include "luthier/HSA/HsaError.h"
 #include "luthier/HSA/MemoryPool.h"
 #include "luthier/HSA/Signal.h"
-#include "luthier/HSATooling/DevicePrintf.h"
+#include "luthier/Tooling/DevicePrintf.h"
 
 #include <cstring>
 #include <llvm/ADT/STLExtras.h>

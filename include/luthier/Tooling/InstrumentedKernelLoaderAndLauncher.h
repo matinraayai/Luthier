@@ -58,17 +58,17 @@
 /// completion callback keyed on \c hsa_kernel_dispatch_packet_t::completion_signal
 /// and drop it there.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_TOOLING_INSTRUMENTED_KERNEL_LOADER_AND_LAUNCHER_H
-#define LUTHIER_HSA_TOOLING_INSTRUMENTED_KERNEL_LOADER_AND_LAUNCHER_H
+#ifndef LUTHIER_TOOLING_INSTRUMENTED_KERNEL_LOADER_AND_LAUNCHER_H
+#define LUTHIER_TOOLING_INSTRUMENTED_KERNEL_LOADER_AND_LAUNCHER_H
 
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Common/Singleton.h"
 #include "luthier/HSA/Agent.h"
 #include "luthier/HSA/ExecutableSymbol.h"
-#include "luthier/HSATooling/DevicePrintf.h"
-#include "luthier/HSATooling/HiddenArgBuffers.h"
-#include "luthier/HSATooling/HostcallHandler.h"
+#include "luthier/Tooling/DevicePrintf.h"
+#include "luthier/Tooling/HiddenArgBuffers.h"
+#include "luthier/Tooling/HostcallHandler.h"
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
 #include "luthier/Rocprofiler/ApiTableWrapperInstaller.h"
 #include "luthier/ToolCodeGen/Metadata.h"
@@ -871,4 +871,4 @@ public:
 
 } // namespace luthier
 
-#endif // LUTHIER_HSA_TOOLING_INSTRUMENTED_KERNEL_LOADER_AND_LAUNCHER_H
+#endif // LUTHIER_TOOLING_INSTRUMENTED_KERNEL_LOADER_AND_LAUNCHER_H

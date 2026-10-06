@@ -40,7 +40,7 @@
 #include "luthier/HSA/Memory.h"
 #include "luthier/HSA/MemoryPool.h"
 #include "luthier/HSA/Queue.h"
-#include "luthier/HSATooling/InstrumentedKernelLoaderAndLauncher.h"
+#include "luthier/Tooling/InstrumentedKernelLoaderAndLauncher.h"
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
 #include "luthier/Rocprofiler/RocprofilerSdkLibrary.h"
 

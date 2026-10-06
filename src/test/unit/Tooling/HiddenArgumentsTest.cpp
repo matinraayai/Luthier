@@ -25,8 +25,8 @@
 /// device-enqueue scheduler respectively, so their sizes and offsets are
 /// pinned rather than merely exercised.
 //===----------------------------------------------------------------------===//
-#include "luthier/HSATooling/HiddenArgBuffers.h"
-#include "luthier/HSATooling/InstrumentedKernelLoaderAndLauncher.h"
+#include "luthier/Tooling/HiddenArgBuffers.h"
+#include "luthier/Tooling/InstrumentedKernelLoaderAndLauncher.h"
 
 #include <gtest/gtest.h>
 
