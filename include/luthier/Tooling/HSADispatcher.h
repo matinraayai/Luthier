@@ -17,8 +17,8 @@
 /// Describes the \c HsaMemoryAllocationAccessor class which implements the
 /// \c MemoryAllocationAccessor interface.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_TOOLING_HSA_DISPATCHER_H
-#define LUTHIER_HSA_TOOLING_HSA_DISPATCHER_H
+#ifndef LUTHIER_TOOLING_HSA_DISPATCHER_H
+#define LUTHIER_TOOLING_HSA_DISPATCHER_H
 #include <cstddef>
 #include <cstdint>
 #include <hsa/hsa.h>
@@ -109,4 +109,4 @@ private:
 
 } // namespace luthier::test
 
-#endif // LUTHIER_TEST_HSA_DISPATCHER_H
+#endif // LUTHIER_TOOLING_HSA_DISPATCHER_H

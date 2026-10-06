@@ -15,7 +15,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// LDS bank-conflict detection tool migrated to the per-tool \c HSATool
+/// LDS bank-conflict detection tool migrated to the per-tool \c Tool
 /// singleton design. Inspects single-/double-address DS_* instructions and
 /// inserts hooks that compute per-wavefront bank-conflict counts.
 //===----------------------------------------------------------------------===//
@@ -44,8 +44,8 @@
 #include <luthier/HSA/AqlPacket.h>
 #include <luthier/HSA/ExecutableSymbol.h>
 #include <luthier/HSA/HsaError.h>
-#include <luthier/HSATooling/HSATool.h>
-#include <luthier/HSATooling/HsaMemoryAllocationAccessor.h>
+#include <luthier/Tooling/Tool.h>
+#include <luthier/Tooling/HsaMemoryAllocationAccessor.h>
 #include <luthier/Intrinsic/IntrinsicCalls.h>
 #include <luthier/LLVM/streams.h>
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
@@ -67,8 +67,8 @@
 #define DEBUG_TYPE "luthier-example-lds-bank-conflict"
 
 struct LDSBankConflictTool
-    : public luthier::HSATool<LDSBankConflictTool, llvm::MachineFunction> {
-  using HSATool::HSATool;
+    : public luthier::Tool<LDSBankConflictTool, llvm::MachineFunction> {
+  using Tool::Tool;
 
   static void patchPCUsagesHostCallback(std::uint64_t Out[2],
                                                const std::uint64_t /*In*/[7]) {

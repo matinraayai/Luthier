@@ -18,8 +18,8 @@
 /// Defines a cache of parsed storage ELFs for each \c hsa_loaded_code_object_t
 /// the application has seen.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_TOOLING_CODE_OBJECT_CACHE_H
-#define LUTHIER_HSA_TOOLING_CODE_OBJECT_CACHE_H
+#ifndef LUTHIER_TOOLING_CODE_OBJECT_CACHE_H
+#define LUTHIER_TOOLING_CODE_OBJECT_CACHE_H
 #include "luthier/Common/Singleton.h"
 #include "luthier/HSA/ApiTable.h"
 #include "luthier/HSA/hsa.h"

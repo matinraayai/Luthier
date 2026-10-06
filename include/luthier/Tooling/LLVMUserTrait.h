@@ -1,4 +1,4 @@
-//===-- LLVMUserTrait.h - HSATool LLVM-init trait ---------------*- C++ -*-===//
+//===-- LLVMUserTrait.h - Tool LLVM-init trait ------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");

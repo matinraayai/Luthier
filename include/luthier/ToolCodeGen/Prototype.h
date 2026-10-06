@@ -64,7 +64,7 @@ using PayloadArg = std::variant<llvm::Value *, RegArg>;
 /// How many lanes of the wavefront an injected payload's body runs on.
 ///
 /// \details Passed to \c Prototype::createInjectedPayload (and the
-/// \c HSATool wrappers around it) to pick between the two execution
+/// \c Tool wrappers around it) to pick between the two execution
 /// disciplines Luthier can give a payload. See \c PayloadLaneMode::SingleLane
 /// for what the non-default choice costs and buys.
 enum class PayloadLaneMode {

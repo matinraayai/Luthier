@@ -20,7 +20,7 @@
 /// kernel writes into its \c hidden_printf_buffer. Neither needs a GPU — the
 /// encodings are fixed by the AMDGPU ABI, so a test can produce them directly.
 //===----------------------------------------------------------------------===//
-#include "luthier/HSATooling/DevicePrintf.h"
+#include "luthier/Tooling/DevicePrintf.h"
 
 #include <gtest/gtest.h>
 

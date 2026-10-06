@@ -16,7 +16,7 @@
 /// \file
 /// Implements the \c HsaMemoryAllocationAccessor class.
 //===----------------------------------------------------------------------===//
-#include "luthier/HSATooling/HsaMemoryAllocationAccessor.h"
+#include "luthier/Tooling/HsaMemoryAllocationAccessor.h"
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/HSA/hsa.h"
 

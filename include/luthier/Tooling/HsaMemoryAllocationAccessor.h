@@ -17,9 +17,9 @@
 /// Describes the \c HsaMemoryAllocationAccessor class which implements the
 /// \c MemoryAllocationAccessor interface.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_TOOLING_HSA_MEMORY_ALLOCATION_ACCESSOR_H
-#define LUTHIER_HSA_TOOLING_HSA_MEMORY_ALLOCATION_ACCESSOR_H
-#include "luthier/HSATooling/LoadedCodeObjectCache.h"
+#ifndef LUTHIER_TOOLING_HSA_MEMORY_ALLOCATION_ACCESSOR_H
+#define LUTHIER_TOOLING_HSA_MEMORY_ALLOCATION_ACCESSOR_H
+#include "luthier/Tooling/LoadedCodeObjectCache.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 
 namespace luthier {

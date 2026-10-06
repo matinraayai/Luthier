@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-#include "luthier/HSATooling/InstrumentedKernelLoaderAndLauncher.h"
+#include "luthier/Tooling/InstrumentedKernelLoaderAndLauncher.h"
 
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"

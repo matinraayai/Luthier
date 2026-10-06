@@ -38,8 +38,8 @@
 /// <tt>rocclr/device/devhcprintf.cpp</tt> so that Luthier's output matches
 /// what HIP would have produced for the same kernel.
 //===----------------------------------------------------------------------===//
-#ifndef LUTHIER_HSA_TOOLING_DEVICE_PRINTF_H
-#define LUTHIER_HSA_TOOLING_DEVICE_PRINTF_H
+#ifndef LUTHIER_TOOLING_DEVICE_PRINTF_H
+#define LUTHIER_TOOLING_DEVICE_PRINTF_H
 
 #include <cstdint>
 #include <cstdio>
@@ -129,4 +129,4 @@ llvm::Error drainPrintfBuffer(llvm::ArrayRef<uint8_t> Buffer,
 
 } // namespace luthier
 
-#endif // LUTHIER_HSA_TOOLING_DEVICE_PRINTF_H
+#endif // LUTHIER_TOOLING_DEVICE_PRINTF_H

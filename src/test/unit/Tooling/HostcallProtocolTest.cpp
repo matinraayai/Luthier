@@ -27,7 +27,7 @@
 /// first test asserts that layout explicitly against an independent
 /// declaration of what the device library expects to see.
 //===----------------------------------------------------------------------===//
-#include "luthier/HSATooling/HostcallHandler.h"
+#include "luthier/Tooling/HostcallHandler.h"
 
 #include <gtest/gtest.h>
 
