@@ -25,13 +25,11 @@
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassManager.h"
-#include "llvm/IR/Verifier.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include <cstdint>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
-#include <unordered_map>
 #include <unordered_set>
 
 #define DEBUG_TYPE "luthier-populate-debug-info"
@@ -54,22 +52,19 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
   llvm::FunctionAnalysisManager &FAM =
       MAM.getResult<llvm::FunctionAnalysisManagerModuleProxy>(M).getManager();
 
-  // TODO: Must have 1 DIB per CU, not 1 per Module
-  // ! assert DIBuilder.cpp:152
-  llvm::DIBuilder DIB(M);
-
-  // Avoid CU offset collision when multiple ObjectFiles are present
-  llvm::DenseMap<const luthier::object::AMDGCNObjectFile *,
-                 std::unordered_map<uint64_t, llvm::DICompileUnit *>>
-      CodeObjectCUOffsetToDICU;
-
   llvm::DenseMap<const luthier::object::AMDGCNObjectFile *,
                  llvm::DenseMap<llvm::StringRef, llvm::DISubprogram *>>
       CodeObjectLinkageNameToDISP;
 
   llvm::DenseMap<const luthier::object::AMDGCNObjectFile *,
+                 llvm::DenseMap<uint64_t, llvm::DISubprogram *>>
+      CodeObjectDIEOffsetToDISP;
+
+  llvm::DenseMap<const luthier::object::AMDGCNObjectFile *,
                  std::unique_ptr<llvm::DWARFContext>>
       CodeObjectToDWARFCtx;
+
+  llvm::DenseSet<llvm::DISubprogram *> DISPSet;
 
   for (llvm::Function &F : M) {
     auto EntryPoint = getFunctionEntryPoint(F);
@@ -101,6 +96,8 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
     uint64_t AllocBaseAddr = reinterpret_cast<uint64_t>(
         AllocationOrErr->getDeviceAllocation().data());
 
+    uint64_t EntryPointOffset = EntryPointAddr - AllocBaseAddr;
+
     llvm::DISubprogram *FuncDISP = nullptr;
 
     // Eagerly populate all subprogram DIEs in a new CodeObject
@@ -110,33 +107,34 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
       CodeObjectToDWARFCtx[CodeObject] =
           llvm::DWARFContext::create(*CodeObject);
 
+      if (CodeObjectToDWARFCtx.at(CodeObject)->getNumCompileUnits() == 0) {
+        LLVM_DEBUG(
+            llvm::dbgs()
+            << "[DebugInfoPass] Skipping CodeObject with no CompileUnits\n");
+        continue;
+      }
+
       for (const std::unique_ptr<llvm::DWARFUnit> &CU :
            CodeObjectToDWARFCtx[CodeObject]->compile_units()) {
-        uint64_t CUOffset = CU->getOffset();
-        llvm::DICompileUnit *DICU = nullptr;
 
-        // Get or Build the DICompileUnit
-        if (CodeObjectCUOffsetToDICU[CodeObject].count(CUOffset)) {
-          DICU = CodeObjectCUOffsetToDICU[CodeObject][CUOffset];
-        } else {
-          llvm::StringRef CUName =
-              CU->getUnitDIE().getName(llvm::DINameKind::ShortName);
-          llvm::StringRef CUDir = CU->getCompilationDir();
+        llvm::DIBuilder DIB(M);
 
-          LLVM_DEBUG(llvm::dbgs() << "[DebugInfoPass] Creating DICompileUnit '"
-                                  << CUName << "' in dir '" << CUDir << "'\n");
+        llvm::StringRef CUName =
+            CU->getUnitDIE().getName(llvm::DINameKind::ShortName);
+        llvm::StringRef CUDir = CU->getCompilationDir();
 
-          llvm::DIFile *CUFile = DIB.createFile(CUName, CUDir);
+        LLVM_DEBUG(llvm::dbgs() << "[DebugInfoPass] Creating DICompileUnit '"
+                                << CUName << "' in dir '" << CUDir << "'\n");
 
-          auto SrcLang = llvm::DISourceLanguageName(
-              static_cast<uint16_t>(llvm::dwarf::toUnsigned(
-                  CU->getUnitDIE().find(llvm::dwarf::DW_AT_language),
-                  llvm::dwarf::DW_LANG_C_plus_plus)));
+        llvm::DIFile *CUFile = DIB.createFile(CUName, CUDir);
 
-          DICU = DIB.createCompileUnit(SrcLang, CUFile,
-                                       "Luthier Debug Info Pass", false, "", 0);
-          CodeObjectCUOffsetToDICU[CodeObject][CUOffset] = DICU;
-        }
+        auto SrcLang = llvm::DISourceLanguageName(
+            static_cast<uint16_t>(llvm::dwarf::toUnsigned(
+                CU->getUnitDIE().find(llvm::dwarf::DW_AT_language),
+                llvm::dwarf::DW_LANG_C_plus_plus)));
+
+        DIB.createCompileUnit(SrcLang, CUFile, "Luthier Debug Info Pass", false,
+                              "", 0);
 
         // Create DISubprograms for all subprogram DIEs in this CU
         for (const auto &DieInfo : CU->dies()) {
@@ -177,7 +175,6 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
 
             llvm::DIFile *UnitFile = DIB.createFile(FileName, DirName);
 
-            // TODO: Populate subroutine return and arg types
             llvm::DISubroutineType *SubType =
                 DIB.createSubroutineType(DIB.getOrCreateTypeArray({}));
 
@@ -196,26 +193,16 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
             // Add DISubprogram to ObjectFile -> {LinkageName, DISubprogram}
             // cache
             CodeObjectLinkageNameToDISP[CodeObject][FunctionName] = DISP;
+            CodeObjectDIEOffsetToDISP[CodeObject][Die.getOffset()] = DISP;
 
             LLVM_DEBUG(llvm::dbgs()
                        << "[DebugInfoPass] Subprogram DIE: short='"
                        << ShortNameRef << "' linkage='" << LinkageNameRef
                        << "' line=" << LineNumber << " source_file='"
                        << UnitFile->getFilename() << "'\n");
-
-            // Link DISubprogram to current Function if linkage name matches
-            if (FunctionName == F.getName()) {
-              FuncDISP = DISP;
-              F.setSubprogram(FuncDISP);
-
-              LLVM_DEBUG(llvm::dbgs()
-                         << "[DebugInfoPass] Function: " << F.getName()
-                         << " has attached a DISubprogram\n");
-            }
             break;
           }
 
-            // TODO: populate other Die types
             // case (llvm::dwarf::DW_TAG_inlined_subroutine): {
             //   break;
             // }
@@ -228,22 +215,50 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
             break;
           }
         }
-      }
 
-      if (!FuncDISP) {
-        LLVM_DEBUG(llvm::dbgs()
-                   << "[DebugInfoPass] No matching DISubprogram for "
-                   << F.getName() << "\n");
-        continue;
+        DIB.finalize();
       }
     }
 
-    if (!FuncDISP)
-      FuncDISP = CodeObjectLinkageNameToDISP[CodeObject].lookup(F.getName());
+    llvm::DWARFDie FunctionDie;
 
-    // A function without a DISubprogram can't get debug locations.
-    if (!FuncDISP)
+    llvm::DWARFContext::DIEsForAddress EntryFunctionDie =
+        CodeObjectToDWARFCtx.at(CodeObject)
+            ->getDIEsForAddress(EntryPointOffset);
+
+    FunctionDie = EntryFunctionDie.FunctionDIE;
+
+    if (!FunctionDie) {
+      LLVM_DEBUG(
+          llvm::dbgs() << llvm::formatv(
+              "[DebugInfoPass] No DWARFDie exists for function at offset {0:x}",
+              EntryPointOffset));
       continue;
+    }
+
+    while (FunctionDie && !FunctionDie.isSubprogramDIE()) {
+      FunctionDie = FunctionDie.getParent();
+    }
+
+    uint64_t FunctionDieOffset = FunctionDie.getOffset();
+    FuncDISP = CodeObjectDIEOffsetToDISP[CodeObject].lookup(FunctionDieOffset);
+
+    if (!FuncDISP) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "[DebugInfoPass] No matching DISubprogram for "
+                 << FunctionDie.getName(llvm::DINameKind::LinkageName) << "\n");
+
+      continue;
+    }
+
+    if (!DISPSet.insert(FuncDISP).second) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "[DebugInfoPass] Failed to insert DISubprogram:"
+                 << FuncDISP->getName() << " for Function "
+                 << FunctionDie.getName(llvm::DINameKind::LinkageName)
+                 << " into the DISubpgrogram set\n");
+      continue;
+    }
 
     F.setSubprogram(FuncDISP);
 
@@ -357,25 +372,6 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
       }
     }
   }
-
-  DIB.finalize();
-
-  // TODO: prototype level verification + our own rules + module and mir level
-  // verification
-  // #ifndef NDEBUG
-  //   bool DebugInfoBroken;
-  //   bool Broken = llvm::verifyModule(M, &llvm::errs(), &DebugInfoBroken);
-  //   if (Broken) {
-  //     // Ctx.emitError("[DebugInfoPass] Module Verification Failed\n");
-  //     LLVM_DEBUG(llvm::dbgs() << "[DebugInfoPass] Module Verification
-  //     Failed\n");
-  //   }
-  //   if (DebugInfoBroken) {
-  //     LLVM_DEBUG(llvm::dbgs() << "[DebugInfoPass] Module Verification Failed
-  //     due "
-  //                                "to Broken Debug Info\n");
-  //   }
-  // #endif
 
   return llvm::PreservedAnalyses::all();
 }
