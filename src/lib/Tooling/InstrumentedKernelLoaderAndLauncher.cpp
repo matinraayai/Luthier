@@ -942,12 +942,11 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
                               hsa::executableDestroy(Core, Exec));
   }
 
-  auto ReaderOrErr =
-      hsa::codeObjectReaderCreateFromMemory(Core, RelocRef.getBuffer());
-  if (!ReaderOrErr)
-    return llvm::joinErrors(ReaderOrErr.takeError(),
-                            hsa::executableDestroy(Core, Exec));
-  hsa_code_object_reader_t Reader = *ReaderOrErr;
+  hsa_code_object_reader_t Reader{};
+  if (auto Err =
+          hsa::codeObjectReaderCreateFromMemory(Core, RelocRef.getBuffer())
+              .moveInto(Reader))
+    return llvm::joinErrors(std::move(Err), hsa::executableDestroy(Core, Exec));
 
   auto Fail = [&](llvm::Error E) -> llvm::Error {
     return llvm::joinErrors(
