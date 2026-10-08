@@ -1,6 +1,5 @@
 add_library(LuthierIntrinsic OBJECT
         ReadReg.cpp
-        ReadHwReg.cpp
         ReadSVA.cpp
         WriteReg.cpp
         WriteExec.cpp

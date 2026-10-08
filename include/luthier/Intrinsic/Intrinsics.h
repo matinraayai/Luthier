@@ -109,9 +109,6 @@ LUTHIER_INTRINSIC_ANNOTATE void writeExec(uint64_t Val);
 /// and it only invalidates the issuing CU's cache: every wave that intends to
 /// branch to freshly-loaded code has to issue its own.
 LUTHIER_INTRINSIC_ANNOTATE void sICacheInv();
-/// Reads a hardware register with \c S_GETREG_B32; \p Encoding is its
-/// \c simm16 operand (see \c luthier::hwRegEncoding in ReadHwReg.h).
-LUTHIER_INTRINSIC_ANNOTATE uint32_t readHwReg(uint16_t Encoding);
 
 template <typename T,
           typename = std::enable_if_t<

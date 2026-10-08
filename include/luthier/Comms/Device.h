@@ -100,20 +100,27 @@ struct HwLocation {
   uint8_t CuId = UnknownHwId;
 };
 
-/// Decodes the hardware-id register the payload read with
-/// \c luthier::readHwReg: \c HW_REG_HW_ID on GFX9 (CDNA),
-/// \c HW_REG_HW_ID1 on GFX10+ (RDNA), where \c CuId is the WGP id.
-LUTHIER_COMMS_DEVICE HwLocation decodeHwId(uint32_t R) {
-#if defined(__GFX9__)
-  // CU_ID [11:8], SH_ID [12], SE_ID [15:13].
-  return {uint8_t(R >> 13 & 0x7u), uint8_t(R >> 12 & 0x1u),
-          uint8_t(R >> 8 & 0xfu)};
-#elif defined(__GFX10__) || defined(__GFX11__) || defined(__GFX12__)
-  // WGP_ID [13:10], SA_ID [16], SE_ID [20:18].
-  return {uint8_t(R >> 18 & 0x7u), uint8_t(R >> 16 & 0x1u),
-          uint8_t(R >> 10 & 0xfu)};
+/// Shader engine, shader array and CU of the executing wave, read with
+/// \c __builtin_amdgcn_s_getreg using HIP's \c HW_ID field macros (as
+/// \c __smid does): \c HW_REG_HW_ID on GFX9 (CDNA), \c HW_REG_HW_ID1 on
+/// GFX10/11 (RDNA), where \c CuId is the WGP id. HIP defines no layout for
+/// GFX12, so the ids are reported unknown there.
+LUTHIER_COMMS_DEVICE HwLocation readHwLocation() {
+#if defined(__GFX10__) || defined(__GFX11__)
+  return {uint8_t(__builtin_amdgcn_s_getreg(GETREG_IMMED(
+              HW_ID_SE_ID_SIZE - 1, HW_ID_SE_ID_OFFSET, HW_ID))),
+          uint8_t(__builtin_amdgcn_s_getreg(GETREG_IMMED(
+              HW_ID_SA_ID_SIZE - 1, HW_ID_SA_ID_OFFSET, HW_ID))),
+          uint8_t(__builtin_amdgcn_s_getreg(GETREG_IMMED(
+              HW_ID_WGP_ID_SIZE - 1, HW_ID_WGP_ID_OFFSET, HW_ID)))};
+#elif defined(__GFX9__)
+  // SH_ID [12] is the shader array; HIP has no macro for it.
+  return {uint8_t(__builtin_amdgcn_s_getreg(GETREG_IMMED(
+              HW_ID_SE_ID_SIZE - 1, HW_ID_SE_ID_OFFSET, HW_ID))),
+          uint8_t(__builtin_amdgcn_s_getreg(GETREG_IMMED(0, 12, HW_ID))),
+          uint8_t(__builtin_amdgcn_s_getreg(GETREG_IMMED(
+              HW_ID_CU_ID_SIZE - 1, HW_ID_CU_ID_OFFSET, HW_ID)))};
 #else
-  (void)R;
   return {};
 #endif
 }

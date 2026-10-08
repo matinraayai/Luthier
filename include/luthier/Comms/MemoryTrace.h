@@ -52,7 +52,6 @@
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <luthier/HSA/hsa.h>
 #include <luthier/Intrinsic/IntrinsicCalls.h>
-#include <luthier/Intrinsic/ReadHwReg.h>
 #include <luthier/HSA/HsaError.h>
 #include <luthier/ToolCodeGen/Prototype.h>
 
@@ -211,13 +210,6 @@ inline llvm::Error buildAccessHookCall(llvm::Function &Hook,
                  ReadReg(llvm::AMDGPU::TTMP10)});
   }
 
-  // Engine / array / CU (WGP) of the wave; decoded by device::decodeHwId.
-  Args.push_back(insertCallToIntrinsic(
-      M, B, "luthier::readHwReg", I32,
-      uint16_t(ST.getGeneration() >= llvm::AMDGPUSubtarget::GFX10
-                   ? HwRegHwId1Gfx10
-                   : HwRegHwIdGfx9)));
-
   llvm::CallInst *Call = B.CreateCall(&Hook, Args);
   llvm::InlineFunctionInfo IFI;
   llvm::InlineResult IR = llvm::InlineFunction(*Call, IFI);
@@ -244,14 +236,13 @@ public:
   __attribute__((device)) static uint32_t Locks[MaxSubBuffers];
 
   /// Address in a 64-bit VGPR pair: <tt>global_load v, v[a:a+1], off</tt>.
-  /// \p HwId is the raw hardware-id register (see \c device::decodeHwId).
   __attribute__((device, used)) static void
   onAccess(uint32_t AddrLo, uint32_t AddrHi, uint32_t ImmOffset,
            uint32_t Site, uint32_t Width, uint32_t BlockX, uint32_t BlockY,
-           uint32_t BlockZ, uint32_t HwId) {
+           uint32_t BlockZ) {
     send((uint64_t(AddrHi) << 32 | AddrLo) + int64_t(int32_t(ImmOffset)),
          {MemoryAccessTag, Site, Width, BlockX, BlockY, BlockZ,
-          device::decodeHwId(HwId)});
+          device::readHwLocation()});
   }
 
   /// Scalar base plus 32-bit vector offset:
@@ -259,12 +250,11 @@ public:
   __attribute__((device, used)) static void
   onAccessScalarBase(uint32_t BaseLo, uint32_t BaseHi, uint32_t VOffset,
                      uint32_t ImmOffset, uint32_t Site, uint32_t Width,
-                     uint32_t BlockX, uint32_t BlockY, uint32_t BlockZ,
-                     uint32_t HwId) {
+                     uint32_t BlockX, uint32_t BlockY, uint32_t BlockZ) {
     send((uint64_t(BaseHi) << 32 | BaseLo) + VOffset +
              int64_t(int32_t(ImmOffset)),
          {MemoryAccessTag, Site, Width, BlockX, BlockY, BlockZ,
-          device::decodeHwId(HwId)});
+          device::readHwLocation()});
   }
 
 private:
