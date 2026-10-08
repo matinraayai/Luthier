@@ -929,12 +929,9 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
     KDName = KernelName + ".kd";
   }
 
-  // Stand up the HSA executable. A first code object is self-contained (its
-  // device globals are defined in its own copy); an addition resolves its
-  // undefined globals against the ones already loaded under this key.
-  auto ExecOrErr = hsa::executableCreate(Core);
-  LUTHIER_RETURN_ON_ERROR(ExecOrErr.takeError());
-  hsa_executable_t Exec = *ExecOrErr;
+  /// Create the HSA executable to load the code object.
+  hsa_executable_t Exec{};
+  LUTHIER_RETURN_ON_ERROR(hsa::executableCreate(Core).moveInto(Exec));
 
   // Has to happen before the code object is loaded: the loader binds undefined
   // references as it loads, so a definition added afterwards comes too late.
