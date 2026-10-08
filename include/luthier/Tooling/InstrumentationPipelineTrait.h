@@ -34,6 +34,7 @@
 #include "luthier/Tooling/HsaMemoryAllocationAccessor.h"
 #include "luthier/Tooling/LoadedCodeObjectCache.h"
 #include "luthier/LLVM/streams.h"
+#include "luthier/Rocprofiler/ApiTableSnapshot.h"
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
 #include "luthier/ToolCodeGen/EntryPoint.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
@@ -78,6 +79,11 @@ namespace luthier {
 /// \tparam TargetUnitT the instrumentation target unit (matches \c Tool's).
 template <typename Derived, typename TargetUnitT = llvm::MachineFunction>
 class InstrumentationPipelineTrait {
+  const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApiSnapshot;
+  const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExtSnapshot;
+  const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+      &LoaderApiSnapshot;
+
   Derived &derived() { return static_cast<Derived &>(*this); }
 
   /// Thin Prototype-pass adapter that forwards into the tool's own
@@ -149,7 +155,10 @@ class InstrumentationPipelineTrait {
 
     Singleton<Derived>::withInstance(
         [&](Derived &T) {
-          const auto Core = T.getCoreApiTableSnapshot().getTable();
+          auto &Trait =
+              static_cast<InstrumentationPipelineTrait<Derived, TargetUnitT> &>(
+                  T);
+          const auto Core = Trait.CoreApiSnapshot.getTable();
 
           // The enclosing kernel for everything below has to be the *original*
           // application KD, not the instrumented one the packet points at. The
@@ -292,6 +301,14 @@ class InstrumentationPipelineTrait {
   }
 
 public:
+  InstrumentationPipelineTrait(
+      const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
+      const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExt,
+      const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+          &Loader)
+      : CoreApiSnapshot(CoreApi), AmdExtSnapshot(AmdExt),
+        LoaderApiSnapshot(Loader) {}
+
   /// Register the common set of instrumentation analyses on \p MAM / \p MFAM
   /// for the kernel described by \p KD. \p MMI and \p MDParser must outlive the
   /// pass run that consumes them. After the common analyses are registered, the
@@ -313,8 +330,7 @@ public:
       return luthier::MemoryAllocationAnalysis(
           std::make_unique<luthier::HsaMemoryAllocationAccessor>(
               static_cast<const LoadedCodeObjectCache &>(D),
-              D.getCoreApiTableSnapshot(), D.getAmdExtTableSnapshot(),
-              D.getLoaderTableSnapshot().getTable()));
+              CoreApiSnapshot, AmdExtSnapshot, LoaderApiSnapshot.getTable()));
     });
     // PrototypeCallGraphAnalysis, IPPredCFGAnalysis and
     // FunctionPreambleDescriptorAnalysis are Prototype analyses; they are

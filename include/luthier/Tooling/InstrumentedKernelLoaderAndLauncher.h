@@ -303,24 +303,6 @@ public:
   /// \c hsa_executable_destroy interceptor.
   llvm::Error invalidateOriginalExec(hsa_executable_t Exec);
 
-  /// Accessors for the HSA API-table snapshots. These expose the underlying,
-  /// pre-interception function pointers so sibling traits (e.g. the
-  /// instrumentation pipeline) can drive HSA from inside a \c withInstance()
-  /// callback. (The tool-code loader is HSA-free and no longer holds these;
-  /// the launcher is now the canonical owner.)
-  const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &
-  getCoreApiTableSnapshot() const {
-    return CoreApi;
-  }
-  const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &
-  getAmdExtTableSnapshot() const {
-    return AmdExt;
-  }
-  const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER> &
-  getLoaderTableSnapshot() const {
-    return Loader;
-  }
-
 protected:
   /// HSA Tables.
   const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi;

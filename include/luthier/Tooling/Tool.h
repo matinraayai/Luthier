@@ -120,6 +120,8 @@ public:
         ToolDeviceCodeOffloadParserTrait<Derived>(Err),
         InstrumentedKernelLoaderAndLauncherTrait<Derived>(
             RocprofilerLib, CoreApi, AmdExt, VenLoader, Err),
+        InstrumentationPipelineTrait<Derived, TargetUnitT>(CoreApi, AmdExt,
+                                                           VenLoader),
         PacketMonitorTrait<Derived>(RocprofilerLib, CoreApi, AmdExt, VenLoader,
                                     Err) {}
 
