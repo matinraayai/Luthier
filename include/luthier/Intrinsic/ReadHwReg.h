@@ -40,6 +40,10 @@ constexpr uint16_t hwRegEncoding(unsigned Id, unsigned Offset = 0,
 /// executing wave.
 inline constexpr uint16_t HwRegHwIdGfx9 = hwRegEncoding(4);
 
+/// \c HW_REG_HW_ID1 on GFX10+ (RDNA): wave, SIMD, WGP, shader array and
+/// engine of the executing wave.
+inline constexpr uint16_t HwRegHwId1Gfx10 = hwRegEncoding(23);
+
 llvm::Expected<IntrinsicIRLoweringInfo>
 readHwRegIRProcessor(const llvm::Function &Intrinsic, const llvm::CallInst &User,
                      const llvm::GCNTargetMachine &TM);

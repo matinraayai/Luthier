@@ -53,7 +53,6 @@
 #include <luthier/HSA/hsa.h>
 #include <luthier/Intrinsic/IntrinsicCalls.h>
 #include <luthier/Intrinsic/ReadHwReg.h>
-#include <luthier/Intrinsic/ScalarValueArgument.h>
 #include <luthier/HSA/HsaError.h>
 #include <luthier/ToolCodeGen/Prototype.h>
 
@@ -81,19 +80,6 @@ struct AccessRecord {
   uint32_t BufferId;     ///< Kernel-argument slot, or \c UnresolvedBuffer.
 };
 
-/// Packs an access into \c WaveHeader::Info:
-/// [1:0] 1 = read, 2 = write, 3 = both; [5:2] \c llvm::AMDGPUAS address
-/// space; [21:6] width in bytes.
-constexpr uint32_t packAccessInfo(bool Reads, bool Writes, unsigned AddrSpace,
-                                  unsigned WidthBytes) {
-  return (uint32_t(Reads) | uint32_t(Writes) << 1) |
-         ((AddrSpace & 0xfu) << 2) | (uint32_t(WidthBytes) << 6);
-}
-constexpr bool accessReads(uint32_t Info) { return Info & 1u; }
-constexpr bool accessWrites(uint32_t Info) { return Info & 2u; }
-constexpr unsigned accessAddrSpace(uint32_t Info) { return (Info >> 2) & 0xfu; }
-constexpr unsigned accessWidth(uint32_t Info) { return Info >> 6; }
-
 /// Where the device finds everything for one dispatch.
 struct TraceState {
   ChannelDescriptor Channel;
@@ -117,9 +103,10 @@ struct TrackedBuffer {
 
 /// A traced instruction, indexed by \c WaveHeader::Site.
 struct TracedSite {
-  std::string Kernel;
-  std::string Opcode;
-  uint32_t Info; ///< packAccessInfo()
+  std::string Function; ///< Machine function containing it.
+  unsigned Block;       ///< Its basic block: \c bb.<Block> in the MIR.
+  std::string MIR;      ///< The instruction as printed in the function's MIR.
+  uint32_t Width;       ///< Bytes accessed per lane; also \c WaveHeader::Info.
 };
 
 /// Base for analyses of memory-access messages.
@@ -148,6 +135,99 @@ private:
 };
 
 //===----------------------------------------------------------------------===//
+// Instrumentation: what is recorded and how the hook is called
+//===----------------------------------------------------------------------===//
+
+/// \c TracedSite of \p MI: its function, its MIR text and its width.
+inline TracedSite describeSite(const llvm::MachineInstr &MI) {
+  const auto &ST = MI.getMF()->getSubtarget<llvm::GCNSubtarget>();
+  const llvm::SIRegisterInfo &TRI = *ST.getRegisterInfo();
+  TracedSite S{MI.getMF()->getName().str(),
+               unsigned(MI.getParent()->getNumber()), "", 0};
+  llvm::raw_string_ostream OS(S.MIR);
+  MI.print(OS, /*IsStandalone=*/false, /*SkipOpers=*/false,
+           /*SkipDebugLoc=*/true, /*AddNewLine=*/false, ST.getInstrInfo());
+  // Drop Luthier's bookkeeping metadata (pcsections, ...) after the operands.
+  if (size_t Meta = S.MIR.find(", pcsections"); Meta != std::string::npos)
+    S.MIR.resize(Meta);
+  for (auto Name : {llvm::AMDGPU::OpName::vdata, llvm::AMDGPU::OpName::vdst}) {
+    const int Idx = llvm::AMDGPU::getNamedOperandIdx(MI.getOpcode(), Name);
+    if (Idx < 0)
+      continue;
+    const llvm::MCRegister R = MI.getOperand(Idx).getReg().asMCReg();
+    S.Width = TRI.getRegSizeInBits(*TRI.getMinimalPhysRegClass(R)) / 8;
+    break;
+  }
+  return S;
+}
+
+/// Builds, at the payload's insertion point, the call of \p Hook
+/// (\c onAccess or \c onAccessScalarBase) for the access of \p MI, then
+/// inlines it. Luthier lowers its intrinsics only inside the payload, so
+/// every register read happens here.
+inline llvm::Error buildAccessHookCall(llvm::Function &Hook,
+                                       llvm::IRBuilderBase &B,
+                                       const llvm::MachineInstr &MI,
+                                       uint32_t Site, uint32_t Width) {
+  const auto &ST = MI.getMF()->getSubtarget<llvm::GCNSubtarget>();
+  const llvm::SIRegisterInfo &TRI = *ST.getRegisterInfo();
+  llvm::Module &M = *Hook.getParent();
+  llvm::Type &I32 = *B.getInt32Ty();
+  auto ReadReg = [&](llvm::MCRegister R) -> llvm::Value * {
+    return insertCallToIntrinsic(M, B, "luthier::readReg", I32,
+                                 uint32_t(R.id()));
+  };
+  auto Reg = [&](llvm::AMDGPU::OpName Name) {
+    return MI.getOperand(llvm::AMDGPU::getNamedOperandIdx(MI.getOpcode(), Name))
+        .getReg()
+        .asMCReg();
+  };
+  const int OffIdx =
+      llvm::AMDGPU::getNamedOperandIdx(MI.getOpcode(), llvm::AMDGPU::OpName::offset);
+  const int64_t Imm = OffIdx >= 0 ? MI.getOperand(OffIdx).getImm() : 0;
+  const bool ScalarBase =
+      llvm::AMDGPU::hasNamedOperand(MI.getOpcode(), llvm::AMDGPU::OpName::saddr);
+  const llvm::MCRegister Base = Reg(ScalarBase ? llvm::AMDGPU::OpName::saddr
+                                               : llvm::AMDGPU::OpName::vaddr);
+
+  llvm::SmallVector<llvm::Value *, 10> Args{
+      ReadReg(TRI.getSubReg(Base, llvm::AMDGPU::sub0)),
+      ReadReg(TRI.getSubReg(Base, llvm::AMDGPU::sub1))};
+  if (ScalarBase)
+    Args.push_back(ReadReg(Reg(llvm::AMDGPU::OpName::vaddr)));
+  Args.append({B.getInt32(uint32_t(Imm)), B.getInt32(Site), B.getInt32(Width)});
+
+  // Workgroup id x / y / z. TTMPs ("trap temporaries") are SGPRs reserved for
+  // the trap handler, which application code never writes; at wave launch
+  // the hardware/firmware leaves the workgroup id in them: TTMP8 / 9 / 10
+  // up to GFX11 (verified on gfx908), and with architected SGPRs (GFX12)
+  // TTMP9 = x, TTMP7 = y | z << 16.
+  if (ST.hasArchitectedSGPRs()) {
+    llvm::Value *YZ = ReadReg(llvm::AMDGPU::TTMP7);
+    Args.append({ReadReg(llvm::AMDGPU::TTMP9), B.CreateAnd(YZ, 0xffff),
+                 B.CreateLShr(YZ, 16)});
+  } else {
+    Args.append({ReadReg(llvm::AMDGPU::TTMP8), ReadReg(llvm::AMDGPU::TTMP9),
+                 ReadReg(llvm::AMDGPU::TTMP10)});
+  }
+
+  // Engine / array / CU (WGP) of the wave; decoded by device::decodeHwId.
+  Args.push_back(insertCallToIntrinsic(
+      M, B, "luthier::readHwReg", I32,
+      uint16_t(ST.getGeneration() >= llvm::AMDGPUSubtarget::GFX10
+                   ? HwRegHwId1Gfx10
+                   : HwRegHwIdGfx9)));
+
+  llvm::CallInst *Call = B.CreateCall(&Hook, Args);
+  llvm::InlineFunctionInfo IFI;
+  llvm::InlineResult IR = llvm::InlineFunction(*Call, IFI);
+  return IR.isSuccess() ? llvm::Error::success()
+                        : LUTHIER_MAKE_GENERIC_ERROR(
+                              "comms: failed to inline the access hook: " +
+                              std::string(IR.getFailureReason()));
+}
+
+//===----------------------------------------------------------------------===//
 // The tracer
 //===----------------------------------------------------------------------===//
 
@@ -164,24 +244,27 @@ public:
   __attribute__((device)) static uint32_t Locks[MaxSubBuffers];
 
   /// Address in a 64-bit VGPR pair: <tt>global_load v, v[a:a+1], off</tt>.
+  /// \p HwId is the raw hardware-id register (see \c device::decodeHwId).
   __attribute__((device, used)) static void
   onAccess(uint32_t AddrLo, uint32_t AddrHi, uint32_t ImmOffset,
-           uint32_t Site, uint32_t Info, uint32_t BlockX, uint32_t BlockY,
+           uint32_t Site, uint32_t Width, uint32_t BlockX, uint32_t BlockY,
            uint32_t BlockZ, uint32_t HwId) {
     send((uint64_t(AddrHi) << 32 | AddrLo) + int64_t(int32_t(ImmOffset)),
-         {MemoryAccessTag, Site, Info, BlockX, BlockY, BlockZ, HwId});
+         {MemoryAccessTag, Site, Width, BlockX, BlockY, BlockZ,
+          device::decodeHwId(HwId)});
   }
 
   /// Scalar base plus 32-bit vector offset:
   /// <tt>global_load v, v_off, s[b:b+1]</tt>.
   __attribute__((device, used)) static void
   onAccessScalarBase(uint32_t BaseLo, uint32_t BaseHi, uint32_t VOffset,
-                     uint32_t ImmOffset, uint32_t Site, uint32_t Info,
+                     uint32_t ImmOffset, uint32_t Site, uint32_t Width,
                      uint32_t BlockX, uint32_t BlockY, uint32_t BlockZ,
                      uint32_t HwId) {
     send((uint64_t(BaseHi) << 32 | BaseLo) + VOffset +
              int64_t(int32_t(ImmOffset)),
-         {MemoryAccessTag, Site, Info, BlockX, BlockY, BlockZ, HwId});
+         {MemoryAccessTag, Site, Width, BlockX, BlockY, BlockZ,
+          device::decodeHwId(HwId)});
   }
 
 private:
@@ -198,11 +281,9 @@ private:
       }
     }
     // Any wave-uniform choice of sub-buffer is correct; spread waves by
-    // workgroup when known, else by the first lane's address page.
+    // workgroup.
     const uint32_t Key =
-        M.BlockIdxX != UnknownBlockIdx
-            ? M.BlockIdxX + 7919u * M.BlockIdxY + 104729u * M.BlockIdxZ
-            : device::broadcast(uint32_t(Address >> 12));
+        M.BlockIdxX + 7919u * M.BlockIdxY + 104729u * M.BlockIdxZ;
     device::submit<2>(State.Channel, Locks, Key * 2654435761u >> 8, M,
                       Record);
   }
@@ -212,22 +293,10 @@ public:
   // Host code
   //===--------------------------------------------------------------------===//
 
-  /// Where the hooks' workgroup id comes from.
-  enum class WorkgroupIdSource {
-    None, ///< Not reported.
-    /// Trap temporaries \c TTMP8 / \c TTMP9 / \c TTMP10, which hold the
-    /// workgroup id x / y / z (verified on gfx908).
-    TTMP,
-    /// \c luthier::readSVA(WORKGROUP_ID_*). Returns garbage on gfx908 with
-    /// the current Luthier; kept so the issue can be reproduced.
-    SVA,
-  };
-
   struct Config {
     uint32_t NumSubBuffers = 256;
     uint64_t SubBufferBytes = 64 * 1024;
     uint32_t ElementSize = 4; ///< Power of two.
-    WorkgroupIdSource WorkgroupIds = WorkgroupIdSource::TTMP;
   };
 
   void setConfig(const Config &C) { Cfg = C; }
@@ -247,83 +316,20 @@ public:
   /// Injects a hook before \p MI that sends its access to the host.
   llvm::Error traceAccess(Prototype &P, PrototypeAnalysisManager &PAM,
                           llvm::MachineInstr &MI) {
-    const auto &ST = MI.getMF()->getSubtarget<llvm::GCNSubtarget>();
-    const llvm::SIRegisterInfo &TRI = *ST.getRegisterInfo();
-    const unsigned Opc = MI.getOpcode();
     const uint32_t Site = uint32_t(Sites.size());
-    const uint32_t Info = describeAccess(MI, TRI);
-    Sites.push_back({MI.getMF()->getName().str(),
-                     ST.getInstrInfo()->getName(Opc).str(), Info});
-
-    const llvm::MCRegister VAddr =
-        operandReg(MI, llvm::AMDGPU::OpName::vaddr);
-    const int SAddrIdx =
-        llvm::AMDGPU::getNamedOperandIdx(Opc, llvm::AMDGPU::OpName::saddr);
-    const int OffIdx =
-        llvm::AMDGPU::getNamedOperandIdx(Opc, llvm::AMDGPU::OpName::offset);
-    const int64_t Imm = OffIdx >= 0 ? MI.getOperand(OffIdx).getImm() : 0;
-    const bool ScalarBase = SAddrIdx >= 0;
-    const llvm::MCRegister Base =
-        ScalarBase ? MI.getOperand(SAddrIdx).getReg().asMCReg() : VAddr;
-    const WorkgroupIdSource Wg = Cfg.WorkgroupIds;
-
-    // Arguments are built inside the payload, where Luthier lowers its
-    // intrinsics, and the hook is then inlined there.
+    Sites.push_back(describeSite(MI));
     auto Build = [&](llvm::Function &Hook,
                      llvm::IRBuilderBase &B) -> llvm::Error {
-      llvm::Module &M = *Hook.getParent();
-      llvm::Type &I32 = *B.getInt32Ty();
-      auto ReadReg = [&](llvm::MCRegister R) -> llvm::Value * {
-        return insertCallToIntrinsic(M, B, "luthier::readReg", I32,
-                                     uint32_t(R.id()));
-      };
-      auto ReadSVA = [&](ScalarValueArgument SA) -> llvm::Value * {
-        return insertCallToIntrinsic(M, B, "luthier::readSVA", I32,
-                                     uint8_t(SA));
-      };
-      auto Const = [&](uint32_t V) { return B.getInt32(V); };
-
-      llvm::SmallVector<llvm::Value *, 10> Args{
-          ReadReg(TRI.getSubReg(Base, llvm::AMDGPU::sub0)),
-          ReadReg(TRI.getSubReg(Base, llvm::AMDGPU::sub1))};
-      if (ScalarBase)
-        Args.push_back(ReadReg(VAddr));
-      Args.append({Const(uint32_t(Imm)), Const(Site), Const(Info)});
-      switch (Wg) {
-      case WorkgroupIdSource::SVA:
-        Args.append({ReadSVA(WORKGROUP_ID_X), ReadSVA(WORKGROUP_ID_Y),
-                     ReadSVA(WORKGROUP_ID_Z)});
-        break;
-      case WorkgroupIdSource::TTMP:
-        Args.append({ReadReg(llvm::AMDGPU::TTMP8), ReadReg(llvm::AMDGPU::TTMP9),
-                     ReadReg(llvm::AMDGPU::TTMP10)});
-        break;
-      case WorkgroupIdSource::None:
-        Args.append(3, Const(UnknownBlockIdx));
-        break;
-      }
-      // Wave / SIMD / CU / shader-engine ids of the executing wave.
-      Args.push_back(insertCallToIntrinsic(M, B, "luthier::readHwReg", I32,
-                                           uint16_t(HwRegHwIdGfx9)));
-
-      llvm::CallInst *Call = B.CreateCall(&Hook, Args);
-      llvm::InlineFunctionInfo IFI;
-      llvm::InlineResult IR = llvm::InlineFunction(*Call, IFI);
-      return IR.isSuccess() ? llvm::Error::success()
-                            : LUTHIER_MAKE_GENERIC_ERROR(
-                                  "comms: failed to inline the access hook: " +
-                                  std::string(IR.getFailureReason()));
+      return buildAccessHookCall(Hook, B, MI, Site, Sites.back().Width);
     };
-    return ScalarBase ? self().createInjectedPayload(
-                            &MemoryTrace::onAccessScalarBase, P, PAM, MI,
-                            llvm::function_ref<llvm::Error(
-                                llvm::Function &, llvm::IRBuilderBase &)>(
-                                Build))
-                      : self().createInjectedPayload(
-                            &MemoryTrace::onAccess, P, PAM, MI,
-                            llvm::function_ref<llvm::Error(
-                                llvm::Function &, llvm::IRBuilderBase &)>(
-                                Build));
+    llvm::function_ref<llvm::Error(llvm::Function &, llvm::IRBuilderBase &)>
+        BuildRef(Build);
+    return llvm::AMDGPU::hasNamedOperand(MI.getOpcode(),
+                                         llvm::AMDGPU::OpName::saddr)
+               ? self().createInjectedPayload(&MemoryTrace::onAccessScalarBase,
+                                              P, PAM, MI, BuildRef)
+               : self().createInjectedPayload(&MemoryTrace::onAccess, P, PAM,
+                                              MI, BuildRef);
   }
 
   /// Points the instrumented kernel at empty buffers and starts draining.
@@ -409,32 +415,6 @@ public:
 private:
   ToolT &self() { return static_cast<ToolT &>(*this); }
 
-  template <typename OpNameT>
-  static llvm::MCRegister operandReg(const llvm::MachineInstr &MI,
-                                     OpNameT Name) {
-    return MI
-        .getOperand(llvm::AMDGPU::getNamedOperandIdx(MI.getOpcode(), Name))
-        .getReg()
-        .asMCReg();
-  }
-
-  /// Read/write, address space and width of a FLAT-family access.
-  static uint32_t describeAccess(const llvm::MachineInstr &MI,
-                                 const llvm::SIRegisterInfo &TRI) {
-    unsigned Width = 0;
-    for (auto Name : {llvm::AMDGPU::OpName::vdata, llvm::AMDGPU::OpName::vdst}) {
-      if (!llvm::AMDGPU::hasNamedOperand(MI.getOpcode(), Name))
-        continue;
-      const llvm::MCRegister R = operandReg(MI, Name);
-      Width = TRI.getRegSizeInBits(*TRI.getMinimalPhysRegClass(R)) / 8;
-      break;
-    }
-    return packAccessInfo(MI.mayLoad(), MI.mayStore(),
-                          llvm::SIInstrInfo::isFLATGlobal(MI)
-                              ? llvm::AMDGPUAS::GLOBAL_ADDRESS
-                              : llvm::AMDGPUAS::FLAT_ADDRESS,
-                          Width);
-  }
 
   template <typename T>
   llvm::Error writeDeviceGlobal(T *Var, const void *Src, size_t Bytes,

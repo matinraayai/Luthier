@@ -40,6 +40,9 @@ inline constexpr uint32_t MaxSubBuffers = 1024;
 /// \c WaveHeader::BlockIdx* value when the workgroup id is not reported.
 inline constexpr uint32_t UnknownBlockIdx = 0xffffffffu;
 
+/// \c WaveHeader::SeId / \c SaId / \c CuId value when not reported.
+inline constexpr uint8_t UnknownHwId = 0xff;
+
 /// Information that applies to the whole wave.
 struct WaveHeader {
   uint64_t Exec;         ///< Execution mask at the instrumentation point.
@@ -51,7 +54,13 @@ struct WaveHeader {
   uint32_t BlockIdxX;    ///< Workgroup id, or \c UnknownBlockIdx.
   uint32_t BlockIdxY;
   uint32_t BlockIdxZ;
-  uint32_t HwId;         ///< Raw \c HW_REG_HW_ID, or 0 if not reported.
+  /// Where the wave ran, or \c UnknownHwId. On RDNA \c CuId is the
+  /// workgroup-processor (WGP) id, which is unique only within its shader
+  /// array: identify a WGP by (SeId, SaId, CuId).
+  uint8_t SeId;          ///< Shader engine.
+  uint8_t SaId;          ///< Shader array within the engine.
+  uint8_t CuId;          ///< Compute unit (CDNA) or WGP (RDNA).
+  uint8_t WaveSize;      ///< 32 or 64: lanes in \c Exec.
   uint8_t ActiveLanes;   ///< Number of set bits in \c Exec.
   uint8_t DwordsPerLane; ///< Lane data is ActiveLanes * DwordsPerLane dwords.
   uint8_t Reserved[6];
@@ -60,6 +69,7 @@ struct WaveHeader {
 static_assert(sizeof(WaveHeader) == 56, "WaveHeader layout drifted");
 static_assert(offsetof(WaveHeader, DataSize) == 16);
 static_assert(offsetof(WaveHeader, BlockIdxX) == 32);
+static_assert(offsetof(WaveHeader, SeId) == 44);
 static_assert(offsetof(WaveHeader, ActiveLanes) == 48);
 
 /// Where the device writes messages: fine-grained host memory split into

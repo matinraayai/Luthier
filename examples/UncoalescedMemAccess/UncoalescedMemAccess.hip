@@ -23,8 +23,8 @@
 /// pinned host memory. \c CoalescingHandler then rebuilds the addresses and
 /// decides which accesses were coalesced.
 ///
-/// <b>Uncoalesced.</b> The hardware issues a 64-lane VMEM instruction 16
-/// lanes per cycle. A group is coalesced if it touches no more 128-byte cache
+/// <b>Uncoalesced.</b> The hardware issues a VMEM instruction 16 lanes per
+/// cycle. A group is coalesced if it touches no more 128-byte cache
 /// lines than its bytes need; a wave-instruction is uncoalesced if any group
 /// wastes a line. This is what the hardware counters measure:
 /// \code
@@ -40,17 +40,17 @@
 ///   --comms-sub-buffers=N           sub-buffers, power of two (256)
 ///   --comms-sub-buffer-bytes=N      capacity of each (65536)
 ///   --comms-element-size=N          bytes per array element (4)
-///   --comms-workgroup-ids=ttmp|sva|none
-///                                   where hooks read the workgroup id (ttmp)
 ///   --lanes-per-cycle=N             coalescing granularity (16)
 ///   --cache-line-bytes=N            cache line size (128)
 ///   --kernel-begin-interval / --kernel-end-interval
 ///
-/// <b>Validated</b> on a 1024^3 MFMA SGEMM (gfx908) against rocprofv3:
-/// SQ_INSTS_VMEM, the coalesced and the uncoalesced counts match exactly.
+/// The report names each traced instruction by its function, basic block and
+/// MIR text, so it can be found in the kernel's MIR.
+///
+/// <b>Targets.</b> CDNA (GFX9) and RDNA (GFX10-12, wave32 or wave64). Each
+/// message carries the wave size and the shader engine / shader array /
+/// CU (WGP on RDNA) of the wave. Run on gfx908; RDNA is compile-tested only.
 //===----------------------------------------------------------------------===//
-#include "CoalescingHandler.h"
-
 #include <GCNSubtarget.h>
 #include <SIInstrInfo.h>
 #include <hip/hip_runtime.h>
@@ -78,6 +78,8 @@
 #include <luthier/ToolCodeGen/PrototypeCallGraph.h>
 #include <luthier/Tooling/Tool.h>
 
+#include <algorithm>
+#include <array>
 #include <map>
 #include <mutex>
 #include <set>
@@ -88,6 +90,130 @@
 
 namespace comms = luthier::comms;
 
+/// Decides, for every executed memory instruction of every wave, whether the
+/// access was coalesced. The hardware issues a VMEM instruction in groups of
+/// \c LanesPerCycle lanes; a group is coalesced if it touches no more cache
+/// lines than its bytes need (ceil(bytes / line size)), and a
+/// wave-instruction is uncoalesced if any group wastes a line. Addresses are
+/// rebuilt from (buffer, element index) and the dispatch's buffer bases.
+class CoalescingHandler final : public comms::MemoryAccessHandler {
+public:
+  CoalescingHandler(uint32_t LanesPerCycle, uint32_t CacheLineBytes)
+      : LanesPerCycle(LanesPerCycle), CacheLineBytes(CacheLineBytes) {}
+
+  void beginDispatch(llvm::ArrayRef<comms::TrackedBuffer> Buffers,
+                     uint32_t ElemSizeLog2) override {
+    ElementSizeLog2 = ElemSizeLog2;
+    BaseBySlot.fill(0);
+    for (const auto &B : Buffers)
+      if (B.ArgSlot < BaseBySlot.size())
+        BaseBySlot[B.ArgSlot] = B.Base;
+  }
+
+  void handleAccesses(
+      const comms::WaveHeader &H,
+      llvm::ArrayRef<comms::AccessRecord> Records) override {
+    Stats &S = PerSite[H.Site];
+    ++S.Waves;
+    const uint64_t Width = H.Info ? H.Info : 4; // bytes per lane
+
+    // Lines touched and bytes moved by each group of lanes issued together.
+    llvm::SmallVector<uint64_t, 16> GroupLines[64];
+    uint64_t GroupBytes[64] = {};
+    uint64_t Exec = H.Exec; // i-th record <-> i-th set bit
+    for (const auto &R : Records) {
+      const unsigned Lane = unsigned(__builtin_ctzll(Exec));
+      Exec &= Exec - 1;
+      if (R.BufferId >= BaseBySlot.size()) {
+        ++S.Unresolved;
+        continue;
+      }
+      const uint64_t Addr =
+          BaseBySlot[R.BufferId] + (uint64_t(R.ElementIndex) << ElementSizeLog2);
+      const unsigned G = Lane / LanesPerCycle;
+      GroupBytes[G] += Width;
+      for (uint64_t L = Addr / CacheLineBytes;
+           L <= (Addr + Width - 1) / CacheLineBytes; ++L)
+        GroupLines[G].push_back(L);
+    }
+
+    bool Wasted = false;
+    for (unsigned G = 0; G < 64; ++G) {
+      if (GroupBytes[G] == 0)
+        continue;
+      auto &L = GroupLines[G];
+      std::sort(L.begin(), L.end());
+      const uint64_t Lines = std::unique(L.begin(), L.end()) - L.begin();
+      const uint64_t Ideal =
+          (GroupBytes[G] + CacheLineBytes - 1) / CacheLineBytes;
+      S.Lines += Lines;
+      S.IdealLines += Ideal;
+      Wasted |= Lines > Ideal;
+    }
+    S.Uncoalesced += Wasted;
+  }
+
+  /// One line per traced site, then per-kernel and overall totals.
+  void report(llvm::raw_ostream &OS,
+              llvm::ArrayRef<comms::TracedSite> Sites) const {
+    OS << llvm::formatv("[uncoalesced] {0}-lane groups, {1}-byte lines\n",
+                        LanesPerCycle, CacheLineBytes);
+    OS << llvm::formatv("{0,4} {1,10} {2,12} {3,9} {4,9}  {5}\n", "site",
+                        "waves", "uncoalesced", "lines/wv", "ideal/wv",
+                        "function, block: MIR");
+    uint64_t Waves = 0, Uncoalesced = 0, Lines = 0, Ideal = 0, Unresolved = 0;
+    struct KernelTotals {
+      uint64_t Waves = 0, Uncoalesced = 0, Lines = 0;
+    };
+    std::map<std::string, KernelTotals> PerKernel;
+    for (const auto &[Site, S] : PerSite) {
+      const comms::TracedSite *T = Site < Sites.size() ? &Sites[Site] : nullptr;
+      OS << llvm::formatv("{0,4} {1,10} {2,12} {3,9:F2} {4,9:F2}  ", Site,
+                          S.Waves, S.Uncoalesced,
+                          double(S.Lines) / double(S.Waves),
+                          double(S.IdealLines) / double(S.Waves));
+      if (T)
+        OS << T->Function << ", bb." << T->Block << ": " << T->MIR << "\n";
+      else
+        OS << "?\n";
+      Waves += S.Waves;
+      Uncoalesced += S.Uncoalesced;
+      Lines += S.Lines;
+      Ideal += S.IdealLines;
+      Unresolved += S.Unresolved;
+      auto &K = PerKernel[T ? T->Function : "?"];
+      K.Waves += S.Waves;
+      K.Uncoalesced += S.Uncoalesced;
+      K.Lines += S.Lines;
+    }
+    for (const auto &[Kernel, K] : PerKernel)
+      OS << llvm::formatv("[uncoalesced] kernel {0}: VMEM {1} coalesced {2} "
+                          "uncoalesced {3} lines {4}\n",
+                          Kernel, K.Waves, K.Waves - K.Uncoalesced,
+                          K.Uncoalesced, K.Lines);
+    OS << llvm::formatv("[uncoalesced] VMEM wave-instructions: {0}  "
+                        "coalesced: {1}  uncoalesced: {2}\n",
+                        Waves, Waves - Uncoalesced, Uncoalesced);
+    OS << llvm::formatv("[uncoalesced] cache lines: {0} touched, {1} needed\n",
+                        Lines, Ideal);
+    if (Unresolved)
+      OS << llvm::formatv("[uncoalesced] WARNING: {0} lanes accessed no "
+                          "tracked buffer and were skipped\n",
+                          Unresolved);
+  }
+
+private:
+  struct Stats {
+    uint64_t Waves = 0, Uncoalesced = 0, Lines = 0, IdealLines = 0,
+             Unresolved = 0;
+  };
+  uint32_t LanesPerCycle;
+  uint32_t CacheLineBytes;
+  uint32_t ElementSizeLog2 = 2;
+  std::array<uint64_t, comms::MaxTrackedBuffers> BaseBySlot{};
+  std::map<uint32_t, Stats> PerSite;
+};
+
 /// Which workgroups and compute units sent messages, to check the workgroup
 /// ids and hardware ids are real.
 class WorkgroupCensus final : public comms::MemoryAccessHandler {
@@ -95,16 +221,13 @@ public:
   void handleAccesses(const comms::WaveHeader &H,
                       llvm::ArrayRef<comms::AccessRecord>) override {
     ++Messages[{H.BlockIdxX, H.BlockIdxY, H.BlockIdxZ}];
-    // GFX9 HW_ID: cu_id [11:8], sh_id [12], se_id [15:13].
-    if (H.HwId != 0)
-      ComputeUnits.insert(H.HwId >> 8 & 0xffu);
+    if (H.CuId != comms::UnknownHwId)
+      ComputeUnits.insert({H.SeId, H.SaId, H.CuId});
+    WaveSizes.insert(H.WaveSize);
   }
   void report(llvm::raw_ostream &OS) const {
-    if (Messages.empty() ||
-        std::get<0>(Messages.begin()->first) == comms::UnknownBlockIdx) {
-      OS << "[uncoalesced] workgroup ids: not reported\n";
+    if (Messages.empty())
       return;
-    }
     uint32_t MaxX = 0, MaxY = 0, MaxZ = 0;
     uint64_t MinMsgs = UINT64_MAX, MaxMsgs = 0;
     for (const auto &[Wg, N] : Messages) {
@@ -117,17 +240,23 @@ public:
     OS << llvm::formatv("[uncoalesced] workgroup ids: {0} distinct, "
                         "x<={1} y<={2} z<={3}, {4}-{5} messages each\n",
                         Messages.size(), MaxX, MaxY, MaxZ, MinMsgs, MaxMsgs);
-    std::set<unsigned> Engines;
-    for (unsigned C : ComputeUnits)
-      Engines.insert(C >> 5);
-    OS << llvm::formatv("[uncoalesced] hardware ids: {0} distinct compute "
-                        "units on {1} shader engines\n",
-                        ComputeUnits.size(), Engines.size());
+    std::set<unsigned> Engines, Arrays;
+    for (const auto &[Se, Sa, Cu] : ComputeUnits) {
+      Engines.insert(Se);
+      Arrays.insert(Se << 8 | Sa);
+    }
+    OS << llvm::formatv("[uncoalesced] hardware ids: {0} distinct CUs (WGPs "
+                        "on RDNA) in {1} shader arrays on {2} shader "
+                        "engines\n",
+                        ComputeUnits.size(), Arrays.size(), Engines.size());
+    for (unsigned W : WaveSizes)
+      OS << "[uncoalesced] wave size: " << W << "\n";
   }
 
 private:
   std::map<std::tuple<uint32_t, uint32_t, uint32_t>, uint64_t> Messages;
-  std::set<unsigned> ComputeUnits; ///< (se, sh, cu) packed as HW_ID[15:8]
+  std::set<std::tuple<uint8_t, uint8_t, uint8_t>> ComputeUnits; ///< SE, SA, CU
+  std::set<unsigned> WaveSizes;
 };
 
 struct UncoalescedMemAccessTool
@@ -147,13 +276,6 @@ struct UncoalescedMemAccessTool
         "comms-element-size",
         llvm::cl::desc("Bytes per array element (power of two)"),
         llvm::cl::init(4), llvm::cl::cat(Cat)};
-    llvm::cl::opt<WorkgroupIdSource> WorkgroupIds{
-        "comms-workgroup-ids", llvm::cl::desc("Where to read workgroup ids"),
-        llvm::cl::values(
-            clEnumValN(WorkgroupIdSource::TTMP, "ttmp", "TTMP8/9/10"),
-            clEnumValN(WorkgroupIdSource::SVA, "sva", "luthier::readSVA"),
-            clEnumValN(WorkgroupIdSource::None, "none", "not reported")),
-        llvm::cl::init(WorkgroupIdSource::TTMP), llvm::cl::cat(Cat)};
     llvm::cl::opt<unsigned> LanesPerCycle{
         "lanes-per-cycle", llvm::cl::desc("Lanes issued together (1-64)"),
         llvm::cl::init(16), llvm::cl::cat(Cat)};
@@ -178,8 +300,7 @@ struct UncoalescedMemAccessTool
 
   /// Applies the options; called once they are parsed.
   void configure() {
-    setConfig({Opts.NumSubBuffers, Opts.SubBufferBytes, Opts.ElementSize,
-               Opts.WorkgroupIds});
+    setConfig({Opts.NumSubBuffers, Opts.SubBufferBytes, Opts.ElementSize});
     Coalescing =
         std::make_unique<CoalescingHandler>(Opts.LanesPerCycle,
                                             Opts.CacheLineBytes);

@@ -93,6 +93,31 @@ LUTHIER_COMMS_DEVICE void handOffToHost(uint32_t *HostFlag, bool IsLeader) {
   }
 }
 
+/// Shader engine, shader array and compute unit of the executing wave.
+struct HwLocation {
+  uint8_t SeId = UnknownHwId;
+  uint8_t SaId = UnknownHwId;
+  uint8_t CuId = UnknownHwId;
+};
+
+/// Decodes the hardware-id register the payload read with
+/// \c luthier::readHwReg: \c HW_REG_HW_ID on GFX9 (CDNA),
+/// \c HW_REG_HW_ID1 on GFX10+ (RDNA), where \c CuId is the WGP id.
+LUTHIER_COMMS_DEVICE HwLocation decodeHwId(uint32_t R) {
+#if defined(__GFX9__)
+  // CU_ID [11:8], SH_ID [12], SE_ID [15:13].
+  return {uint8_t(R >> 13 & 0x7u), uint8_t(R >> 12 & 0x1u),
+          uint8_t(R >> 8 & 0xfu)};
+#elif defined(__GFX10__) || defined(__GFX11__) || defined(__GFX12__)
+  // WGP_ID [13:10], SA_ID [16], SE_ID [20:18].
+  return {uint8_t(R >> 18 & 0x7u), uint8_t(R >> 16 & 0x1u),
+          uint8_t(R >> 10 & 0xfu)};
+#else
+  (void)R;
+  return {};
+#endif
+}
+
 /// Fields of the \c WaveHeader that the sender provides.
 struct MessageInfo {
   uint32_t Tag;
@@ -101,7 +126,7 @@ struct MessageInfo {
   uint32_t BlockIdxX = UnknownBlockIdx;
   uint32_t BlockIdxY = UnknownBlockIdx;
   uint32_t BlockIdxZ = UnknownBlockIdx;
-  uint32_t HwId = 0;
+  HwLocation Hw = {};
 };
 
 /// Sends \p Lane (this lane's \p N dwords) from every active lane as one
@@ -157,7 +182,12 @@ LUTHIER_COMMS_DEVICE void submit(const ChannelDescriptor &C, uint32_t *Locks,
     H.BlockIdxX = M.BlockIdxX;
     H.BlockIdxY = M.BlockIdxY;
     H.BlockIdxZ = M.BlockIdxZ;
-    H.HwId = M.HwId;
+    H.SeId = M.Hw.SeId;
+    H.SaId = M.Hw.SaId;
+    H.CuId = M.Hw.CuId;
+    // 32 or 64, folded from the subtarget the payload is compiled for (it
+    // follows -mwavefrontsize64 on RDNA).
+    H.WaveSize = uint8_t(__builtin_amdgcn_wavefrontsize());
     H.ActiveLanes = uint8_t(ActiveLanes);
     H.DwordsPerLane = uint8_t(N);
     *reinterpret_cast<WaveHeader *>(Message) = H;
