@@ -907,9 +907,11 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   Relocatable = std::move(Linked);
 
   llvm::MemoryBufferRef RelocRef = Relocatable->getMemBufferRef();
-  auto ParsedOrErr = object::AMDGCNObjectFile::createAMDGCNObjectFile(RelocRef);
-  LUTHIER_RETURN_ON_ERROR(ParsedOrErr.takeError());
-  std::unique_ptr<object::AMDGCNObjectFile> Parsed = std::move(*ParsedOrErr);
+
+  std::unique_ptr<object::AMDGCNObjectFile> Parsed;
+  LUTHIER_RETURN_ON_ERROR(
+      object::AMDGCNObjectFile::createAMDGCNObjectFile(RelocRef).moveInto(
+          Parsed));
 
   // Only the first code object of an entry has to carry the instrumented
   // kernel; an addition may be nothing but device functions and globals.
