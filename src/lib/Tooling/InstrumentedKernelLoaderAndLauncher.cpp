@@ -133,11 +133,11 @@ llvm::Error writeKernargAt(llvm::MutableArrayRef<uint8_t> Buf, uint32_t Offset,
 }
 
 /// Reads the constant \c printf format strings out of a code object's
-/// already-parsed metadata document \p MetadataDoc.
+/// already-parsed metadata document \p MetadataDoc using \p MDParser.
 llvm::Expected<PrintfFormatStringMap>
-getPrintfFormatStrings(llvm::msgpack::Document &MetadataDoc) {
-  auto NoteMDOrErr =
-      amdgpu::hsamd::MetadataParser().parseNoteMetaData(MetadataDoc);
+getPrintfFormatStrings(const amdgpu::hsamd::MetadataParser &MDParser,
+                       llvm::msgpack::Document &MetadataDoc) {
+  auto NoteMDOrErr = MDParser.parseNoteMetaData(MetadataDoc);
   LUTHIER_RETURN_ON_ERROR(NoteMDOrErr.takeError());
   if (!(*NoteMDOrErr)->Printf)
     return PrintfFormatStringMap{};
@@ -1004,7 +1004,8 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
     return CleanUpFailedLoadAndJoinErrors(MDDocOrErr.takeError());
   llvm::msgpack::Document &MetadataDoc = **MDDocOrErr;
 
-  auto PrintfFormatStringsOrErr = getPrintfFormatStrings(MetadataDoc);
+  auto PrintfFormatStringsOrErr =
+      getPrintfFormatStrings(MDParser, MetadataDoc);
   if (!PrintfFormatStringsOrErr)
     return CleanUpFailedLoadAndJoinErrors(
         PrintfFormatStringsOrErr.takeError());
@@ -1234,7 +1235,8 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumentedDeviceFunction(
       return Fail(MDDocOrErr.takeError());
     llvm::msgpack::Document &MetadataDoc = **MDDocOrErr;
 
-    auto PrintfFormatStringsOrErr = getPrintfFormatStrings(MetadataDoc);
+    auto PrintfFormatStringsOrErr =
+        getPrintfFormatStrings(MDParser, MetadataDoc);
     if (!PrintfFormatStringsOrErr)
       return Fail(PrintfFormatStringsOrErr.takeError());
     Rec.PrintfFormatStrings = std::move(*PrintfFormatStringsOrErr);
@@ -1351,8 +1353,7 @@ InstrumentedKernelLoaderAndLauncher::findKernelIfPresent(
   // Harvest the hidden arguments' offsets and widths from the code object's
   // metadata; they are the only description of the hidden block's layout that
   // is guaranteed to match the compiler that produced this object.
-  auto KernelMDOrErr =
-      amdgpu::hsamd::MetadataParser().parseKernelMetadata(MetadataDoc, KDName);
+  auto KernelMDOrErr = MDParser.parseKernelMetadata(MetadataDoc, KDName);
   LUTHIER_RETURN_ON_ERROR(KernelMDOrErr.takeError());
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       (*KernelMDOrErr)->Symbol == KDName,

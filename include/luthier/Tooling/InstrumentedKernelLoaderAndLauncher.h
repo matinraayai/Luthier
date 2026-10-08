@@ -322,6 +322,9 @@ protected:
   const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
       &Loader;
 
+  /// Metadata parser for loaded code objects.
+  const amdgpu::hsamd::MetadataParser MDParser;
+
   /// Reader/writer lock: \c lookupGlobalVariable takes the reader lock;
   /// every cache mutation path takes the writer lock. \c overrideWithInstrumented
   /// takes the writer lock because it allocates the extended kernarg buffer
