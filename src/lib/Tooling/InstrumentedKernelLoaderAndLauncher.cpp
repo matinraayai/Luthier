@@ -892,7 +892,6 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
 
 
   /// Link the passed buffer if it is a relocatable; Otherwise leave it be.
-  llvm::MemoryBufferRef RelocRef;
   if (IsRelocatable) {
     llvm::SmallVector<char, 0> LinkedBuf;
     LUTHIER_RETURN_ON_ERROR(linker::linkRelocatableToExecutable(
@@ -904,7 +903,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
         /*RequiresNullTerminator=*/false);
     RelocOrObjFile = std::move(Linked);
   }
-  RelocRef = RelocOrObjFile->getMemBufferRef();
+  llvm::MemoryBufferRef RelocRef = RelocOrObjFile->getMemBufferRef();
 
   const auto Core = CoreApi.getTable();
 
