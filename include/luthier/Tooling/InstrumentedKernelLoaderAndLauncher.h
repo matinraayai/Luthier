@@ -322,9 +322,8 @@ public:
   }
 
 protected:
+  /// HSA Tables.
   const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi;
-  /// AMD extension table — needed for \c hsa_amd_pointer_info and the
-  /// managed-variable allocation paths (memory pools / SVM).
   const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExt;
   const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
       &Loader;

@@ -948,7 +948,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
               .moveInto(Reader))
     return llvm::joinErrors(std::move(Err), hsa::executableDestroy(Core, Exec));
 
-  auto Fail = [&](llvm::Error E) -> llvm::Error {
+  auto CleanUpFailedLoadAndJoinErrors = [&](llvm::Error E) -> llvm::Error {
     return llvm::joinErrors(
         llvm::joinErrors(std::move(E), hsa::executableDestroy(Core, Exec)),
         hsa::codeObjectReaderDestroy(Reader, Core));
@@ -956,27 +956,27 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
 
   if (auto Err = hsa::executableLoadAgentCodeObject(Core, Exec, Reader, Agent)
                      .takeError())
-    return Fail(std::move(Err));
+    return CleanUpFailedLoadAndJoinErrors(std::move(Err));
 
   if (auto Err = hsa::executableFreeze(Core, Exec))
-    return Fail(std::move(Err));
+    return CleanUpFailedLoadAndJoinErrors(std::move(Err));
 
   // Parse the code object's metadata once: every kernel's hidden-argument
   // layout and the constant printf format strings all come out of it.
   auto MDDocOrErr = Parsed->getMetadataDocument();
   if (!MDDocOrErr)
-    return Fail(MDDocOrErr.takeError());
+    return CleanUpFailedLoadAndJoinErrors(MDDocOrErr.takeError());
   llvm::msgpack::Document &MetadataDoc = **MDDocOrErr;
 
   auto NoteMDOrErr =
       amdgpu::hsamd::MetadataParser().parseNoteMetaData(MetadataDoc);
   if (!NoteMDOrErr)
-    return Fail(NoteMDOrErr.takeError());
+    return CleanUpFailedLoadAndJoinErrors(NoteMDOrErr.takeError());
   PrintfFormatStringMap PrintfFormatStrings;
   if ((*NoteMDOrErr)->Printf) {
     auto FormatsOrErr = parsePrintfFormatStrings(*(*NoteMDOrErr)->Printf);
     if (!FormatsOrErr)
-      return Fail(FormatsOrErr.takeError());
+      return CleanUpFailedLoadAndJoinErrors(FormatsOrErr.takeError());
     PrintfFormatStrings = std::move(*FormatsOrErr);
   }
 
@@ -989,9 +989,9 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
     auto InstrKernelOrErr =
         findKernelIfPresent(*Parsed, MetadataDoc, Exec, Agent, KernelName);
     if (!InstrKernelOrErr)
-      return Fail(InstrKernelOrErr.takeError());
+      return CleanUpFailedLoadAndJoinErrors(InstrKernelOrErr.takeError());
     if (!InstrKernelOrErr->has_value())
-      return Fail(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+      return CleanUpFailedLoadAndJoinErrors(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
           "The instrumented code object defines kernel function '{0}' but no "
           "matching kernel descriptor '{1}'",
           KernelName, KDName)));
@@ -1007,14 +1007,14 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   auto DtorKernelOrErr = findKernelIfPresent(*Parsed, MetadataDoc, Exec, Agent,
                                              GlobalDtorKernelName);
   if (!DtorKernelOrErr)
-    return Fail(DtorKernelOrErr.takeError());
+    return CleanUpFailedLoadAndJoinErrors(DtorKernelOrErr.takeError());
 
   // The global-constructor kernel, dispatched further down once the managed
   // variables it may reference have been published.
   auto CtorKernelOrErr = findKernelIfPresent(*Parsed, MetadataDoc, Exec, Agent,
                                              GlobalCtorKernelName);
   if (!CtorKernelOrErr)
-    return Fail(CtorKernelOrErr.takeError());
+    return CleanUpFailedLoadAndJoinErrors(CtorKernelOrErr.takeError());
 
   InstrumentedRecord Rec;
   Rec.RelocatableBuffer = std::move(RelocOrObjFile);
@@ -1044,7 +1044,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
           amdgpu::hsamd::ValueKind::HiddenHostcallBuffer)) {
     auto HostcallBufferOrErr = createAndRegisterHostcallBuffer(Agent);
     if (!HostcallBufferOrErr)
-      return Fail(HostcallBufferOrErr.takeError());
+      return CleanUpFailedLoadAndJoinErrors(HostcallBufferOrErr.takeError());
     Rec.HostcallBufferAlloc = std::move(*HostcallBufferOrErr);
   }
 
@@ -1056,7 +1056,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
       Rec.HostcallBufferAlloc.reset();
     }
     Rec.HeapBuffer.reset();
-    return Fail(std::move(E));
+    return CleanUpFailedLoadAndJoinErrors(std::move(E));
   };
 
   if (AnyRecordKernelDeclares(amdgpu::hsamd::ValueKind::HiddenHeapV1)) {
