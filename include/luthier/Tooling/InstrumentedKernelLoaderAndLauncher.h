@@ -137,13 +137,6 @@ public:
   /// cannot load into an executable that is already frozen, so each code
   /// object keeps its own executable and this is what ties them together.
   ///
-  /// For a reference to resolve this way, the addition has to reach the
-  /// variable through the GOT, which the AMDGPU backend only emits for an
-  /// \c extern declaration of *default* visibility. HIP gives \c __device__
-  /// globals protected visibility, whose references are PC-relative and bound
-  /// at static-link time; ld.lld rejects those outright when they are
-  /// undefined, so such an addition fails to link rather than mis-resolving.
-  ///
   /// Only the first code object loaded under a key must carry a kernel; later
   /// additions may carry none, in which case a symbol with a zero \c handle is
   /// returned. Whichever kernel the *first* code object carries stays the
