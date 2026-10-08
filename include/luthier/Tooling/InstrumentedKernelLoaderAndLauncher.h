@@ -163,15 +163,14 @@ public:
   /// record — the HSA code-object reader keeps a pointer into it, and so do
   /// the host kernel-descriptor pointers cached on the record.
   ///
-  /// \param OriginalKD pointer to the kernel descriptor on the device of
-  /// the original (un-instrumented) kernel. The agent that owns the KD's
-  /// allocation is queried via \c hsa_amd_pointer_info, which works
-  /// regardless of whether the KD was published through the HSA loader or
-  /// allocated directly out of an HSA memory pool.
+  /// \param OriginalKD pointer to the original kernel descriptor's
+  /// device address
+  /// \param IsRelocatable if \c true indicates that \p RelocOrObjFile is
+  /// a relocatable and must be linked prior to being loaded.
   llvm::Expected<hsa_executable_symbol_t>
-  loadInstrumented(std::unique_ptr<llvm::MemoryBuffer> Relocatable,
+  loadInstrumented(std::unique_ptr<llvm::MemoryBuffer> RelocOrObjFile,
                    const llvm::amdhsa::kernel_descriptor_t *OriginalKD,
-                   uint64_t Preset = 0);
+                   uint64_t Preset = 0, bool IsRelocatable = true);
 
   /// Tear down every HSA executable + reader cached under
   /// <tt>(OriginalKD, Preset)</tt> and remove the entry from the

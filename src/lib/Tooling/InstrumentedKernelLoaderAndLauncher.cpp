@@ -841,22 +841,38 @@ InstrumentedKernelLoaderAndLauncher::defineGlobalsOfAllLoadedCodeObjects(
 
 llvm::Expected<hsa_executable_symbol_t>
 InstrumentedKernelLoaderAndLauncher::loadInstrumented(
-    std::unique_ptr<llvm::MemoryBuffer> Relocatable,
-    const llvm::amdhsa::kernel_descriptor_t *OriginalKD, uint64_t Preset) {
+    std::unique_ptr<llvm::MemoryBuffer> RelocOrObjFile,
+    const llvm::amdhsa::kernel_descriptor_t *OriginalKD, uint64_t Preset,
+    bool IsRelocatable) {
   LLVM_DEBUG(luthier::dbgs()
              << "[InstrumentedKernelLoaderAndLauncher] loadInstrumented KD="
              << OriginalKD << " preset=" << Preset << "\n");
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-      Relocatable != nullptr,
+      RelocOrObjFile != nullptr,
       "Null relocatable MemoryBuffer passed to loadInstrumented"));
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       OriginalKD != nullptr,
       "Null kernel-descriptor pointer passed to loadInstrumented"));
 
+
+  /// Link the passed buffer if it is a relocatable; Otherwise leave it be.
+  llvm::MemoryBufferRef RelocRef;
+  if (IsRelocatable) {
+    llvm::SmallVector<char, 0> LinkedBuf;
+    LUTHIER_RETURN_ON_ERROR(linker::linkRelocatableToExecutable(
+        llvm::ArrayRef<char>(RelocOrObjFile->getBufferStart(),
+                             RelocOrObjFile->getBufferSize()),
+        LinkedBuf));
+    auto Linked = std::make_unique<llvm::SmallVectorMemoryBuffer>(
+        std::move(LinkedBuf), "luthier.instrumented.linked",
+        /*RequiresNullTerminator=*/false);
+    RelocOrObjFile = std::move(Linked);
+  }
+  RelocRef = RelocOrObjFile->getMemBufferRef();
+
   const auto Core = CoreApi.getTable();
 
-  // Resolve the agent that owns the kernel-descriptor allocation via
-  // hsa_amd_pointer_info (works for loader-published and pool allocations).
+  // Resolve the agent that owns the kernel-descriptor allocation.
   auto KDAddr = reinterpret_cast<uint64_t>(OriginalKD);
   hsa_amd_pointer_info_t PointerInfo{};
   PointerInfo.size = sizeof(hsa_amd_pointer_info_t);
@@ -894,20 +910,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
                       Agent.handle)));
   }
 
-  // The instrumented bytes come out of NewPMAsmPrinter as a REL; link to a
-  // shared object so we get a proper .dynsym + PT_DYNAMIC layout.
-  llvm::SmallVector<char, 0> LinkedBuf;
-  LUTHIER_RETURN_ON_ERROR(linker::linkRelocatableToExecutable(
-      llvm::ArrayRef<char>(Relocatable->getBufferStart(),
-                           Relocatable->getBufferSize()),
-      LinkedBuf));
-  auto Linked = std::make_unique<llvm::SmallVectorMemoryBuffer>(
-      std::move(LinkedBuf), "luthier.instrumented.linked",
-      /*RequiresNullTerminator=*/false);
-  Relocatable = std::move(Linked);
-
-  llvm::MemoryBufferRef RelocRef = Relocatable->getMemBufferRef();
-
+  /// Parse the code object
   std::unique_ptr<object::AMDGCNObjectFile> Parsed;
   LUTHIER_RETURN_ON_ERROR(
       object::AMDGCNObjectFile::createAMDGCNObjectFile(RelocRef).moveInto(
@@ -1018,7 +1021,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
     return Fail(CtorKernelOrErr.takeError());
 
   InstrumentedRecord Rec;
-  Rec.RelocatableBuffer = std::move(Relocatable);
+  Rec.RelocatableBuffer = std::move(RelocOrObjFile);
   Rec.Reader = Reader;
   Rec.Exec = Exec;
   Rec.Kernel = std::move(InstrKernel);
