@@ -370,7 +370,7 @@ void InstrCountTool::onPackets(
         LUTHIER_REPORT_FATAL_ON_ERROR(
             this->runInstrumentationPipelineForDispatch(*KD).moveInto(ObjBuf));
         LUTHIER_REPORT_FATAL_ON_ERROR(
-            this->loadInstrumented(std::move(ObjBuf), KD, 0).takeError());
+            this->loadInstrumented(std::move(ObjBuf), KD, true, 0).takeError());
         auto Retry =
             this->overrideWithInstrumented(*DispatchPacket, Queue, 0);
         LUTHIER_REPORT_FATAL_ON_ERROR(Retry.takeError());
