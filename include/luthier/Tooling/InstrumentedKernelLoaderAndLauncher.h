@@ -80,6 +80,7 @@
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseMapInfo.h>
+#include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringMap.h>
 #include <llvm/Support/AMDHSAKernelDescriptor.h>
@@ -150,9 +151,10 @@ public:
   /// <tt>__device__</tt> globals), it is dispatched once, synchronously,
   /// right after the managed variables are published and before this call
   /// returns. If it carries an <tt>amdgcn.device.fini</tt> global
-  /// destructor kernel, it is cached on the record and dispatched by
-  /// \c unloadInstrumentedIfExists right before the executable is torn
-  /// down. See \c launchSingleWorkItemKernelAndWait for how those two are
+  /// destructor kernel, it is cached on the record and dispatched right
+  /// before the executable is torn down — by \c unloadInstrumentedIfExists,
+  /// \c invalidateOriginalExec or \c unloadAll, whichever erases the entry.
+  /// See \c launchSingleWorkItemKernelAndWait for how those two are
   /// dispatched.
   ///
   /// Every kernel this finds is described by its kernel descriptor as the
@@ -174,13 +176,14 @@ public:
 
   /// Tear down every HSA executable + reader cached under
   /// <tt>(OriginalKD, Preset)</tt> and remove the entry from the
-  /// cache. Code objects are torn down in reverse load order, since a later
-  /// one was bound against the globals of the earlier ones and its destructor
-  /// may still read them. For each code object that carries an
-  /// <tt>amdgcn.device.fini</tt> global destructor kernel (see
-  /// \c loadInstrumented), it is dispatched once, synchronously, before that
-  /// code object's executable is destroyed. Idempotent: a missing entry is
-  /// success. Returns any joined HSA destruction errors.
+  /// cache. The device-function code objects \c loadInstrumentedDeviceFunction
+  /// brought up under the entry go first, then the entry's own code objects;
+  /// each group in reverse load order, since a later code object was bound
+  /// against the globals of the earlier ones and its destructor may still read
+  /// them. For each code object that carries an <tt>amdgcn.device.fini</tt>
+  /// global destructor kernel, it is dispatched once, synchronously, before
+  /// that code object's executable is destroyed. Idempotent: a missing entry
+  /// is success. Returns any joined HSA destruction errors.
   llvm::Error unloadInstrumentedIfExists(
       const llvm::amdhsa::kernel_descriptor_t *OriginalKD, uint64_t Preset = 0);
 
@@ -205,14 +208,12 @@ public:
   /// key; code objects added by later \c loadInstrumented calls never change
   /// what a dispatch runs. Errors if no such cached variant exists.
   ///
-  /// The extended buffer inherits the record's hostcall and heap buffers
-  /// (if either was stood up for a constructor/destructor kernel and the
-  /// instrumented kernel also declares them). The record's buffers are sized
-  /// for a single wave; a many-wave instrumented dispatch that shares them
-  /// with a ctor/dtor kernel would over-subscribe. Hidden slots the
-  /// instrumented kernel declares but which the loader has not stood up a
-  /// buffer for are left zeroed — writeHiddenKernelArguments documents the
-  /// per-kind zero semantics.
+  /// If the instrumented kernel declares a \c hidden_hostcall_buffer or a
+  /// \c hidden_heap_v1 argument, the extended buffer points it at the
+  /// agent's shared buffer, initializing that buffer if this is the first
+  /// launch on the agent to need it (see \c getOrCreateAgentBuffers). Hidden
+  /// slots the loader supplies no buffer for are left zeroed —
+  /// writeHiddenKernelArguments documents the per-kind zero semantics.
   llvm::Expected<ExtendedKernargBuffer>
   overrideWithInstrumented(hsa_kernel_dispatch_packet_t &Packet,
                            const hsa_queue_t &Queue, uint64_t Preset = 0);
@@ -284,6 +285,13 @@ public:
   /// The owning HSA agent is derived from \p EnclosingKD 's HSA pointer
   /// info; no callee-address query is needed.
   ///
+  /// The loaded code object is owned by the enclosing kernel's
+  /// <tt>(EnclosingKD, Preset)</tt> entry: its <tt>amdgcn.device.init</tt>
+  /// constructor runs here, and its <tt>amdgcn.device.fini</tt> destructor
+  /// runs when that entry is erased, before the entry's own code objects are.
+  /// A code object carrying either kernel is rejected when no such entry is
+  /// cached.
+  ///
   /// \param Preset must match the preset used when the enclosing kernel
   ///   was instrumented so we bind against the same copy of the runtime
   ///   resolver's globals.
@@ -292,15 +300,19 @@ public:
       const llvm::amdhsa::kernel_descriptor_t *EnclosingKD,
       uint64_t Preset = 0);
 
-  /// Tear down every cached record. Joins all HSA destruction errors
-  /// and returns the joined \c llvm::Error (success only if every
-  /// teardown succeeded). Idempotent.
+  /// Tear down every cached record, then free every agent's shared hostcall
+  /// buffer and heap (the records' destructor kernels may still use them).
+  /// Joins all HSA destruction errors and returns the joined \c llvm::Error
+  /// (success only if every teardown succeeded). Idempotent.
   llvm::Error unloadAll();
 
   /// Walk \p Exec 's loaded code objects and erase any cache records
-  /// whose original KD pointer falls inside one of those loaded ranges.
-  /// Called by the trait subclass from inside the
-  /// \c hsa_executable_destroy interceptor.
+  /// whose original KD pointer falls inside one of those loaded ranges,
+  /// tearing each one down exactly as \c unloadInstrumentedIfExists does —
+  /// destructor kernels included. Called by the trait subclass from inside the
+  /// \c hsa_executable_destroy interceptor, before \p Exec itself is
+  /// destroyed, so the destructors still run against a live application
+  /// executable.
   llvm::Error invalidateOriginalExec(hsa_executable_t Exec);
 
 protected:
@@ -406,22 +418,6 @@ protected:
     /// Constant \c printf format strings this code object's metadata carries,
     /// needed to decode what its kernels write into a \c hidden_printf_buffer.
     PrintfFormatStringMap PrintfFormatStrings;
-    /// Buffer through which this record's constructor and destructor kernels
-    /// reach the host, if either declares a \c hidden_hostcall_buffer
-    /// argument; \c nullptr otherwise.
-    ///
-    /// It has to outlive the constructor dispatch rather than be torn down
-    /// with it: a global constructor that allocates device memory through the
-    /// hostcall device-memory service expects that memory to still be there
-    /// when the matching destructor frees it, and the service tracks those
-    /// allocations here.
-    std::unique_ptr<HostcallBufferAllocation> HostcallBufferAlloc;
-    /// Heap backing device-side \c malloc for this record's constructor and
-    /// destructor kernels, if either declares a \c hidden_heap_v1 argument;
-    /// \c nullptr otherwise. Record-scoped for the same reason the hostcall
-    /// buffer is: what the constructor allocates has to still be there when
-    /// the destructor frees it.
-    std::unique_ptr<DeviceHeapBuffer> HeapBuffer;
   };
 
   /// Cache key — original KD pointer + preset.
@@ -455,18 +451,37 @@ protected:
 
   /// One code object we brought up for a device function reached at
   /// runtime by the resolver payload. Simpler than \c InstrumentedRecord
-  /// because a device function has no kernel descriptor, no
-  /// device.init/fini ctor/dtor path, no extended kernarg buffer, and no
-  /// hostcall/heap buffers to stand up — the enclosing kernel's record
-  /// owns all of those. Kept only for HSA-lifetime bookkeeping (destroy
-  /// on unload); the caller/callee address mapping now lives in the
-  /// device-side resolver table populated by the code object's ctor,
-  /// see \c PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap.
+  /// because a device function has no kernel descriptor and no extended
+  /// kernarg buffer. Kept for HSA-lifetime bookkeeping and for its
+  /// destructor; the caller/callee address mapping lives in the device-side
+  /// resolver table populated by the code object's ctor, see
+  /// \c PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap.
   struct DeviceFuncRecord {
+    /// Pointed into by \c DtorKernel 's \c KDHostAddress.
     std::unique_ptr<llvm::MemoryBuffer> RelocatableBuffer;
     hsa_code_object_reader_t Reader{};
     hsa_executable_t Exec{};
     hsa_agent_t Agent{};
+    /// The entry of the kernel this device function was reached from, and
+    /// \c std::nullopt if none was cached when it was loaded.
+    ///
+    /// The device function lives exactly as long as that entry does, and is
+    /// torn down right before it. Its constructor publishes the device
+    /// function's mapping into the entry's resolver table, and the entry's
+    /// table is the one its destructor
+    /// (\c PatchPCUsagesPass::Parser::finiEntryPointToTraceFunctionAddrMap)
+    /// releases, so tearing it down any earlier frees a table the entry's
+    /// instrumented kernel still reads — and any later leaves the entry's
+    /// resolver table pointing into an executable that is gone.
+    std::optional<Key> Enclosing;
+    /// This code object's <tt>amdgcn.device.fini</tt> global-destructor
+    /// kernel, if it carries one. Dispatched once by
+    /// \c eraseDeviceFuncRecordLocked right before the executable is
+    /// destroyed.
+    std::optional<LoadedKernelInfo> DtorKernel;
+    /// Constant \c printf format strings this code object's metadata carries,
+    /// needed to decode what its constructor and destructor print.
+    PrintfFormatStringMap PrintfFormatStrings;
     /// Device-global variables this code object defines, harvested after
     /// freeze exactly like \c InstrumentedRecord::NameToVarSymbol. A device
     /// function loaded later may reference a global an earlier one defined —
@@ -476,31 +491,74 @@ protected:
   };
 
   /// HSA-lifetime bookkeeping for every instrumented device-function code
-  /// object we've brought up. Destroyed on \c unloadAll ; not consulted
-  /// for address resolution (that's the device-side resolver table's job).
+  /// object we've brought up, in load order. Each is destroyed along with
+  /// its \c DeviceFuncRecord::Enclosing entry, or on \c unloadAll if it has
+  /// none; not consulted for address resolution (that's the device-side
+  /// resolver table's job).
   std::vector<DeviceFuncRecord> DeviceFuncRecords;
 
   /// Cached \c HSA_AMD_SYSTEM_INFO_SVM_SUPPORTED query result.
   std::optional<bool> HmmSupportedCache;
 
   /// Answers the hostcall requests made by every kernel this loader
-  /// dispatches. One listener serves every record, and it is only stood up —
-  /// thread and all — once a kernel that can actually make a hostcall is
-  /// about to run.
+  /// dispatches. One listener serves every agent's hostcall buffer, and it is
+  /// only stood up — thread and all — once a kernel that can actually make a
+  /// hostcall is about to run.
   std::unique_ptr<HostcallListener> Listener;
 
-  /// Destroy every code object of the entry pointed to by \p It — in reverse
-  /// load order, since a later one is bound against the globals of the earlier
-  /// ones — and erase the entry from \c ByOriginal. Caller must hold the
-  /// writer lock.
+  /// The buffers behind the hidden arguments whose contents have to outlive a
+  /// single dispatch, shared by every kernel this loader launches on one
+  /// agent — instrumented kernels and global constructors/destructors alike,
+  /// across every record and every queue.
+  ///
+  /// This mirrors how ROCclr scopes them: the heap is per device
+  /// (\c roc::Device::HiddenHeapAlloc), and the hostcall buffer is created on
+  /// the first launch that needs one (\c roc::VirtualGPU
+  /// ::getOrCreateHostcallBuffer). Sharing them is also what makes device-side
+  /// \c malloc work across launches: memory a global constructor allocates
+  /// out of the heap, or through the hostcall device-memory service, has to
+  /// still be there when the matching destructor — or an instrumented
+  /// dispatch in between — reaches for it.
+  struct AgentBuffers {
+    /// Buffer the agent's kernels submit hostcalls through, sized for every
+    /// wave the agent can hold resident; \c nullptr until a launch on the
+    /// agent first declares a \c hidden_hostcall_buffer or
+    /// \c hidden_heap_v1 argument.
+    std::unique_ptr<HostcallBufferAllocation> Hostcall;
+    /// Heap backing device-side \c malloc on the agent; \c nullptr until a
+    /// launch on the agent first declares a \c hidden_heap_v1 argument.
+    std::unique_ptr<DeviceHeapBuffer> Heap;
+  };
+
+  /// Per-agent buffers, keyed by \c hsa_agent_t::handle. Entries are only
+  /// added — a buffer, once stood up, lives until \c unloadAll — so that no
+  /// in-flight dispatch is ever left pointing at a freed one.
+  llvm::DenseMap<decltype(hsa_agent_t::handle), AgentBuffers> PerAgentBuffers;
+
+  /// Destroy every device-function code object loaded under the entry
+  /// pointed to by \p It, then every code object of the entry itself — each
+  /// in reverse load order, since a later one is bound against the globals of
+  /// the earlier ones — and erase the entry from \c ByOriginal. Every
+  /// destructor kernel runs before the executable carrying it is destroyed.
+  /// Caller must hold the writer lock.
   llvm::Error eraseRecordLocked(
       llvm::DenseMap<Key, CodeObjectList, KeyDenseMapInfo>::iterator It);
 
   /// Dispatch \p Rec 's global destructor kernel if it has one, then destroy
-  /// its HSA executable + reader and free the managed-variable storage and
-  /// record-scoped buffers it owns. Does not touch \c ByOriginal. Caller must
-  /// hold the writer lock.
+  /// its HSA executable + reader and free the managed-variable storage it
+  /// owns. Does not touch \c ByOriginal. Caller must hold the writer lock.
   llvm::Error eraseCodeObjectLocked(InstrumentedRecord &Rec);
+
+  /// Dispatch \p Rec 's global destructor kernel if it has one, then destroy
+  /// its HSA executable + reader. Does not touch \c DeviceFuncRecords. Caller
+  /// must hold the writer lock.
+  llvm::Error eraseDeviceFuncRecordLocked(DeviceFuncRecord &Rec);
+
+  /// Erase every \c DeviceFuncRecord for which \p ShouldErase returns
+  /// \c true, in reverse load order, via \c eraseDeviceFuncRecordLocked.
+  /// Caller must hold the writer lock.
+  llvm::Error eraseDeviceFuncRecordsLocked(
+      llvm::function_ref<bool(const DeviceFuncRecord &)> ShouldErase);
 
   /// Declare every global variable defined by the already-loaded code objects
   /// \p Prior inside the not-yet-loaded executable \p Exec, each pointing at
@@ -673,23 +731,36 @@ protected:
   /// lock.
   llvm::Expected<HostcallListener *> getOrCreateHostcallListener();
 
-  /// Allocates a hostcall buffer for \p Agent, sized for a single-wave
-  /// dispatch, and registers it with the loader's listener so packets pushed
-  /// onto it are answered. Caller must hold the writer lock.
+  /// Allocates a hostcall buffer for \p Agent, with a packet for every wave
+  /// the agent can hold resident, and registers it with the loader's listener
+  /// so packets pushed onto it are answered. Caller must hold the writer lock.
   llvm::Expected<std::unique_ptr<HostcallBufferAllocation>>
   createAndRegisterHostcallBuffer(hsa_agent_t Agent);
 
-  /// Deregisters \p Buffer from the loader's listener, so that it can be
-  /// freed without the listener still walking it.
-  void unregisterHostcallBuffer(HostcallBufferAllocation &Buffer);
+  /// Points \p Buffers 's hostcall buffer and heap at \p Agent 's shared
+  /// ones, for whichever of the two \p Kernel declares a hidden argument
+  /// for, standing either up if this is the first launch on \p Agent to need
+  /// it. A kernel that declares a heap is handed the hostcall buffer as well,
+  /// since device-side \c malloc sources its slabs through the hostcall
+  /// device-memory service. Caller must hold the writer lock.
+  llvm::Error getOrCreateAgentBuffers(hsa_agent_t Agent,
+                                      const LoadedKernelInfo &Kernel,
+                                      HiddenArgBufferAddresses &Buffers);
 
-  /// Synchronously dispatches \p Kernel over a single work-item on
-  /// <tt>Rec.Agent</tt> using a private queue, and blocks until it completes.
+  /// Deregisters every agent's hostcall buffer from the listener and frees
+  /// it, along with every agent's heap and whatever device memory the
+  /// hostcall device-memory service still holds for it. Caller must hold the
+  /// writer lock, and no kernel that may still reach these buffers can be in
+  /// flight.
+  void releaseAgentBuffersLocked();
+
+  /// Synchronously dispatches \p Kernel over a single work-item on \p Agent
+  /// using a private queue, and blocks until it completes.
   /// Used to invoke the <tt>amdgcn.device.init</tt> /
   /// <tt>amdgcn.device.fini</tt> global constructor/destructor kernels the
   /// AMDGPU backend's <tt>amdgpu-lower-ctor-dtor</tt> pass may emit into an
-  /// instrumented relocatable. \p Kernel must be one of \p Rec 's own
-  /// kernels, since the record owns the buffers the dispatch hands it.
+  /// instrumented relocatable. \p PrintfFormatStrings must be the ones of the
+  /// code object \p Kernel belongs to.
   ///
   /// Every dispatch parameter is read out of \p Kernel 's host kernel
   /// descriptor. The kernarg segment is backed by a zero-filled buffer of
@@ -703,14 +774,15 @@ protected:
   /// callees need, and there is no way to recover the real requirement.
   ///
   /// Hidden arguments that need a buffer are supplied only when \p Kernel
-  /// declares them. Record-scoped ones (the hostcall buffer and the device
-  /// heap) come from \p Rec; the rest — the printf buffer, the grid sync
-  /// structure and the completion action — are allocated for this dispatch
-  /// and released with it. A declared \c hidden_printf_buffer is drained onto
-  /// the host's \c stdout / \c stderr once the dispatch completes.
-  llvm::Error
-  launchSingleWorkItemKernelAndWait(const InstrumentedRecord &Rec,
-                                    const LoadedKernelInfo &Kernel);
+  /// declares them. The hostcall buffer and the device heap are the agent's
+  /// shared ones (see \c getOrCreateAgentBuffers); the rest — the printf
+  /// buffer, the grid sync structure and the completion action — are
+  /// allocated for this dispatch and released with it. A declared
+  /// \c hidden_printf_buffer is drained onto the host's \c stdout / \c stderr
+  /// once the dispatch completes.
+  llvm::Error launchSingleWorkItemKernelAndWait(
+      hsa_agent_t Agent, const LoadedKernelInfo &Kernel,
+      const PrintfFormatStringMap &PrintfFormatStrings);
 
   /// Free an extended kernarg buffer previously handed out by
   /// \c overrideWithInstrumented. \p Ptr must have been allocated from an

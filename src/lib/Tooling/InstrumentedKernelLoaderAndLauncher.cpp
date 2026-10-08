@@ -132,6 +132,18 @@ llvm::Error writeKernargAt(llvm::MutableArrayRef<uint8_t> Buf, uint32_t Offset,
   return llvm::Error::success();
 }
 
+/// Reads the constant \c printf format strings out of a code object's
+/// already-parsed metadata document \p MetadataDoc.
+llvm::Expected<PrintfFormatStringMap>
+getPrintfFormatStrings(llvm::msgpack::Document &MetadataDoc) {
+  auto NoteMDOrErr =
+      amdgpu::hsamd::MetadataParser().parseNoteMetaData(MetadataDoc);
+  LUTHIER_RETURN_ON_ERROR(NoteMDOrErr.takeError());
+  if (!(*NoteMDOrErr)->Printf)
+    return PrintfFormatStringMap{};
+  return parsePrintfFormatStrings(*(*NoteMDOrErr)->Printf);
+}
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -162,7 +174,19 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::eraseRecordLocked(
              << "[InstrumentedKernelLoaderAndLauncher] eraseRecordLocked KD="
              << It->first.KD << " preset=" << It->first.Preset << " ("
              << It->second.size() << " code object(s))\n");
-  llvm::Error E = llvm::Error::success();
+  // The device functions reached from this entry's kernel go first: they were
+  // bound against the entry's globals, so their destructors have to run while
+  // those globals still exist. Their destructors and the entry's own release
+  // the same resolver table through the same pointer, and each nulls it out,
+  // so whichever runs first frees it and the rest find nothing to free.
+  const Key K = It->first;
+  llvm::Error E = eraseDeviceFuncRecordsLocked(
+      [&](const DeviceFuncRecord &Rec) {
+        return Rec.Enclosing && KeyDenseMapInfo::isEqual(*Rec.Enclosing, K);
+      });
+  // eraseDeviceFuncRecordsLocked does not touch ByOriginal, so It is still
+  // valid.
+
   // Reverse load order: a later code object was bound against the globals of
   // the earlier ones, and its destructor kernel may still read them, so it has
   // to go first.
@@ -184,17 +208,8 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::eraseCodeObjectLocked(
   // this record has one, while the executable is still alive.
   if (R.DtorKernel)
     E = llvm::joinErrors(std::move(E),
-                         launchSingleWorkItemKernelAndWait(R, *R.DtorKernel));
-
-  // Now that the destructor has had its chance to release whatever the
-  // constructor allocated, stop listening on the hostcall buffer and free it
-  // — along with the heap and any device memory the kernels leaked through
-  // the device-memory service.
-  if (R.HostcallBufferAlloc) {
-    unregisterHostcallBuffer(*R.HostcallBufferAlloc);
-    R.HostcallBufferAlloc.reset();
-  }
-  R.HeapBuffer.reset();
+                         launchSingleWorkItemKernelAndWait(
+                             R.Agent, *R.DtorKernel, R.PrintfFormatStrings));
 
   // Executable first (releases its references into the reader's host
   // memory), then reader.
@@ -209,6 +224,38 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::eraseCodeObjectLocked(
   return E;
 }
 
+llvm::Error InstrumentedKernelLoaderAndLauncher::eraseDeviceFuncRecordLocked(
+    DeviceFuncRecord &R) {
+  llvm::Error E = llvm::Error::success();
+  const auto Core = CoreApi.getTable();
+
+  // Same as for a kernel's code object: the destructor runs while the
+  // executable it lives in, and every executable it was bound against, is
+  // still alive.
+  if (R.DtorKernel)
+    E = llvm::joinErrors(std::move(E),
+                         launchSingleWorkItemKernelAndWait(
+                             R.Agent, *R.DtorKernel, R.PrintfFormatStrings));
+
+  E = llvm::joinErrors(std::move(E), hsa::executableDestroy(Core, R.Exec));
+  E = llvm::joinErrors(std::move(E),
+                       hsa::codeObjectReaderDestroy(R.Reader, Core));
+  return E;
+}
+
+llvm::Error InstrumentedKernelLoaderAndLauncher::eraseDeviceFuncRecordsLocked(
+    llvm::function_ref<bool(const DeviceFuncRecord &)> ShouldErase) {
+  llvm::Error E = llvm::Error::success();
+  // Reverse load order: a device function may be bound against the globals of
+  // one loaded before it.
+  for (auto I = DeviceFuncRecords.rbegin(), End = DeviceFuncRecords.rend();
+       I != End; ++I)
+    if (ShouldErase(*I))
+      E = llvm::joinErrors(std::move(E), eraseDeviceFuncRecordLocked(*I));
+  llvm::erase_if(DeviceFuncRecords, ShouldErase);
+  return E;
+}
+
 //===----------------------------------------------------------------------===//
 // unloadAll / unloadInstrumentedIfExists
 //===----------------------------------------------------------------------===//
@@ -219,25 +266,22 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::unloadAll() {
              << "[InstrumentedKernelLoaderAndLauncher] unloadAll: "
              << ByOriginal.size() << " kernel record(s), "
              << DeviceFuncRecords.size() << " device-function record(s)\n");
-  llvm::Error E = llvm::Error::success();
-  // Tear down device-function records first — they depend on the parent
-  // kernel's globals (bound in via defineGlobalsOfPriorCodeObjects at load
-  // time). Destroying the parent first would leave those pointers dangling
-  // when the device-function executable is destroyed.
-  const auto Core = CoreApi.getTable();
-  for (auto &Rec : DeviceFuncRecords) {
-    E = llvm::joinErrors(std::move(E),
-                         hsa::executableDestroy(Core, Rec.Exec));
-    E = llvm::joinErrors(std::move(E),
-                         hsa::codeObjectReaderDestroy(Rec.Reader, Core));
-  }
-  DeviceFuncRecords.clear();
+  // Tear down every device-function record first, destructors included —
+  // they depend on the parent kernels' globals (bound in via
+  // defineGlobalsOfAllLoadedCodeObjects at load time). Destroying a parent
+  // first would leave those pointers dangling while the device function's
+  // destructor runs.
+  llvm::Error E =
+      eraseDeviceFuncRecordsLocked([](const DeviceFuncRecord &) { return true; });
   // eraseRecordLocked calls ByOriginal.erase, which bumps DenseMap's epoch and
   // may rehome other buckets — no surviving iterator can bridge iterations.
   // Drain via begin() each pass; DenseMap::end() is recomputed on each cmp.
   while (!ByOriginal.empty())
     E = llvm::joinErrors(std::move(E),
                          eraseRecordLocked(ByOriginal.begin()));
+  // Only now that every destructor kernel has run: they reach the agents'
+  // hostcall buffers and heaps too.
+  releaseAgentBuffersLocked();
   return E;
 }
 
@@ -385,6 +429,11 @@ InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented(
   if (!K.HasAppKernargPrefix)
     return ExtendedKernargBuffer{};
 
+  // Resolve the agent's shared buffers before allocating anything, so a
+  // failure here has nothing to unwind.
+  HiddenArgBufferAddresses Buffers;
+  LUTHIER_RETURN_ON_ERROR(getOrCreateAgentBuffers(Rec.Agent, K, Buffers));
+
   const auto Core = CoreApi.getTable();
   auto KernargRegionOrErr = hsa::agentFindKernargRegion(Core, Rec.Agent);
   LUTHIER_RETURN_ON_ERROR(KernargRegionOrErr.takeError());
@@ -399,19 +448,6 @@ InstrumentedKernelLoaderAndLauncher::overrideWithInstrumented(
   LUTHIER_RETURN_ON_ERROR(AllocOrErr.takeError());
   void *ExtPtr = *AllocOrErr;
   std::memset(ExtPtr, 0, KernargSize);
-
-  // Wire in the record-scoped buffers if either is present. Both were sized
-  // for a single-wave ctor/dtor dispatch; a many-wave instrumented kernel
-  // that shares them with a ctor/dtor could over-subscribe them. Hidden
-  // slots the kernel declares but which the loader has no buffer for stay
-  // null (writeHiddenKernelArguments documents the per-kind zero semantics).
-  HiddenArgBufferAddresses Buffers;
-  Buffers.HostcallBuffer =
-      Rec.HostcallBufferAlloc
-          ? Rec.HostcallBufferAlloc->getDeviceVisibleAddress()
-          : nullptr;
-  Buffers.Heap =
-      Rec.HeapBuffer ? Rec.HeapBuffer->getDeviceVisibleAddress() : nullptr;
 
   if (auto Err = fillExtendedKernargBuffer(
           llvm::MutableArrayRef<uint8_t>(static_cast<uint8_t *>(ExtPtr),
@@ -968,17 +1004,12 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
     return CleanUpFailedLoadAndJoinErrors(MDDocOrErr.takeError());
   llvm::msgpack::Document &MetadataDoc = **MDDocOrErr;
 
-  auto NoteMDOrErr =
-      amdgpu::hsamd::MetadataParser().parseNoteMetaData(MetadataDoc);
-  if (!NoteMDOrErr)
-    return CleanUpFailedLoadAndJoinErrors(NoteMDOrErr.takeError());
-  PrintfFormatStringMap PrintfFormatStrings;
-  if ((*NoteMDOrErr)->Printf) {
-    auto FormatsOrErr = parsePrintfFormatStrings(*(*NoteMDOrErr)->Printf);
-    if (!FormatsOrErr)
-      return CleanUpFailedLoadAndJoinErrors(FormatsOrErr.takeError());
-    PrintfFormatStrings = std::move(*FormatsOrErr);
-  }
+  auto PrintfFormatStringsOrErr = getPrintfFormatStrings(MetadataDoc);
+  if (!PrintfFormatStringsOrErr)
+    return CleanUpFailedLoadAndJoinErrors(
+        PrintfFormatStringsOrErr.takeError());
+  PrintfFormatStringMap PrintfFormatStrings =
+      std::move(*PrintfFormatStringsOrErr);
 
   // Everything the dispatch needs about the instrumented kernel comes off its
   // kernel descriptor in the host code object. A code object that carries no
@@ -1025,57 +1056,6 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   Rec.DtorKernel = std::move(*DtorKernelOrErr);
   Rec.PrintfFormatStrings = std::move(PrintfFormatStrings);
 
-  // Stand up the record-scoped buffers if the constructor, destructor,
-  // OR the instrumented kernel itself can reach them. They belong to the
-  // record rather than to a single dispatch: memory the constructor
-  // allocates has to survive until the destructor releases it, and the
-  // instrumented kernel — including its injected payloads — may reference
-  // the same buffers on every dispatch (a printf-carrying payload keeps
-  // asking the hostcall service for slots for the record's whole life).
-  auto AnyRecordKernelDeclares =
-      [&](amdgpu::hsamd::ValueKind Kind) {
-        return (CtorKernelOrErr->has_value() &&
-                declaresHiddenArg(**CtorKernelOrErr, Kind)) ||
-               (Rec.DtorKernel && declaresHiddenArg(*Rec.DtorKernel, Kind)) ||
-               (Rec.Kernel && declaresHiddenArg(*Rec.Kernel, Kind));
-      };
-
-  if (AnyRecordKernelDeclares(
-          amdgpu::hsamd::ValueKind::HiddenHostcallBuffer)) {
-    auto HostcallBufferOrErr = createAndRegisterHostcallBuffer(Agent);
-    if (!HostcallBufferOrErr)
-      return CleanUpFailedLoadAndJoinErrors(HostcallBufferOrErr.takeError());
-    Rec.HostcallBufferAlloc = std::move(*HostcallBufferOrErr);
-  }
-
-  // From here on the record owns resources that Fail() does not know how to
-  // release, so unwind them explicitly before handing the error back.
-  auto FailWithRecord = [&](llvm::Error E) -> llvm::Error {
-    if (Rec.HostcallBufferAlloc) {
-      unregisterHostcallBuffer(*Rec.HostcallBufferAlloc);
-      Rec.HostcallBufferAlloc.reset();
-    }
-    Rec.HeapBuffer.reset();
-    return CleanUpFailedLoadAndJoinErrors(std::move(E));
-  };
-
-  if (AnyRecordKernelDeclares(amdgpu::hsamd::ValueKind::HiddenHeapV1)) {
-    auto HeapOrErr = DeviceHeapBuffer::create(AmdExt.getTable(), Agent);
-    if (!HeapOrErr)
-      return FailWithRecord(HeapOrErr.takeError());
-    Rec.HeapBuffer = std::move(*HeapOrErr);
-    // The heap sources every slab through the device-memory hostcall, so a
-    // kernel handed a heap but no hostcall buffer would spin on its first
-    // allocation. The compiler emits both arguments together, so this only
-    // trips on a hand-written or rewritten code object.
-    if (!Rec.HostcallBufferAlloc)
-      return FailWithRecord(LUTHIER_MAKE_GENERIC_ERROR(
-          "The instrumented code object declares a hidden_heap_v1 argument "
-          "but no hidden_hostcall_buffer; device-side malloc obtains its "
-          "memory through the hostcall device-memory service and cannot work "
-          "without one"));
-  }
-
   // Harvest this executable's device-global variable symbols for host readback.
   auto HarvestCb = [&](hsa_executable_symbol_t Sym) -> llvm::Error {
     auto KindOrErr = hsa::executableSymbolGetType(Core, Sym);
@@ -1089,22 +1069,22 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
   };
   if (auto Err =
           hsa::executableIterateAgentSymbols(Core, Exec, Agent, HarvestCb))
-    return FailWithRecord(std::move(Err));
+    return CleanUpFailedLoadAndJoinErrors(std::move(Err));
 
   // Allocate + publish the managed variables this instrumented copy carries,
   // driven by its own relocatable. The allocations are owned by Rec and freed
   // when the record is erased; loadManagedVarsForRecord frees them itself if it
   // fails here (Rec is not yet cached).
   if (auto Err = loadManagedVarsForRecord(*Parsed, Rec))
-    return FailWithRecord(std::move(Err));
+    return CleanUpFailedLoadAndJoinErrors(std::move(Err));
 
   // Invoke the global-constructor kernel ("amdgcn.device.init"), if the
   // relocatable carried one, now that the managed variables it may
   // reference have been published. Runs once, synchronously.
   if (CtorKernelOrErr->has_value()) {
-    if (auto Err =
-            launchSingleWorkItemKernelAndWait(Rec, **CtorKernelOrErr))
-      return FailWithRecord(std::move(Err));
+    if (auto Err = launchSingleWorkItemKernelAndWait(
+            Agent, **CtorKernelOrErr, Rec.PrintfFormatStrings))
+      return CleanUpFailedLoadAndJoinErrors(std::move(Err));
   }
 
   if (IsAdditional) {
@@ -1233,7 +1213,16 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumentedDeviceFunction(
   if (auto Err = hsa::executableFreeze(Core, Exec))
     return Fail(std::move(Err));
 
-  // Run the constructor kernel
+  DeviceFuncRecord Rec;
+  Rec.Reader = Reader;
+  Rec.Exec = Exec;
+  Rec.Agent = Agent;
+  if (ParentCodeObjects)
+    Rec.Enclosing = Key{EnclosingKD, Preset};
+
+  // Find the global constructor and destructor kernels, and run the
+  // constructor. The destructor is cached on the record and dispatched when
+  // the record is torn down along with its enclosing entry.
   {
     auto ParsedOrErr = object::AMDGCNObjectFile::createAMDGCNObjectFile(RelocRef);
     if (!ParsedOrErr)
@@ -1245,28 +1234,42 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumentedDeviceFunction(
       return Fail(MDDocOrErr.takeError());
     llvm::msgpack::Document &MetadataDoc = **MDDocOrErr;
 
+    auto PrintfFormatStringsOrErr = getPrintfFormatStrings(MetadataDoc);
+    if (!PrintfFormatStringsOrErr)
+      return Fail(PrintfFormatStringsOrErr.takeError());
+    Rec.PrintfFormatStrings = std::move(*PrintfFormatStringsOrErr);
+
+    // The descriptor's host copy points into RelocRef's buffer, which the
+    // record takes ownership of below.
+    auto DtorKernelOrErr = findKernelIfPresent(*Parsed, MetadataDoc, Exec,
+                                               Agent, GlobalDtorKernelName);
+    if (!DtorKernelOrErr)
+      return Fail(DtorKernelOrErr.takeError());
+    Rec.DtorKernel = std::move(*DtorKernelOrErr);
+
     auto CtorKernelOrErr = findKernelIfPresent(*Parsed, MetadataDoc, Exec, Agent,
                                                GlobalCtorKernelName);
     if (!CtorKernelOrErr)
       return Fail(CtorKernelOrErr.takeError());
 
+    // A constructor or destructor touches the enclosing kernel's resolver
+    // table, so without an entry to own that table there is nothing for
+    // either to run against — and nothing whose teardown would dispatch the
+    // destructor.
+    if ((CtorKernelOrErr->has_value() || Rec.DtorKernel) &&
+        ParentCodeObjects == nullptr)
+      return Fail(LUTHIER_MAKE_GENERIC_ERROR(
+          "The instrumented device-function code object carries a global "
+          "constructor or destructor, but no enclosing-kernel record owns the "
+          "runtime resolver table they operate on"));
+
     if (CtorKernelOrErr->has_value()) {
-      if (ParentCodeObjects == nullptr)
-        return Fail(LUTHIER_MAKE_GENERIC_ERROR(
-            "The instrumented device-function code object carries a global "
-            "constructor, but no enclosing-kernel record owns the runtime "
-            "resolver table it has to publish into"));
       if (auto Err = launchSingleWorkItemKernelAndWait(
-              ParentCodeObjects->front(), **CtorKernelOrErr))
+              Agent, **CtorKernelOrErr, Rec.PrintfFormatStrings))
         return Fail(std::move(Err));
     }
   }
-
-  DeviceFuncRecord Rec;
   Rec.RelocatableBuffer = std::move(Relocatable);
-  Rec.Reader = Reader;
-  Rec.Exec = Exec;
-  Rec.Agent = Agent;
 
   // Harvest this code object's device-global variables so the *next* device
   // function we bring up can be bound against them — its constructor may have
@@ -1535,10 +1538,9 @@ llvm::Error InstrumentedKernelLoaderAndLauncher::writeHiddenKernelArguments(
       Value = 0;
       break;
     // A kernel that makes a hostcall spins until the host answers it, so
-    // handing it a null buffer would hang the dispatch outright. The caller
-    // only leaves this null when the kernel declared the argument but no
-    // listener could be stood up; the kernel then fails the same way it would
-    // under HIP without hostcall support.
+    // handing it a null buffer would hang the dispatch outright. The loader's
+    // callers always supply the agent's buffer when the kernel declares the
+    // argument; a null here only comes from a caller that opted out.
     case ValueKind::HiddenHostcallBuffer:
       Value = reinterpret_cast<uintptr_t>(Buffers.HostcallBuffer);
       break;
@@ -1597,24 +1599,88 @@ InstrumentedKernelLoaderAndLauncher::getOrCreateHostcallListener() {
 llvm::Expected<std::unique_ptr<HostcallBufferAllocation>>
 InstrumentedKernelLoaderAndLauncher::createAndRegisterHostcallBuffer(
     const hsa_agent_t Agent) {
+  const auto Core = CoreApi.getTable();
   auto ListenerOrErr = getOrCreateHostcallListener();
   LUTHIER_RETURN_ON_ERROR(ListenerOrErr.takeError());
 
-  // These kernels are dispatched over a single work-item, so one wave can
-  // ever have a request outstanding. Sizing the buffer for the agent's peak
-  // occupancy the way HIP does would cost tens of megabytes for nothing.
+  // Every kernel launched on the agent shares this buffer, whichever queue it
+  // was dispatched on, and device code assumes the free stack never runs dry:
+  // a wave holds at most one packet while it waits on the host, so the
+  // buffer needs a packet for every wave the agent can hold resident. This is
+  // the figure ROCclr sizes its per-queue buffer by
+  // (roc::VirtualGPU::getOrCreateHostcallBuffer); since it bounds every
+  // dispatch in flight on the agent at once, it is enough for one buffer
+  // shared across queues too.
+  auto NumCUsOrErr = hsa::agentGetComputeUnitCount(Core, Agent);
+  LUTHIER_RETURN_ON_ERROR(NumCUsOrErr.takeError());
+  auto WavesPerCUOrErr = hsa::agentGetMaxWavesPerComputeUnit(Core, Agent);
+  LUTHIER_RETURN_ON_ERROR(WavesPerCUOrErr.takeError());
+  const uint32_t NumWaves = *NumCUsOrErr * *WavesPerCUOrErr;
+
   auto BufferOrErr = HostcallBufferAllocation::create(
-      CoreApi.getTable(), AmdExt.getTable(), Agent, /*NumWaves=*/1);
+      Core, AmdExt.getTable(), Agent, NumWaves);
   LUTHIER_RETURN_ON_ERROR(BufferOrErr.takeError());
 
   (*ListenerOrErr)->addBuffer((*BufferOrErr)->getBuffer());
+
+  LLVM_DEBUG(luthier::dbgs() << llvm::formatv(
+                 "[InstrumentedKernelLoaderAndLauncher] created hostcall "
+                 "buffer {0} for agent {1:x} ({2} waves)\n",
+                 (*BufferOrErr)->getDeviceVisibleAddress(), Agent.handle,
+                 NumWaves));
   return std::move(*BufferOrErr);
 }
 
-void InstrumentedKernelLoaderAndLauncher::unregisterHostcallBuffer(
-    HostcallBufferAllocation &Buffer) {
-  if (Listener)
-    Listener->removeBuffer(Buffer.getBuffer());
+llvm::Error InstrumentedKernelLoaderAndLauncher::getOrCreateAgentBuffers(
+    const hsa_agent_t Agent, const LoadedKernelInfo &Kernel,
+    HiddenArgBufferAddresses &Buffers) {
+  const bool NeedsHeap =
+      declaresHiddenArg(Kernel, amdgpu::hsamd::ValueKind::HiddenHeapV1);
+  // The heap sources every slab through the device-memory hostcall, so a
+  // kernel handed a heap but no serviced hostcall buffer would spin on its
+  // first allocation. The compiler emits both arguments together; standing
+  // the buffer up regardless covers a hand-written or rewritten code object.
+  const bool NeedsHostcall =
+      NeedsHeap ||
+      declaresHiddenArg(Kernel, amdgpu::hsamd::ValueKind::HiddenHostcallBuffer);
+  if (!NeedsHostcall)
+    return llvm::Error::success();
+
+  AgentBuffers &AB = PerAgentBuffers[Agent.handle];
+
+  if (!AB.Hostcall) {
+    auto HostcallOrErr = createAndRegisterHostcallBuffer(Agent);
+    LUTHIER_RETURN_ON_ERROR(HostcallOrErr.takeError());
+    AB.Hostcall = std::move(*HostcallOrErr);
+  }
+  Buffers.HostcallBuffer = AB.Hostcall->getDeviceVisibleAddress();
+
+  if (NeedsHeap) {
+    if (!AB.Heap) {
+      auto HeapOrErr = DeviceHeapBuffer::create(AmdExt.getTable(), Agent);
+      LUTHIER_RETURN_ON_ERROR(HeapOrErr.takeError());
+      AB.Heap = std::move(*HeapOrErr);
+      LLVM_DEBUG(luthier::dbgs() << llvm::formatv(
+                     "[InstrumentedKernelLoaderAndLauncher] created device "
+                     "heap {0} for agent {1:x}\n",
+                     AB.Heap->getDeviceVisibleAddress(), Agent.handle));
+    }
+    Buffers.Heap = AB.Heap->getDeviceVisibleAddress();
+  }
+  return llvm::Error::success();
+}
+
+void InstrumentedKernelLoaderAndLauncher::releaseAgentBuffersLocked() {
+  for (auto &[Handle, AB] : PerAgentBuffers) {
+    // Stop the listener walking the buffer before it is freed. Freeing it
+    // also reclaims whatever the device-memory service still holds for the
+    // agent's kernels.
+    if (AB.Hostcall && Listener)
+      Listener->removeBuffer(AB.Hostcall->getBuffer());
+    AB.Hostcall.reset();
+    AB.Heap.reset();
+  }
+  PerAgentBuffers.clear();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1623,10 +1689,10 @@ void InstrumentedKernelLoaderAndLauncher::unregisterHostcallBuffer(
 
 llvm::Error
 InstrumentedKernelLoaderAndLauncher::launchSingleWorkItemKernelAndWait(
-    const InstrumentedRecord &Rec, const LoadedKernelInfo &Kernel) {
+    const hsa_agent_t Agent, const LoadedKernelInfo &Kernel,
+    const PrintfFormatStringMap &PrintfFormatStrings) {
   const auto Core = CoreApi.getTable();
   const auto AmdExtTbl = AmdExt.getTable();
-  const hsa_agent_t Agent = Rec.Agent;
 
   LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
       Kernel.KDHostAddress != nullptr,
@@ -1706,7 +1772,7 @@ InstrumentedKernelLoaderAndLauncher::launchSingleWorkItemKernelAndWait(
   // Everything below is host-visible memory the device pokes at while the
   // dispatch runs, so it comes from a host fine-grained pool the agent is
   // granted access to. These live only as long as the dispatch; the buffers
-  // whose contents have to outlast it belong to the record instead.
+  // whose contents have to outlast it are the agent's shared ones.
   llvm::SmallVector<void *, 3> DispatchAllocs;
   auto CleanupDispatchBuffers = [&](llvm::Error E) -> llvm::Error {
     for (void *Ptr : DispatchAllocs)
@@ -1741,11 +1807,8 @@ InstrumentedKernelLoaderAndLauncher::launchSingleWorkItemKernelAndWait(
   };
 
   HiddenArgBufferAddresses Buffers;
-  Buffers.HostcallBuffer =
-      Rec.HostcallBufferAlloc ? Rec.HostcallBufferAlloc->getDeviceVisibleAddress()
-                              : nullptr;
-  Buffers.Heap =
-      Rec.HeapBuffer ? Rec.HeapBuffer->getDeviceVisibleAddress() : nullptr;
+  if (auto Err = getOrCreateAgentBuffers(Agent, Kernel, Buffers))
+    return CleanupDispatchBuffers(std::move(Err));
 
   // A buffered-printf kernel bump-allocates its records out of a buffer the
   // host reads back once the dispatch is done.
@@ -1834,7 +1897,7 @@ InstrumentedKernelLoaderAndLauncher::launchSingleWorkItemKernelAndWait(
     E = drainPrintfBuffer(llvm::ArrayRef<uint8_t>(
                               static_cast<const uint8_t *>(Buffers.PrintfBuffer),
                               DefaultPrintfBufferSize),
-                          Rec.PrintfFormatStrings);
+                          PrintfFormatStrings);
 
   return CleanupAll(std::move(E));
 }
