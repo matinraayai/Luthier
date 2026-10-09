@@ -104,7 +104,9 @@ class AMDGCNObjectFile;
 
 class ExtendedKernargBuffer;
 
-/// \brief Loader for loading and caching instrumented copies of kernels
+/// \brief In charge of:
+/// \li Loading, linking and lifetime management of instrumented code objects.
+/// \li Launching and waiting on instrumented kernels.
 class InstrumentedKernelLoaderAndLauncher {
 public:
   InstrumentedKernelLoaderAndLauncher(
