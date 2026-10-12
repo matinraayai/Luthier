@@ -36,7 +36,7 @@
 
 #include <hip/hip_runtime.h>
 
-#define LUTHIER_COMMS_DEVICE __attribute__((device, always_inline)) inline
+#define LUTHIER_COMMS_DEVICE __attribute__((device, always_inline))
 
 namespace luthier::comms::device {
 
