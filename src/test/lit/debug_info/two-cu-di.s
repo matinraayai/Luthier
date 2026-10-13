@@ -55,10 +55,11 @@
 
 // === IR: each lifted function has its own !dbg ===
 
-// CHECK: define{{.*}}@_Z11scaleKernelPffi(
-// CHECK-SAME: !dbg [[KERNEL_SP:![0-9]+]]
-// CHECK: define{{.*}}@_Z7scaleByff{{[^(]*}}(
-// CHECK-SAME: !dbg [[CALLEE_SP:![0-9]+]]
+// The order of the lifted functions changed between builds, so use DAG.
+// The return point (x0x8c) must have its own !dbg, not the kernel's.
+// CHECK-DAG: define{{.*}}@_Z11scaleKernelPffi({{.*}}!dbg [[KERNEL_SP:![0-9]+]]
+// CHECK-DAG: define{{.*}}@_Z7scaleByffx0x0({{.*}}!dbg [[CALLEE_SP:![0-9]+]]
+// CHECK-DAG: define{{.*}}@_Z11scaleKernelPffix0x8c({{.*}}!dbg [[RET_SP:![0-9]+]]
 
 // === Metadata: two compile units, one for each file ===
 
@@ -73,6 +74,11 @@
 
 // CHECK-DAG: [[KERNEL_SP]] = distinct !DISubprogram(name: "scaleKernel", linkageName: "_Z11scaleKernelPffi", scope: [[KERNEL_FILE]], file: [[KERNEL_FILE]], line: 7,{{.*}}unit: [[KERNEL_CU]])
 // CHECK-DAG: [[CALLEE_SP]] = distinct !DISubprogram(name: "scaleBy", linkageName: "_Z7scaleByff", scope: [[CALLEE_FILE]], file: [[CALLEE_FILE]], line: 2,{{.*}}unit: [[CALLEE_CU]])
+// The return point gets a copy of the kernel's subprogram, renamed to the
+// name that code discovery emitted.
+// CHECK-DAG: [[RET_SP]] = distinct !DISubprogram(name: "scaleKernel", linkageName: "_Z11scaleKernelPffix0x8c", scope: [[KERNEL_FILE]], file: [[KERNEL_FILE]], line: 7,{{.*}}unit: [[KERNEL_CU]])
+// The store after the call (line 10) is in the return point.
+// CHECK-DAG: !DILocation(line: 10,{{.*}}scope: [[RET_SP]])
 // The callee's multiply (X * K) is on line 3 of two-cu-callee.hip.
 // CHECK-DAG: !DILocation(line: 3,{{.*}}scope: [[CALLEE_SP]])
 

@@ -251,6 +251,19 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
       continue;
     }
 
+    uint64_t LowPC;
+    uint64_t HighPC;
+    uint64_t SectionIndex;
+
+    if (FunctionDie.getLowAndHighPC(LowPC, HighPC, SectionIndex) &&
+        LowPC != EntryPointOffset) {
+      llvm::TempDISubprogram TempDISP = FuncDISP->clone();
+      TempDISP->replaceLinkageName(llvm::MDString::get(Ctx, F.getName()));
+      FuncDISP = llvm::MDNode::replaceWithDistinct(std::move(TempDISP));
+      LLVM_DEBUG(llvm::dbgs() << "[DebugInfoPass] DISubprogram duplicated for "
+                              << F.getName() << "\n");
+    }
+
     if (!DISPSet.insert(FuncDISP).second) {
       LLVM_DEBUG(llvm::dbgs()
                  << "[DebugInfoPass] Failed to insert DISubprogram:"

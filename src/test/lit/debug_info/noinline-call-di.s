@@ -41,10 +41,11 @@
 
 // === IR: each lifted function has its own !dbg ===
 
-// CHECK: define{{.*}}@_Z11scaleKernelPffi(
-// CHECK-SAME: !dbg [[KERNEL_SP:![0-9]+]]
-// CHECK: define{{.*}}@_Z7scaleByff{{[^(]*}}(
-// CHECK-SAME: !dbg [[CALLEE_SP:![0-9]+]]
+// The order of the lifted functions changed between builds, so use DAG.
+// The return point (x0x84) must have its own !dbg, not the kernel's.
+// CHECK-DAG: define{{.*}}@_Z11scaleKernelPffi({{.*}}!dbg [[KERNEL_SP:![0-9]+]]
+// CHECK-DAG: define{{.*}}@_Z7scaleByffx0x0({{.*}}!dbg [[CALLEE_SP:![0-9]+]]
+// CHECK-DAG: define{{.*}}@_Z11scaleKernelPffix0x84({{.*}}!dbg [[RET_SP:![0-9]+]]
 
 // === Metadata: exactly one compile unit, and both subprograms point to it ===
 
@@ -53,6 +54,11 @@
 // CHECK-DAG: [[FILE]] = !DIFile(filename: "noinline-call.hip"
 // CHECK-DAG: [[KERNEL_SP]] = distinct !DISubprogram(name: "scaleKernel", linkageName: "_Z11scaleKernelPffi", scope: [[FILE]], file: [[FILE]], line: 10,{{.*}}unit: [[CU]])
 // CHECK-DAG: [[CALLEE_SP]] = distinct !DISubprogram(name: "scaleBy", linkageName: "_Z7scaleByff", scope: [[FILE]], file: [[FILE]], line: 6,{{.*}}unit: [[CU]])
+// The return point gets a copy of the kernel's subprogram, renamed to the
+// name that code discovery emitted.
+// CHECK-DAG: [[RET_SP]] = distinct !DISubprogram(name: "scaleKernel", linkageName: "_Z11scaleKernelPffix0x84", scope: [[FILE]], file: [[FILE]], line: 10,{{.*}}unit: [[CU]])
+// The store after the call (line 13) is in the return point.
+// CHECK-DAG: !DILocation(line: 13,{{.*}}scope: [[RET_SP]])
 // The callee's multiply (X * K) is on line 7.
 // CHECK-DAG: !DILocation(line: 7,{{.*}}scope: [[CALLEE_SP]])
 
