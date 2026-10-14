@@ -20,6 +20,34 @@
 /// lane and a \c MessageInfo, and the host hands every message to the
 /// registered \c MessageHandler s, which pick theirs by \c WaveHeader::Tag.
 ///
+/// <b>What is transmitted.</b> One message per wave per \c send call:
+///   - a 56-byte \c WaveHeader (Protocol.h), written by the first active
+///     lane: the tool's \c Tag, \c Site and \c Info; the exec mask and
+///     number of active lanes; a timestamp; the workgroup id; the shader
+///     engine / shader array / CU (WGP) of the wave; the wave size;
+///   - then the \p N dwords of every active lane, dword-major so the wave's
+///     stores coalesce: dword 0 of active lanes 0..A-1, then dword 1 of
+///     active lanes 0..A-1, and so on. Inactive lanes send nothing; the i-th
+///     lane's data belongs to the i-th set bit of \c Exec.
+/// What the dwords mean is up to the tool (an address, an index, a value...).
+///
+/// <b>Where it is stored on the CPU.</b> \c openChannel allocates, once, a
+/// buffer in fine-grained host memory (CPU RAM the GPU reads and writes
+/// directly, without copies; see SharedBuffers.h), split into
+/// \c Config::NumSubBuffers sub-buffers of \c Config::SubBufferBytes each,
+/// plus a fill size and a hand-off flag per sub-buffer. Each wave picks a
+/// sub-buffer (\c subBufferFor spreads waves by workgroup), takes its lock
+/// (\c Locks, in device memory), appends its message after the ones already
+/// there and updates the fill size. When a message does not fit, the wave
+/// sets the sub-buffer's hand-off flag and waits. A CPU thread
+/// (\c MessageProcessor) watches the flags: it parses every message in the
+/// full sub-buffer, calls the handlers, empties it and clears the flag, and
+/// the wave continues. \c closeChannel drains what is left in the partly
+/// filled sub-buffers after the kernel ends. Messages are therefore handed to
+/// the handlers one at a time, from that thread, in sub-buffer order (each
+/// wave's own messages stay in order); nothing is kept once the handlers
+/// have seen them, so a handler stores whatever it needs.
+///
 /// Usage, in the tool:
 /// \code
 ///   struct MyTool : luthier::Tool<MyTool, llvm::MachineFunction>,
@@ -35,6 +63,10 @@
 ///   // per dispatch:  openChannel(KD) before submitting the packet,
 ///   //                closeChannel() after it completed.
 /// \endcode
+///
+/// A complete working example is \c examples/UncoalescedMemAccess: its hook
+/// sends each lane's address of every global load/store (\c send<2>), and
+/// its handler computes, on the CPU, which accesses were coalesced.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMS_CHANNEL_H
 #define LUTHIER_COMMS_CHANNEL_H
