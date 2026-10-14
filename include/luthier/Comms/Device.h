@@ -24,6 +24,7 @@
 ///   4. publish the new size and release the lock
 ///
 /// The lock and host hand-off functions are taken from dh_comms (see below).
+/// The code is taken by: dh_comms (https://github.com/AMDResearch/dh_comms)
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMS_DEVICE_H
 #define LUTHIER_COMMS_DEVICE_H
@@ -34,28 +35,34 @@
 
 #define LUTHIER_COMMS_DEVICE __attribute__((device, always_inline)) inline
 
+// Function bodies are compiled for the device only (__HIP_DEVICE_COMPILE__);
+// the host pass sees the declarations, which hooks need, and empty bodies.
+
 namespace luthier::comms::device {
 
 /// Rank of this lane among the active lanes (0 for the first active lane).
 LUTHIER_COMMS_DEVICE uint32_t activeLaneRank(uint64_t Exec) {
+#if defined(__HIP_DEVICE_COMPILE__)
   return __builtin_amdgcn_mbcnt_hi(
       uint32_t(Exec >> 32), __builtin_amdgcn_mbcnt_lo(uint32_t(Exec), 0u));
+#else
+  return 0;
+#endif
 }
 
 /// The first active lane's value, for the whole wave. Branching on the
 /// result is a scalar branch.
 LUTHIER_COMMS_DEVICE uint32_t broadcast(uint32_t V) {
+#if defined(__HIP_DEVICE_COMPILE__)
   return uint32_t(__builtin_amdgcn_readfirstlane(int(V)));
+#else
+  return V;
+#endif
 }
-
-// wave_acquire, wave_release and wave_signal_host below are taken from
-// dh_comms (https://github.com/AMDResearch/dh_comms, include/dh_comms_dev.h,
-// commit 0c8a363), with dh_comms' structure and comments. The only change is
-// that the flags are uint32_t instead of uint8_t, to match luthier::comms'
-// lock and host-flag arrays.
 
 // Have the calling wave spin on an atomic to get exclusive read/write access to a sub-buffer.
 LUTHIER_COMMS_DEVICE void wave_acquire(uint32_t *atomic_flags_d, size_t sub_buf_idx, unsigned int active_lane_id) {
+#if defined(__HIP_DEVICE_COMPILE__)
   if (active_lane_id == 0) // only one lane acquires the lock on behalf of the wave
   {
     uint32_t expected = 0; // 0 -> sub-buffer is not locked
@@ -68,6 +75,7 @@ LUTHIER_COMMS_DEVICE void wave_acquire(uint32_t *atomic_flags_d, size_t sub_buf_
       expected = 0;
     }
   }
+#endif
 }
 
 // Have the calling wave release its exclusive read/write access to a sub-buffer
@@ -77,6 +85,7 @@ LUTHIER_COMMS_DEVICE void wave_acquire(uint32_t *atomic_flags_d, size_t sub_buf_
 // with an __atomic_compare_exchange instead resolves the issue for the cases we
 // have seen so far.
 LUTHIER_COMMS_DEVICE void wave_release(uint32_t *atomic_flags_d, size_t sub_buf_idx, unsigned int active_lane_id) {
+#if defined(__HIP_DEVICE_COMPILE__)
   if (active_lane_id == 0) // only one lane acquires the lock on behalf of the wave
   {
     uint32_t expected = 1; // 1 -> sub-buffer is locked by this wave
@@ -89,12 +98,14 @@ LUTHIER_COMMS_DEVICE void wave_release(uint32_t *atomic_flags_d, size_t sub_buf_
       expected = 1;
     }
   }
+#endif
 }
 
 // Have the calling wave, which has exclusive read/write access to a sub-buffer, pass control
 // of the sub-buffer to the host by setting a flag to 1, and then spin on the flag until the host
 // resets it to zero, indicating that it is done processing the sub-buffer.
 LUTHIER_COMMS_DEVICE void wave_signal_host(uint32_t *atomic_flags_hd, size_t sub_buf_idx, unsigned int active_lane_id) {
+#if defined(__HIP_DEVICE_COMPILE__)
   if (active_lane_id == 0) // only one lane passes control of the sub-buffer to the host on behalf of the wave
   {
     uint32_t flag = 1;
@@ -102,6 +113,7 @@ LUTHIER_COMMS_DEVICE void wave_signal_host(uint32_t *atomic_flags_hd, size_t sub
     while (__atomic_load_n(&atomic_flags_hd[sub_buf_idx], __ATOMIC_ACQUIRE) != 0) {
     }
   }
+#endif
 }
 
 /// Shader engine, shader array and compute unit of the executing wave.
@@ -117,14 +129,14 @@ struct HwLocation {
 /// GFX10/11 (RDNA), where \c CuId is the WGP id. HIP defines no layout for
 /// GFX12, so the ids are reported unknown there.
 LUTHIER_COMMS_DEVICE HwLocation readHwLocation() {
-#if defined(__GFX10__) || defined(__GFX11__)
+#if defined(__HIP_DEVICE_COMPILE__) && (defined(__GFX10__) || defined(__GFX11__))
   return {uint8_t(__builtin_amdgcn_s_getreg(GETREG_IMMED(
               HW_ID_SE_ID_SIZE - 1, HW_ID_SE_ID_OFFSET, HW_ID))),
           uint8_t(__builtin_amdgcn_s_getreg(GETREG_IMMED(
               HW_ID_SA_ID_SIZE - 1, HW_ID_SA_ID_OFFSET, HW_ID))),
           uint8_t(__builtin_amdgcn_s_getreg(GETREG_IMMED(
               HW_ID_WGP_ID_SIZE - 1, HW_ID_WGP_ID_OFFSET, HW_ID)))};
-#elif defined(__GFX9__)
+#elif defined(__HIP_DEVICE_COMPILE__) && defined(__GFX9__)
   // SH_ID [12] is the shader array; HIP has no macro for it.
   return {uint8_t(__builtin_amdgcn_s_getreg(GETREG_IMMED(
               HW_ID_SE_ID_SIZE - 1, HW_ID_SE_ID_OFFSET, HW_ID))),
@@ -153,6 +165,7 @@ template <unsigned N>
 LUTHIER_COMMS_DEVICE void submit(const ChannelDescriptor &C, uint32_t *Locks,
                                  uint32_t SubBuffer, const MessageInfo &M,
                                  const uint32_t (&Lane)[N]) {
+#if defined(__HIP_DEVICE_COMPILE__)
   // Read the clock first so the submission itself barely perturbs it.
   const uint64_t Timestamp = __builtin_readcyclecounter();
   if (C.NumSubBuffers == 0)
@@ -220,6 +233,7 @@ LUTHIER_COMMS_DEVICE void submit(const ChannelDescriptor &C, uint32_t *Locks,
     __hip_atomic_store(&C.SubBufferSizes[Sb], uint64_t(Used + MessageSize),
                        __ATOMIC_RELAXED, __HIP_MEMORY_SCOPE_SYSTEM);
   wave_release(Locks, Sb, Rank);
+#endif
 }
 
 } // namespace luthier::comms::device

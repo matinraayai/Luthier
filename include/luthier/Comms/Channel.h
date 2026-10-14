@@ -73,13 +73,19 @@ public:
   __attribute__((device, always_inline)) static void
   send(uint32_t SubBuffer, const device::MessageInfo &M,
        const uint32_t (&Lane)[N]) {
+#if defined(__HIP_DEVICE_COMPILE__)
     device::submit<N>(Desc, Locks, SubBuffer, M, Lane);
+#endif
   }
 
   /// A wave-uniform sub-buffer choice that spreads waves by workgroup.
   __attribute__((device, always_inline)) static uint32_t
   subBufferFor(uint32_t BlockX, uint32_t BlockY, uint32_t BlockZ) {
+#if defined(__HIP_DEVICE_COMPILE__)
     return (BlockX + 7919u * BlockY + 104729u * BlockZ) * 2654435761u >> 8;
+#else
+    return 0;
+#endif
   }
 
   //===--------------------------------------------------------------------===//
