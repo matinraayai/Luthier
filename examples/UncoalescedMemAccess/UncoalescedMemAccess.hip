@@ -17,11 +17,13 @@
 /// \file
 /// Counts uncoalesced global memory accesses.
 ///
-/// Every global/flat memory instruction is traced with
-/// \c luthier::comms::MemoryTrace: while the kernel runs, each access reaches
-/// the CPU as (kernel-argument buffer, element index) through fine-grained
-/// pinned host memory. \c CoalescingHandler then rebuilds the addresses and
-/// decides which accesses were coalesced.
+/// Every global/flat memory instruction gets a hook that sends its access to
+/// the CPU, while the kernel runs, through the generic GPU-to-CPU channel
+/// \c luthier::comms::Channel. Each access is sent as (kernel-argument
+/// buffer, element index): before every dispatch the host resolves the
+/// kernel's pointer arguments to their allocations, and the hook maps each
+/// address into one of them. \c CoalescingHandler then rebuilds the
+/// addresses and decides which accesses were coalesced.
 ///
 /// <b>Uncoalesced.</b> The hardware issues a VMEM instruction 16 lanes per
 /// cycle. A group is coalesced if it touches no more 128-byte cache
@@ -64,7 +66,12 @@
 #include <llvm/Support/PrettyStackTrace.h>
 #include <llvm/Support/Signals.h>
 #include <llvm/Transforms/Utils/ModuleUtils.h>
-#include <luthier/Comms/MemoryTrace.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/Support/AMDHSAKernelDescriptor.h>
+#include <llvm/Transforms/Utils/Cloning.h>
+#include <luthier/Comms/Channel.h>
+#include <luthier/Comms/WorkgroupId.h>
+#include <luthier/Intrinsic/IntrinsicCalls.h>
 #include <luthier/Common/Debug.h>
 #include <luthier/Common/ErrorCheck.h>
 #include <luthier/Common/Stacktrace.h>
@@ -83,6 +90,7 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <string>
 #include <tuple>
 
 #undef DEBUG_TYPE
@@ -90,18 +98,173 @@
 
 namespace comms = luthier::comms;
 
+//===----------------------------------------------------------------------===//
+// Memory-access tracing: what one access looks like on the wire
+//===----------------------------------------------------------------------===//
+
+/// \c WaveHeader::Tag of memory-access messages.
+constexpr uint32_t MemoryAccessTag = 0x4d454d00; // "MEM\0"
+
+/// Upper bound on kernel-argument buffers resolved per dispatch.
+constexpr uint32_t MaxTrackedBuffers = 16;
+
+/// \c AccessRecord::BufferId of an address in no tracked buffer.
+constexpr uint32_t UnresolvedBuffer = 0xffffffffu;
+
+/// One lane's access: where it landed, not the address.
+struct AccessRecord {
+  uint32_t ElementIndex; ///< (address - buffer start) / element size.
+  uint32_t BufferId;     ///< Kernel-argument slot, or \c UnresolvedBuffer.
+};
+
+/// The dispatch's kernel-argument buffers, as the hooks see them.
+struct BufferTable {
+  uint32_t ElementSizeLog2; ///< Index = byte offset >> ElementSizeLog2.
+  uint32_t NumBuffers;
+  uint64_t BufferBase[MaxTrackedBuffers];
+  uint64_t BufferEnd[MaxTrackedBuffers]; ///< One past the last byte.
+  uint32_t BufferArgSlot[MaxTrackedBuffers];
+};
+
+/// A kernel-argument buffer resolved for one dispatch.
+struct TrackedBuffer {
+  uint64_t Base;    ///< The pointer the kernel was given.
+  uint64_t End;     ///< End of its allocation.
+  uint32_t ArgSlot; ///< 8-byte kernel-argument slot it was passed in.
+};
+
+/// A traced instruction, indexed by \c WaveHeader::Site.
+struct TracedSite {
+  std::string Function; ///< Machine function containing it.
+  unsigned Block;       ///< Its basic block: \c bb.<Block> in the MIR.
+  std::string MIR;      ///< The instruction as printed in the function's MIR.
+  uint32_t Width;       ///< Bytes accessed per lane; also \c WaveHeader::Info.
+};
+
+/// Base for analyses of memory-access messages: decodes the lane data into
+/// \c AccessRecord s and ignores messages with other tags.
+class MemoryAccessHandler : public comms::MessageHandler {
+public:
+  /// Called before each dispatch with that dispatch's buffers.
+  virtual void beginDispatch(llvm::ArrayRef<TrackedBuffer> Buffers,
+                             uint32_t ElementSizeLog2) {}
+
+  /// \p Records holds one entry per active lane; the i-th belongs to the
+  /// i-th set bit of \c Header.Exec.
+  virtual void handleAccesses(const comms::WaveHeader &Header,
+                              llvm::ArrayRef<AccessRecord> Records) = 0;
+
+  void handle(const comms::WaveHeader &H,
+              llvm::ArrayRef<uint32_t> Data) final {
+    if (H.Tag != MemoryAccessTag || H.DwordsPerLane != 2)
+      return;
+    Records.resize(H.ActiveLanes);
+    for (uint32_t L = 0; L < H.ActiveLanes; ++L)
+      Records[L] = {Data[L], Data[H.ActiveLanes + L]};
+    handleAccesses(H, Records);
+  }
+
+private:
+  std::vector<AccessRecord> Records;
+};
+
+//===----------------------------------------------------------------------===//
+// Memory-access tracing: what is recorded and how the hook is called
+//===----------------------------------------------------------------------===//
+
+/// \c TracedSite of \p MI: its function, its MIR text and its width.
+static TracedSite describeSite(const llvm::MachineInstr &MI) {
+  const auto &ST = MI.getMF()->getSubtarget<llvm::GCNSubtarget>();
+  const llvm::SIRegisterInfo &TRI = *ST.getRegisterInfo();
+  TracedSite S{MI.getMF()->getName().str(),
+               unsigned(MI.getParent()->getNumber()), "", 0};
+  llvm::raw_string_ostream OS(S.MIR);
+  MI.print(OS, /*IsStandalone=*/false, /*SkipOpers=*/false,
+           /*SkipDebugLoc=*/true, /*AddNewLine=*/false, ST.getInstrInfo());
+  // Drop Luthier's bookkeeping metadata (pcsections, ...) after the operands.
+  if (size_t Meta = S.MIR.find(", pcsections"); Meta != std::string::npos)
+    S.MIR.resize(Meta);
+  for (auto Name : {llvm::AMDGPU::OpName::vdata, llvm::AMDGPU::OpName::vdst}) {
+    const int Idx = llvm::AMDGPU::getNamedOperandIdx(MI.getOpcode(), Name);
+    if (Idx < 0)
+      continue;
+    const llvm::MCRegister R = MI.getOperand(Idx).getReg().asMCReg();
+    S.Width = TRI.getRegSizeInBits(*TRI.getMinimalPhysRegClass(R)) / 8;
+    break;
+  }
+  return S;
+}
+
+/// Global or flat (not scratch) instructions that access memory.
+static bool isTraceable(const llvm::MachineInstr &MI) {
+  return llvm::SIInstrInfo::isFLAT(MI) &&
+         !llvm::SIInstrInfo::isFLATScratch(MI) && MI.mayLoadOrStore() &&
+         llvm::AMDGPU::hasNamedOperand(MI.getOpcode(),
+                                       llvm::AMDGPU::OpName::vaddr);
+}
+
+/// Builds, at the payload's insertion point, the call of \p Hook
+/// (\c onAccess or \c onAccessScalarBase) for the access of \p MI, then
+/// inlines it. Luthier lowers its intrinsics only inside the payload, so
+/// every register read happens here.
+static llvm::Error buildAccessHookCall(llvm::Function &Hook,
+                                       llvm::IRBuilderBase &B,
+                                       const llvm::MachineInstr &MI,
+                                       uint32_t Site, uint32_t Width) {
+  const auto &ST = MI.getMF()->getSubtarget<llvm::GCNSubtarget>();
+  const llvm::SIRegisterInfo &TRI = *ST.getRegisterInfo();
+  llvm::Module &M = *Hook.getParent();
+  llvm::Type &I32 = *B.getInt32Ty();
+  auto ReadReg = [&](llvm::MCRegister R) -> llvm::Value * {
+    return luthier::insertCallToIntrinsic(M, B, "luthier::readReg", I32,
+                                          uint32_t(R.id()));
+  };
+  auto Reg = [&](llvm::AMDGPU::OpName Name) {
+    return MI.getOperand(llvm::AMDGPU::getNamedOperandIdx(MI.getOpcode(), Name))
+        .getReg()
+        .asMCReg();
+  };
+  const int OffIdx = llvm::AMDGPU::getNamedOperandIdx(
+      MI.getOpcode(), llvm::AMDGPU::OpName::offset);
+  const int64_t Imm = OffIdx >= 0 ? MI.getOperand(OffIdx).getImm() : 0;
+  const bool ScalarBase = llvm::AMDGPU::hasNamedOperand(
+      MI.getOpcode(), llvm::AMDGPU::OpName::saddr);
+  const llvm::MCRegister Base = Reg(ScalarBase ? llvm::AMDGPU::OpName::saddr
+                                               : llvm::AMDGPU::OpName::vaddr);
+
+  llvm::SmallVector<llvm::Value *, 10> Args{
+      ReadReg(TRI.getSubReg(Base, llvm::AMDGPU::sub0)),
+      ReadReg(TRI.getSubReg(Base, llvm::AMDGPU::sub1))};
+  if (ScalarBase)
+    Args.push_back(ReadReg(Reg(llvm::AMDGPU::OpName::vaddr)));
+  Args.append({B.getInt32(uint32_t(Imm)), B.getInt32(Site), B.getInt32(Width)});
+  comms::appendWorkgroupIdArgs(ST, M, B, Args);
+
+  llvm::CallInst *Call = B.CreateCall(&Hook, Args);
+  llvm::InlineFunctionInfo IFI;
+  llvm::InlineResult IR = llvm::InlineFunction(*Call, IFI);
+  return IR.isSuccess() ? llvm::Error::success()
+                        : LUTHIER_MAKE_GENERIC_ERROR(
+                              "failed to inline the access hook: " +
+                              std::string(IR.getFailureReason()));
+}
+
+//===----------------------------------------------------------------------===//
+// Analyses of the accesses
+//===----------------------------------------------------------------------===//
+
 /// Decides, for every executed memory instruction of every wave, whether the
 /// access was coalesced. The hardware issues a VMEM instruction in groups of
 /// \c LanesPerCycle lanes; a group is coalesced if it touches no more cache
 /// lines than its bytes need (ceil(bytes / line size)), and a
 /// wave-instruction is uncoalesced if any group wastes a line. Addresses are
 /// rebuilt from (buffer, element index) and the dispatch's buffer bases.
-class CoalescingHandler final : public comms::MemoryAccessHandler {
+class CoalescingHandler final : public MemoryAccessHandler {
 public:
   CoalescingHandler(uint32_t LanesPerCycle, uint32_t CacheLineBytes)
       : LanesPerCycle(LanesPerCycle), CacheLineBytes(CacheLineBytes) {}
 
-  void beginDispatch(llvm::ArrayRef<comms::TrackedBuffer> Buffers,
+  void beginDispatch(llvm::ArrayRef<TrackedBuffer> Buffers,
                      uint32_t ElemSizeLog2) override {
     ElementSizeLog2 = ElemSizeLog2;
     BaseBySlot.fill(0);
@@ -112,7 +275,7 @@ public:
 
   void handleAccesses(
       const comms::WaveHeader &H,
-      llvm::ArrayRef<comms::AccessRecord> Records) override {
+      llvm::ArrayRef<AccessRecord> Records) override {
     Stats &S = PerSite[H.Site];
     ++S.Waves;
     const uint64_t Width = H.Info ? H.Info : 4; // bytes per lane
@@ -155,7 +318,7 @@ public:
 
   /// One line per traced site, then per-kernel and overall totals.
   void report(llvm::raw_ostream &OS,
-              llvm::ArrayRef<comms::TracedSite> Sites) const {
+              llvm::ArrayRef<TracedSite> Sites) const {
     OS << llvm::formatv("[uncoalesced] {0}-lane groups, {1}-byte lines\n",
                         LanesPerCycle, CacheLineBytes);
     OS << llvm::formatv("{0,4} {1,10} {2,12} {3,9} {4,9}  {5}\n", "site",
@@ -167,7 +330,7 @@ public:
     };
     std::map<std::string, KernelTotals> PerKernel;
     for (const auto &[Site, S] : PerSite) {
-      const comms::TracedSite *T = Site < Sites.size() ? &Sites[Site] : nullptr;
+      const TracedSite *T = Site < Sites.size() ? &Sites[Site] : nullptr;
       OS << llvm::formatv("{0,4} {1,10} {2,12} {3,9:F2} {4,9:F2}  ", Site,
                           S.Waves, S.Uncoalesced,
                           double(S.Lines) / double(S.Waves),
@@ -210,16 +373,16 @@ private:
   uint32_t LanesPerCycle;
   uint32_t CacheLineBytes;
   uint32_t ElementSizeLog2 = 2;
-  std::array<uint64_t, comms::MaxTrackedBuffers> BaseBySlot{};
+  std::array<uint64_t, MaxTrackedBuffers> BaseBySlot{};
   std::map<uint32_t, Stats> PerSite;
 };
 
 /// Which workgroups and compute units sent messages, to check the workgroup
 /// ids and hardware ids are real.
-class WorkgroupCensus final : public comms::MemoryAccessHandler {
+class WorkgroupCensus final : public MemoryAccessHandler {
 public:
   void handleAccesses(const comms::WaveHeader &H,
-                      llvm::ArrayRef<comms::AccessRecord>) override {
+                      llvm::ArrayRef<AccessRecord>) override {
     ++Messages[{H.BlockIdxX, H.BlockIdxY, H.BlockIdxZ}];
     if (H.CuId != comms::UnknownHwId)
       ComputeUnits.insert({H.SeId, H.SaId, H.CuId});
@@ -261,8 +424,57 @@ private:
 
 struct UncoalescedMemAccessTool
     : public luthier::Tool<UncoalescedMemAccessTool, llvm::MachineFunction>,
-      public comms::MemoryTrace<UncoalescedMemAccessTool> {
+      public comms::Channel<UncoalescedMemAccessTool> {
   using Tool::Tool;
+
+  //===--------------------------------------------------------------------===//
+  // Device code
+  //===--------------------------------------------------------------------===//
+
+  /// Set by the host before each traced dispatch.
+  __attribute__((device)) static BufferTable Table;
+
+  /// Address in a 64-bit VGPR pair: <tt>global_load v, v[a:a+1], off</tt>.
+  __attribute__((device, used)) static void
+  onAccess(uint32_t AddrLo, uint32_t AddrHi, uint32_t ImmOffset,
+           uint32_t Site, uint32_t Width, uint32_t BlockX, uint32_t BlockY,
+           uint32_t BlockZ) {
+    sendAccess((uint64_t(AddrHi) << 32 | AddrLo) + int64_t(int32_t(ImmOffset)),
+               {MemoryAccessTag, Site, Width, BlockX, BlockY, BlockZ,
+                comms::device::readHwLocation()});
+  }
+
+  /// Scalar base plus 32-bit vector offset:
+  /// <tt>global_load v, v_off, s[b:b+1]</tt>.
+  __attribute__((device, used)) static void
+  onAccessScalarBase(uint32_t BaseLo, uint32_t BaseHi, uint32_t VOffset,
+                     uint32_t ImmOffset, uint32_t Site, uint32_t Width,
+                     uint32_t BlockX, uint32_t BlockY, uint32_t BlockZ) {
+    sendAccess((uint64_t(BaseHi) << 32 | BaseLo) + VOffset +
+                   int64_t(int32_t(ImmOffset)),
+               {MemoryAccessTag, Site, Width, BlockX, BlockY, BlockZ,
+                comms::device::readHwLocation()});
+  }
+
+  /// Maps \p Address to (buffer, element index) and sends it.
+  __attribute__((device, always_inline)) static void
+  sendAccess(uint64_t Address, const comms::device::MessageInfo &M) {
+    // Buffers never overlap, so at most one matches; no early exit keeps the
+    // trip count uniform.
+    uint32_t Record[2] = {0u, UnresolvedBuffer};
+    for (uint32_t I = 0; I < Table.NumBuffers; ++I) {
+      if (Address >= Table.BufferBase[I] && Address < Table.BufferEnd[I]) {
+        Record[0] =
+            uint32_t((Address - Table.BufferBase[I]) >> Table.ElementSizeLog2);
+        Record[1] = Table.BufferArgSlot[I];
+      }
+    }
+    send<2>(subBufferFor(M.BlockIdxX, M.BlockIdxY, M.BlockIdxZ), M, Record);
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Host code
+  //===--------------------------------------------------------------------===//
 
   struct Options {
     llvm::cl::OptionCategory Cat{"Uncoalesced Memory Access Tool Options"};
@@ -295,17 +507,101 @@ struct UncoalescedMemAccessTool
 
   std::recursive_mutex Mutex;
   uint32_t NumKernelLaunched = 0;
+  std::vector<TracedSite> Sites;
+  std::vector<MemoryAccessHandler *> AccessHandlers;
   std::unique_ptr<CoalescingHandler> Coalescing;
   WorkgroupCensus Census;
 
   /// Applies the options; called once they are parsed.
   void configure() {
-    setConfig({Opts.NumSubBuffers, Opts.SubBufferBytes, Opts.ElementSize});
+    setChannelConfig({Opts.NumSubBuffers, Opts.SubBufferBytes});
     Coalescing =
         std::make_unique<CoalescingHandler>(Opts.LanesPerCycle,
                                             Opts.CacheLineBytes);
-    addHandler(*Coalescing);
-    addHandler(Census);
+    for (MemoryAccessHandler *H :
+         {static_cast<MemoryAccessHandler *>(Coalescing.get()),
+          static_cast<MemoryAccessHandler *>(&Census)}) {
+      addHandler(*H);
+      AccessHandlers.push_back(H);
+    }
+  }
+
+  /// Injects a hook before \p MI that sends its access to the host.
+  llvm::Error traceAccess(luthier::Prototype &P,
+                          luthier::PrototypeAnalysisManager &PAM,
+                          llvm::MachineInstr &MI) {
+    const uint32_t Site = uint32_t(Sites.size());
+    Sites.push_back(describeSite(MI));
+    const uint32_t Width = Sites.back().Width;
+    auto Build = [&](llvm::Function &Hook,
+                     llvm::IRBuilderBase &B) -> llvm::Error {
+      return buildAccessHookCall(Hook, B, MI, Site, Width);
+    };
+    llvm::function_ref<llvm::Error(llvm::Function &, llvm::IRBuilderBase &)>
+        BuildRef(Build);
+    return llvm::AMDGPU::hasNamedOperand(MI.getOpcode(),
+                                         llvm::AMDGPU::OpName::saddr)
+               ? createInjectedPayload(&UncoalescedMemAccessTool::onAccessScalarBase,
+                                       P, PAM, MI, BuildRef)
+               : createInjectedPayload(&UncoalescedMemAccessTool::onAccess, P,
+                                       PAM, MI, BuildRef);
+  }
+
+  /// Opens the channel and tells the hooks and handlers where this
+  /// dispatch's buffers are. \p AppPacket is the application's packet
+  /// (before the override); \p KD its original kernel descriptor.
+  llvm::Error beginTrace(const hsa_kernel_dispatch_packet_t &AppPacket,
+                         const llvm::amdhsa::kernel_descriptor_t &KD) {
+    LUTHIER_RETURN_ON_ERROR(openChannel(KD));
+    const auto Tracked = kernelArgBuffers(AppPacket, KD);
+    BufferTable T{};
+    T.ElementSizeLog2 = llvm::Log2_32(Opts.ElementSize);
+    T.NumBuffers = uint32_t(Tracked.size());
+    for (uint32_t I = 0; I < T.NumBuffers; ++I) {
+      T.BufferBase[I] = Tracked[I].Base;
+      T.BufferEnd[I] = Tracked[I].End;
+      T.BufferArgSlot[I] = Tracked[I].ArgSlot;
+    }
+    LUTHIER_RETURN_ON_ERROR(
+        writeDeviceGlobal(&UncoalescedMemAccessTool::Table, &T, sizeof(T), KD));
+    for (MemoryAccessHandler *H : AccessHandlers)
+      H->beginDispatch(Tracked, T.ElementSizeLog2);
+    return llvm::Error::success();
+  }
+
+  /// The kernel's pointer arguments that point into live allocations. Only
+  /// reads the kernel arguments; non-pointer slots are skipped.
+  llvm::SmallVector<TrackedBuffer, MaxTrackedBuffers>
+  kernelArgBuffers(const hsa_kernel_dispatch_packet_t &Packet,
+                   const llvm::amdhsa::kernel_descriptor_t &KD) {
+    const auto Core = getCoreApiTableSnapshot().getTable();
+    const auto AmdExt = getAmdExtTableSnapshot().getTable();
+    llvm::SmallVector<TrackedBuffer, MaxTrackedBuffers> Out;
+    const uint32_t Slots =
+        std::min<uint32_t>(MaxTrackedBuffers, KD.kernarg_size / 8);
+    uint64_t Args[MaxTrackedBuffers] = {};
+    if (Slots == 0 ||
+        Core.callFunction<hsa_memory_copy>(Args, Packet.kernarg_address,
+                                           Slots * sizeof(uint64_t)) !=
+            HSA_STATUS_SUCCESS)
+      return Out;
+    for (uint32_t Slot = 0; Slot < Slots; ++Slot) {
+      if (Args[Slot] == 0)
+        continue;
+      hsa_amd_pointer_info_t Info{};
+      Info.size = sizeof(Info);
+      if (AmdExt.callFunction<hsa_amd_pointer_info>(
+              reinterpret_cast<void *>(Args[Slot]), &Info, nullptr, nullptr,
+              nullptr) != HSA_STATUS_SUCCESS ||
+          Info.type == HSA_EXT_POINTER_TYPE_UNKNOWN)
+        continue;
+      const uint64_t AllocBase =
+          reinterpret_cast<uint64_t>(Info.agentBaseAddress);
+      const uint64_t AllocEnd = AllocBase + Info.sizeInBytes;
+      if (Args[Slot] >= AllocBase && Args[Slot] < AllocEnd)
+        Out.push_back({Args[Slot], AllocEnd, Slot});
+    }
+    return Out;
   }
 
   llvm::PreservedAnalyses run(luthier::Prototype &P,
@@ -317,6 +613,8 @@ struct UncoalescedMemAccessTool
 
   void printReport() const;
 };
+
+__attribute__((device)) BufferTable UncoalescedMemAccessTool::Table;
 
 LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(UncoalescedMemAccessTool)
 
@@ -442,7 +740,7 @@ void UncoalescedMemAccessTool::onPackets(
       } else {
         KernargBuf = std::move(*FirstTry);
       }
-      LUTHIER_REPORT_FATAL_ON_ERROR(beginDispatch(AppPacket, *KD));
+      LUTHIER_REPORT_FATAL_ON_ERROR(beginTrace(AppPacket, *KD));
     }
 
     // Generous: waves may stall while the CPU drains sub-buffers.
@@ -456,7 +754,7 @@ void UncoalescedMemAccessTool::onPackets(
             DispatchPacket->completion_signal, HSA_SIGNAL_CONDITION_LT,
             SignalValue, Timeout, HSA_WAIT_STATE_ACTIVE);
     if (Active)
-      endDispatch();
+      closeChannel();
     if (CurrentSignal >= SignalValue)
       llvm::report_fatal_error(
           llvm::formatv("Wait timeout reached for signal handle {0:x}",
@@ -488,7 +786,7 @@ void UncoalescedMemAccessTool::printReport() const {
     OS << "[uncoalesced] WARNING: messages dropped (larger than a "
           "sub-buffer)\n";
   Census.report(OS);
-  Coalescing->report(OS, sites());
+  Coalescing->report(OS, Sites);
 }
 
 //===----------------------------------------------------------------------===//
