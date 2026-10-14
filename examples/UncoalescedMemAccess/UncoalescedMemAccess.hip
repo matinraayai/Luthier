@@ -17,7 +17,7 @@
 /// \file
 /// Counts uncoalesced global memory accesses.
 ///
-/// Every global/flat memory instruction gets a hook that sends its access to
+/// Every global memory instruction (\c global_*) gets a hook that sends its access to
 /// the CPU, while the kernel runs, through the generic GPU-to-CPU channel
 /// \c luthier::comms::Channel. Each access is sent as (kernel-argument
 /// buffer, element index): before every dispatch the host resolves the
@@ -195,10 +195,10 @@ static TracedSite describeSite(const llvm::MachineInstr &MI) {
   return S;
 }
 
-/// Global or flat (not scratch) instructions that access memory.
+/// Global memory instructions (\c global_*). Flat (\c flat_*) and scratch
+/// instructions are not traced.
 static bool isTraceable(const llvm::MachineInstr &MI) {
-  return llvm::SIInstrInfo::isFLAT(MI) &&
-         !llvm::SIInstrInfo::isFLATScratch(MI) && MI.mayLoadOrStore() &&
+  return llvm::SIInstrInfo::isFLATGlobal(MI) && MI.mayLoadOrStore() &&
          llvm::AMDGPU::hasNamedOperand(MI.getOpcode(),
                                        llvm::AMDGPU::OpName::vaddr);
 }
