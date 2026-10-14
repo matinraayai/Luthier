@@ -23,11 +23,7 @@
 ///   3. write the wave header and every active lane's dwords
 ///   4. publish the new size and release the lock
 ///
-/// In a Luthier payload a spin loop run by a divergent subset of lanes
-/// deadlocks: the structurizer retires the winning lane from \c EXEC before
-/// it reaches the release. So every loop here is entered by all active lanes
-/// and exits on a wave-uniform condition (broadcast with readfirstlane);
-/// only the side-effecting atomic inside it is guarded to one lane.
+/// The lock and host hand-off functions are taken from dh_comms (see below).
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMS_DEVICE_H
 #define LUTHIER_COMMS_DEVICE_H
@@ -52,44 +48,59 @@ LUTHIER_COMMS_DEVICE uint32_t broadcast(uint32_t V) {
   return uint32_t(__builtin_amdgcn_readfirstlane(int(V)));
 }
 
-/// Takes \p Lock for the whole wave; returns once the leader holds it.
-LUTHIER_COMMS_DEVICE void acquire(uint32_t *Lock, bool IsLeader) {
-  while (true) {
-    uint32_t Won = 0;
-    if (IsLeader) {
-      uint32_t Expected = 0;
-      Won = __hip_atomic_compare_exchange_strong(
-          Lock, &Expected, 1u, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED,
-          __HIP_MEMORY_SCOPE_AGENT);
+// wave_acquire, wave_release and wave_signal_host below are taken from
+// dh_comms (https://github.com/AMDResearch/dh_comms, include/dh_comms_dev.h,
+// commit 0c8a363), with dh_comms' structure and comments. The only change is
+// that the flags are uint32_t instead of uint8_t, to match luthier::comms'
+// lock and host-flag arrays.
+
+// Have the calling wave spin on an atomic to get exclusive read/write access to a sub-buffer.
+LUTHIER_COMMS_DEVICE void wave_acquire(uint32_t *atomic_flags_d, size_t sub_buf_idx, unsigned int active_lane_id) {
+  if (active_lane_id == 0) // only one lane acquires the lock on behalf of the wave
+  {
+    uint32_t expected = 0; // 0 -> sub-buffer is not locked
+    uint32_t desired = 1;  // 1 -> sub-buffer is locked by (this) wave
+    bool weak = false;
+    while (not __atomic_compare_exchange(&atomic_flags_d[sub_buf_idx], &expected, &desired, weak, __ATOMIC_ACQUIRE,
+                                         __ATOMIC_RELAXED)) {
+      // __atomic_compare_exchange returns the value at the address (first argument) in
+      // the second argument (expected), so we need to reset it in this spin-loop
+      expected = 0;
     }
-    if (broadcast(Won))
-      return;
-    __builtin_amdgcn_s_sleep(1);
   }
 }
 
-/// Releases \p Lock. An exchange, not a store-release, which the compiler
-/// has been seen to drop.
-LUTHIER_COMMS_DEVICE void release(uint32_t *Lock, bool IsLeader) {
-  if (IsLeader)
-    (void)__hip_atomic_exchange(Lock, 0u, __ATOMIC_RELEASE,
-                                __HIP_MEMORY_SCOPE_AGENT);
+// Have the calling wave release its exclusive read/write access to a sub-buffer
+// Note: we should be able to do this with an __atomic_store, but in some cases, the
+// compiler implemented the __atomic_store without a memory operation, leading to an
+// infinite spin loop for the next call to wave_acquire. Implementing this function
+// with an __atomic_compare_exchange instead resolves the issue for the cases we
+// have seen so far.
+LUTHIER_COMMS_DEVICE void wave_release(uint32_t *atomic_flags_d, size_t sub_buf_idx, unsigned int active_lane_id) {
+  if (active_lane_id == 0) // only one lane acquires the lock on behalf of the wave
+  {
+    uint32_t expected = 1; // 1 -> sub-buffer is locked by this wave
+    uint32_t desired = 0;  // 0 -> sub-buffer is unlocked
+    bool weak = false;
+    while (not __atomic_compare_exchange(&atomic_flags_d[sub_buf_idx], &expected, &desired, weak, __ATOMIC_RELEASE,
+                                         __ATOMIC_RELAXED)) {
+      // __atomic_compare_exchange returns the value at the address (first argument) in
+      // the second argument (expected), so we need to reset it in this spin-loop
+      expected = 1;
+    }
+  }
 }
 
-/// Hands a full sub-buffer to the host and waits until it is drained. The
-/// lock is still held, so no other wave touches the sub-buffer meanwhile.
-LUTHIER_COMMS_DEVICE void handOffToHost(uint32_t *HostFlag, bool IsLeader) {
-  if (IsLeader)
-    __hip_atomic_store(HostFlag, 1u, __ATOMIC_RELEASE,
-                       __HIP_MEMORY_SCOPE_SYSTEM);
-  while (true) {
-    uint32_t Pending = 0;
-    if (IsLeader)
-      Pending = __hip_atomic_load(HostFlag, __ATOMIC_ACQUIRE,
-                                  __HIP_MEMORY_SCOPE_SYSTEM);
-    if (broadcast(Pending) == 0)
-      return;
-    __builtin_amdgcn_s_sleep(2);
+// Have the calling wave, which has exclusive read/write access to a sub-buffer, pass control
+// of the sub-buffer to the host by setting a flag to 1, and then spin on the flag until the host
+// resets it to zero, indicating that it is done processing the sub-buffer.
+LUTHIER_COMMS_DEVICE void wave_signal_host(uint32_t *atomic_flags_hd, size_t sub_buf_idx, unsigned int active_lane_id) {
+  if (active_lane_id == 0) // only one lane passes control of the sub-buffer to the host on behalf of the wave
+  {
+    uint32_t flag = 1;
+    __atomic_store_n(&atomic_flags_hd[sub_buf_idx], flag, __ATOMIC_RELEASE);
+    while (__atomic_load_n(&atomic_flags_hd[sub_buf_idx], __ATOMIC_ACQUIRE) != 0) {
+    }
   }
 }
 
@@ -156,13 +167,13 @@ LUTHIER_COMMS_DEVICE void submit(const ChannelDescriptor &C, uint32_t *Locks,
   const uint32_t Capacity = uint32_t(C.SubBufferCapacity);
   const uint32_t Sb = SubBuffer & uint32_t(C.NumSubBuffers - 1);
 
-  acquire(&Locks[Sb], IsLeader);
+  wave_acquire(Locks, Sb, Rank);
 
   if (MessageSize > Capacity) { // never fits: record and drop
     if (IsLeader)
       __hip_atomic_fetch_or(C.ErrorBits, 1u, __ATOMIC_RELAXED,
                             __HIP_MEMORY_SCOPE_SYSTEM);
-    release(&Locks[Sb], IsLeader);
+    wave_release(Locks, Sb, Rank);
     return;
   }
 
@@ -173,7 +184,7 @@ LUTHIER_COMMS_DEVICE void submit(const ChannelDescriptor &C, uint32_t *Locks,
                                       __HIP_MEMORY_SCOPE_SYSTEM));
   Used = broadcast(Used);
   if (Used + MessageSize > Capacity) {
-    handOffToHost(&C.HostFlags[Sb], IsLeader);
+    wave_signal_host(C.HostFlags, Sb, Rank);
     Used = 0; // drained, and we still hold the lock
   }
 
@@ -208,7 +219,7 @@ LUTHIER_COMMS_DEVICE void submit(const ChannelDescriptor &C, uint32_t *Locks,
   if (IsLeader)
     __hip_atomic_store(&C.SubBufferSizes[Sb], uint64_t(Used + MessageSize),
                        __ATOMIC_RELAXED, __HIP_MEMORY_SCOPE_SYSTEM);
-  release(&Locks[Sb], IsLeader);
+  wave_release(Locks, Sb, Rank);
 }
 
 } // namespace luthier::comms::device
