@@ -37,11 +37,11 @@
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <luthier/Comms/Channel.h>
-#include <luthier/Comms/WorkgroupId.h>
 #include <luthier/Common/ErrorCheck.h>
 #include <luthier/Common/Stacktrace.h>
 #include <luthier/HSA/AqlPacket.h>
 #include <luthier/Intrinsic/IntrinsicCalls.h>
+#include <luthier/Intrinsic/ScalarValueArgument.h>
 #include <luthier/LLVM/streams.h>
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
 #include <luthier/Rocprofiler/RocprofilerSdkLibrary.h>
@@ -199,7 +199,15 @@ struct UncoalescedMemAccessTool
                     ReadReg(TRI.getSubReg(VAddr, llvm::AMDGPU::sub0)),
                     ReadReg(TRI.getSubReg(VAddr, llvm::AMDGPU::sub1)),
                     B.getInt32(uint32_t(Imm)), B.getInt32(Site)};
-                comms::appendWorkgroupIdArgs(ST, M, B, Args);
+                // Workgroup id. readSVA returns wrong values in a payload today
+                // (Luthier issue, to be fixed upstream).
+                auto ReadSVA = [&](luthier::ScalarValueArgument SA) {
+                  return luthier::insertCallToIntrinsic(
+                      M, B, "luthier::readSVA", *B.getInt32Ty(), uint8_t(SA));
+                };
+                Args.append({ReadSVA(luthier::WORKGROUP_ID_X),
+                             ReadSVA(luthier::WORKGROUP_ID_Y),
+                             ReadSVA(luthier::WORKGROUP_ID_Z)});
                 llvm::InlineFunctionInfo IFI;
                 llvm::InlineFunction(*B.CreateCall(&Hook, Args), IFI);
                 return llvm::Error::success();
