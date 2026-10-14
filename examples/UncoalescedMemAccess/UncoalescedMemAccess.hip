@@ -17,8 +17,9 @@
 /// \file
 /// Counts uncoalesced global memory accesses.
 ///
-/// Every global memory instruction (\c global_*) gets a hook that sends its access to
-/// the CPU, while the kernel runs, through the generic GPU-to-CPU channel
+/// Every vector global memory instruction (\c global_* with its address in a
+/// VGPR pair) gets a hook that sends its access to the CPU, while the kernel
+/// runs, through the generic GPU-to-CPU channel
 /// \c luthier::comms::Channel. Each access is sent as (kernel-argument
 /// buffer, element index): before every dispatch the host resolves the
 /// kernel's pointer arguments to their allocations, and the hook maps each
@@ -195,16 +196,20 @@ static TracedSite describeSite(const llvm::MachineInstr &MI) {
   return S;
 }
 
-/// Global memory instructions (\c global_*). Flat (\c flat_*) and scratch
-/// instructions are not traced.
+/// Vector global memory instructions: \c global_* with the whole 64-bit
+/// address in a VGPR pair (<tt>global_load v, v[a:a+1], off</tt>). The
+/// scalar-base form (<tt>global_load v, v_off, s[b:b+1]</tt>), flat
+/// (\c flat_*) and scratch instructions are not traced.
 static bool isTraceable(const llvm::MachineInstr &MI) {
   return llvm::SIInstrInfo::isFLATGlobal(MI) && MI.mayLoadOrStore() &&
          llvm::AMDGPU::hasNamedOperand(MI.getOpcode(),
-                                       llvm::AMDGPU::OpName::vaddr);
+                                       llvm::AMDGPU::OpName::vaddr) &&
+         !llvm::AMDGPU::hasNamedOperand(MI.getOpcode(),
+                                        llvm::AMDGPU::OpName::saddr);
 }
 
 /// Builds, at the payload's insertion point, the call of \p Hook
-/// (\c onAccess or \c onAccessScalarBase) for the access of \p MI, then
+/// (\c onAccess) for the access of \p MI, then
 /// inlines it. Luthier lowers its intrinsics only inside the payload, so
 /// every register read happens here.
 static llvm::Error buildAccessHookCall(llvm::Function &Hook,
@@ -219,24 +224,18 @@ static llvm::Error buildAccessHookCall(llvm::Function &Hook,
     return luthier::insertCallToIntrinsic(M, B, "luthier::readReg", I32,
                                           uint32_t(R.id()));
   };
-  auto Reg = [&](llvm::AMDGPU::OpName Name) {
-    return MI.getOperand(llvm::AMDGPU::getNamedOperandIdx(MI.getOpcode(), Name))
-        .getReg()
-        .asMCReg();
-  };
   const int OffIdx = llvm::AMDGPU::getNamedOperandIdx(
       MI.getOpcode(), llvm::AMDGPU::OpName::offset);
   const int64_t Imm = OffIdx >= 0 ? MI.getOperand(OffIdx).getImm() : 0;
-  const bool ScalarBase = llvm::AMDGPU::hasNamedOperand(
-      MI.getOpcode(), llvm::AMDGPU::OpName::saddr);
-  const llvm::MCRegister Base = Reg(ScalarBase ? llvm::AMDGPU::OpName::saddr
-                                               : llvm::AMDGPU::OpName::vaddr);
+  const llvm::MCRegister VAddr =
+      MI.getOperand(llvm::AMDGPU::getNamedOperandIdx(
+                        MI.getOpcode(), llvm::AMDGPU::OpName::vaddr))
+          .getReg()
+          .asMCReg();
 
   llvm::SmallVector<llvm::Value *, 10> Args{
-      ReadReg(TRI.getSubReg(Base, llvm::AMDGPU::sub0)),
-      ReadReg(TRI.getSubReg(Base, llvm::AMDGPU::sub1))};
-  if (ScalarBase)
-    Args.push_back(ReadReg(Reg(llvm::AMDGPU::OpName::vaddr)));
+      ReadReg(TRI.getSubReg(VAddr, llvm::AMDGPU::sub0)),
+      ReadReg(TRI.getSubReg(VAddr, llvm::AMDGPU::sub1))};
   Args.append({B.getInt32(uint32_t(Imm)), B.getInt32(Site), B.getInt32(Width)});
   comms::appendWorkgroupIdArgs(ST, M, B, Args);
 
@@ -444,18 +443,6 @@ struct UncoalescedMemAccessTool
                 comms::device::readHwLocation()});
   }
 
-  /// Scalar base plus 32-bit vector offset:
-  /// <tt>global_load v, v_off, s[b:b+1]</tt>.
-  __attribute__((device, used)) static void
-  onAccessScalarBase(uint32_t BaseLo, uint32_t BaseHi, uint32_t VOffset,
-                     uint32_t ImmOffset, uint32_t Site, uint32_t Width,
-                     uint32_t BlockX, uint32_t BlockY, uint32_t BlockZ) {
-    sendAccess((uint64_t(BaseHi) << 32 | BaseLo) + VOffset +
-                   int64_t(int32_t(ImmOffset)),
-               {MemoryAccessTag, Site, Width, BlockX, BlockY, BlockZ,
-                comms::device::readHwLocation()});
-  }
-
   /// Maps \p Address to (buffer, element index) and sends it.
   __attribute__((device, always_inline)) static void
   sendAccess(uint64_t Address, const comms::device::MessageInfo &M) {
@@ -539,12 +526,8 @@ struct UncoalescedMemAccessTool
     };
     llvm::function_ref<llvm::Error(llvm::Function &, llvm::IRBuilderBase &)>
         BuildRef(Build);
-    return llvm::AMDGPU::hasNamedOperand(MI.getOpcode(),
-                                         llvm::AMDGPU::OpName::saddr)
-               ? createInjectedPayload(&UncoalescedMemAccessTool::onAccessScalarBase,
-                                       P, PAM, MI, BuildRef)
-               : createInjectedPayload(&UncoalescedMemAccessTool::onAccess, P,
-                                       PAM, MI, BuildRef);
+    return createInjectedPayload(&UncoalescedMemAccessTool::onAccess, P, PAM,
+                                 MI, BuildRef);
   }
 
   /// Opens the channel and tells the hooks and handlers where this
