@@ -101,6 +101,8 @@ public:
   /// Sends \p Lane (this lane's \p N dwords) from every active lane as one
   /// message through sub-buffer \p SubBuffer, which must be wave-uniform
   /// (see \c subBufferFor).
+  /// \p N = dwords that differ per lane (a 64-bit address is 2); anything
+  /// the same for the whole wave belongs in \p M, sent once in the header.
   template <unsigned N>
   __attribute__((device, always_inline)) static void
   send(uint32_t SubBuffer, const device::MessageInfo &M,

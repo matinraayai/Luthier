@@ -143,6 +143,26 @@ struct UncoalescedMemAccessTool
   std::recursive_mutex Mutex;
 
   /// The device side: send this lane's address.
+  ///
+  /// What is transmitted: one message per wave each time a traced load/store
+  /// runs, written into a sub-buffer of CPU memory:
+  /// \code
+  ///   WaveHeader (56 bytes, once per wave)
+  ///     Tag      = AccessTag ("MEM\0"): CoalescingHandler only reads these
+  ///     Site     = index into Sites: kernel, MIR line and bytes per lane
+  ///     Info     = 0 (unused; the width comes from Site)
+  ///     Exec, ActiveLanes          which lanes were active (filled by send)
+  ///     BlockIdxX/Y/Z              workgroup id; only picks the sub-buffer
+  ///     SeId/SaId/CuId, WaveSize, Timestamp   where/when (not used here)
+  ///   Lane data (send<2>: 2 dwords per active lane, dword-major)
+  ///     AddrLo[0] AddrLo[1] ... AddrLo[A-1]   low 32 bits of each address
+  ///     AddrHi[0] AddrHi[1] ... AddrHi[A-1]   high 32 bits
+  /// \endcode
+  /// A = number of active lanes; the i-th address belongs to the i-th set
+  /// bit of Exec. Only the address differs per lane, so N = 2: a full wave
+  /// is 56 + 64 * 2 * 4 = 568 bytes. Messages from many waves follow each
+  /// other in a sub-buffer; the CPU thread hands them to CoalescingHandler
+  /// one by one when the sub-buffer fills up and after the kernel ends.
   __attribute__((device, used)) static void
   onAccess(uint32_t AddrLo, uint32_t AddrHi, uint32_t ImmOffset, uint32_t Site,
            uint32_t BlockX, uint32_t BlockY, uint32_t BlockZ) {
