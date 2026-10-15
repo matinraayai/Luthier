@@ -329,12 +329,6 @@ public:
               D.getCoreApiTableSnapshot(), D.getAmdExtTableSnapshot(),
               D.getLoaderTableSnapshot().getTable()));
     });
-    // PrototypeCallGraphAnalysis, IPPredCFGAnalysis and
-    // FunctionPreambleDescriptorAnalysis are Prototype analyses; they are
-    // registered on the PrototypeAnalysisManager (see
-    // registerPrototypeAnalyses on InstrumentationPassBuilder), not here.
-    // Registering a Prototype analysis on a ModuleAnalysisManager compiles but
-    // can never resolve at run time.
 
     if constexpr (requires(Derived &Tool) {
                     Tool.registerInstrumentationAnalyses(MAM, MFAM);
