@@ -41,6 +41,7 @@
 #include "luthier/ToolCodeGen/InitialExecutionPointAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPassBuilder.h"
+#include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 #include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
@@ -78,6 +79,9 @@ namespace luthier {
 /// \tparam TargetUnitT the instrumentation target unit (matches \c Tool's).
 template <typename Derived, typename TargetUnitT = llvm::MachineFunction>
 class InstrumentationPipelineTrait {
+  /// Intrinsic registry storage
+  IntrinsicProcessorRegistry Registry;
+
   Derived &derived() { return static_cast<Derived &>(*this); }
 
   /// Thin Prototype-pass adapter that forwards into the tool's own
@@ -292,6 +296,15 @@ class InstrumentationPipelineTrait {
   }
 
 public:
+  
+  IntrinsicProcessorRegistry &getIntrinsicProcessorRegistry() {
+    return Registry;
+  }
+
+  const IntrinsicProcessorRegistry &getIntrinsicProcessorRegistry() const {
+    return Registry;
+  }
+
   /// Register the common set of instrumentation analyses on \p MAM / \p MFAM
   /// for the kernel described by \p KD. \p MMI and \p MDParser must outlive the
   /// pass run that consumes them. After the common analyses are registered, the
@@ -481,9 +494,9 @@ private:
     // Intrinsic lowering resolves each luthier:: intrinsic through this
     // registry, which the tool owns.
     for (llvm::ModuleAnalysisManager *M : {&TargetMAM, &IMAM})
-      M->registerPass([&D] {
+      M->registerPass([this] {
         return luthier::IntrinsicsProcessorsAnalysis(
-            D.getIntrinsicProcessorRegistry());
+            getIntrinsicProcessorRegistry());
       });
 
     // The machine-function passes InjectedPayloadPEIPass and SVAPhysVGPRPinPass

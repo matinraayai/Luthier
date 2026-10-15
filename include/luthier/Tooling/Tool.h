@@ -14,7 +14,7 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file Tool.h
-/// CRTP base class for static Luthier tools.
+/// CRTP base class for Luthier tools.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_TOOL_H
 #define LUTHIER_TOOLING_TOOL_H
@@ -44,24 +44,6 @@
 #include <llvm/TargetParser/AMDGPUTargetParser.h>
 
 namespace luthier {
-
-/// Per-tool trait that owns the \c IntrinsicProcessorRegistry the tool's
-/// instrumentation pipeline consults during IR/MIR intrinsic lowering. The
-/// registry default-constructs (its ctor auto-registers the built-in Luthier
-/// intrinsics from \c IntrinsicRegistry.def), so the trait needs no
-/// constructor arguments and never fails.
-template <typename Derived> class IntrinsicProcessorRegistryTraitBase {
-  IntrinsicProcessorRegistry Registry;
-
-public:
-  IntrinsicProcessorRegistry &getIntrinsicProcessorRegistry() {
-    return Registry;
-  }
-
-  const IntrinsicProcessorRegistry &getIntrinsicProcessorRegistry() const {
-    return Registry;
-  }
-};
 
 /// \brief CRTP base for static HSA tools. Inherits the HIP fat-binary
 /// registration slots and per-agent HSA executable state from
@@ -101,7 +83,6 @@ class Tool : public Singleton<Derived>,
              public LoadedCodeObjectCacheTrait<Derived>,
              public ToolDeviceCodeOffloadParserTrait<Derived>,
              public InstrumentedKernelLoaderAndLauncherTrait<Derived>,
-             public IntrinsicProcessorRegistryTraitBase<Derived>,
              public InstrumentationPipelineTrait<Derived, TargetUnitT>,
              public PacketMonitorTrait<Derived> {
 public:
