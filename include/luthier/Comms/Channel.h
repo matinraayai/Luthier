@@ -36,7 +36,7 @@
 /// directly, without copies; see SharedBuffers.h), split into
 /// \c Config::NumSubBuffers sub-buffers of \c Config::SubBufferBytes each,
 /// plus a fill size and a hand-off flag per sub-buffer. Each wave picks a
-/// sub-buffer (\c subBufferFor spreads waves by workgroup), takes its lock
+/// sub-buffer (\c send spreads waves by workgroup id), takes its lock
 /// (\c Locks, in device memory), appends its message after the ones already
 /// there and updates the fill size. When a message does not fit, the wave
 /// sets the sub-buffer's hand-off flag and waits. A CPU thread
@@ -54,8 +54,8 @@
 ///                   luthier::comms::Channel<MyTool> {
 ///     __attribute__((device, used)) static void myHook(...) {
 ///       const uint32_t Lane[1] = {...};
-///       send<1>(SubBuffer, {MyTag, Site, Info, BlockX, BlockY, BlockZ,
-///                           luthier::comms::device::readHwLocation()},
+///       send<1>({MyTag, Site, Info, BlockX, BlockY, BlockZ,
+///                luthier::comms::device::readHwLocation()},
 ///               Lane);
 ///     }
 ///   };
@@ -99,26 +99,19 @@ public:
   __attribute__((device)) static uint32_t Locks[MaxSubBuffers];
 
   /// Sends \p Lane (this lane's \p N dwords) from every active lane as one
-  /// message through sub-buffer \p SubBuffer, which must be wave-uniform
-  /// (see \c subBufferFor).
+  /// message. The sub-buffer is picked from the workgroup id in \p M, so
+  /// waves of different workgroups spread over the sub-buffers.
   /// \p N = dwords that differ per lane (a 64-bit address is 2); anything
   /// the same for the whole wave belongs in \p M, sent once in the header.
   template <unsigned N>
   __attribute__((device, always_inline)) static void
-  send(uint32_t SubBuffer, const device::MessageInfo &M,
-       const uint32_t (&Lane)[N]) {
+  send(const device::MessageInfo &M, const uint32_t (&Lane)[N]) {
 #if defined(__HIP_DEVICE_COMPILE__)
+    const uint32_t SubBuffer =
+        (M.BlockIdxX + 7919u * M.BlockIdxY + 104729u * M.BlockIdxZ) *
+            2654435761u >>
+        8;
     device::submit<N>(Desc, Locks, SubBuffer, M, Lane);
-#endif
-  }
-
-  /// A wave-uniform sub-buffer choice that spreads waves by workgroup.
-  __attribute__((device, always_inline)) static uint32_t
-  subBufferFor(uint32_t BlockX, uint32_t BlockY, uint32_t BlockZ) {
-#if defined(__HIP_DEVICE_COMPILE__)
-    return (BlockX + 7919u * BlockY + 104729u * BlockZ) * 2654435761u >> 8;
-#else
-    return 0;
 #endif
   }
 

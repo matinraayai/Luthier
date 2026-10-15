@@ -169,8 +169,7 @@ struct UncoalescedMemAccessTool
     const uint64_t Addr =
         (uint64_t(AddrHi) << 32 | AddrLo) + int64_t(int32_t(ImmOffset));
     const uint32_t Lane[2] = {uint32_t(Addr), uint32_t(Addr >> 32)};
-    send<2>(subBufferFor(BlockX, BlockY, BlockZ),
-            {AccessTag, Site, 0, BlockX, BlockY, BlockZ,
+    send<2>({AccessTag, Site, 0, BlockX, BlockY, BlockZ,
              comms::device::readHwLocation()},
             Lane);
   }
