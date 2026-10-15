@@ -102,18 +102,9 @@ public:
         PacketMonitorTrait<Derived>(RocprofilerLib, CoreApi, AmdExt, VenLoader,
                                     Err) {}
 
-  /// Build a fully-configured \c TargetMachine for the agent that owns the
-  /// kernel referenced by \p KD. Resolves the owning agent via
-  /// \c hsa_amd_pointer_info, then queries that agent's first supported ISA
-  /// for the LLVM triple / CPU / subtarget-feature string. The agent ISA
-  /// query alone yields only the architectural feature set (xnack, sramecc,
-  /// ...); the per-kernel wavefront size and CU/WGP execution mode are encoded
-  /// in the kernel descriptor, not the ISA, so they are folded into the
-  /// feature string here. The lifted MIR depends on the subtarget reflecting
-  /// both — EXEC-mask predication width follows the wavefront size, and the
-  /// re-lowered KD's \c WGP_MODE / \c TG_SPLIT bits are derived from the
-  /// \c cumode feature (see \c CodeDiscoveryPass). The returned machine is what
-  /// the instrumentation codegen pipeline lowers against.
+  /// \param KD A kernel descriptor residing on device memory
+  /// \returns The \c llvm::TargetMachine associated with the \c hsa_agent_t
+  /// that owns the \p KD on success, \c llvm::Error on failure.
   llvm::Expected<std::unique_ptr<llvm::TargetMachine>>
   buildTargetMachineForKD(const llvm::amdhsa::kernel_descriptor_t *KD) {
     const auto AmdExt = InstrumentedKernelLoaderAndLauncher::AmdExt.getTable();
