@@ -14,8 +14,7 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file Tool.h
-/// CRTP base class for static Luthier HSA tools. Composes the per-tool traits
-/// and exposes frequently used methods in tools written in HIP.
+/// CRTP base class for static Luthier tools.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_TOOLING_TOOL_H
 #define LUTHIER_TOOLING_TOOL_H
