@@ -13,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //===----------------------------------------------------------------------===//
-///
 /// \file Tool.h
 /// CRTP base class for static Luthier HSA tools. Composes the per-tool traits
 /// and exposes frequently used methods in tools written in HIP.
@@ -122,13 +121,6 @@ public:
             RocprofilerLib, CoreApi, AmdExt, VenLoader, Err),
         PacketMonitorTrait<Derived>(RocprofilerLib, CoreApi, AmdExt, VenLoader,
                                     Err) {}
-
-  /// \note There is no longer a single "pipeline driver" pass to hand a target
-  /// module pass manager. The instrumentation pipeline now runs over a
-  /// \c Prototype (both modules at once) and is assembled by
-  /// \c InstrumentationPassBuilder::buildInstrumentationPipeline; a tool reaches
-  /// it through \c runInstrumentationPipelineForDispatch on
-  /// \c InstrumentationPipelineTrait.
 
   /// Build a fully-configured \c TargetMachine for the agent that owns the
   /// kernel referenced by \p KD. Resolves the owning agent via
