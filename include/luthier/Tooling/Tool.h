@@ -55,7 +55,7 @@ namespace luthier {
 /// rely on this ordering: it comes from
 /// \c Singleton<Derived>::destroyInstance(), which unpublishes the tool and
 /// then waits for every in-flight \c withInstance() call to finish before
-/// any/// destructor runs. A trait's HSA API-table interceptor therefore never
+/// any destructor runs. A trait's HSA API-table interceptor therefore never
 /// observes a half-destroyed tool.
 ///
 /// \par Construction/teardown (see \c Singleton)

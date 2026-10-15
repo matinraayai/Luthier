@@ -72,8 +72,8 @@ namespace luthier {
 /// \brief CRTP trait that runs Luthier's per-dispatch instrumentation pipeline.
 ///
 /// \tparam Derived the concrete tool (an \c Tool subclass). It must provide
-/// \c buildTargetMachineForKD, \c parseModule,
-/// \c getIntrinsicProcessorRegistry, and be an \c InstrumentationPass for the
+/// \c buildTargetMachineForKD, \c parseModule, and be an
+/// \c InstrumentationPass for the
 /// payload-injection adapter cast to succeed — all of which \c Tool already
 /// supplies.
 /// \tparam TargetUnitT the instrumentation target unit (matches \c Tool's).
