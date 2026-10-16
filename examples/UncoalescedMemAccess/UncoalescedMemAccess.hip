@@ -41,7 +41,6 @@
 #include <luthier/Common/Stacktrace.h>
 #include <luthier/HSA/AqlPacket.h>
 #include <luthier/Intrinsic/IntrinsicCalls.h>
-#include <luthier/Intrinsic/ScalarValueArgument.h>
 #include <luthier/LLVM/streams.h>
 #include <luthier/Rocprofiler/ApiTableSnapshot.h>
 #include <luthier/Rocprofiler/RocprofilerSdkLibrary.h>
@@ -64,42 +63,73 @@ static llvm::cl::opt<unsigned>
     CacheLineBytes("cache-line-bytes", llvm::cl::desc("Cache line size"),
                    llvm::cl::init(128));
 
-constexpr uint32_t AccessTag = 0x4d454d00; // "MEM\0"
+//===----------------------------------------------------------------------===//
+// The message: what travels from the GPU to the CPU
+//===----------------------------------------------------------------------===//
+//
+// One message per wave each time a traced load/store runs (Protocol.h):
+//
+//   uint64_t   Exec        which lanes were active      8 bytes
+//   AccessWave             the instruction (Site)       8 bytes (4 + padding)
+//   AccessLane[A]          one address per active lane  8 bytes each
+//
+// A full 64-lane wave sends 8 + 8 + 64 * 8 = 528 bytes. Everything that is
+// fixed per instruction (kernel, MIR text, access width) stays on the CPU in
+// CoalescingHandler::Sites and is looked up with AccessWave::Site.
 
-/// A traced load/store.
+/// Sent once per wave.
+struct AccessWave {
+  /// Index of the traced instruction in CoalescingHandler::Sites. It is a
+  /// plain number, not a pointer: the instrumentation pass bakes it into the
+  /// payload as a constant (B.getInt32(Site) below), and the CPU uses it to
+  /// find the instruction's kernel, MIR line and access width.
+  uint32_t Site;
+};
+
+/// Sent by every active lane.
+struct AccessLane {
+  uint64_t Address; ///< The byte address this lane loads or stores.
+};
+
+/// A traced load/store, known on the CPU only.
 struct Site {
   std::string Kernel;
   std::string MIR;
   uint32_t Width; ///< Bytes per lane.
 };
 
-/// The CPU side: decides, per wave-instruction, whether it was coalesced.
-struct CoalescingHandler final : comms::MessageHandler {
+//===----------------------------------------------------------------------===//
+// The CPU side: decides, per wave-instruction, whether it was coalesced
+//===----------------------------------------------------------------------===//
+
+struct CoalescingHandler final
+    : comms::MessageHandler<AccessWave, AccessLane> {
   std::vector<Site> Sites;
   struct Stats {
     uint64_t Waves = 0, Uncoalesced = 0, Lines = 0, Ideal = 0;
   };
   std::map<uint32_t, Stats> PerSite;
 
-  void handle(const comms::WaveHeader &H,
-              llvm::ArrayRef<uint32_t> Data) override {
-    if (H.Tag != AccessTag)
-      return;
-    const uint64_t Width = Sites[H.Site].Width;
-    // Cache lines touched and bytes moved by each group of lanes.
+  void handle(uint64_t Exec, const AccessWave &Wave,
+              llvm::ArrayRef<AccessLane> Lanes) override {
+    const uint64_t Width = Sites[Wave.Site].Width;
+    // The hardware issues the lanes LanesPerCycle at a time. Collect, for
+    // each such group, the cache lines its lanes touch and the bytes it moves.
     std::vector<uint64_t> GroupLines[64];
     uint64_t GroupBytes[64] = {};
-    uint64_t Exec = H.Exec; // the i-th address belongs to the i-th set bit
-    for (uint32_t L = 0; L < H.ActiveLanes; ++L, Exec &= Exec - 1) {
-      // Dword-major: all lanes' low halves, then all high halves.
-      const uint64_t Addr = uint64_t(Data[H.ActiveLanes + L]) << 32 | Data[L];
-      const unsigned G = unsigned(__builtin_ctzll(Exec)) / LanesPerCycle;
+    for (const AccessLane &L : Lanes) {
+      // The i-th address belongs to the i-th set bit of Exec.
+      const unsigned Lane = unsigned(__builtin_ctzll(Exec));
+      Exec &= Exec - 1;
+      const unsigned G = Lane / LanesPerCycle;
       GroupBytes[G] += Width;
-      for (uint64_t Line = Addr / CacheLineBytes;
-           Line <= (Addr + Width - 1) / CacheLineBytes; ++Line)
+      for (uint64_t Line = L.Address / CacheLineBytes;
+           Line <= (L.Address + Width - 1) / CacheLineBytes; ++Line)
         GroupLines[G].push_back(Line);
     }
-    Stats &S = PerSite[H.Site];
+    // A group is coalesced if it touches no more lines than its bytes need;
+    // the wave-instruction is uncoalesced if any group wastes a line.
+    Stats &S = PerSite[Wave.Site];
     ++S.Waves;
     bool Wasted = false;
     for (unsigned G = 0; G < 64; ++G) {
@@ -137,41 +167,21 @@ struct CoalescingHandler final : comms::MessageHandler {
 
 struct UncoalescedMemAccessTool
     : luthier::Tool<UncoalescedMemAccessTool, llvm::MachineFunction>,
-      comms::Channel<UncoalescedMemAccessTool> {
+      comms::Channel<UncoalescedMemAccessTool, AccessWave, AccessLane> {
   using Tool::Tool;
   CoalescingHandler Coalescing;
   std::recursive_mutex Mutex;
 
-  /// The device side: send this lane's address.
-  ///
-  /// What is transmitted: one message per wave each time a traced load/store
-  /// runs, written into a sub-buffer of CPU memory:
-  /// \code
-  ///   WaveHeader (56 bytes, once per wave)
-  ///     Tag      = AccessTag ("MEM\0"): CoalescingHandler only reads these
-  ///     Site     = index into Sites: kernel, MIR line and bytes per lane
-  ///     Info     = 0 (unused; the width comes from Site)
-  ///     Exec, ActiveLanes          which lanes were active (filled by send)
-  ///     BlockIdxX/Y/Z              workgroup id; only picks the sub-buffer
-  ///     SeId/SaId/CuId, WaveSize, Timestamp   where/when (not used here)
-  ///   Lane data (send<2>: 2 dwords per active lane, dword-major)
-  ///     AddrLo[0] AddrLo[1] ... AddrLo[A-1]   low 32 bits of each address
-  ///     AddrHi[0] AddrHi[1] ... AddrHi[A-1]   high 32 bits
-  /// \endcode
-  /// A = number of active lanes; the i-th address belongs to the i-th set
-  /// bit of Exec. Only the address differs per lane, so N = 2: a full wave
-  /// is 56 + 64 * 2 * 4 = 568 bytes. Messages from many waves follow each
-  /// other in a sub-buffer; the CPU thread hands them to CoalescingHandler
-  /// one by one when the sub-buffer fills up and after the kernel ends.
+  /// The device side, run by every active lane just before the traced
+  /// load/store: rebuild the lane's address the way the instruction does
+  /// (64-bit VGPR pair + immediate offset) and send it, together with the
+  /// instruction's \p Site once for the wave.
   __attribute__((device, used)) static void
-  onAccess(uint32_t AddrLo, uint32_t AddrHi, uint32_t ImmOffset, uint32_t Site,
-           uint32_t BlockX, uint32_t BlockY, uint32_t BlockZ) {
-    const uint64_t Addr =
+  onAccess(uint32_t AddrLo, uint32_t AddrHi, uint32_t ImmOffset,
+           uint32_t Site) {
+    const uint64_t Address =
         (uint64_t(AddrHi) << 32 | AddrLo) + int64_t(int32_t(ImmOffset));
-    const uint32_t Lane[2] = {uint32_t(Addr), uint32_t(Addr >> 32)};
-    send<2>({AccessTag, Site, 0, BlockX, BlockY, BlockZ,
-             comms::device::readHwLocation()},
-            Lane);
+    send(AccessWave{Site}, AccessLane{Address});
   }
 
   /// Instrumentation: a call to onAccess before every global load/store
@@ -183,6 +193,9 @@ struct UncoalescedMemAccessTool
       const auto &TRI = *ST.getRegisterInfo();
       for (llvm::MachineBasicBlock &MBB : MF)
         for (llvm::MachineInstr &MI : MBB) {
+          // Only vector global memory instructions: global_* loads and
+          // stores with the whole address in a VGPR pair. The SGPR-base form
+          // (global_load v, v_off, s[b:b+1]) is skipped.
           const unsigned Opc = MI.getOpcode();
           if (!llvm::SIInstrInfo::isFLATGlobal(MI) || !MI.mayLoadOrStore() ||
               llvm::AMDGPU::hasNamedOperand(Opc, llvm::AMDGPU::OpName::saddr))
@@ -190,43 +203,48 @@ struct UncoalescedMemAccessTool
           auto Operand = [&](llvm::AMDGPU::OpName Name) -> llvm::MachineOperand & {
             return MI.getOperand(llvm::AMDGPU::getNamedOperandIdx(Opc, Name));
           };
+
+          // The address operands: the VGPR pair, and the immediate offset
+          // the instruction adds to it.
           const llvm::MCRegister VAddr =
               Operand(llvm::AMDGPU::OpName::vaddr).getReg().asMCReg();
           const int64_t Imm = Operand(llvm::AMDGPU::OpName::offset).getImm();
-          // Bytes per lane: size of the data register.
+
+          // Bytes each lane moves: the size of the data register (vdata for
+          // a store, vdst for a load), e.g. 4 for dword, 16 for dwordx4.
           const auto Data = MI.mayStore() ? llvm::AMDGPU::OpName::vdata
                                           : llvm::AMDGPU::OpName::vdst;
           const uint32_t Width =
               TRI.getRegSizeInBits(*TRI.getMinimalPhysRegClass(
                   Operand(Data).getReg().asMCReg())) / 8;
 
+          // Record the instruction on the CPU. Its index in Sites is the
+          // Site number the payload will send back.
           const uint32_t Site = uint32_t(Coalescing.Sites.size());
           std::string MIR;
           llvm::raw_string_ostream(MIR) << MI;
           Coalescing.Sites.push_back({MF.getName().str(), MIR, Width});
 
+          // Build the payload Luthier inserts before MI. Luthier's intrinsics
+          // (readReg) are only lowered inside the payload, so the registers
+          // are read here and passed to onAccess, which is then inlined.
           LUTHIER_REPORT_FATAL_ON_ERROR(createInjectedPayload(
               &UncoalescedMemAccessTool::onAccess, P, PAM, MI,
               [&](llvm::Function &Hook, llvm::IRBuilderBase &B) -> llvm::Error {
                 llvm::Module &M = *Hook.getParent();
+                // The value a register holds at this point in the app.
                 auto ReadReg = [&](llvm::MCRegister R) {
                   return luthier::insertCallToIntrinsic(
                       M, B, "luthier::readReg", *B.getInt32Ty(),
                       uint32_t(R.id()));
                 };
-                llvm::SmallVector<llvm::Value *, 7> Args{
+                // onAccess(AddrLo, AddrHi, ImmOffset, Site): the two halves
+                // of the address register pair, then two constants. Site is
+                // an integer index into Sites, not a pointer.
+                llvm::Value *Args[] = {
                     ReadReg(TRI.getSubReg(VAddr, llvm::AMDGPU::sub0)),
                     ReadReg(TRI.getSubReg(VAddr, llvm::AMDGPU::sub1)),
                     B.getInt32(uint32_t(Imm)), B.getInt32(Site)};
-                // Workgroup id. readSVA returns wrong values in a payload today
-                // (Luthier issue, to be fixed upstream).
-                auto ReadSVA = [&](luthier::ScalarValueArgument SA) {
-                  return luthier::insertCallToIntrinsic(
-                      M, B, "luthier::readSVA", *B.getInt32Ty(), uint8_t(SA));
-                };
-                Args.append({ReadSVA(luthier::WORKGROUP_ID_X),
-                             ReadSVA(luthier::WORKGROUP_ID_Y),
-                             ReadSVA(luthier::WORKGROUP_ID_Z)});
                 llvm::InlineFunctionInfo IFI;
                 llvm::InlineFunction(*B.CreateCall(&Hook, Args), IFI);
                 return llvm::Error::success();

@@ -17,14 +17,19 @@
 /// \file
 /// Byte layout of the messages instrumented kernels send to the host, and of
 /// the descriptor that tells the device where to put them. Shared by device
-/// and host code, so nothing here uses bitfields.
+/// and host code.
 ///
-/// A message is one \c WaveHeader followed by \c DwordsPerLane dwords for
-/// each active lane, written dword-major so a wave's stores coalesce:
+/// What is sent is up to the tool: a struct for the whole wave (\c WaveT)
+/// and a struct for each active lane (\c LaneT). A message is
 ///
-///   dword 0 of active lane 0..N-1, dword 1 of active lane 0..N-1, ...
+///   uint64_t Exec          which lanes were active (the only fixed field)
+///   WaveT                  written once, by the first active lane
+///   LaneT[A]               one per active lane, A = popcount(Exec)
 ///
-/// The i-th lane's data belongs to the i-th set bit of \c WaveHeader::Exec.
+/// with \c WaveT padded and the whole message rounded up to 8 bytes, so each
+/// part is 8-byte aligned. The i-th \c LaneT belongs to the i-th set bit of
+/// \c Exec. No sizes or types travel with the message: both sides know
+/// \c WaveT and \c LaneT, and the length follows from \c Exec.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMS_PROTOCOL_H
 #define LUTHIER_COMMS_PROTOCOL_H
@@ -37,40 +42,21 @@ namespace luthier::comms {
 /// Upper bound on sub-buffers; sizes the device-side lock array.
 inline constexpr uint32_t MaxSubBuffers = 1024;
 
-/// \c WaveHeader::BlockIdx* value when the workgroup id is not reported.
-inline constexpr uint32_t UnknownBlockIdx = 0xffffffffu;
-
-/// \c WaveHeader::SeId / \c SaId / \c CuId value when not reported.
+/// \c HwLocation value of an id the target does not report.
 inline constexpr uint8_t UnknownHwId = 0xff;
 
-/// Information that applies to the whole wave.
-struct WaveHeader {
-  uint64_t Exec;         ///< Execution mask at the instrumentation point.
-  uint64_t Timestamp;    ///< Cycle counter when the wave submitted.
-  uint32_t DataSize;     ///< Bytes of lane data after this header.
-  uint32_t Tag;          ///< What the lane data is; defined by the sender.
-  uint32_t Site;         ///< Which instrumentation point sent it.
-  uint32_t Info;         ///< Per-site data; defined by the sender.
-  uint32_t BlockIdxX;    ///< Workgroup id, or \c UnknownBlockIdx.
-  uint32_t BlockIdxY;
-  uint32_t BlockIdxZ;
-  /// Where the wave ran, or \c UnknownHwId. On RDNA \c CuId is the
-  /// workgroup-processor (WGP) id, which is unique only within its shader
-  /// array: identify a WGP by (SeId, SaId, CuId).
-  uint8_t SeId;          ///< Shader engine.
-  uint8_t SaId;          ///< Shader array within the engine.
-  uint8_t CuId;          ///< Compute unit (CDNA) or WGP (RDNA).
-  uint8_t WaveSize;      ///< 32 or 64: lanes in \c Exec.
-  uint8_t ActiveLanes;   ///< Number of set bits in \c Exec.
-  uint8_t DwordsPerLane; ///< Lane data is ActiveLanes * DwordsPerLane dwords.
-  uint8_t Reserved[6];
-};
+constexpr uint32_t alignTo8(uint32_t Bytes) { return (Bytes + 7u) & ~7u; }
 
-static_assert(sizeof(WaveHeader) == 56, "WaveHeader layout drifted");
-static_assert(offsetof(WaveHeader, DataSize) == 16);
-static_assert(offsetof(WaveHeader, BlockIdxX) == 32);
-static_assert(offsetof(WaveHeader, SeId) == 44);
-static_assert(offsetof(WaveHeader, ActiveLanes) == 48);
+/// Byte offsets of one message's parts, for \p ActiveLanes lanes.
+template <typename WaveT, typename LaneT> struct MessageLayout {
+  static_assert(alignof(WaveT) <= 8 && alignof(LaneT) <= 8,
+                "message structs must not need more than 8-byte alignment");
+  static constexpr uint32_t WaveOffset = sizeof(uint64_t);
+  static constexpr uint32_t LaneOffset = WaveOffset + alignTo8(sizeof(WaveT));
+  static constexpr uint32_t bytes(uint32_t ActiveLanes) {
+    return alignTo8(LaneOffset + ActiveLanes * uint32_t(sizeof(LaneT)));
+  }
+};
 
 /// Where the device writes messages: fine-grained host memory split into
 /// sub-buffers. Filled by \c SharedBuffers::describe.

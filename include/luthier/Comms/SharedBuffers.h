@@ -59,8 +59,9 @@ public:
         "comms: the number of sub-buffers must be a power of two no larger "
         "than MaxSubBuffers"));
     LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        Cfg.SubBufferCapacity >= sizeof(WaveHeader) + 64 * 4 * 4,
-        "comms: a sub-buffer must hold at least one full-wave message"));
+        Cfg.SubBufferCapacity >= 4096 && Cfg.SubBufferCapacity % 8 == 0,
+        "comms: a sub-buffer must be at least 4 KiB and a multiple of 8 "
+        "bytes"));
 
     std::unique_ptr<SharedBuffers> SB(new SharedBuffers(AmdExt, Cfg));
     llvm::SmallVector<hsa_agent_t, 8> Agents;

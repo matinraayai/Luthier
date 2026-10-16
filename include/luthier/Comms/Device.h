@@ -20,8 +20,11 @@
 ///   1. take the sub-buffer's lock (serialises waves sharing it)
 ///   2. if the message does not fit, hand the sub-buffer to the host and
 ///      wait for it to be drained
-///   3. write the wave header and every active lane's dwords
+///   3. write Exec and the wave struct (first active lane), then every
+///      active lane's struct
 ///   4. publish the new size and release the lock
+///
+/// See Protocol.h for the message layout.
 ///
 /// The lock and host hand-off functions are taken from dh_comms (see below).
 /// The code is taken by: dh_comms (https://github.com/AMDResearch/dh_comms)
@@ -158,35 +161,24 @@ LUTHIER_COMMS_DEVICE HwLocation readHwLocation() {
 #endif
 }
 
-/// Fields of the \c WaveHeader that the sender provides.
-struct MessageInfo {
-  uint32_t Tag;
-  uint32_t Site;
-  uint32_t Info;
-  uint32_t BlockIdxX = UnknownBlockIdx;
-  uint32_t BlockIdxY = UnknownBlockIdx;
-  uint32_t BlockIdxZ = UnknownBlockIdx;
-  HwLocation Hw = {};
-};
-
-/// Sends \p Lane (this lane's \p N dwords) from every active lane as one
-/// message, through sub-buffer \p SubBuffer, which must be wave-uniform.
-template <unsigned N>
+/// Sends one message from the calling wave through sub-buffer \p SubBuffer
+/// (must be the same for the whole wave): \p Wave from the first active
+/// lane, and \p Lane from every active lane. See Protocol.h for the layout.
+template <typename WaveT, typename LaneT>
 LUTHIER_COMMS_DEVICE void submit(const ChannelDescriptor &C, uint32_t *Locks,
-                                 uint32_t SubBuffer, const MessageInfo &M,
-                                 const uint32_t (&Lane)[N]) {
+                                 uint32_t SubBuffer, const WaveT &Wave,
+                                 const LaneT &Lane) {
 #if defined(__HIP_DEVICE_COMPILE__)
-  // Read the clock first so the submission itself barely perturbs it.
-  const uint64_t Timestamp = __builtin_readcyclecounter();
+  using Layout = MessageLayout<WaveT, LaneT>;
   if (C.NumSubBuffers == 0)
     return; // channel not configured for this dispatch
 
+  // Which lanes take part, and where this lane's struct goes among them.
   const uint64_t Exec = __builtin_amdgcn_read_exec();
   const uint32_t ActiveLanes = uint32_t(__builtin_popcountll(Exec));
   const uint32_t Rank = activeLaneRank(Exec);
   const bool IsLeader = Rank == 0;
-  const uint32_t DataSize = ActiveLanes * N * uint32_t(sizeof(uint32_t));
-  const uint32_t MessageSize = uint32_t(sizeof(WaveHeader)) + DataSize;
+  const uint32_t MessageSize = Layout::bytes(ActiveLanes);
   const uint32_t Capacity = uint32_t(C.SubBufferCapacity);
   const uint32_t Sb = SubBuffer & uint32_t(C.NumSubBuffers - 1);
 
@@ -211,33 +203,15 @@ LUTHIER_COMMS_DEVICE void submit(const ChannelDescriptor &C, uint32_t *Locks,
     Used = 0; // drained, and we still hold the lock
   }
 
+  // Exec and the wave struct once; then each lane's struct at its rank.
   char *const Message = C.Buffer + uint64_t(Sb) * Capacity + Used;
   if (IsLeader) {
-    WaveHeader H{};
-    H.Exec = Exec;
-    H.Timestamp = Timestamp;
-    H.DataSize = DataSize;
-    H.Tag = M.Tag;
-    H.Site = M.Site;
-    H.Info = M.Info;
-    H.BlockIdxX = M.BlockIdxX;
-    H.BlockIdxY = M.BlockIdxY;
-    H.BlockIdxZ = M.BlockIdxZ;
-    H.SeId = M.Hw.SeId;
-    H.SaId = M.Hw.SaId;
-    H.CuId = M.Hw.CuId;
-    // 32 or 64, folded from the subtarget the payload is compiled for (it
-    // follows -mwavefrontsize64 on RDNA).
-    H.WaveSize = uint8_t(__builtin_amdgcn_wavefrontsize());
-    H.ActiveLanes = uint8_t(ActiveLanes);
-    H.DwordsPerLane = uint8_t(N);
-    *reinterpret_cast<WaveHeader *>(Message) = H;
+    *reinterpret_cast<uint64_t *>(Message) = Exec;
+    *reinterpret_cast<WaveT *>(Message + Layout::WaveOffset) = Wave;
   }
-  auto *Data = reinterpret_cast<uint32_t *>(Message + sizeof(WaveHeader));
-  for (unsigned D = 0; D < N; ++D)
-    Data[D * ActiveLanes + Rank] = Lane[D];
+  reinterpret_cast<LaneT *>(Message + Layout::LaneOffset)[Rank] = Lane;
 
-  // Header and lane data must reach the host before the new size does.
+  // The message must reach the host before the new size does.
   __builtin_amdgcn_fence(__ATOMIC_RELEASE, "");
   if (IsLeader)
     __hip_atomic_store(&C.SubBufferSizes[Sb], uint64_t(Used + MessageSize),
