@@ -92,21 +92,24 @@ static llvm::cl::opt<unsigned>
 //
 //   Exec        the execution mask: bit i set = lane i ran the access
 //   Timestamp   the time stamp: GPU clock when the wave reached the access
-//   InstrIdx    which traced instruction this is (see below)
+//   InstrId     the ID of the traced instruction (see below)
 //   Data        the address each active lane loads or stores
 //
 // Only what the GPU alone knows is sent. Everything that is fixed per
 // instruction (e.g. how many bytes each lane moves) is read from the
-// MachineInstr while instrumenting and kept on the CPU, in
-// CoalescingHandler::AccessBytes; InstrIdx is the position there. Example:
-// the pass instruments a global_load_dword first and a
-// global_load_dwordx4 second, so AccessBytes = {4, 16}; a message with
-// InstrIdx = 1 means every lane moved 16 bytes.
+// MachineInstr while instrumenting and kept on the CPU.
+//
+// InstrId is a counter: the first instruction the pass traces gets ID 0, the
+// next one 1, and so on, across all kernels. CoalescingHandler::AccessBytes
+// holds each instruction's bytes per lane at its ID. Example: the pass
+// traces a global_load_dword first and a global_load_dwordx4 second, so
+// their IDs are 0 and 1 and AccessBytes = {4, 16}; a message with
+// InstrId = 1 means every lane moved 16 bytes.
 
 /// The per-wave part of every message.
 struct WaveHeader {
   uint64_t Timestamp; ///< Time stamp: GPU clock at the access.
-  uint32_t InstrIdx;  ///< Index into CoalescingHandler::AccessBytes.
+  uint32_t InstrId;   ///< ID of the traced instruction: 0, 1, 2, ...
 };
 
 //===----------------------------------------------------------------------===//
@@ -114,13 +117,13 @@ struct WaveHeader {
 //===----------------------------------------------------------------------===//
 
 struct CoalescingHandler final : comms::MessageHandler<WaveHeader, 2> {
-  /// Bytes each lane moves, per traced instruction (indexed by InstrIdx).
+  /// Bytes each lane moves, per traced instruction (indexed by InstrId).
   std::vector<uint32_t> AccessBytes;
   uint64_t Waves = 0, Uncoalesced = 0, Lines = 0, Ideal = 0;
 
   void handle(uint64_t Exec, const WaveHeader &H,
               llvm::ArrayRef<uint32_t> Data) override {
-    const uint64_t Width = AccessBytes[H.InstrIdx];
+    const uint64_t Width = AccessBytes[H.InstrId];
     const uint32_t ActiveLanes = uint32_t(Data.size() / 2);
     // The hardware issues the lanes LanesPerCycle at a time. Collect, for
     // each such group, the cache lines its lanes touch and the bytes it moves.
@@ -173,6 +176,7 @@ struct UncoalescedMemAccessTool
   using Tool::Tool;
   CoalescingHandler Coalescing;
   std::recursive_mutex Mutex;
+  uint32_t NextInstrId = 0; ///< ID the next traced instruction gets.
 
   /// The device side, run by every active lane just before the traced
   /// load/store: rebuild the lane's address the way the instruction does
@@ -180,9 +184,9 @@ struct UncoalescedMemAccessTool
   /// header once for the wave.
   __attribute__((device, used)) static void
   onAccess(uint32_t AddrLo, uint32_t AddrHi, uint32_t ImmOffset,
-           uint32_t InstrIdx) {
+           uint32_t InstrId) {
     // Read the clock first so the submission itself barely perturbs it.
-    const WaveHeader H{__builtin_readcyclecounter(), InstrIdx};
+    const WaveHeader H{__builtin_readcyclecounter(), InstrId};
     const uint64_t Address =
         (uint64_t(AddrHi) << 32 | AddrLo) + int64_t(int32_t(ImmOffset));
     const uint32_t Lane[2] = {uint32_t(Address), uint32_t(Address >> 32)};
@@ -223,9 +227,9 @@ struct UncoalescedMemAccessTool
               TRI.getRegSizeInBits(*TRI.getMinimalPhysRegClass(
                   Operand(Data).getReg().asMCReg())) / 8;
 
-          // Keep the width on the CPU; its position is the InstrIdx the
-          // payload sends back.
-          const uint32_t InstrIdx = uint32_t(Coalescing.AccessBytes.size());
+          // Give the instruction the next ID and keep its width on the CPU
+          // under that ID; the payload sends the ID back.
+          const uint32_t InstrId = NextInstrId++;
           Coalescing.AccessBytes.push_back(Width);
 
           // Build the payload Luthier inserts before MI. Luthier's intrinsics
@@ -241,12 +245,12 @@ struct UncoalescedMemAccessTool
                       M, B, "luthier::readReg", *B.getInt32Ty(),
                       uint32_t(R.id()));
                 };
-                // onAccess(AddrLo, AddrHi, ImmOffset, InstrIdx): the address
+                // onAccess(AddrLo, AddrHi, ImmOffset, InstrId): the address
                 // register pair, then two constants.
                 llvm::Value *Args[] = {
                     ReadReg(TRI.getSubReg(VAddr, llvm::AMDGPU::sub0)),
                     ReadReg(TRI.getSubReg(VAddr, llvm::AMDGPU::sub1)),
-                    B.getInt32(uint32_t(Imm)), B.getInt32(InstrIdx)};
+                    B.getInt32(uint32_t(Imm)), B.getInt32(InstrId)};
                 llvm::InlineFunctionInfo IFI;
                 llvm::InlineFunction(*B.CreateCall(&Hook, Args), IFI);
                 return llvm::Error::success();
