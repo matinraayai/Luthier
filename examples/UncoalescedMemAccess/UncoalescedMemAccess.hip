@@ -18,8 +18,8 @@
 /// Counts uncoalesced global loads and stores.
 ///
 /// Every global load/store gets a hook that sends each lane's address, with a
-/// per-wave header (timestamp, source line, access kind and size), to the
-/// CPU while the kernel runs, through \c luthier::comms::Channel. On the CPU,
+/// small per-wave header (time stamp and which instruction), to the CPU while
+/// the kernel runs, through \c luthier::comms::Channel. On the CPU,
 /// the lanes of each wave-instruction are split into groups of
 /// \c --lanes-per-cycle (the hardware issues 16 lanes per cycle); a group is
 /// coalesced if it touches no more \c --cache-line-bytes lines than its bytes
@@ -47,12 +47,7 @@
 #include <luthier/Rocprofiler/RocprofilerSdkLibrary.h>
 #include <luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h>
 #include <luthier/ToolCodeGen/PrototypeCallGraph.h>
-#include <luthier/ToolCodeGen/MemoryAllocationAccessor.h>
-#include <luthier/ToolCodeGen/TargetMachineInstrMDNode.h>
 #include <luthier/Tooling/Tool.h>
-#include <llvm/DebugInfo/DWARF/DWARFContext.h>
-#include <llvm/Support/AMDGPUAddrSpace.h>
-#include <llvm/Support/xxhash.h>
 
 #include <algorithm>
 #include <map>
@@ -77,70 +72,45 @@ static llvm::cl::opt<unsigned>
 // One message per wave each time a traced load/store runs (Protocol.h):
 //
 //   uint64_t   Exec        which lanes were active (added by Comms)  8 bytes
-//   WaveHeader             once per wave, see below                 32 bytes
+//   WaveHeader             once per wave, see below                 16 bytes
 //   uint32_t   Data[2*A]   each active lane's 64-bit address as 2
 //                          dwords (send<2>): low halves, then high   8 * A
 //
-// A full 64-lane wave sends 8 + 32 + 64 * 8 = 552 bytes.
+// A full 64-lane wave sends 8 + 16 + 64 * 8 = 536 bytes.
 //
 // What each field is:
 //
 //   Exec        the execution mask: bit i set = lane i ran the access
 //   Timestamp   the time stamp: GPU clock when the wave reached the access
-//   FileHash    hash of the source file name of the access
-//   Line        source line of the access
-//   Column      source column of the access
-//   UserType    what kind of message this is (AddressMessage)
-//   UserData    the access: read and/or write, address space, bytes per lane
+//   InstrIdx    which traced instruction this is (see below)
 //   Data        the address each active lane loads or stores
 //
-// Nothing else is needed: the data size and the number of active lanes
-// follow from Exec, every active lane always sends its address, and there is
-// no per-lane header.
-//
-// To count uncoalesced accesses the tool needs only Exec, the addresses and
-// the access size in UserData. Timestamp, FileHash, Line, Column and
-// UserType are sent to illustrate how a header can carry more information.
-//
-// FileHash, Line, Column and UserData are known when the instruction is
-// instrumented, so the instrumentation pass bakes them into the payload as
-// constants (see run()); only Timestamp is read on the GPU.
-
-/// UserType of a message whose lane data are memory addresses.
-constexpr uint32_t AddressMessage = 0;
+// Only what the GPU alone knows is sent. Everything that is fixed per
+// instruction (e.g. how many bytes each lane moves) is read from the
+// MachineInstr while instrumenting and kept on the CPU, in
+// CoalescingHandler::AccessBytes; InstrIdx is the position there. Example:
+// the pass instruments a global_load_dword first and a
+// global_load_dwordx4 second, so AccessBytes = {4, 16}; a message with
+// InstrIdx = 1 means every lane moved 16 bytes.
 
 /// The per-wave part of every message.
 struct WaveHeader {
   uint64_t Timestamp; ///< Time stamp: GPU clock at the access.
-  uint64_t FileHash;  ///< Hash of the source file name; 0 without -g.
-  uint32_t Line;      ///< Source line of the access; 0 without -g.
-  uint32_t Column;    ///< Source column of the access; 0 without -g.
-  uint32_t UserType;  ///< Kind of message: AddressMessage.
-  /// The access: [1:0] 1 = read, 2 = write, 3 = both; [5:2] address space
-  /// (llvm::AMDGPUAS); [21:6] bytes per lane, e.g. 4 for dword, 16 for
-  /// dwordx4.
-  uint32_t UserData;
+  uint32_t InstrIdx;  ///< Index into CoalescingHandler::AccessBytes.
 };
-
-/// Builds WaveHeader::UserData.
-constexpr uint32_t packUserData(bool Reads, bool Writes, unsigned AddrSpace,
-                                unsigned Bytes) {
-  return uint32_t(Reads) | uint32_t(Writes) << 1 | (AddrSpace & 0xfu) << 2 |
-         (Bytes & 0xffffu) << 6;
-}
 
 //===----------------------------------------------------------------------===//
 // The CPU side: counts uncoalesced wave-instructions
 //===----------------------------------------------------------------------===//
 
 struct CoalescingHandler final : comms::MessageHandler<WaveHeader, 2> {
+  /// Bytes each lane moves, per traced instruction (indexed by InstrIdx).
+  std::vector<uint32_t> AccessBytes;
   uint64_t Waves = 0, Uncoalesced = 0, Lines = 0, Ideal = 0;
 
   void handle(uint64_t Exec, const WaveHeader &H,
               llvm::ArrayRef<uint32_t> Data) override {
-    if (H.UserType != AddressMessage)
-      return;
-    const uint64_t Width = H.UserData >> 6 & 0xffffu;
+    const uint64_t Width = AccessBytes[H.InstrIdx];
     const uint32_t ActiveLanes = uint32_t(Data.size() / 2);
     // The hardware issues the lanes LanesPerCycle at a time. Collect, for
     // each such group, the cache lines its lanes touch and the bytes it moves.
@@ -197,92 +167,22 @@ struct UncoalescedMemAccessTool
   /// The device side, run by every active lane just before the traced
   /// load/store: rebuild the lane's address the way the instruction does
   /// (64-bit VGPR pair + immediate offset) and send it as 2 dwords, with the
-  /// header once for the wave. Everything but the address and the clock is
-  /// a constant of the payload.
+  /// header once for the wave.
   __attribute__((device, used)) static void
   onAccess(uint32_t AddrLo, uint32_t AddrHi, uint32_t ImmOffset,
-           uint32_t FileHashLo, uint32_t FileHashHi, uint32_t Line,
-           uint32_t Column, uint32_t UserData) {
+           uint32_t InstrIdx) {
     // Read the clock first so the submission itself barely perturbs it.
-    const WaveHeader H{__builtin_readcyclecounter(),
-                       uint64_t(FileHashHi) << 32 | FileHashLo,
-                       Line,
-                       Column,
-                       AddressMessage,
-                       UserData};
+    const WaveHeader H{__builtin_readcyclecounter(), InstrIdx};
     const uint64_t Address =
         (uint64_t(AddrHi) << 32 | AddrLo) + int64_t(int32_t(ImmOffset));
     const uint32_t Lane[2] = {uint32_t(Address), uint32_t(Address >> 32)};
     send<2>(H, Lane);
   }
 
-  //===--------------------------------------------------------------------===//
-  // Where a traced instruction is in the application's source
-  //===--------------------------------------------------------------------===//
-  //
-  // Luthier lifts the application's code into MachineInstrs, one per
-  // original instruction, and tags each with a TargetMachineInstrMDNode (the
-  // "pcsections !N" seen in MIR) holding the device address it was loaded
-  // at. From that address:
-  //
-  //   1. MemoryAllocationAnalysis asks the HSA loader which loaded code
-  //      object contains it, and returns the code object (an llvm::object
-  //      ELF file) and the base address it was loaded at;
-  //   2. address - load base = the instruction's address in the ELF, the one
-  //      llvm-objdump -d prints (code objects are loaded from address 0);
-  //   3. if the application was built with -g, llvm::DWARFContext turns that
-  //      ELF address into file:line:column, the same way llvm-symbolizer
-  //      does.
-
-  /// One DWARF reader per application code object, built on first use.
-  std::map<const llvm::object::ObjectFile *,
-           std::unique_ptr<llvm::DWARFContext>>
-      Dwarf;
-
-  /// The source location of the application instruction \p MI was lifted
-  /// from, or an empty one if it is unknown (no -g).
-  llvm::DILineInfo sourceOf(const llvm::MachineInstr &MI,
-                            const luthier::MemoryAllocationAccessor &Memory) {
-    // The device address of the original instruction, from Luthier's tag.
-    auto *Tag = luthier::TargetMachineInstrMDNode::getInstrMDNodeIfExists(MI);
-    const std::optional<uint64_t> PC =
-        Tag ? Tag->getTraceInstrAddress() : std::nullopt;
-    if (!PC)
-      return {};
-    // The loaded code object containing it, and the address it starts at.
-    auto Alloc = Memory.getAllocationDescriptor(*PC);
-    if (!Alloc) {
-      llvm::consumeError(Alloc.takeError());
-      return {};
-    }
-    const auto *Obj = Alloc->getAllocationCodeObject();
-    if (!Obj)
-      return {};
-    const uint64_t ElfAddress =
-        *PC - reinterpret_cast<uint64_t>(Alloc->getDeviceAllocation().data());
-    // ELF address -> file:line:column, if the code object has DWARF (-g).
-    auto &Ctx = Dwarf[Obj];
-    if (!Ctx)
-      Ctx = llvm::DWARFContext::create(*Obj);
-    auto Info = Ctx->getLineInfoForAddress(
-        {ElfAddress, llvm::object::SectionedAddress::UndefSection},
-        llvm::DILineInfoSpecifier(
-            llvm::DILineInfoSpecifier::FileLineInfoKind::AbsoluteFilePath,
-            llvm::DILineInfoSpecifier::FunctionNameKind::None));
-    return Info ? *Info : llvm::DILineInfo{};
-  }
-
   /// Instrumentation: a call to onAccess before every global load/store
   /// whose address is in a VGPR pair (<tt>global_load v, v[a:a+1], off</tt>).
   llvm::PreservedAnalyses run(luthier::Prototype &P,
                               luthier::PrototypeAnalysisManager &PAM) {
-    // Maps an application device address to its loaded code object.
-    const luthier::MemoryAllocationAccessor &Memory =
-        PAM.getResult<luthier::TargetModuleAnalysisManagerPrototypeProxy>(P)
-            .getManager()
-            .getResult<luthier::MemoryAllocationAnalysis>(P.getTargetModule())
-            .getAccessor();
-
     P.forEachTargetMF(PAM, [&](llvm::MachineFunction &MF) {
       const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
       const auto &TRI = *ST.getRegisterInfo();
@@ -313,14 +213,10 @@ struct UncoalescedMemAccessTool
               TRI.getRegSizeInBits(*TRI.getMinimalPhysRegClass(
                   Operand(Data).getReg().asMCReg())) / 8;
 
-          // The header fields known now, from MI itself and the
-          // application's DWARF; they become constants of the payload.
-          const llvm::DILineInfo Src = sourceOf(MI, Memory);
-          const uint64_t FileHash =
-              Src.Line ? llvm::xxh3_64bits(Src.FileName) : 0;
-          const uint32_t UserData =
-              packUserData(MI.mayLoad(), MI.mayStore(),
-                           llvm::AMDGPUAS::GLOBAL_ADDRESS, Width);
+          // Keep the width on the CPU; its position is the InstrIdx the
+          // payload sends back.
+          const uint32_t InstrIdx = uint32_t(Coalescing.AccessBytes.size());
+          Coalescing.AccessBytes.push_back(Width);
 
           // Build the payload Luthier inserts before MI. Luthier's intrinsics
           // (readReg) are only lowered inside the payload, so the registers
@@ -335,18 +231,12 @@ struct UncoalescedMemAccessTool
                       M, B, "luthier::readReg", *B.getInt32Ty(),
                       uint32_t(R.id()));
                 };
-                // onAccess(AddrLo, AddrHi, ImmOffset, FileHashLo,
-                // FileHashHi, Line, Column, UserData): the address register
-                // pair, then constants.
+                // onAccess(AddrLo, AddrHi, ImmOffset, InstrIdx): the address
+                // register pair, then two constants.
                 llvm::Value *Args[] = {
                     ReadReg(TRI.getSubReg(VAddr, llvm::AMDGPU::sub0)),
                     ReadReg(TRI.getSubReg(VAddr, llvm::AMDGPU::sub1)),
-                    B.getInt32(uint32_t(Imm)),
-                    B.getInt32(uint32_t(FileHash)),
-                    B.getInt32(uint32_t(FileHash >> 32)),
-                    B.getInt32(Src.Line),
-                    B.getInt32(Src.Column),
-                    B.getInt32(UserData)};
+                    B.getInt32(uint32_t(Imm)), B.getInt32(InstrIdx)};
                 llvm::InlineFunctionInfo IFI;
                 llvm::InlineFunction(*B.CreateCall(&Hook, Args), IFI);
                 return llvm::Error::success();
