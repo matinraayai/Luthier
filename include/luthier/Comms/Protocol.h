@@ -19,8 +19,8 @@
 /// the descriptor that tells the device where to put them. Shared by device
 /// and host code.
 ///
-/// What is sent is up to the tool: one value for the whole wave (\c WaveT,
-/// e.g. a uint32_t) and \c N dwords from each active lane. A message is
+/// What is sent is up to the tool: a header for the whole wave (\c WaveT, a
+/// value or a struct) and \c N dwords from each active lane. A message is
 ///
 ///   uint64_t Exec            which lanes were active (the only fixed field)
 ///   WaveT                    written once, by the first active lane

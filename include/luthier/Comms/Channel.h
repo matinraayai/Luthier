@@ -16,8 +16,8 @@
 ///
 /// \file
 /// A generic GPU-to-CPU channel for Luthier tools. It knows nothing about
-/// what is sent: the tool picks \c WaveT, one value for the whole wave
-/// (e.g. a uint32_t), and \c N, the dwords each active lane sends; a hook
+/// what is sent: the tool picks \c WaveT, a header for the whole wave (a
+/// value or a struct), and \c N, the dwords each active lane sends; a hook
 /// calls \c Channel::send, and on the CPU every message is handed to the
 /// registered \c MessageHandler s.
 ///
