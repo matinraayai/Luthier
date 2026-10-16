@@ -36,7 +36,7 @@
 
 #include <hip/hip_runtime.h>
 
-#define LUTHIER_COMMS_DEVICE __attribute__((device, always_inline)) inline
+#define LUTHIER_COMMS_DEVICE __attribute__((device, always_inline))
 
 // Function bodies are compiled for the device only (__HIP_DEVICE_COMPILE__);
 // the host pass sees the declarations, which hooks need, and empty bodies.
