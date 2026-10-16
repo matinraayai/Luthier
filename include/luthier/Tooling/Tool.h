@@ -20,9 +20,6 @@
 #define LUTHIER_TOOLING_TOOL_H
 
 #include "luthier/Common/Singleton.h"
-#include "luthier/HSA/Agent.h"
-#include "luthier/HSA/HsaError.h"
-#include "luthier/HSA/ISA.h"
 #include "luthier/Tooling/InstrumentationPipelineTrait.h"
 #include "luthier/Tooling/InstrumentedKernelLoaderAndLauncher.h"
 #include "luthier/Tooling/LLVMUserTrait.h"
@@ -36,12 +33,9 @@
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/PassManager.h>
-#include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/AMDHSAKernelDescriptor.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/FormatVariadic.h>
-#include <llvm/Target/TargetMachine.h>
-#include <llvm/TargetParser/AMDGPUTargetParser.h>
 
 namespace luthier {
 
@@ -99,78 +93,10 @@ public:
         ToolDeviceCodeOffloadParserTrait<Derived>(Err),
         InstrumentedKernelLoaderAndLauncherTrait<Derived>(
             RocprofilerLib, CoreApi, AmdExt, VenLoader, Err),
+        InstrumentationPipelineTrait<Derived, TargetUnitT>(CoreApi, AmdExt,
+                                                           VenLoader),
         PacketMonitorTrait<Derived>(RocprofilerLib, CoreApi, AmdExt, VenLoader,
                                     Err) {}
-
-  /// \param KD A kernel descriptor residing on device memory
-  /// \returns The \c llvm::TargetMachine associated with the \c hsa_agent_t
-  /// that owns the \p KD on success, \c llvm::Error on failure.
-  llvm::Expected<std::unique_ptr<llvm::TargetMachine>>
-  buildTargetMachineForKD(const llvm::amdhsa::kernel_descriptor_t *KD) {
-    const auto AmdExt = InstrumentedKernelLoaderAndLauncher::AmdExt.getTable();
-    const auto Core = InstrumentedKernelLoaderAndLauncher::CoreApi.getTable();
-
-    hsa_amd_pointer_info_t PointerInfo{};
-    PointerInfo.size = sizeof(hsa_amd_pointer_info_t);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
-        AmdExt.template callFunction<hsa_amd_pointer_info>(
-            const_cast<void *>(reinterpret_cast<const void *>(KD)),
-            &PointerInfo, nullptr, nullptr, nullptr),
-        "Failed to query HSA pointer info for kernel descriptor."));
-    hsa_agent_t Agent = PointerInfo.agentOwner;
-
-    llvm::SmallVector<hsa_isa_t, 1> Isas;
-    LUTHIER_RETURN_ON_ERROR(
-        luthier::hsa::agentGetSupportedISAs(Core, Agent, Isas));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        !Isas.empty(), "Agent reports no supported ISAs."));
-    hsa_isa_t Isa = Isas.front();
-
-    auto TripleOrErr = luthier::hsa::isaGetTargetTriple(Core, Isa);
-    LUTHIER_RETURN_ON_ERROR(TripleOrErr.takeError());
-    auto CPUOrErr = luthier::hsa::isaGetGPUName(Core, Isa);
-    LUTHIER_RETURN_ON_ERROR(CPUOrErr.takeError());
-    auto FeaturesOrErr = luthier::hsa::isaGetSubTargetFeatures(Core, Isa);
-    LUTHIER_RETURN_ON_ERROR(FeaturesOrErr.takeError());
-
-    // Fold the per-kernel wavefront size and CU/WGP execution mode out of the
-    // kernel descriptor into the subtarget feature string. Both features only
-    // exist on gfx10+; pre-gfx10 hardware is always wave64 and CU mode and has
-    // no \c wavefrontsize32 / \c cumode subtarget features to set.
-    if (llvm::AMDGPU::getIsaVersion(*CPUOrErr).Major >= 10) {
-      const bool IsWave32 = AMDHSA_BITS_GET(
-          KD->kernel_code_properties,
-          llvm::amdhsa::KERNEL_CODE_PROPERTY_ENABLE_WAVEFRONT_SIZE32);
-      FeaturesOrErr->AddFeature(IsWave32 ? "wavefrontsize32"
-                                         : "wavefrontsize64");
-      // WGP_MODE set => the kernel runs in WGP mode (cumode disabled); clear
-      // => CU mode (cumode enabled).
-      const bool IsWGPMode =
-          AMDHSA_BITS_GET(KD->compute_pgm_rsrc1,
-                          llvm::amdhsa::COMPUTE_PGM_RSRC1_GFX10_PLUS_WGP_MODE);
-      FeaturesOrErr->AddFeature("cumode", /*Enable=*/!IsWGPMode);
-      // TODO: add missing tgsplit feature
-    }
-
-    std::string ErrMsg;
-    const llvm::Target *TheTarget =
-        llvm::TargetRegistry::lookupTarget(*TripleOrErr, ErrMsg);
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        TheTarget != nullptr,
-        llvm::formatv("TargetRegistry::lookupTarget failed for triple {0}: {1}",
-                      TripleOrErr->str(), ErrMsg)));
-
-    llvm::TargetOptions TMOpts;
-    // Force this to on to support ctor/dtor kernels
-    TMOpts.UseInitArray = true;
-    std::unique_ptr<llvm::TargetMachine> TM(TheTarget->createTargetMachine(
-        *TripleOrErr, *CPUOrErr, FeaturesOrErr->getString(), TMOpts,
-        /*RM=*/std::nullopt));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        TM != nullptr, "createTargetMachine returned nullptr."));
-    TM->setOptLevel(llvm::CodeGenOptLevel::Default);
-    return TM;
-  }
 
   /// Resolve a payload function's host shadow handle to the corresponding
   /// \c llvm::Function inside the given instrumentation module.

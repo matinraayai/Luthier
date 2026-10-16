@@ -31,8 +31,9 @@
 #define LUTHIER_TOOLING_INSTRUMENTATION_PIPELINE_TRAIT_H
 
 #include "luthier/Common/ErrorCheck.h"
-#include "luthier/Tooling/HsaMemoryAllocationAccessor.h"
-#include "luthier/Tooling/LoadedCodeObjectCache.h"
+#include "luthier/HSA/Agent.h"
+#include "luthier/HSA/HsaError.h"
+#include "luthier/HSA/ISA.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
 #include "luthier/ToolCodeGen/EntryPoint.h"
@@ -50,11 +51,14 @@
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "luthier/ToolCodeGen/ToolDeviceCodeParser.h"
 #include "luthier/ToolCodeGen/TraceFunctionTranslationAnalysis.h"
+#include "luthier/Tooling/HsaMemoryAllocationAccessor.h"
+#include "luthier/Tooling/LoadedCodeObjectCache.h"
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/MachinePassManager.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/PassManager.h>
+#include <llvm/MC/TargetRegistry.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Passes/StandardInstrumentations.h>
 #include <llvm/Support/AMDHSAKernelDescriptor.h>
@@ -64,6 +68,7 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/CGPassBuilderOption.h>
 #include <llvm/Target/TargetMachine.h>
+#include <llvm/TargetParser/AMDGPUTargetParser.h>
 #include <memory>
 #include <string>
 
@@ -81,6 +86,11 @@ template <typename Derived, typename TargetUnitT = llvm::MachineFunction>
 class InstrumentationPipelineTrait {
   /// Intrinsic registry storage
   IntrinsicProcessorRegistry Registry;
+  /// HSA API tables
+  const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi;
+  const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExt;
+  const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+      &VenLoader;
 
   Derived &derived() { return static_cast<Derived &>(*this); }
 
@@ -296,13 +306,89 @@ class InstrumentationPipelineTrait {
   }
 
 public:
-  
+  InstrumentationPipelineTrait(
+      const rocprofiler::HsaApiTableSnapshot<::CoreApiTable> &CoreApi,
+      const rocprofiler::HsaApiTableSnapshot<::AmdExtTable> &AmdExt,
+      const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
+          &VenLoader)
+      : CoreApi(CoreApi), AmdExt(AmdExt), VenLoader(VenLoader) {};
+
   IntrinsicProcessorRegistry &getIntrinsicProcessorRegistry() {
     return Registry;
   }
 
   const IntrinsicProcessorRegistry &getIntrinsicProcessorRegistry() const {
     return Registry;
+  }
+
+  /// \param KD A kernel descriptor residing on device memory
+  /// \returns The \c llvm::TargetMachine associated with the \c hsa_agent_t
+  /// that owns the \p KD on success, \c llvm::Error on failure.
+  llvm::Expected<std::unique_ptr<llvm::TargetMachine>>
+  buildTargetMachineForKD(const llvm::amdhsa::kernel_descriptor_t *KD) {
+    const auto AmdExtTable = AmdExt.getTable();
+    const auto Core = CoreApi.getTable();
+
+    hsa_amd_pointer_info_t PointerInfo{};
+    PointerInfo.size = sizeof(hsa_amd_pointer_info_t);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_HSA_CALL_ERROR_CHECK(
+        AmdExtTable.template callFunction<hsa_amd_pointer_info>(
+            const_cast<void *>(reinterpret_cast<const void *>(KD)),
+            &PointerInfo, nullptr, nullptr, nullptr),
+        "Failed to query HSA pointer info for kernel descriptor."));
+    hsa_agent_t Agent = PointerInfo.agentOwner;
+
+    llvm::SmallVector<hsa_isa_t, 1> Isas;
+    LUTHIER_RETURN_ON_ERROR(
+        luthier::hsa::agentGetSupportedISAs(Core, Agent, Isas));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        !Isas.empty(), "Agent reports no supported ISAs."));
+    hsa_isa_t Isa = Isas.front();
+
+    auto TripleOrErr = luthier::hsa::isaGetTargetTriple(Core, Isa);
+    LUTHIER_RETURN_ON_ERROR(TripleOrErr.takeError());
+    auto CPUOrErr = luthier::hsa::isaGetGPUName(Core, Isa);
+    LUTHIER_RETURN_ON_ERROR(CPUOrErr.takeError());
+    auto FeaturesOrErr = luthier::hsa::isaGetSubTargetFeatures(Core, Isa);
+    LUTHIER_RETURN_ON_ERROR(FeaturesOrErr.takeError());
+
+    // Fold the per-kernel wavefront size and CU/WGP execution mode out of the
+    // kernel descriptor into the subtarget feature string. Both features only
+    // exist on gfx10+; pre-gfx10 hardware is always wave64 and CU mode and has
+    // no \c wavefrontsize32 / \c cumode subtarget features to set.
+    if (llvm::AMDGPU::getIsaVersion(*CPUOrErr).Major >= 10) {
+      const bool IsWave32 = AMDHSA_BITS_GET(
+          KD->kernel_code_properties,
+          llvm::amdhsa::KERNEL_CODE_PROPERTY_ENABLE_WAVEFRONT_SIZE32);
+      FeaturesOrErr->AddFeature(IsWave32 ? "wavefrontsize32"
+                                         : "wavefrontsize64");
+      // WGP_MODE set => the kernel runs in WGP mode (cumode disabled); clear
+      // => CU mode (cumode enabled).
+      const bool IsWGPMode =
+          AMDHSA_BITS_GET(KD->compute_pgm_rsrc1,
+                          llvm::amdhsa::COMPUTE_PGM_RSRC1_GFX10_PLUS_WGP_MODE);
+      FeaturesOrErr->AddFeature("cumode", /*Enable=*/!IsWGPMode);
+      // TODO: add missing tgsplit feature
+    }
+
+    std::string ErrMsg;
+    const llvm::Target *TheTarget =
+        llvm::TargetRegistry::lookupTarget(*TripleOrErr, ErrMsg);
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        TheTarget != nullptr,
+        llvm::formatv("TargetRegistry::lookupTarget failed for triple {0}: {1}",
+                      TripleOrErr->str(), ErrMsg)));
+
+    llvm::TargetOptions TMOpts;
+    // Force this to on to support ctor/dtor kernels
+    TMOpts.UseInitArray = true;
+    std::unique_ptr<llvm::TargetMachine> TM(TheTarget->createTargetMachine(
+        *TripleOrErr, *CPUOrErr, FeaturesOrErr->getString(), TMOpts,
+        /*RM=*/std::nullopt));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+        TM != nullptr, "createTargetMachine returned nullptr."));
+    TM->setOptLevel(llvm::CodeGenOptLevel::Default);
+    return TM;
   }
 
   /// Register the common set of instrumentation analyses on \p MAM / \p MFAM
@@ -391,7 +477,7 @@ private:
 
     std::unique_ptr<llvm::TargetMachine> TM;
     LUTHIER_RETURN_ON_ERROR(
-        D.buildTargetMachineForKD(&TargetMachineKD).moveInto(TM));
+        buildTargetMachineForKD(&TargetMachineKD).moveInto(TM));
 
     llvm::LLVMContext Ctx;
     auto TargetM = std::make_unique<llvm::Module>("luthier.target", Ctx);
