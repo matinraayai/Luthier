@@ -94,6 +94,9 @@ private:
 
   /// One zero-filled allocation from the fine-grained host pool.
   template <typename T> llvm::Error allocate(size_t Bytes, T *&Out) {
+    // This is the coherent memory between host and device: CPU RAM from the
+    // fine-grained pool, which the GPU reads and writes directly while the
+    // kernel runs (no copies), and the CPU sees the GPU's writes.
     auto PtrOrErr = hsa::memoryPoolAllocate(AmdExt, HostPool, Bytes);
     LUTHIER_RETURN_ON_ERROR(PtrOrErr.takeError());
     Allocations.push_back(*PtrOrErr);

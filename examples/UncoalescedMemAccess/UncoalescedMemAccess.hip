@@ -28,7 +28,8 @@
 /// \code
 ///   LD_PRELOAD=<build>/lib/libLuthierTooling.so:\
 ///   <build>/examples/UncoalescedMemAccess/libLuthierUncoalescedMemAccess.so ./app
-///   LUTHIER_ARGS="--lanes-per-cycle=16 --cache-line-bytes=64"   # optional
+///   LUTHIER_ARGS="--lanes-per-cycle=16 --cache-line-bytes=64 \
+///                 --sub-buffers=256 --sub-buffer-bytes=65536"   # optional
 /// \endcode
 //===----------------------------------------------------------------------===//
 #include <GCNSubtarget.h>
@@ -64,6 +65,15 @@ static llvm::cl::opt<unsigned>
 static llvm::cl::opt<unsigned>
     CacheLineBytes("cache-line-bytes", llvm::cl::desc("Cache line size"),
                    llvm::cl::init(128));
+static llvm::cl::opt<unsigned>
+    NumSubBuffers("sub-buffers",
+                  llvm::cl::desc("Sub-buffers of the GPU-to-CPU channel "
+                                 "(power of two, at most 1024)"),
+                  llvm::cl::init(256));
+static llvm::cl::opt<unsigned>
+    SubBufferBytes("sub-buffer-bytes",
+                   llvm::cl::desc("Bytes per sub-buffer (at least 4096)"),
+                   llvm::cl::init(64 * 1024));
 
 //===----------------------------------------------------------------------===//
 // The message: what travels from the GPU to the CPU
@@ -344,7 +354,10 @@ static void atToolInit() {
                                            *Loader, Err);
   LUTHIER_REPORT_FATAL_ON_ERROR(std::move(Err));
   UncoalescedMemAccessTool::withInstance(
-      [](UncoalescedMemAccessTool &T) { T.addHandler(T.Coalescing); });
+      [](UncoalescedMemAccessTool &T) {
+        T.setChannelConfig({NumSubBuffers, SubBufferBytes});
+        T.addHandler(T.Coalescing);
+      });
 }
 
 static void atToolFini(void *) {
