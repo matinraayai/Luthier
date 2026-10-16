@@ -22,6 +22,7 @@
 #include "luthier/ToolCodeGen/InstrumentationPassBuilder.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/ToolCodeGen/CodeDiscoveryPass.h"
+#include "luthier/ToolCodeGen/DebugInfoPass.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
@@ -30,14 +31,15 @@
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
 #include "luthier/ToolCodeGen/IntrinsicMIRLoweringPass.h"
+#include "luthier/ToolCodeGen/MachineInstrTraceAddressAnalysis.h"
 #include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
 #include "luthier/ToolCodeGen/ProcessIntrinsicsAtIRLevelPass.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
+#include "luthier/ToolCodeGen/RebaseAppScratchAccessesPass.h"
 #include "luthier/ToolCodeGen/SVAPhysVGPRPinPass.h"
 #include "luthier/ToolCodeGen/SVStorageAndLoadLocations.h"
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
-#include "luthier/ToolCodeGen/RebaseAppScratchAccessesPass.h"
 #include "luthier/ToolCodeGen/TargetModulePatcherPass.h"
 #include "luthier/ToolCodeGen/TraceFunctionTranslationAnalysis.h"
 
@@ -76,6 +78,7 @@
 #include <SIPreAllocateWWMRegs.h>
 #include <SIShrinkInstructions.h>
 #include <SIWholeQuadMode.h>
+#include <atomic>
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/UniformityAnalysis.h>
 #include <llvm/CodeGen/AtomicExpand.h>
@@ -83,6 +86,7 @@
 #include <llvm/CodeGen/DeadMachineInstructionElim.h>
 #include <llvm/CodeGen/EarlyIfConversion.h>
 #include <llvm/CodeGen/LibcallLoweringInfo.h>
+#include <llvm/CodeGen/MIRPrinter.h>
 #include <llvm/CodeGen/MachineCSE.h>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/CodeGen/MachineLICM.h>
@@ -101,11 +105,9 @@
 #include <llvm/Passes/CodeGenPassBuilder.h>
 #include <llvm/Passes/OptimizationLevel.h>
 #include <llvm/Passes/PassBuilder.h>
-#include <atomic>
-#include <llvm/CodeGen/MIRPrinter.h>
 #include <llvm/Support/CommandLine.h>
-#include <llvm/Support/FileSystem.h>
 #include <llvm/Support/ErrorHandling.h>
+#include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/CGPassBuilderOption.h>
 #include <llvm/Target/TargetMachine.h>
@@ -446,16 +448,16 @@ inline cl::Option *WWMRegAllocOpt() {
 }
 
 inline cl::opt<RegAllocType, false, RegAllocTypeParser> &SGPRRegAllocNPM() {
-  return lookupRegisteredOpt<
-      cl::opt<RegAllocType, false, RegAllocTypeParser>>("sgpr-regalloc-npm");
+  return lookupRegisteredOpt<cl::opt<RegAllocType, false, RegAllocTypeParser>>(
+      "sgpr-regalloc-npm");
 }
 inline cl::opt<RegAllocType, false, RegAllocTypeParser> &VGPRRegAllocNPM() {
-  return lookupRegisteredOpt<
-      cl::opt<RegAllocType, false, RegAllocTypeParser>>("vgpr-regalloc-npm");
+  return lookupRegisteredOpt<cl::opt<RegAllocType, false, RegAllocTypeParser>>(
+      "vgpr-regalloc-npm");
 }
 inline cl::opt<RegAllocType, false, RegAllocTypeParser> &WWMRegAllocNPM() {
-  return lookupRegisteredOpt<
-      cl::opt<RegAllocType, false, RegAllocTypeParser>>("wwm-regalloc-npm");
+  return lookupRegisteredOpt<cl::opt<RegAllocType, false, RegAllocTypeParser>>(
+      "wwm-regalloc-npm");
 }
 
 /// Check if the given RegAllocType is supported for AMDGPU NPM register
@@ -652,8 +654,8 @@ Error AMDGPUCodeGenPassBuilder::buildPipeline(PrototypePassManager &PPM) const {
   // MachineFunctions.
   PPM.addPass(IntrinsicMIRLoweringPass());
 
-  PPM.addPass(llvm::RequireAnalysisPass<IPPredicatedLivenessAnalysis,
-                                      Prototype, PrototypeAnalysisManager>());
+  PPM.addPass(llvm::RequireAnalysisPass<IPPredicatedLivenessAnalysis, Prototype,
+                                        PrototypeAnalysisManager>());
   /// TODO: Add other required analysis here
   PPM.addPass(InjectedPayloadPreserveLiveRegsPass());
 
@@ -664,8 +666,8 @@ Error AMDGPUCodeGenPassBuilder::buildPipeline(PrototypePassManager &PPM) const {
   // Prototype-level result computed before it.
   PPM.addPass(llvm::RequireAnalysisPass<IPPredCFGAnalysis, Prototype,
                                         PrototypeAnalysisManager>());
-  PPM.addPass(llvm::RequireAnalysisPass<IPPredicatedLivenessAnalysis,
-                                        Prototype, PrototypeAnalysisManager>());
+  PPM.addPass(llvm::RequireAnalysisPass<IPPredicatedLivenessAnalysis, Prototype,
+                                        PrototypeAnalysisManager>());
   PPM.addPass(llvm::RequireAnalysisPass<SVStorageAndLoadLocationsAnalysis,
                                         Prototype, PrototypeAnalysisManager>());
   PPM.addPass(llvm::RequireAnalysisPass<StateValueArraySpecsAnalysis, Prototype,
@@ -1205,10 +1207,11 @@ void InstrumentationPassBuilder::crossRegisterProxies(
   PAM.registerPass(
       [this] { return llvm::PassInstrumentationAnalysis(&PrototypePIC); });
 
-  // Route Prototype-level passes into `--print-before-all` / `--print-after-all`
-  // / `--print-{before,after}=<pass>`. LLVM's StandardInstrumentations can't
-  // name a Prototype IR unit (see PrototypePIC's declaration), so its
-  // PrintIRInstrumentation never registers callbacks against PrototypePIC.
+  // Route Prototype-level passes into `--print-before-all` /
+  // `--print-after-all` / `--print-{before,after}=<pass>`. LLVM's
+  // StandardInstrumentations can't name a Prototype IR unit (see PrototypePIC's
+  // declaration), so its PrintIRInstrumentation never registers callbacks
+  // against PrototypePIC.
   auto DumpPrototype = [&Target, &Instrumentation](llvm::StringRef Header,
                                                    llvm::StringRef PassID,
                                                    llvm::Any IR) {
@@ -1216,8 +1219,8 @@ void InstrumentationPassBuilder::crossRegisterProxies(
     if (!PPtr)
       return;
     const Prototype &P = **PPtr;
-    llvm::dbgs() << Header << " " << PassID << " on prototype '"
-                 << P.getName() << "' ***\n";
+    llvm::dbgs() << Header << " " << PassID << " on prototype '" << P.getName()
+                 << "' ***\n";
     P.print(llvm::dbgs(), Target.FAM, Instrumentation.FAM);
   };
   PrototypePIC.registerBeforeNonSkippedPassCallback(
@@ -1445,6 +1448,7 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
   }
   /// Add the code discovery pass
   PPM.addPass(CodeDiscoveryPass());
+  PPM.addPass(DebugInfoPass());
 
   // Debug aid: dump the IP predicated CFG + predicated liveness for the
   // freshly lifted target module, before RebaseAppScratchAccessesPass and
@@ -1457,7 +1461,7 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
   }
 
   /// Ivoke pre-instrumentation callbacks
-  for (auto &CB: PreInstrumentationCallbacks) {
+  for (auto &CB : PreInstrumentationCallbacks) {
     CB(PPM, Level);
   }
 
@@ -1467,8 +1471,9 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
   /// Displace every application access to the wavefront's private segment past
   /// the region Luthier reserves for its own instrumentation stack. This has to
   /// run here: the target module still holds nothing but application code (the
-  /// instrumentation module is not merged in until \c TargetModulePatcherPass ),
-  /// and the PC-usage patching below has to see the final instruction layout.
+  /// instrumentation module is not merged in until \c TargetModulePatcherPass
+  /// ), and the PC-usage patching below has to see the final instruction
+  /// layout.
   {
     llvm::Error RebaseErr = llvm::Error::success();
     PPM.addPass(RebaseAppScratchAccessesPass(RebaseErr));
@@ -1480,8 +1485,7 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
   /// created
   {
     llvm::Error PatcherErr = llvm::Error::success();
-    PPM.addPass(PatchPCUsagesPass(PatchPCUsagesHostCallback,
-                                         PatcherErr));
+    PPM.addPass(PatchPCUsagesPass(PatchPCUsagesHostCallback, PatcherErr));
     if (PatcherErr)
       return PatcherErr;
   }
@@ -1508,7 +1512,7 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
 
   addInstrumentationModulePass(PPM, ProcessIntrinsicsAtIRLevelPass());
 
-  for (auto &CB: PreInstrumentationCodeGenPassesCallbacks) {
+  for (auto &CB : PreInstrumentationCodeGenPassesCallbacks) {
     CB(PPM, Level);
   }
 
@@ -1542,10 +1546,9 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
   // 256 bytes in. The pass no-ops on kernels whose preload was disabled (the
   // patcher zeroes NumKernargPreloadSGPRs and emits manual S_LOAD_DWORDs
   // instead) and on subtargets that don't need the prologue.
-  addTargetModulePass(PPM,
-                      llvm::createModuleToFunctionPassAdaptor(
-                          llvm::createFunctionToMachineFunctionPassAdaptor(
-                              AMDGPUPreloadKernArgPrologPass())));
+  addTargetModulePass(PPM, llvm::createModuleToFunctionPassAdaptor(
+                               llvm::createFunctionToMachineFunctionPassAdaptor(
+                                   AMDGPUPreloadKernArgPrologPass())));
 
   if (Out)
     addTargetModulePass(PPM, NewPMAsmPrinter(FileType, *Out, true));
