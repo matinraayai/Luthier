@@ -26,8 +26,10 @@
 #include <llvm/IR/PassManager.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/CommandLine.h>
+#include <llvm/Support/ManagedStatic.h>
 #include <llvm/Support/PrettyStackTrace.h>
 #include <llvm/Support/Signals.h>
+#include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
 #include <luthier/Common/Debug.h>
 #include <luthier/Common/ErrorCheck.h>
@@ -201,6 +203,7 @@ static void atToolFini(void *) {
   static std::once_flag Once{};
   std::call_once(Once, []() {
     luthier::errs() << "Luthier lift launched kernels tool is terminating!\n";
+    llvm::llvm_shutdown();
     LiftLaunchedKernelsTool::destroyInstance();
     delete LoaderSnapshot;
     LoaderSnapshot = nullptr;
@@ -245,6 +248,14 @@ static void atToolInit(void *) {
         HSA_EXTENSION_AMD_LOADER>(*RocprofilerLib, Err);
     if (Err)
       llvm::report_fatal_error(std::move(Err));
+
+    LLVMInitializeAMDGPUTarget();
+    LLVMInitializeAMDGPUTargetInfo();
+    LLVMInitializeAMDGPUTargetMC();
+    LLVMInitializeAMDGPUDisassembler();
+    LLVMInitializeAMDGPUAsmParser();
+    LLVMInitializeAMDGPUAsmPrinter();
+    LLVMInitializeAMDGPUTargetMCA();
 
     LiftLaunchedKernelsTool::createInstance(*RocprofilerLib, *CoreApiSnapshot,
                                             *AmdExtSnapshot, *LoaderSnapshot,

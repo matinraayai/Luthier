@@ -32,9 +32,11 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Support/ManagedStatic.h>
 #include <llvm/Support/PrettyStackTrace.h>
 #include <llvm/Support/Signals.h>
 #include <llvm/Support/SmallVectorMemoryBuffer.h>
+#include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
 #include <luthier/Common/Debug.h>
 #include <luthier/Common/ErrorCheck.h>
@@ -310,6 +312,7 @@ static void atToolFini(void *) {
                       << T.TotalNumInstructions << "\n";
     });
     OpcodeHistogramTool::destroyInstance();
+    llvm::llvm_shutdown();
     delete LoaderSnapshot;
     LoaderSnapshot = nullptr;
     delete AmdExtSnapshot;
@@ -353,6 +356,14 @@ static void atToolInit(void *) {
         HSA_EXTENSION_AMD_LOADER>(*RocprofilerLib, Err);
     if (Err)
       llvm::report_fatal_error(std::move(Err));
+
+    LLVMInitializeAMDGPUTarget();
+    LLVMInitializeAMDGPUTargetInfo();
+    LLVMInitializeAMDGPUTargetMC();
+    LLVMInitializeAMDGPUDisassembler();
+    LLVMInitializeAMDGPUAsmParser();
+    LLVMInitializeAMDGPUAsmPrinter();
+    LLVMInitializeAMDGPUTargetMCA();
 
     OpcodeHistogramTool::createInstance(*RocprofilerLib, *CoreApiSnapshot,
                                         *AmdExtSnapshot, *LoaderSnapshot, Err);

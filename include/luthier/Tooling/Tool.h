@@ -22,7 +22,6 @@
 #include "luthier/Common/Singleton.h"
 #include "luthier/Tooling/InstrumentationPipelineTrait.h"
 #include "luthier/Tooling/InstrumentedKernelLoaderAndLauncher.h"
-#include "luthier/Tooling/LLVMUserTrait.h"
 #include "luthier/Tooling/LoadedCodeObjectCache.h"
 #include "luthier/Tooling/PacketMonitorTrait.h"
 #include "luthier/PassPlugin/LuthierPassPlugin.h"
@@ -73,7 +72,6 @@ namespace luthier {
 /// tables before using them if needed.
 template <typename Derived, typename TargetUnitT = llvm::MachineFunction>
 class Tool : public Singleton<Derived>,
-             public LLVMUserTrait<Derived>,
              public LoadedCodeObjectCacheTrait<Derived>,
              public ToolDeviceCodeOffloadParserTrait<Derived>,
              public InstrumentedKernelLoaderAndLauncherTrait<Derived>,
@@ -87,7 +85,7 @@ public:
        const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
            &VenLoader,
        llvm::Error &Err)
-      : Singleton<Derived>(), LLVMUserTrait<Derived>(),
+      : Singleton<Derived>(),
         LoadedCodeObjectCacheTrait<Derived>(RocprofilerLib, CoreApi, VenLoader,
                                             Err),
         ToolDeviceCodeOffloadParserTrait<Derived>(Err),
