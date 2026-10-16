@@ -26,10 +26,8 @@
 /// After the kernel ends, \c stop() drains what is left in partially filled
 /// sub-buffers.
 ///
-/// The processing loop is taken from dh_comms
-/// (https://github.com/AMDResearch/dh_comms, src/dh_comms.cpp,
-/// dh_comms::process_sub_buffers and dh_comms::processing_loop); the
-/// comments quoted below are dh_comms' own.
+/// The processing loop is adapted from dh_comms
+/// (https://github.com/AMDResearch/dh_comms).
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMS_MESSAGE_PROCESSOR_H
 #define LUTHIER_COMMS_MESSAGE_PROCESSOR_H
@@ -73,7 +71,6 @@ public:
   MessageProcessor &operator=(const MessageProcessor &) = delete;
 
   /// Starts draining. Call right before the kernel is dispatched.
-  /// (dh_comms::start)
   void start() {
     Running.store(true, std::memory_order_release);
     StartTime = std::chrono::steady_clock::now();
@@ -81,14 +78,13 @@ public:
   }
 
   /// Stops the thread and drains what is left. Call once the kernel is done.
-  /// (dh_comms::stop and the final pass of dh_comms::process_sub_buffers)
   void stop() {
     Running.store(false, std::memory_order_release);
     if (Worker.joinable())
       Worker.join();
-    // dh_comms: "after stopping dh_comms, process partially full buffers in
-    // a final pass". In the final pass, sub-buffers are either empty or
-    // partially filled, but not full, and no wave is waiting on a flag.
+    // After stopping comms, process partially full buffers in a final pass.
+    // In the final pass, sub-buffers are either empty or partially filled,
+    // but not full, and no wave is waiting on a flag.
     for (uint32_t Sb = 0; Sb < Buffers.numSubBuffers(); ++Sb)
       drain(Sb);
     Seconds += std::chrono::duration<double>(
@@ -104,23 +100,22 @@ public:
   double seconds() const { return Seconds; }
 
 private:
-  /// dh_comms: "process buffers when device code indicates they are full".
-  /// (dh_comms::process_sub_buffers + dh_comms::processing_loop)
+  /// Process buffers when device code indicates they are full.
   void pollLoop() {
     uint32_t *Flags = Buffers.hostFlags();
     while (Running.load(std::memory_order_acquire)) {
       bool Found = false;
       for (uint32_t Sb = 0; Sb < Buffers.numSubBuffers(); ++Sb) {
-        // dh_comms: "when the sub-buffer for a wave on the device is full, it
-        // will set the flag" (here always to 1: the wave wants control back
-        // after the host is done processing the sub-buffer).
+        // When the sub-buffer for a wave on the device is full, it will set
+        // the flag to 1: the wave wants control back after the host is done
+        // processing the sub-buffer.
         if (__atomic_load_n(&Flags[Sb], __ATOMIC_ACQUIRE) != 1)
           continue;
         drain(Sb);
         ++HandOffs;
         Found = true;
-        // dh_comms: "give control over the sub-buffer back to the wave that
-        // gave it to us".
+        // Give control over the sub-buffer back to the wave that gave it to
+        // us.
         __atomic_store_n(&Flags[Sb], 0u, __ATOMIC_RELEASE);
       }
       if (!Found)
@@ -129,7 +124,7 @@ private:
   }
 
   /// Parses every message in sub-buffer \p Sb, hands each to the handlers,
-  /// and empties the sub-buffer (dh_comms: "process data").
+  /// and empties the sub-buffer.
   void drain(uint32_t Sb) {
     // The device publishes the fill size after the message bytes (Device.h,
     // submit), so once it is read every message up to it is complete.
@@ -141,8 +136,7 @@ private:
       using Layout = MessageLayout<WaveT, N>;
       const char *Cursor = Buffers.subBuffer(Sb);
       const char *const End = Cursor + Used;
-      // Messages are packed one after another (dh_comms: "size -=
-      // message.size(); message_p += message.size();").
+      // Messages are packed one after another: step over each by its size.
       while (Cursor + Layout::DataOffset <= End) {
         // The message's length follows from Exec (Protocol.h).
         uint64_t Exec;
@@ -167,7 +161,7 @@ private:
       }
       Bytes += Used;
     }
-    // Empty the sub-buffer (dh_comms: "sub_buffer_sizes_[i] = 0").
+    // Empty the sub-buffer.
     __atomic_store_n(&Sizes[Sb], uint64_t(0), __ATOMIC_RELEASE);
   }
 

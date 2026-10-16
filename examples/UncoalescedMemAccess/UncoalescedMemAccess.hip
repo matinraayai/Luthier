@@ -18,9 +18,8 @@
 /// Counts uncoalesced global loads and stores.
 ///
 /// Every global load/store gets a hook that sends each lane's address, with a
-/// dh_comms-style header (timestamp, source line, access kind and size), to
-/// the CPU while the kernel runs, through \c luthier::comms::Channel. On the
-/// CPU,
+/// per-wave header (timestamp, source line, access kind and size), to the
+/// CPU while the kernel runs, through \c luthier::comms::Channel. On the CPU,
 /// the lanes of each wave-instruction are split into groups of
 /// \c --lanes-per-cycle (the hardware issues 16 lanes per cycle); a group is
 /// coalesced if it touches no more \c --cache-line-bytes lines than its bytes
@@ -84,38 +83,42 @@ static llvm::cl::opt<unsigned>
 //
 // A full 64-lane wave sends 8 + 32 + 64 * 8 = 552 bytes.
 //
-// WaveHeader carries the same information as dh_comms' wave_header_t
-// (dh_comms/include/data_headers.h); what Comms already sends, or what
-// follows from it, is not repeated:
+// What each field is:
 //
-//   dh_comms wave_header_t      here
-//   exec                        Exec (sent by Comms)
-//   data_size                   popcount(Exec) * 2 dwords (implied)
-//   active_lane_count           popcount(Exec) (implied)
-//   is_vector_message           always: every active lane sends (implied)
-//   has_lane_headers            never: no per-lane header (implied)
-//   timestamp                   WaveHeader::Timestamp
-//   dwarf_fname_hash            WaveHeader::FileHash
-//   dwarf_line, dwarf_column    WaveHeader::Line, WaveHeader::Column
-//   user_type, user_data        WaveHeader::UserType, WaveHeader::UserData
+//   Exec        the execution mask: bit i set = lane i ran the access
+//   Timestamp   the time stamp: GPU clock when the wave reached the access
+//   FileHash    hash of the source file name of the access
+//   Line        source line of the access
+//   Column      source column of the access
+//   UserType    what kind of message this is (AddressMessage)
+//   UserData    the access: read and/or write, address space, bytes per lane
+//   Data        the address each active lane loads or stores
 //
-// The DWARF fields and UserData are known when the instruction is
+// Nothing else is needed: the data size and the number of active lanes
+// follow from Exec, every active lane always sends its address, and there is
+// no per-lane header.
+//
+// To count uncoalesced accesses the tool needs only Exec, the addresses and
+// the access size in UserData. Timestamp, FileHash, Line, Column and
+// UserType are sent to illustrate how a header can carry more information.
+//
+// FileHash, Line, Column and UserData are known when the instruction is
 // instrumented, so the instrumentation pass bakes them into the payload as
 // constants (see run()); only Timestamp is read on the GPU.
 
-/// dh_comms' user_type for a memory address message (message_type::address).
+/// UserType of a message whose lane data are memory addresses.
 constexpr uint32_t AddressMessage = 0;
 
 /// The per-wave part of every message.
 struct WaveHeader {
-  uint64_t Timestamp; ///< GPU clock when the wave reached the access.
+  uint64_t Timestamp; ///< Time stamp: GPU clock at the access.
   uint64_t FileHash;  ///< Hash of the source file name; 0 without -g.
   uint32_t Line;      ///< Source line of the access; 0 without -g.
   uint32_t Column;    ///< Source column of the access; 0 without -g.
-  uint32_t UserType;  ///< What the lane data is: AddressMessage.
-  /// dh_comms' layout for addresses (v_submit_address): [1:0] 1 = read,
-  /// 2 = write, 3 = both; [5:2] address space (llvm::AMDGPUAS); [21:6]
-  /// bytes per lane, e.g. 4 for dword, 16 for dwordx4.
+  uint32_t UserType;  ///< Kind of message: AddressMessage.
+  /// The access: [1:0] 1 = read, 2 = write, 3 = both; [5:2] address space
+  /// (llvm::AMDGPUAS); [21:6] bytes per lane, e.g. 4 for dword, 16 for
+  /// dwordx4.
   uint32_t UserData;
 };
 
