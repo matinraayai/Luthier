@@ -38,19 +38,20 @@ namespace luthier::comms {
 
 /// Receives every message. Called from the processing thread only, one
 /// message at a time, so implementations need no locking.
-template <typename WaveT, typename LaneT> class MessageHandler {
+template <typename WaveT, unsigned N> class MessageHandler {
 public:
   virtual ~MessageHandler() = default;
 
-  /// \p Lanes holds one struct per active lane; the i-th belongs to the
-  /// i-th set bit of \p Exec.
+  /// \p Data holds the \p N dwords of each active lane, dword-major: with
+  /// A active lanes, dword \c D of lane \c L is <tt>Data[D * A + L]</tt>,
+  /// and lane \c L is the L-th set bit of \p Exec.
   virtual void handle(uint64_t Exec, const WaveT &Wave,
-                      llvm::ArrayRef<LaneT> Lanes) = 0;
+                      llvm::ArrayRef<uint32_t> Data) = 0;
 };
 
-template <typename WaveT, typename LaneT> class MessageProcessor {
+template <typename WaveT, unsigned N> class MessageProcessor {
 public:
-  using Handler = MessageHandler<WaveT, LaneT>;
+  using Handler = MessageHandler<WaveT, N>;
 
   MessageProcessor(SharedBuffers &Buffers, std::vector<Handler *> H)
       : Buffers(Buffers), Handlers(std::move(H)) {}
@@ -111,10 +112,10 @@ private:
     if (Used > Buffers.subBufferCapacity()) {
       ++Malformed; // corrupt size: nothing here is safe to read
     } else {
-      using Layout = MessageLayout<WaveT, LaneT>;
+      using Layout = MessageLayout<WaveT, N>;
       const char *Cursor = Buffers.subBuffer(Sb);
       const char *const End = Cursor + Used;
-      while (Cursor + Layout::LaneOffset <= End) {
+      while (Cursor + Layout::DataOffset <= End) {
         // The message's length follows from Exec (Protocol.h).
         uint64_t Exec;
         std::memcpy(&Exec, Cursor, sizeof(Exec));
@@ -126,11 +127,11 @@ private:
         }
         WaveT Wave;
         std::memcpy(&Wave, Cursor + Layout::WaveOffset, sizeof(Wave));
-        Lanes.resize(ActiveLanes);
-        std::memcpy(Lanes.data(), Cursor + Layout::LaneOffset,
-                    ActiveLanes * sizeof(LaneT));
+        Data.resize(ActiveLanes * N);
+        std::memcpy(Data.data(), Cursor + Layout::DataOffset,
+                    Data.size() * sizeof(uint32_t));
         for (Handler *H : Handlers)
-          H->handle(Exec, Wave, Lanes);
+          H->handle(Exec, Wave, Data);
         ++Messages;
         Cursor += Size;
       }
@@ -144,7 +145,7 @@ private:
   std::atomic<bool> Running{false};
   std::thread Worker;
   std::chrono::steady_clock::time_point StartTime;
-  std::vector<LaneT> Lanes;
+  std::vector<uint32_t> Data;
   uint64_t Messages = 0, Bytes = 0, HandOffs = 0, Malformed = 0;
   double Seconds = 0;
 };

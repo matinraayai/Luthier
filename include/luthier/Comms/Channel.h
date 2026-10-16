@@ -16,17 +16,17 @@
 ///
 /// \file
 /// A generic GPU-to-CPU channel for Luthier tools. It knows nothing about
-/// what is sent: the tool defines two structs, \c WaveT (the same for the
-/// whole wave) and \c LaneT (one per active lane); a hook calls
-/// \c Channel::send, and on the CPU every message is handed to the
+/// what is sent: the tool picks \c WaveT, one value for the whole wave
+/// (e.g. a uint32_t), and \c N, the dwords each active lane sends; a hook
+/// calls \c Channel::send, and on the CPU every message is handed to the
 /// registered \c MessageHandler s.
 ///
 /// <b>What is transmitted.</b> One message per wave per \c send call:
-/// the wave's exec mask, the \c WaveT once, and one \c LaneT per active lane
-/// (Protocol.h). Nothing else: no tag, size or timestamp. Keep both structs
-/// as small as possible; what is the same for every message of an
-/// instrumentation point (e.g. the access width) can stay on the CPU, looked
-/// up through an index sent in \c WaveT.
+/// the wave's exec mask, the \c WaveT once, and \c N dwords per active lane
+/// (Protocol.h). Nothing else: no tag, size or timestamp. Keep both as small
+/// as possible; what is the same for every message of an instrumentation
+/// point (e.g. the access width) can stay on the CPU, looked up through an
+/// index sent as \c WaveT.
 ///
 /// <b>Where it is stored on the CPU.</b> \c openChannel allocates, once, a
 /// buffer in fine-grained host memory (CPU RAM the GPU reads and writes
@@ -47,12 +47,13 @@
 ///
 /// Usage, in the tool:
 /// \code
-///   struct MyWave { uint32_t Site; };      // sent once per wave
-///   struct MyLane { uint64_t Address; };   // sent by every active lane
+///   // Per wave: a uint32_t. Per lane: 2 dwords (e.g. a 64-bit address).
 ///   struct MyTool : luthier::Tool<MyTool, llvm::MachineFunction>,
-///                   luthier::comms::Channel<MyTool, MyWave, MyLane> {
-///     __attribute__((device, used)) static void myHook(...) {
-///       send(MyWave{...}, MyLane{...});
+///                   luthier::comms::Channel<MyTool, uint32_t, 2> {
+///     __attribute__((device, used)) static void myHook(uint32_t Id,
+///                                                      uint64_t Addr) {
+///       const uint32_t Lane[2] = {uint32_t(Addr), uint32_t(Addr >> 32)};
+///       send<2>(Id, Lane);
 ///     }
 ///   };
 ///   // once:          setChannelConfig(...); addHandler(MyHandler);
@@ -61,7 +62,8 @@
 /// \endcode
 ///
 /// A complete working example is \c examples/UncoalescedMemAccess: its hook
-/// sends the instruction's index once per wave and each lane's address, and
+/// sends the instruction's index once per wave and each lane's 64-bit address
+/// as 2 dwords (send<2>), and
 /// its handler computes, on the CPU, which accesses were coalesced.
 //===----------------------------------------------------------------------===//
 #ifndef LUTHIER_COMMS_CHANNEL_H
@@ -82,7 +84,7 @@
 
 namespace luthier::comms {
 
-template <typename ToolT, typename WaveT, typename LaneT> class Channel {
+template <typename ToolT, typename WaveT, unsigned N> class Channel {
 public:
   //===--------------------------------------------------------------------===//
   // Device code
@@ -94,10 +96,13 @@ public:
   /// One lock per sub-buffer, serialising the waves that share it.
   __attribute__((device)) static uint32_t Locks[MaxSubBuffers];
 
-  /// Sends one message: \p Wave once for the whole wave, \p Lane from every
-  /// active lane. Keep both small: they are all that travels to the CPU.
-  __attribute__((device, always_inline)) static void send(const WaveT &Wave,
-                                                          const LaneT &Lane) {
+  /// Sends one message: \p Wave once for the whole wave, and this lane's
+  /// \p N dwords from every active lane. They are all that travels to the
+  /// CPU, so keep them small.
+  template <unsigned M>
+  __attribute__((device, always_inline)) static void
+  send(const WaveT &Wave, const uint32_t (&Lane)[M]) {
+    static_assert(M == N, "send<M>: M must be the channel's dwords per lane");
 #if defined(__HIP_DEVICE_COMPILE__)
     // Waves on the same CU share a sub-buffer, waves on other CUs mostly do
     // not. The CU is read on the device and never sent.
@@ -121,12 +126,12 @@ public:
 
   void setChannelConfig(const Config &C) { Cfg = C; }
 
-  using Handler = MessageHandler<WaveT, LaneT>;
+  using Handler = MessageHandler<WaveT, N>;
 
   /// Every message goes to every handler.
   void addHandler(Handler &H) { Handlers.push_back(&H); }
 
-  const MessageProcessor<WaveT, LaneT> *processor() const {
+  const MessageProcessor<WaveT, N> *processor() const {
     return Processor.get();
   }
   bool droppedMessages() const { return Dropped; }
@@ -142,7 +147,7 @@ public:
           Core, AmdExt, {Cfg.NumSubBuffers, Cfg.SubBufferBytes});
       LUTHIER_RETURN_ON_ERROR(BuffersOrErr.takeError());
       Buffers = std::move(*BuffersOrErr);
-      Processor = std::make_unique<MessageProcessor<WaveT, LaneT>>(*Buffers,
+      Processor = std::make_unique<MessageProcessor<WaveT, N>>(*Buffers,
                                                                    Handlers);
     }
     Buffers->reset();
@@ -184,15 +189,14 @@ private:
   Config Cfg;
   std::vector<Handler *> Handlers;
   std::unique_ptr<SharedBuffers> Buffers;
-  std::unique_ptr<MessageProcessor<WaveT, LaneT>> Processor;
+  std::unique_ptr<MessageProcessor<WaveT, N>> Processor;
   bool Dropped = false;
 };
 
-template <typename ToolT, typename WaveT, typename LaneT>
-__attribute__((device)) ChannelDescriptor Channel<ToolT, WaveT, LaneT>::Desc;
-template <typename ToolT, typename WaveT, typename LaneT>
-__attribute__((device)) uint32_t
-    Channel<ToolT, WaveT, LaneT>::Locks[MaxSubBuffers];
+template <typename ToolT, typename WaveT, unsigned N>
+__attribute__((device)) ChannelDescriptor Channel<ToolT, WaveT, N>::Desc;
+template <typename ToolT, typename WaveT, unsigned N>
+__attribute__((device)) uint32_t Channel<ToolT, WaveT, N>::Locks[MaxSubBuffers];
 
 } // namespace luthier::comms
 

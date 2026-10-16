@@ -20,8 +20,8 @@
 ///   1. take the sub-buffer's lock (serialises waves sharing it)
 ///   2. if the message does not fit, hand the sub-buffer to the host and
 ///      wait for it to be drained
-///   3. write Exec and the wave struct (first active lane), then every
-///      active lane's struct
+///   3. write Exec and the wave value (first active lane), then every
+///      active lane's dwords
 ///   4. publish the new size and release the lock
 ///
 /// See Protocol.h for the message layout.
@@ -163,13 +163,14 @@ LUTHIER_COMMS_DEVICE HwLocation readHwLocation() {
 
 /// Sends one message from the calling wave through sub-buffer \p SubBuffer
 /// (must be the same for the whole wave): \p Wave from the first active
-/// lane, and \p Lane from every active lane. See Protocol.h for the layout.
-template <typename WaveT, typename LaneT>
+/// lane, and the \p N dwords of \p Lane from every active lane. See
+/// Protocol.h for the layout.
+template <typename WaveT, unsigned N>
 LUTHIER_COMMS_DEVICE void submit(const ChannelDescriptor &C, uint32_t *Locks,
                                  uint32_t SubBuffer, const WaveT &Wave,
-                                 const LaneT &Lane) {
+                                 const uint32_t (&Lane)[N]) {
 #if defined(__HIP_DEVICE_COMPILE__)
-  using Layout = MessageLayout<WaveT, LaneT>;
+  using Layout = MessageLayout<WaveT, N>;
   if (C.NumSubBuffers == 0)
     return; // channel not configured for this dispatch
 
@@ -203,13 +204,15 @@ LUTHIER_COMMS_DEVICE void submit(const ChannelDescriptor &C, uint32_t *Locks,
     Used = 0; // drained, and we still hold the lock
   }
 
-  // Exec and the wave struct once; then each lane's struct at its rank.
+  // Exec and the wave value once; then each lane's dwords, dword-major.
   char *const Message = C.Buffer + uint64_t(Sb) * Capacity + Used;
   if (IsLeader) {
     *reinterpret_cast<uint64_t *>(Message) = Exec;
     *reinterpret_cast<WaveT *>(Message + Layout::WaveOffset) = Wave;
   }
-  reinterpret_cast<LaneT *>(Message + Layout::LaneOffset)[Rank] = Lane;
+  auto *Data = reinterpret_cast<uint32_t *>(Message + Layout::DataOffset);
+  for (unsigned D = 0; D < N; ++D)
+    Data[D * ActiveLanes + Rank] = Lane[D];
 
   // The message must reach the host before the new size does.
   __builtin_amdgcn_fence(__ATOMIC_RELEASE, "");

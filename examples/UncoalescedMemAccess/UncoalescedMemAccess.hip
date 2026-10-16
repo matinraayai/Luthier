@@ -69,67 +69,63 @@ static llvm::cl::opt<unsigned>
 //
 // One message per wave each time a traced load/store runs (Protocol.h):
 //
-//   uint64_t   Exec        which lanes were active      8 bytes
-//   AccessWave             the instruction (Site)       8 bytes (4 + padding)
-//   AccessLane[A]          one address per active lane  8 bytes each
+//   uint64_t Exec        which lanes were active                   8 bytes
+//   uint32_t InstrIdx    which traced instruction (+4 padding)     8 bytes
+//   uint32_t Data[2*A]   each active lane's 64-bit address, as
+//                        2 dwords (send<2>): low halves, then high  8 * A
 //
-// A full 64-lane wave sends 8 + 8 + 64 * 8 = 528 bytes. Everything that is
-// fixed per instruction (kernel, MIR text, access width) stays on the CPU in
-// CoalescingHandler::Sites and is looked up with AccessWave::Site.
+// A full 64-lane wave sends 8 + 8 + 64 * 8 = 528 bytes.
+//
+// InstrIdx is a plain number, not a pointer. Example: the pass instruments a
+// kernel's global_load_dword first and its global_store_dword second, so
+// they get InstrIdx 0 and 1 and Instructions[0] / Instructions[1] on the CPU
+// hold their MIR line and width (4 bytes). When a wave of 64 lanes runs the
+// store, the GPU sends Exec = 0xffffffffffffffff, InstrIdx = 1 and 64
+// addresses; the CPU looks up Instructions[1] to know each lane moved 4
+// bytes. Whatever is fixed per instruction stays on the CPU this way.
 
-/// Sent once per wave.
-struct AccessWave {
-  /// Index of the traced instruction in CoalescingHandler::Sites. It is a
-  /// plain number, not a pointer: the instrumentation pass bakes it into the
-  /// payload as a constant (B.getInt32(Site) below), and the CPU uses it to
-  /// find the instruction's kernel, MIR line and access width.
-  uint32_t Site;
-};
-
-/// Sent by every active lane.
-struct AccessLane {
-  uint64_t Address; ///< The byte address this lane loads or stores.
-};
-
-/// A traced load/store, known on the CPU only.
-struct Site {
+/// What the CPU knows about each traced instruction; indexed by InstrIdx.
+struct TracedInstruction {
   std::string Kernel;
   std::string MIR;
-  uint32_t Width; ///< Bytes per lane.
+  uint32_t Width; ///< Bytes per lane, e.g. 4 for dword, 16 for dwordx4.
 };
 
 //===----------------------------------------------------------------------===//
 // The CPU side: decides, per wave-instruction, whether it was coalesced
 //===----------------------------------------------------------------------===//
 
-struct CoalescingHandler final
-    : comms::MessageHandler<AccessWave, AccessLane> {
-  std::vector<Site> Sites;
+struct CoalescingHandler final : comms::MessageHandler<uint32_t, 2> {
+  std::vector<TracedInstruction> Instructions;
   struct Stats {
     uint64_t Waves = 0, Uncoalesced = 0, Lines = 0, Ideal = 0;
   };
-  std::map<uint32_t, Stats> PerSite;
+  std::map<uint32_t, Stats> PerInstr; ///< Keyed by InstrIdx.
 
-  void handle(uint64_t Exec, const AccessWave &Wave,
-              llvm::ArrayRef<AccessLane> Lanes) override {
-    const uint64_t Width = Sites[Wave.Site].Width;
+  void handle(uint64_t Exec, const uint32_t &InstrIdx,
+              llvm::ArrayRef<uint32_t> Data) override {
+    const uint64_t Width = Instructions[InstrIdx].Width;
+    const uint32_t ActiveLanes = uint32_t(Data.size() / 2);
     // The hardware issues the lanes LanesPerCycle at a time. Collect, for
     // each such group, the cache lines its lanes touch and the bytes it moves.
     std::vector<uint64_t> GroupLines[64];
     uint64_t GroupBytes[64] = {};
-    for (const AccessLane &L : Lanes) {
-      // The i-th address belongs to the i-th set bit of Exec.
+    for (uint32_t I = 0; I < ActiveLanes; ++I) {
+      // The i-th address belongs to the i-th set bit of Exec; its low half
+      // is Data[I], its high half Data[ActiveLanes + I].
       const unsigned Lane = unsigned(__builtin_ctzll(Exec));
       Exec &= Exec - 1;
+      const uint64_t Address =
+          uint64_t(Data[ActiveLanes + I]) << 32 | Data[I];
       const unsigned G = Lane / LanesPerCycle;
       GroupBytes[G] += Width;
-      for (uint64_t Line = L.Address / CacheLineBytes;
-           Line <= (L.Address + Width - 1) / CacheLineBytes; ++Line)
+      for (uint64_t Line = Address / CacheLineBytes;
+           Line <= (Address + Width - 1) / CacheLineBytes; ++Line)
         GroupLines[G].push_back(Line);
     }
     // A group is coalesced if it touches no more lines than its bytes need;
     // the wave-instruction is uncoalesced if any group wastes a line.
-    Stats &S = PerSite[Wave.Site];
+    Stats &S = PerInstr[InstrIdx];
     ++S.Waves;
     bool Wasted = false;
     for (unsigned G = 0; G < 64; ++G) {
@@ -148,11 +144,11 @@ struct CoalescingHandler final
     OS << llvm::formatv("[uncoalesced] {0}-lane groups, {1}-byte lines\n",
                         unsigned(LanesPerCycle), unsigned(CacheLineBytes));
     std::map<std::string, Stats> PerKernel;
-    for (const auto &[Id, S] : PerSite) {
+    for (const auto &[Idx, S] : PerInstr) {
       OS << llvm::formatv("{0,10} waves {1,10} uncoalesced  {2}: {3}\n",
-                          S.Waves, S.Uncoalesced, Sites[Id].Kernel,
-                          Sites[Id].MIR);
-      Stats &K = PerKernel[Sites[Id].Kernel];
+                          S.Waves, S.Uncoalesced, Instructions[Idx].Kernel,
+                          Instructions[Idx].MIR);
+      Stats &K = PerKernel[Instructions[Idx].Kernel];
       K.Waves += S.Waves;
       K.Uncoalesced += S.Uncoalesced;
       K.Lines += S.Lines;
@@ -167,21 +163,22 @@ struct CoalescingHandler final
 
 struct UncoalescedMemAccessTool
     : luthier::Tool<UncoalescedMemAccessTool, llvm::MachineFunction>,
-      comms::Channel<UncoalescedMemAccessTool, AccessWave, AccessLane> {
+      comms::Channel<UncoalescedMemAccessTool, uint32_t, 2> {
   using Tool::Tool;
   CoalescingHandler Coalescing;
   std::recursive_mutex Mutex;
 
   /// The device side, run by every active lane just before the traced
   /// load/store: rebuild the lane's address the way the instruction does
-  /// (64-bit VGPR pair + immediate offset) and send it, together with the
-  /// instruction's \p Site once for the wave.
+  /// (64-bit VGPR pair + immediate offset) and send it as 2 dwords, with the
+  /// instruction's \p InstrIdx once for the wave.
   __attribute__((device, used)) static void
   onAccess(uint32_t AddrLo, uint32_t AddrHi, uint32_t ImmOffset,
-           uint32_t Site) {
+           uint32_t InstrIdx) {
     const uint64_t Address =
         (uint64_t(AddrHi) << 32 | AddrLo) + int64_t(int32_t(ImmOffset));
-    send(AccessWave{Site}, AccessLane{Address});
+    const uint32_t Lane[2] = {uint32_t(Address), uint32_t(Address >> 32)};
+    send<2>(InstrIdx, Lane);
   }
 
   /// Instrumentation: a call to onAccess before every global load/store
@@ -218,12 +215,12 @@ struct UncoalescedMemAccessTool
               TRI.getRegSizeInBits(*TRI.getMinimalPhysRegClass(
                   Operand(Data).getReg().asMCReg())) / 8;
 
-          // Record the instruction on the CPU. Its index in Sites is the
-          // Site number the payload will send back.
-          const uint32_t Site = uint32_t(Coalescing.Sites.size());
+          // Record the instruction on the CPU. Its position in Instructions
+          // is the InstrIdx the payload will send back.
+          const uint32_t InstrIdx = uint32_t(Coalescing.Instructions.size());
           std::string MIR;
           llvm::raw_string_ostream(MIR) << MI;
-          Coalescing.Sites.push_back({MF.getName().str(), MIR, Width});
+          Coalescing.Instructions.push_back({MF.getName().str(), MIR, Width});
 
           // Build the payload Luthier inserts before MI. Luthier's intrinsics
           // (readReg) are only lowered inside the payload, so the registers
@@ -238,13 +235,14 @@ struct UncoalescedMemAccessTool
                       M, B, "luthier::readReg", *B.getInt32Ty(),
                       uint32_t(R.id()));
                 };
-                // onAccess(AddrLo, AddrHi, ImmOffset, Site): the two halves
-                // of the address register pair, then two constants. Site is
-                // an integer index into Sites, not a pointer.
+                // onAccess(AddrLo, AddrHi, ImmOffset, InstrIdx): the two
+                // halves of the address register pair, then two constants.
+                // InstrIdx is an integer index into Instructions, not a
+                // pointer.
                 llvm::Value *Args[] = {
                     ReadReg(TRI.getSubReg(VAddr, llvm::AMDGPU::sub0)),
                     ReadReg(TRI.getSubReg(VAddr, llvm::AMDGPU::sub1)),
-                    B.getInt32(uint32_t(Imm)), B.getInt32(Site)};
+                    B.getInt32(uint32_t(Imm)), B.getInt32(InstrIdx)};
                 llvm::InlineFunctionInfo IFI;
                 llvm::InlineFunction(*B.CreateCall(&Hook, Args), IFI);
                 return llvm::Error::success();
