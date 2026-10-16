@@ -1,4 +1,4 @@
-//===-- PatchPCUsagesPass.h ----------------------------------*- C++ -*-===//
+//===-- PatchPCUsagesPass.h -------------------------------------*- C++ -*-===//
 // Copyright @ Northeastern University Computer Architecture Lab
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -77,9 +77,11 @@ public:
     using luthier::ToolDeviceCodeOffloadParserTrait<
         Parser>::ToolDeviceCodeOffloadParserTrait;
 
+#if defined(__HIPCC__)
+
     /// Writes a single, statically-known target address into
     /// \p Reg. Emitted at every site with only a single possible target.
-    __attribute__((device, used)) static void
+    __attribute__((device)) static void
     patchRegSingle(llvm::MCRegister Reg, std::uint64_t FnHandleAddr);
 
     /// Variadic-template multi-target hook. Every pack element is a
@@ -89,34 +91,30 @@ public:
     /// through to the \c EntryPointToTraceFunctionAddrMap + hostcall fallback
     /// when nothing matches.
     template <typename... Pairs>
-    __attribute__((device, used)) static void
+    __attribute__((device)) static void
     patchRegMulti(llvm::MCRegister Reg, std::uint64_t HostFnPtr, Pairs... Ps);
 
     /// Runtime resolver table the \c patchRegMulti fallback path walks.
-    __attribute__((device, used)) static EntryPointTraceFunctionEntry
+    __attribute__((device)) static EntryPointTraceFunctionEntry
         *EntryPointToTraceFunctionAddrMap;
     __attribute__((
-        device,
-        used)) static std::uint32_t EntryPointToTraceFunctionAddrMapSize;
+        device)) static std::uint32_t EntryPointToTraceFunctionAddrMapSize;
     __attribute__((
-        device,
-        used)) static std::uint32_t EntryPointToTraceFunctionAddrMapMaxSize;
+        device)) static std::uint32_t EntryPointToTraceFunctionAddrMapMaxSize;
     /// Wave-uniform spinlock. Zero when free, one when held. The
     /// \c patchRegMulti fallback holds it across the entire read-then-
     /// hostcall region so the host callback can grow the table in place
     /// without racing concurrent readers.
     __attribute__((
-        device,
-        used)) static std::uint32_t EntryPointToTraceFunctionAddrMapLock;
+        device)) static std::uint32_t EntryPointToTraceFunctionAddrMapLock;
 
     /// A set of statically-known \c EntryPointTraceFunctionEntry table +
     /// entry count. Used to initialize the \c EntryPointToTraceFunctionAddrMap
     /// value at load time. Only emitted when the initial entry point is a
     /// kernel.
-    __attribute__((device, used,
-                   constant)) static const EntryPointTraceFunctionEntry
+    __attribute__((device, constant)) static const EntryPointTraceFunctionEntry
         *EntryPointToTraceFunctionAddrMapSeed;
-    __attribute__((device, used, constant)) static std::uint32_t
+    __attribute__((device, constant)) static std::uint32_t
         EntryPointToTraceFunctionAddrMapSeedSize;
 
     /// ctor used to dynamically allocate the
@@ -126,8 +124,9 @@ public:
 
     /// dtor used to release the table \c initEntryPointToTraceFunctionAddrMap
     /// allocated.
-    __attribute__((device, used, destructor)) static void
+    __attribute__((device, destructor)) static void
     finiEntryPointToTraceFunctionAddrMap();
+#endif
   };
 
   /// \param TargetAddressHostResolver raw host function pointer instrumentation
