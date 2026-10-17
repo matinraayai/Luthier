@@ -10,6 +10,7 @@ add_library(LuthierTooling SHARED
         $<TARGET_OBJECTS:LuthierHSA>
         $<TARGET_OBJECTS:LuthierHIP>
         $<TARGET_OBJECTS:LuthierLLVM>
+        $<TARGET_OBJECTS:LuthierComms>
         $<TARGET_OBJECTS:LuthierIntrinsic>
         $<TARGET_OBJECTS:LuthierCommon>
         $<TARGET_OBJECTS:LuthierToolCodeGen>
