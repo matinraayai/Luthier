@@ -6,19 +6,17 @@
 // RUN:   -initial-entrypoint=0:_Z5scalePffi.kd \
 // RUN:   -initial-execution-point=0:_Z5scalePffi.kd \
 // RUN:   -o /dev/null > %t.ir 2> %t.mir
+//
 // The IR module is printed to stdout and the MIR bodies to stderr. Merging them
-// with 2>&1 can splice one stream into the middle of a line of the other, so
-// capture them separately and concatenate in a fixed order instead.
+// with 2>&1 can splice one stream into the middle of a line of the other.
+// Captured separately then concatenated in a fixed order.
+//
 // RUN: cat %t.ir %t.mir | FileCheck %s
 
 // Tests that DebugInfoPass skips a code object that has no DWARF compile
-// units, and does not crash. Before the fix, DIBuilder::finalize() asserted
-// with "creating type nodes without a CU is not supported". The run-time
-// case is a ROCclr blit kernel (for example __amd_rocclr_copyBuffer), which
-// ROCm ships without debug info.
+// units, and does not crash.
+// llvm-mc runs without -g.
 //
-// llvm-mc runs without -g on purpose: -g makes llvm-mc emit DWARF for the
-// assembly file itself, so the code object would get 1 compile unit.
 //
 // Assembly below was generated from:
 //

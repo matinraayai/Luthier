@@ -19,6 +19,7 @@
 #include "llvm/DebugInfo/DWARF/DWARFDebugLine.h"
 #include "llvm/DebugInfo/DWARF/DWARFFormValue.h"
 #include "llvm/DebugInfo/Symbolize/Symbolize.h"
+#include "llvm/IR/Analysis.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DebugLoc.h"
@@ -27,6 +28,7 @@
 #include "llvm/IR/PassManager.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
 #include <cstdint>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
@@ -78,11 +80,8 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
     // Get allocation descriptor
     auto AllocationOrErr = SegAccessor.getAllocationDescriptor(EntryPointAddr);
     if (!AllocationOrErr) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "[DebugInfoPass] No allocation descriptor for function "
-                 << F.getName() << "\n");
-      llvm::consumeError(AllocationOrErr.takeError());
-      continue;
+      Ctx.emitError(llvm::toString(AllocationOrErr.takeError()));
+      return llvm::PreservedAnalyses::none();
     }
 
     // Retrieve the code object
@@ -203,13 +202,7 @@ llvm::PreservedAnalyses DebugInfoPass::run(Prototype &IP,
             break;
           }
 
-            // case (llvm::dwarf::DW_TAG_inlined_subroutine): {
-            //   break;
-            // }
-
-            // case (llvm::dwarf::DW_TAG_lexical_block): {
-            // break;
-            // }
+            // TODO: Add other DWARF DIEs (DILexicalBlock, DILocalVariable)
 
           default:
             break;
@@ -413,8 +406,8 @@ DebugInfoPrinterPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
     uint64_t EntryPointAddr = EntryPointOpt->getEntryPointAddress();
     auto AllocationOrErr = SegAccessor.getAllocationDescriptor(EntryPointAddr);
     if (!AllocationOrErr) {
-      llvm::consumeError(AllocationOrErr.takeError());
-      continue;
+      M.getContext().emitError(llvm::toString(AllocationOrErr.takeError()));
+      return llvm::PreservedAnalyses::all();
     }
 
     const auto *CodeObject = AllocationOrErr->getAllocationCodeObject();

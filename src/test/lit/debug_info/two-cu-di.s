@@ -8,9 +8,6 @@
 // RUN:   -initial-entrypoint=0:_Z11scaleKernelPffi.kd \
 // RUN:   -initial-execution-point=0:_Z11scaleKernelPffi.kd \
 // RUN:   -o /dev/null > %t.ir 2> %t.mir
-// The IR module is printed to stdout and the MIR bodies to stderr. Merging them
-// with 2>&1 can splice one stream into the middle of a line of the other, so
-// capture them separately and concatenate in a fixed order instead.
 // RUN: cat %t.ir %t.mir | FileCheck %s
 
 // Tests that DebugInfoPass builds one DICompileUnit for each DWARF compile
@@ -20,7 +17,7 @@
 //
 // One clang run gives one compile unit, so the two files are compiled
 // separately and linked by ld.lld. split-file divides this file into
-// kernel.s and callee.s at the //--- markers below.
+// kernel.s and callee.s.
 //
 // Assembly below was generated from:
 //

@@ -6,16 +6,16 @@
 // RUN:   -initial-entrypoint=0:_Z11scaleKernelPffi.kd \
 // RUN:   -initial-execution-point=0:_Z11scaleKernelPffi.kd \
 // RUN:   -o /dev/null > %t.ir 2> %t.mir
+//
 // The IR module is printed to stdout and the MIR bodies to stderr. Merging them
-// with 2>&1 can splice one stream into the middle of a line of the other, so
-// capture them separately and concatenate in a fixed order instead.
+// with 2>&1 can splice one stream into the middle of a line of the other.
+// Captured separately then concatenated in a fixed order.
+//
 // RUN: cat %t.ir %t.mir | FileCheck %s
-
-// Tests that DebugInfoPass gives debug info to every lifted function of a
-// code object, not only to the kernel. The kernel calls a device function
-// that is not inlined, so code discovery lifts two functions from the same
-// code object. The second function reuses the DWARF context and the
-// DISubprogram cache that the first function built.
+//
+// Tests that DebugInfoPass populates debug info for every lifted function
+// in a code object. A return point gets a copy of the caller's DISubprogram
+// with the linkage name changed accordingly.
 //
 // Assembly below was generated from:
 //
@@ -54,6 +54,7 @@
 // CHECK-DAG: [[FILE]] = !DIFile(filename: "noinline-call.hip"
 // CHECK-DAG: [[KERNEL_SP]] = distinct !DISubprogram(name: "scaleKernel", linkageName: "_Z11scaleKernelPffi", scope: [[FILE]], file: [[FILE]], line: 10,{{.*}}unit: [[CU]])
 // CHECK-DAG: [[CALLEE_SP]] = distinct !DISubprogram(name: "scaleBy", linkageName: "_Z7scaleByff", scope: [[FILE]], file: [[FILE]], line: 6,{{.*}}unit: [[CU]])
+//
 // The return point gets a copy of the kernel's subprogram, renamed to the
 // name that code discovery emitted.
 // CHECK-DAG: [[RET_SP]] = distinct !DISubprogram(name: "scaleKernel", linkageName: "_Z11scaleKernelPffix0x84", scope: [[FILE]], file: [[FILE]], line: 10,{{.*}}unit: [[CU]])

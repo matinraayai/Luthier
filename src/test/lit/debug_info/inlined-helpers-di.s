@@ -6,13 +6,15 @@
 // RUN:   -initial-entrypoint=0:_Z13square_kernelPffi.kd \
 // RUN:   -initial-execution-point=0:_Z13square_kernelPffi.kd \
 // RUN:   -o /dev/null > %t.ir 2> %t.mir
+//
 // The IR module is printed to stdout and the MIR bodies to stderr. Merging them
-// with 2>&1 can splice one stream into the middle of a line of the other, so
-// capture them separately and concatenate in a fixed order instead.
+// with 2>&1 can splice one stream into the middle of a line of the other.
+// Captured separately then concatenated in a fixed order.
 // RUN: cat %t.ir %t.mir | FileCheck %s
-
-// Tests that DebugInfoPass rebuilds inlinedAt chains for code inlined from a
-// different file, two levels deep. Assembly below was generated from:
+//
+// Tests that DebugInfoPass rebuilds inlinedAt chains for
+// code inlined from a header file, two levels deep.
+// Assembly below was generated from:
 //
 //   // helper.h
 //   5: __device__ __forceinline__ float square(float X) { return X * X; }
@@ -67,6 +69,7 @@
 // CHECK: [[SQUARE_CALL]] = !DILocation(line: 8, column: 14, scope: [[SCALED_SP:![0-9]+]], inlinedAt: [[SCALED_CALL:![0-9]+]])
 // CHECK: [[SCALED_SP]] = distinct !DISubprogram(name: "scaledSquare", linkageName: "_Z12scaledSquareff"
 // CHECK-SAME: file: [[HELPER_FILE]]
+//
 // The chain ends at the kernel's own subprogram.
 // CHECK: [[SCALED_CALL]] = !DILocation(line: 18, column: 12, scope: [[KERNEL_SP]])
 

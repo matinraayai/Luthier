@@ -14,22 +14,20 @@
 // CHECK: define{{.*}}@_Z6vecAddPKfS0_Pfi
 // CHECK-SAME: !dbg [[SP:![0-9]+]]
 
-// IR instructions now carry !dbg alongside !pcsections — capture one DILocation
-// id here from the function body (before the metadata table in document order)
-// so we can later verify it is well-formed and linked to the subprogram.
+// Capture one DILocation id from the function body to later verify
+// it is well-formed and linked to the subprogram.
 // CHECK: !dbg [[LOC:![0-9]+]], !pcsections
 
-// The source language is read from the DWARF CU's DW_AT_language, not
-// hard-coded; the producer string is ours.
+// The source language is read from the DWARF CU's DW_AT_language.
 // CHECK: [[CU:![0-9]+]] = distinct !DICompileUnit(
 // CHECK-SAME: language: DW_LANG_C_plus_plus_14
 // CHECK-SAME: producer: "Luthier Debug Info Pass"
 
-// DIFile captured the source filename from the DWARF.
+// DIFile captured the source filename.
 // CHECK: [[FILE:![0-9]+]] = !DIFile(filename: "vec-add-global-var.hip"
 
 // The DISubprogram definition matches the captured SP id and correctly
-// references both the DIFile and DICompileUnit — full IR graph is consistent.
+// references both the DIFile and DICompileUnit. Ensures the IR is consistent.
 // CHECK: [[SP]] = distinct !DISubprogram(
 // CHECK-SAME: name: "vecAdd"
 // CHECK-SAME: linkageName: "_Z6vecAddPKfS0_Pfi"
@@ -55,13 +53,12 @@
 
 // === Per-MI debug-location attachment verified at both ends of the kernel ===
 
-// The first MI in the entry block references [[LOC]] directly — in LLVM 23 the
-// MIR serializer emits a metadata id reference rather than an inline DILocation.
+// The first MI in the entry block references [[LOC]] directly
 // CHECK: bb.0
 // CHECK: debug-location [[LOC]]
 
 // The kernel terminator S_ENDPGM also carries a debug-location, confirming
-// attachment reached the last MI and not only early ones.
+// attachment reached the last MI.
 // CHECK: S_ENDPGM
 // CHECK-SAME: debug-location !{{[0-9]+}}
 
