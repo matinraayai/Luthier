@@ -118,10 +118,6 @@ regionIsCoarseGrained(const ApiTableContainer<::CoreApiTable> &CoreApi,
 //===----------------------------------------------------------------------===//
 
 template <> struct llvm::DenseMapInfo<hsa_region_t> {
-  static hsa_region_t getEmptyKey() {
-    return hsa_region_t(
-        {DenseMapInfo<decltype(hsa_region_t::handle)>::getEmptyKey()});
-  }
   static unsigned getHashValue(const hsa_region_t &R) {
     return DenseMapInfo<decltype(hsa_region_t::handle)>::getHashValue(R.handle);
   }

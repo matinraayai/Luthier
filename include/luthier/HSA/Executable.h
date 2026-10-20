@@ -208,10 +208,6 @@ inline bool operator==(const hsa_executable_t &Lhs,
 //===----------------------------------------------------------------------===//
 
 template <> struct llvm::DenseMapInfo<hsa_executable_t> {
-  static hsa_executable_t getEmptyKey() {
-    return hsa_executable_t(
-        {DenseMapInfo<decltype(hsa_executable_t::handle)>::getEmptyKey()});
-  }
 
   static unsigned getHashValue(const hsa_executable_t &Executable) {
     return DenseMapInfo<decltype(hsa_executable_t::handle)>::getHashValue(

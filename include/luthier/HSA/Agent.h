@@ -449,10 +449,6 @@ agentFindFirstISA(const ApiTableContainer<::CoreApiTable> &CoreApi,
 //===----------------------------------------------------------------------===//
 
 template <> struct llvm::DenseMapInfo<hsa_agent_t> {
-  static hsa_agent_t getEmptyKey() {
-    return hsa_agent_t(
-        {DenseMapInfo<decltype(hsa_agent_t::handle)>::getEmptyKey()});
-  }
 
   static unsigned getHashValue(const hsa_agent_t &Agent) {
     return DenseMapInfo<decltype(hsa_agent_t::handle)>::getHashValue(

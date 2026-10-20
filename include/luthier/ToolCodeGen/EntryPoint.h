@@ -142,9 +142,6 @@ public:
 } // namespace luthier
 
 template <> struct llvm::DenseMapInfo<luthier::EntryPoint> {
-  static luthier::EntryPoint getEmptyKey() {
-    return luthier::EntryPoint(DenseMapInfo<uint64_t>::getEmptyKey());
-  }
 
   static unsigned getHashValue(const luthier::EntryPoint &EP) {
     if (const amdhsa::kernel_descriptor_t *KD = EP.getKernelDescriptor()) {
