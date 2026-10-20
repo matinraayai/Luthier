@@ -1,6 +1,7 @@
-ARG ROCM_VERSION=7.2.4
+ARG ROCM_VERSION=10.1.0
+ARG UBUNTU_VERSION=26.04
 
-FROM rocm-$ROCM_VERSION-dev
+FROM rocm/dev-ubuntu-$UBUNTU_VERSION:$ROCM_VERSION-full
 
 # Environment variables and build arguments
 ARG LLVM_BUILD_TYPE=RelWithDebInfo
@@ -9,6 +10,13 @@ ARG LLVM_SRC_DIR=/opt/luthier/src/
 ARG LLVM_ENABLE_EXPENSIVE_CHECKS=OFF
 ARG LLVM_ENABLE_ASSERTIONS=ON
 ARG LLVM_GIT_REVISION=amd-staging
+
+# Install dependencies
+RUN apt-get clean && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y wget ca-certificates curl  \
+    build-essential  software-properties-common cmake g++-12 libstdc++-12-dev rpm libelf-dev libnuma-dev sudo  \
+    libdw-dev git python3 python3-pip gnupg unzip ripgrep libelf1 file pkg-config xxd ninja-build zsh git npm  \
+    python3-venv nodejs kmod
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 20 --slave /usr/bin/g++ g++ /usr/bin/g++-12
 
 # Install neovim from AppImage
 RUN wget https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.appimage && \
@@ -27,7 +35,7 @@ RUN mkdir $LLVM_SRC_DIR/llvm-project/build && cd $LLVM_SRC_DIR/llvm-project/buil
     cmake -G Ninja -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=$BUILD_SHARED_LIBS \
     -DCMAKE_INSTALL_PREFIX=/opt/luthier/llvm/  \
     -DCMAKE_BUILD_TYPE=$LLVM_BUILD_TYPE \
-    -DLLVM_TARGETS_TO_BUILD="AMDGPU;X86"  \
+    -DLLVM_TARGETS_TO_BUILD="AMDGPU;Native;SPIRV"  \
     -DLLVM_ENABLE_PROJECTS="llvm;clang;lld;compiler-rt;clang-tools-extra" \
     -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
     -DLLVM_ENABLE_EXPENSIVE_CHECKS=$LLVM_ENABLE_EXPENSIVE_CHECKS \
@@ -38,7 +46,7 @@ RUN mkdir $LLVM_SRC_DIR/llvm-project/build && cd $LLVM_SRC_DIR/llvm-project/buil
     -DLIBCXXABI_ENABLE_SHARED=OFF \
     -DLIBCXXABI_ENABLE_STATIC=ON \
     -DLIBCXXABI_INSTALL_STATIC_LIBRARY=OFF \
-    -DLLVM_ENABLE_RTTI=ON \
+    -DLLVM_ENABLE_RTTI=OFF \
     -DLLVM_OPTIMIZED_TABLEGEN=ON \
     -DCLANG_ENABLE_AMDCLANG=ON \
     -DLLVM_BUILD_TOOLS=ON \
