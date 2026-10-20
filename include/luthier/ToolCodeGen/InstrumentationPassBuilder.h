@@ -267,7 +267,7 @@ private:
   /// pipeline, deliberately kept empty.
   ///
   /// \details LLVM's \c StandardInstrumentations dispatches on the IR unit type
-  /// via \c llvm::Any and \c llvm_unreachable s on anything outside
+  /// via \c llvm::IRUnitRef and \c llvm_unreachable s on anything outside
   /// Module/Function/SCC/Loop/MachineFunction (see \c getIRName in
   /// \c StandardInstrumentations.cpp). \c Prototype is a Luthier-only IR unit,
   /// so routing \c PassManager<Prototype> 's before/after-pass callbacks
