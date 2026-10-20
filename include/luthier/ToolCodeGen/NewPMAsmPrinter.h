@@ -31,7 +31,7 @@ class TargetMachine;
 
 namespace luthier {
 
-class NewPMAsmPrinter : public llvm::PassInfoMixin<NewPMAsmPrinter> {
+class NewPMAsmPrinter : public llvm::RequiredPassInfoMixin<NewPMAsmPrinter> {
 private:
   llvm::CodeGenFileType FileType;
   llvm::raw_pwrite_stream &OS;

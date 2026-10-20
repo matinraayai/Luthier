@@ -131,7 +131,7 @@ struct MockAMDGPULoaderAnalysisOptions {
 /// \c InitialEntryPointAnalysis.h), so downstream analyses read them straight
 /// off the module and never need to know a mock loader was involved.
 class MockLoadAMDGPUCodeObjects
-    : public llvm::PassInfoMixin<MockLoadAMDGPUCodeObjects> {
+    : public llvm::RequiredPassInfoMixin<MockLoadAMDGPUCodeObjects> {
   MockAMDGPULoaderAnalysisOptions &Options;
 
 public:

@@ -294,9 +294,8 @@ public:
   }
 };
 
-
 class AMDGPUMockLoaderPrinter
-    : public llvm::PassInfoMixin<AMDGPUMockLoaderPrinter> {
+    : public llvm::RequiredPassInfoMixin<AMDGPUMockLoaderPrinter> {
   llvm::raw_ostream &OS;
 
 public:

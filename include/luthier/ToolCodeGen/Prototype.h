@@ -351,7 +351,7 @@ public:
 /// \c runModulePass can iterate the sub-passes itself — see
 /// \c PrototypeModulePassManager for why.
 class RunOnTargetModuleAdaptor
-    : public llvm::PassInfoMixin<RunOnTargetModuleAdaptor> {
+    : public llvm::RequiredPassInfoMixin<RunOnTargetModuleAdaptor> {
 public:
   explicit RunOnTargetModuleAdaptor(PrototypeModulePassManager MPM)
       : MPM(std::move(MPM)) {}
@@ -373,7 +373,7 @@ private:
 ///
 /// See \c RunOnTargetModuleAdaptor for the design rationale.
 class RunOnInstrumentationModuleAdaptor
-    : public llvm::PassInfoMixin<RunOnInstrumentationModuleAdaptor> {
+    : public llvm::RequiredPassInfoMixin<RunOnInstrumentationModuleAdaptor> {
 public:
   explicit RunOnInstrumentationModuleAdaptor(PrototypeModulePassManager MPM)
       : MPM(std::move(MPM)) {}
@@ -417,6 +417,11 @@ createRunOnInstrumentationModuleAdaptor(ModulePassT &&Pass) {
 } // namespace luthier
 
 namespace llvm {
+
+/// \c IRUnitKind specialization for \c Prototype
+template <> struct IRUnitKindTraits<luthier::Prototype> {
+  static constexpr IRUnitKind Kind = static_cast<IRUnitKind>(-1);
+};
 
 extern template class PassManager<luthier::Prototype>;
 extern template class AnalysisManager<luthier::Prototype>;

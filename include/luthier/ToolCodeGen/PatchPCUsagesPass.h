@@ -34,7 +34,8 @@ namespace luthier {
 
 /// \brief Prototype-level pass that rewrites the target module's trace
 /// PC-operating instructions so the code becomes relocatable.
-class PatchPCUsagesPass : public llvm::PassInfoMixin<PatchPCUsagesPass> {
+class PatchPCUsagesPass
+    : public llvm::RequiredPassInfoMixin<PatchPCUsagesPass> {
 public:
   /// One entry of the \c EntryPointToTraceFunctionAddrMap
   /// table: a trace function's entry point address and its associated

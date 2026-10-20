@@ -29,7 +29,8 @@
 
 namespace luthier {
 
-class SVAPhysVGPRPinPass : public llvm::PassInfoMixin<SVAPhysVGPRPinPass> {
+class SVAPhysVGPRPinPass
+    : public llvm::RequiredPassInfoMixin<SVAPhysVGPRPinPass> {
 public:
   SVAPhysVGPRPinPass() = default;
 

@@ -83,7 +83,7 @@ namespace luthier {
 /// merged in until \c TargetModulePatcherPass ), and PC-usage patching has to
 /// see the final instruction layout.
 class RebaseAppScratchAccessesPass
-    : public llvm::PassInfoMixin<RebaseAppScratchAccessesPass> {
+    : public llvm::RequiredPassInfoMixin<RebaseAppScratchAccessesPass> {
 public:
   /// \brief Owns this translation unit's offload bundle, which carries the
   /// device-side payloads, and gives the host side a way to map a payload's
