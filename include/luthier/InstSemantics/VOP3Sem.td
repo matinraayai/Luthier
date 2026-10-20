@@ -4585,8 +4585,8 @@ foreach inst = [
 foreach inst = [
     V_CVT_F32_FP8_e64,
     V_CVT_F32_BF8_e64,
-    V_CVT_F32_FP8_OP_SEL_e64,
-    V_CVT_F32_BF8_OP_SEL_e64,
+//    V_CVT_F32_FP8_OP_SEL_e64,
+//    V_CVT_F32_BF8_OP_SEL_e64,
     V_CVT_PK_F32_FP8_e64,
     V_CVT_PK_F32_BF8_e64,
     V_CVT_PK_FP8_F32_e64,
@@ -9944,18 +9944,20 @@ foreach fpFmt = ["FP8", "BF8"] in {
     }
   }
 }
-foreach fpFmt = ["FP8", "BF8"] in {
-  foreach inst = [!cast<InstSI>("V_CVT_PK_"#fpFmt#"_F16_gfx1250_e64"),
-                  !cast<InstSI>("V_CVT_PK_"#fpFmt#"_F16_gfx1250_t16_e64"),
-                  !cast<InstSI>("V_CVT_PK_"#fpFmt#"_F16_gfx1250_fake16_e64")] in {
-    def inst#_sem : InstSISemantic<inst> {
-      let Semantic = [(SetNamedOperand $vdst,
-        (LLVMIntrinsic si_llvm_i16_ty,
-          !cast<Intrinsic>("int_amdgcn_cvt_pk_"#!tolower(fpFmt)#"_f16"),
-          [(GetNamedOperand $src0, si_llvm_v2f16_ty)]))];
-    }
-  }
-}
+//foreach fpFmt = ["FP8", "BF8"] in {
+//  foreach inst = [
+////  !cast<InstSI>("V_CVT_PK_"#fpFmt#"_F16_gfx1250_e64"),
+////                  !cast<InstSI>("V_CVT_PK_"#fpFmt#"_F16_gfx1250_t16_e64"),
+////                  !cast<InstSI>("V_CVT_PK_"#fpFmt#"_F16_gfx1250_fake16_e64")
+//                  ] in {
+//    def inst#_sem : InstSISemantic<inst> {
+//      let Semantic = [(SetNamedOperand $vdst,
+//        (LLVMIntrinsic si_llvm_i16_ty,
+//          !cast<Intrinsic>("int_amdgcn_cvt_pk_"#!tolower(fpFmt)#"_f16"),
+//          [(GetNamedOperand $src0, si_llvm_v2f16_ty)]))];
+//    }
+//  }
+//}
 def V_CVT_PK_F16_F32_e64_sem : InstSISemantic<V_CVT_PK_F16_F32_e64> {
   let Semantic = [
     (DefVal $lo, (LLVMFPTrunc (GetNamedOperand $src0, si_llvm_float_ty), si_llvm_half_ty)),
