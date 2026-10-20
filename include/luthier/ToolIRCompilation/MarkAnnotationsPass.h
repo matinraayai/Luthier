@@ -29,7 +29,8 @@ class Module;
 
 namespace luthier {
 
-class MarkAnnotationsPass : public llvm::PassInfoMixin<MarkAnnotationsPass> {
+class MarkAnnotationsPass
+    : public llvm::RequiredPassInfoMixin<MarkAnnotationsPass> {
 public:
   MarkAnnotationsPass() = default;
 

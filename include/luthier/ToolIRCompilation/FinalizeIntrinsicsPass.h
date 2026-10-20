@@ -35,7 +35,7 @@ namespace luthier {
 /// - Renames it to a typed-suffix mangled form recognized by Luthier's MIR
 /// lowering
 class FinalizeIntrinsicsPass
-    : public llvm::PassInfoMixin<FinalizeIntrinsicsPass> {
+    : public llvm::RequiredPassInfoMixin<FinalizeIntrinsicsPass> {
 public:
   FinalizeIntrinsicsPass() = default;
 
