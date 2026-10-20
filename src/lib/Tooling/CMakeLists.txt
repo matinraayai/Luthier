@@ -39,6 +39,8 @@ target_include_directories(LuthierTooling
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/luthier/AMDGPU>"
 )
 
+target_compile_options(LuthierTooling PUBLIC ${LUTHIER_RTTI_FLAG})
+
 target_link_libraries(LuthierTooling
         PUBLIC LuthierAMDGPU ${CMAKE_DL_LIBS}
         LLVMAMDGPUAsmParser LLVMAMDGPUDesc LLVMAMDGPUDisassembler LLVMAMDGPUInfo LLVMAMDGPUTargetMCA

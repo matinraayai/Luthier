@@ -17,6 +17,9 @@ add_library(LuthierHSA OBJECT
 
 target_compile_definitions(LuthierHSA PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS} ${hip_COMPILE_DEFINITIONS})
 
+target_compile_options(LuthierHSA
+        PUBLIC ${LUTHIER_RTTI_FLAG})
+
 target_include_directories(LuthierHSA
         PRIVATE
         ${LLVM_INCLUDE_DIRS}

@@ -13,5 +13,5 @@ target_include_directories(LuthierToolCXXCompilation
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 
-set_target_properties(LuthierToolCXXCompilation
-        PROPERTIES CXX_RTTI OFF)
+target_compile_options(LuthierToolCXXCompilation
+        PUBLIC ${LUTHIER_RTTI_FLAG})

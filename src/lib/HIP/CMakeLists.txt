@@ -4,6 +4,9 @@ add_library(LuthierHIP OBJECT
 
 target_compile_definitions(LuthierHIP PRIVATE ${LLVM_DEFINITIONS} ${hip_COMPILE_DEFINITIONS})
 
+target_compile_options(LuthierHIP
+        PUBLIC ${LUTHIER_RTTI_FLAG})
+
 target_include_directories(LuthierHIP
         PRIVATE
         ${LLVM_INCLUDE_DIRS}

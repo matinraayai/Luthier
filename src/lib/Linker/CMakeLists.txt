@@ -6,6 +6,9 @@ add_library(LuthierLinker OBJECT
 target_compile_definitions(LuthierLinker PRIVATE ${LLVM_DEFINITIONS}
         LUTHIER_LLVM_TOOLS_BINARY_DIR="${LLVM_TOOLS_BINARY_DIR}")
 
+target_compile_options(LuthierLinker
+        PUBLIC ${LUTHIER_RTTI_FLAG})
+
 target_include_directories(LuthierLinker
         PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"

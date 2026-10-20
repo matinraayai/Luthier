@@ -9,6 +9,9 @@ add_library(LuthierCommon OBJECT
 
 target_compile_definitions(LuthierCommon PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
 
+target_compile_options(LuthierCommon
+        PUBLIC ${LUTHIER_RTTI_FLAG})
+
 target_include_directories(LuthierCommon
         PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
