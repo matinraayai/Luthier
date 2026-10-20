@@ -49,6 +49,7 @@
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Target/TargetMachine.h>
 
 #undef DEBUG_TYPE
 #define DEBUG_TYPE "luthier-reg-scavenging"
@@ -385,8 +386,9 @@ llvm::Register TargetModuleScavenger::scavengeRegisterBackwards(
     bool RestoreAfter, int SPAdj, bool AllowSpill) {
   const llvm::MachineBasicBlock &MBBR = *To->getParent();
   const llvm::MachineFunction &MF = *MBBR.getParent();
+  const llvm::TargetRegisterInfo * TRI = MF.getSubtarget().getRegisterInfo();
   llvm::ArrayRef<llvm::MCPhysReg> AllocationOrder =
-      RC.getRawAllocationOrder(MF);
+      TRI->getRawAllocationOrder(RC, MF);
   std::pair<llvm::MCPhysReg, llvm::MachineBasicBlock::iterator> P =
       findSurvivorBackwards(*MRI, ReservedRegs, std::prev(MBBI), To,
                             LiveUnits, AllocationOrder, RestoreAfter);
