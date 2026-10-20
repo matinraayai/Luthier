@@ -23,7 +23,6 @@
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/LLVM/streams.h"
-#include <Utils/AMDGPUBaseInfo.h>
 #include <algorithm>
 #include <cstring>
 #include <llvm/ADT/STLExtras.h>
@@ -41,13 +40,13 @@
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/TargetParser/AMDGPUTargetParser.h>
 #include <memory>
 #include <tuple>
 
 #ifdef LUTHIER_HAS_SPIRV_TRANSLATOR
 #include "luthier/ToolIRCompilation/FinalizeIntrinsicsPass.h"
 #include "luthier/ToolIRCompilation/MarkAnnotationsPass.h"
-#include "luthier/ToolIRCompilation/SubstituteAMDGCNIntrinsicsPass.h"
 #include <LLVMSPIRVLib/LLVMSPIRVLib.h>
 #include <llvm/ADT/SmallString.h>
 #include <llvm/ADT/StringSet.h>
@@ -226,15 +225,14 @@ ToolDeviceCodeParser::findCompatibleSlice(
     return LUTHIER_MAKE_GENERIC_ERROR(
         "createMCSubtargetInfo returned nullptr for the requested ISA.");
 
-  namespace IsaInfo = llvm::AMDGPU::IsaInfo;
-  IsaInfo::AMDGPUTargetID ReqID(*ReqSTI);
-  ReqID.setTargetIDFromFeaturesString(ReqFS);
+  const llvm::AMDGPU::TargetID ReqID =
+      llvm::AMDGPU::TargetID::createFromSubtargetFeatures(T, CPU, ReqFS);
 
   /// lambda used to check for compatibility between the ISAs regarding xnack
   /// and sramecc features
-  auto featureCompat = [](IsaInfo::TargetIDSetting Req,
-                          IsaInfo::TargetIDSetting Slice) {
-    using S = IsaInfo::TargetIDSetting;
+  auto featureCompat = [](llvm::AMDGPU::TargetIDSetting Req,
+                          llvm::AMDGPU::TargetIDSetting Slice) {
+    using S = llvm::AMDGPU::TargetIDSetting;
     if (Req == S::Unsupported || Slice == S::Unsupported || Req == S::Any ||
         Slice == S::Any)
       return true;
@@ -255,8 +253,9 @@ ToolDeviceCodeParser::findCompatibleSlice(
     if (!SliceSTI)
       continue;
 
-    IsaInfo::AMDGPUTargetID SliceID(*SliceSTI);
-    SliceID.setTargetIDFromFeaturesString(SliceFS);
+    const llvm::AMDGPU::TargetID SliceID =
+        llvm::AMDGPU::TargetID::createFromSubtargetFeatures(S.TT, S.CPU,
+                                                            SliceFS);
     if (!featureCompat(ReqID.getXnackSetting(), SliceID.getXnackSetting()))
       continue;
     if (!featureCompat(ReqID.getSramEccSetting(), SliceID.getSramEccSetting()))
@@ -468,7 +467,6 @@ ToolDeviceCodeParser::translateSpirvFallback(
   llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(OptLevel);
   MPM.addPass(MarkAnnotationsPass());
   MPM.addPass(FinalizeIntrinsicsPass());
-  MPM.addPass(SubstituteAMDGCNIntrinsicsPass());
   MPM.run(*M, MAM);
 
   // 4) Serialize the processed module and cache it under the requested key so

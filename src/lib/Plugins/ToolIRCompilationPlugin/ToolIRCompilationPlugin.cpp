@@ -19,7 +19,6 @@
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolIRCompilation/FinalizeIntrinsicsPass.h"
 #include "luthier/ToolIRCompilation/MarkAnnotationsPass.h"
-#include "luthier/ToolIRCompilation/SubstituteAMDGCNIntrinsicsPass.h"
 #include "luthier/ToolIRCompilation/ToolDeviceCodeOffloadParserPass.h"
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Plugins/PassPlugin.h>
@@ -44,8 +43,6 @@ void registerToolIRCompilationPasses(llvm::PassBuilder &PB) {
          llvm::ArrayRef<llvm::PassBuilder::PipelineElement>) {
         return tryParsePass<luthier::MarkAnnotationsPass>(Name, MPM) ||
                tryParsePass<luthier::FinalizeIntrinsicsPass>(Name, MPM) ||
-               tryParsePass<luthier::SubstituteAMDGCNIntrinsicsPass>(Name,
-                                                                     MPM) ||
                tryParsePass<luthier::ToolDeviceCodeOffloadParserPass>(Name,
                                                                       MPM);
       });
