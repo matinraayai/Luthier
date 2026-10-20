@@ -39,7 +39,7 @@
 namespace luthier {
 
 class InjectedPayloadPEIPass
-    : public llvm::PassInfoMixin<InjectedPayloadPEIPass> {
+    : public llvm::RequiredPassInfoMixin<InjectedPayloadPEIPass> {
 public:
   InjectedPayloadPEIPass() = default;
 
