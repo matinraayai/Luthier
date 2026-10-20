@@ -32,7 +32,8 @@ namespace luthier {
 /// The pass is expressed at the \c Prototype level so it can drive
 /// \c PrototypeCallGraphAnalysis (which needs access to both modules) between
 /// lift iterations to discover further entry points.
-class CodeDiscoveryPass : public llvm::PassInfoMixin<CodeDiscoveryPass> {
+class CodeDiscoveryPass
+    : public llvm::RequiredPassInfoMixin<CodeDiscoveryPass> {
 
 public:
   CodeDiscoveryPass() = default;

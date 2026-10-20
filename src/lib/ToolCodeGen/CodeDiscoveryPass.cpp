@@ -36,13 +36,13 @@
 #include <MCTargetDesc/AMDGPUMCExpr.h>
 #include <SIMachineFunctionInfo.h>
 #include <SIRegisterInfo.h>
+#include <llvm/ADT/StringExtras.h>
 #include <llvm/CodeGen/MachineFrameInfo.h>
 #include <llvm/CodeGen/MachineFunctionAnalysis.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/ReachingDefAnalysis.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/IntrinsicInst.h>
-#include <llvm/Transforms/Utils/ModuleUtils.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/MDBuilder.h>
 #include <llvm/IR/Module.h>
@@ -51,6 +51,7 @@
 #include <llvm/MC/MCInstPrinter.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/CommandLine.h>
+#include <llvm/Transforms/Utils/ModuleUtils.h>
 
 #undef DEBUG_TYPE
 
@@ -150,8 +151,8 @@ parseKDRsrc1(const llvm::amdhsa::kernel_descriptor_t &KD,
     Denorm32Val = "ieee,ieee";
     break;
   default:
-    return LUTHIER_MAKE_GENERIC_ERROR("Invalid FP 32 denorm field " +
-                                      llvm::to_string(Float32Denorm) + ".");
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        llvm::formatv("Invalid FP 32 denorm field {0}.", Float32Denorm));
   }
   F.addFnAttr("denormal-fp-math-f32", Denorm32Val);
   /// Lift FLOAT_DENORM_MODE_16_64 field
@@ -173,8 +174,8 @@ parseKDRsrc1(const llvm::amdhsa::kernel_descriptor_t &KD,
     Denorm1664Val = "ieee,ieee";
     break;
   default:
-    return LUTHIER_MAKE_GENERIC_ERROR("Invalid FP 16/64 denorm field " +
-                                      llvm::to_string(Float1664Denorm) + ".");
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        llvm::formatv("Invalid FP 16/64 denorm field {0}.", Float1664Denorm));
   }
   F.addFnAttr("denormal-fp-math", Denorm1664Val);
 
@@ -722,9 +723,8 @@ parseKDKernelCode(const llvm::amdhsa::kernel_descriptor_t &KD,
     FrameInfo.CreateFixedObject(KD.private_segment_fixed_size, 0, true);
     FrameInfo.setStackSize(KD.private_segment_fixed_size);
   }
-  if (AMDHSA_BITS_GET(
-          KD.kernel_code_properties,
-          llvm::amdhsa::KERNEL_CODE_PROPERTY_USES_DYNAMIC_STACK)) {
+  if (AMDHSA_BITS_GET(KD.kernel_code_properties,
+                      llvm::amdhsa::KERNEL_CODE_PROPERTY_USES_DYNAMIC_STACK)) {
     FrameInfo.CreateVariableSizedObject(llvm::Align(4), nullptr);
   }
 
@@ -862,7 +862,7 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   }
 
   F->addFnAttr("amdgpu-lds-size",
-               llvm::to_string(KDOnHost.group_segment_fixed_size));
+               std::to_string(KDOnHost.group_segment_fixed_size));
 
   /// Lift Rsrc1-Rsrc2; Rsrc3 is mostly automatically computed so we don't
   /// lift it
@@ -1031,10 +1031,9 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   /// application asked for; these attributes keep the original numbers so
   /// liveness and register scavenging can tell which registers the wave
   /// actually owns.
-  setTargetRegisterBudget(
-      *F, NextFreeSGPR,
-      F->getFnAttributeAsParsedInteger("amdgpu-num-vgpr",
-                                       ST.getAddressableNumVGPRs(0)));
+  setTargetRegisterBudget(*F, NextFreeSGPR,
+                          F->getFnAttributeAsParsedInteger(
+                              "amdgpu-num-vgpr", ST.getAddressableNumVGPRs(0)));
 
   return std::make_pair(std::ref(MF), KDSymbolIfPresent);
 }
@@ -1124,12 +1123,11 @@ initLiftedDeviceFunctionEntry(uint64_t DeviceEntryPointAddr,
   F->addFnAttr("amdgpu-num-sgpr", llvm::formatv("{0}", NumSGPRs).str());
   /// The launch budget is a property of the dispatch, so a device function
   /// reached from this entry point inherits the kernel's.
-  setTargetRegisterBudget(
-      *F,
-      InitialExecutionPoint.getFnAttributeAsParsedInteger(AppNumSGPRsAttribute,
-                                                          NumSGPRs),
-      InitialExecutionPoint.getFnAttributeAsParsedInteger(AppNumVGPRsAttribute,
-                                                          NumVGPRs));
+  setTargetRegisterBudget(*F,
+                          InitialExecutionPoint.getFnAttributeAsParsedInteger(
+                              AppNumSGPRsAttribute, NumSGPRs),
+                          InitialExecutionPoint.getFnAttributeAsParsedInteger(
+                              AppNumVGPRsAttribute, NumVGPRs));
 
   llvm::MachineFunction &MF =
       FAM.getResult<llvm::MachineFunctionAnalysis>(*F).getMF();
@@ -1145,7 +1143,7 @@ initLiftedDeviceFunctionEntry(uint64_t DeviceEntryPointAddr,
 /// basic block
 /// \return \c llvm::Error indicating the success or failure of the operation
 static llvm::Error
-convertAndAddMCOperandsToMI(const llvm::MCInst & RealInst,
+convertAndAddMCOperandsToMI(const llvm::MCInst &RealInst,
                             llvm::MachineInstrBuilder &MIBuilder) {
   const unsigned Opcode = MIBuilder->getOpcode();
   const llvm::MCInstrDesc &MCID = MIBuilder->getDesc();
@@ -1176,7 +1174,9 @@ convertAndAddMCOperandsToMI(const llvm::MCInst & RealInst,
                      << "[CodeDiscoveryPass] Adding pseudo register "
                      << llvm::printReg(RegNum,
                                        MF->getSubtarget().getRegisterInfo())
-                     << llvm::formatv(" with flags 0x{0:X}\n", Flags););
+                     << llvm::formatv(" with flags 0x{0:X}\n",
+                            static_cast<std::underlying_type_t<llvm::RegState>>(
+                                Flags)););
       (void)MIBuilder.addReg(RegNum, Flags);
     } else if (MCOp.isImm()) {
       LLVM_DEBUG(luthier::dbgs() << llvm::formatv(
@@ -1340,15 +1340,16 @@ convertAndAddMCOperandsToMI(const llvm::MCInst & RealInst,
   /// destination (only the selected byte/word lane), so the untouched lanes
   /// must be preserved from the destination register's prior value.
   if (llvm::SIInstrInfo::isSDWA(*MIBuilder)) {
-    int DstUnusedIdx =
-        llvm::AMDGPU::getNamedOperandIdx(Opcode, llvm::AMDGPU::OpName::dst_unused);
+    int DstUnusedIdx = llvm::AMDGPU::getNamedOperandIdx(
+        Opcode, llvm::AMDGPU::OpName::dst_unused);
     int VDstIdx =
         llvm::AMDGPU::getNamedOperandIdx(Opcode, llvm::AMDGPU::OpName::vdst);
     if (DstUnusedIdx != -1 && VDstIdx != -1) {
       const llvm::MachineOperand &DstUnused =
           MIBuilder->getOperand(DstUnusedIdx);
-      if (DstUnused.isImm() && DstUnused.getImm() ==
-                                    llvm::AMDGPU::SDWA::DstUnused::UNUSED_PRESERVE) {
+      if (DstUnused.isImm() &&
+          DstUnused.getImm() ==
+              llvm::AMDGPU::SDWA::DstUnused::UNUSED_PRESERVE) {
         const llvm::MachineOperand &Dst = MIBuilder->getOperand(VDstIdx);
         LLVM_DEBUG(luthier::dbgs() << llvm::formatv(
                        "[CodeDiscoveryPass] SDWA instruction has "
@@ -1357,9 +1358,9 @@ convertAndAddMCOperandsToMI(const llvm::MCInst & RealInst,
                        llvm::printReg(Dst.getReg(),
                                       MF->getSubtarget().getRegisterInfo())));
         unsigned ImplicitUseIdx = MIBuilder->getNumOperands();
-        MIBuilder->addOperand(
-            llvm::MachineOperand::CreateReg(Dst.getReg(), /*isDef=*/false,
-                                             /*isImp=*/true));
+        MIBuilder->addOperand(llvm::MachineOperand::CreateReg(Dst.getReg(),
+                                                              /*isDef=*/false,
+                                                              /*isImp=*/true));
         MIBuilder->tieOperands(VDstIdx, ImplicitUseIdx);
       }
     }
@@ -1496,8 +1497,7 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
           luthier::dbgs() << llvm::formatv(
               "[CodeDiscoveryPass] Populating {0} operands for instruction\n",
               MCID.operands().size()));
-      LUTHIER_RETURN_ON_ERROR(
-          convertAndAddMCOperandsToMI(MCInst, Builder));
+      LUTHIER_RETURN_ON_ERROR(convertAndAddMCOperandsToMI(MCInst, Builder));
 
       LLVM_DEBUG(luthier::dbgs() << "[CodeDiscoveryPass] Built instruction: ";
                  Builder->print(luthier::dbgs()); luthier::dbgs() << "\n");
@@ -1704,9 +1704,8 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
   return llvm::Error::success();
 }
 
-llvm::PreservedAnalyses
-CodeDiscoveryPass::run(Prototype &IP,
-                       PrototypeAnalysisManager &IPAM) {
+llvm::PreservedAnalyses CodeDiscoveryPass::run(Prototype &IP,
+                                               PrototypeAnalysisManager &IPAM) {
   llvm::Module &TargetModule = IP.getTargetModule();
   llvm::LLVMContext &Ctx = TargetModule.getContext();
 
