@@ -40,7 +40,7 @@ class InjectedPayloadAndInstPoint;
 class SVStorageAndLoadLocations;
 
 class IntrinsicMIRLoweringPass
-    : public llvm::PassInfoMixin<IntrinsicMIRLoweringPass> {
+    : public llvm::RequiredPassInfoMixin<IntrinsicMIRLoweringPass> {
 private:
   bool processMachineFunction(
       llvm::MachineFunction &MF, bool IsInjectedPayload,
