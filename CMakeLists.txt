@@ -9,6 +9,8 @@ project(luthier
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+# Don't let CMake implicitly link HIP targets against hip::device
+set(CMAKE_HIP_RUNTIME_LIBRARY None)
 
 # User Options =========================================================================================================
 option(LUTHIER_BUILD_INTEGRATION_TESTS "Builds the integration tests" OFF)

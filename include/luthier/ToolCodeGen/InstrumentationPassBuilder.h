@@ -104,6 +104,13 @@ public:
     return PIC;
   }
 
+  /// Returns the format -print-pipeline-passes requests of the wrapped
+  /// \c llvm::PassBuilder, or \c std::nullopt if it is not given.
+  std::optional<llvm::PrintPipelinePassesFormat>
+  getPrintPipelinePasses() const {
+    return PB->getPrintPipelinePasses();
+  }
+
   /// \brief The LLVM analysis managers serving a single module of a
   /// \c Prototype.
   ///
