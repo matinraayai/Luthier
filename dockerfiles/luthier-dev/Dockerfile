@@ -41,7 +41,7 @@ RUN mkdir -p /opt/luthier/llvm && cd /opt/luthier/llvm &&  \
     -DLLVM_BUILD_LLVM_DYLIB=ON \
     -DLLVM_LINK_LLVM_DYLIB=ON \
     -DLLVM_USE_SPLIT_DWARF=ON \
-    -DLLVM_SHLIB_SYMBOL_VERSION=LUTHIER_LLVM_24.0 \
+    -DLLVM_SHLIB_SYMBOL_VERSION=LUTHIER_LLVM \
     -DLLVM_VERSION_SUFFIX=luthier \
     -DCMAKE_C_FLAGS="-gz=zlib" \
     -DCMAKE_CXX_FLAGS="-fno-gnu-unique -gz=zlib" \
