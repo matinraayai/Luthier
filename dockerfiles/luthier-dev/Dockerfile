@@ -49,7 +49,8 @@ RUN mkdir -p /opt/luthier/llvm && cd /opt/luthier/llvm &&  \
     -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--compress-debug-sections=zstd" \
     -DCMAKE_MODULE_LINKER_FLAGS="-Wl,--compress-debug-sections=zstd" \
     -DLLVM_TARGETS_TO_BUILD="AMDGPU;Native;SPIRV"  \
-    -DLLVM_ENABLE_PROJECTS="llvm;clang;lld;" \
+    -DLLVM_ENABLE_PROJECTS="llvm;clang;lld;compiler-rt;clang-tools-extra" \
+    -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
     -DLLVM_PARALLEL_LINK_JOBS=4 \
     -DLLVM_ENABLE_EXPENSIVE_CHECKS=$LLVM_ENABLE_EXPENSIVE_CHECKS \
     -DLIBCXX_ENABLE_SHARED=OFF \
