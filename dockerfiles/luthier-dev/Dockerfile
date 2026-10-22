@@ -5,7 +5,7 @@ FROM rocm/dev-ubuntu-$UBUNTU_VERSION:$ROCM_VERSION-full
 
 # Environment variables and build arguments
 ARG LLVM_BUILD_TYPE=RelWithDebInfo
-ARG BUILD_SHARED_LIBS=ON
+ARG BUILD_SHARED_LIBS=OFF
 ARG LLVM_SRC_DIR=/opt/luthier/src/
 ARG LLVM_ENABLE_EXPENSIVE_CHECKS=OFF
 ARG LLVM_ENABLE_ASSERTIONS=ON
@@ -31,13 +31,26 @@ RUN mkdir -p $LLVM_SRC_DIR && cd $LLVM_SRC_DIR && \
     git fetch origin --depth 1 $LLVM_GIT_REVISION && \
     git checkout FETCH_HEAD
 
-RUN mkdir $LLVM_SRC_DIR/llvm-project/build && cd $LLVM_SRC_DIR/llvm-project/build &&  \
+# Build straight into the installation directory so we don't have to resort to shenanigans
+# of moving the dwp files from the build folder to the install folder while ensuring every
+# moved object points to the correct dwp file (especially for static libraries).
+RUN mkdir -p /opt/luthier/llvm && cd /opt/luthier/llvm &&  \
     cmake -G Ninja -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=$BUILD_SHARED_LIBS \
     -DCMAKE_INSTALL_PREFIX=/opt/luthier/llvm/  \
     -DCMAKE_BUILD_TYPE=$LLVM_BUILD_TYPE \
+    -DLLVM_BUILD_LLVM_DYLIB=ON \
+    -DLLVM_LINK_LLVM_DYLIB=ON \
+    -DLLVM_USE_SPLIT_DWARF=ON \
+    -DLLVM_SHLIB_SYMBOL_VERSION=LUTHIER_LLVM_24.0 \
+    -DLLVM_VERSION_SUFFIX=luthier \
+    -DCMAKE_C_FLAGS="-gz=zlib" \
+    -DCMAKE_CXX_FLAGS="-fno-gnu-unique -gz=zlib" \
+    -DCMAKE_EXE_LINKER_FLAGS="-Wl,--compress-debug-sections=zstd" \
+    -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--compress-debug-sections=zstd" \
+    -DCMAKE_MODULE_LINKER_FLAGS="-Wl,--compress-debug-sections=zstd" \
     -DLLVM_TARGETS_TO_BUILD="AMDGPU;Native;SPIRV"  \
-    -DLLVM_ENABLE_PROJECTS="llvm;clang;lld;compiler-rt;clang-tools-extra" \
-    -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
+    -DLLVM_ENABLE_PROJECTS="llvm;clang;lld;" \
+    -DLLVM_PARALLEL_LINK_JOBS=4 \
     -DLLVM_ENABLE_EXPENSIVE_CHECKS=$LLVM_ENABLE_EXPENSIVE_CHECKS \
     -DLIBCXX_ENABLE_SHARED=OFF \
     -DLIBCXX_ENABLE_STATIC=ON \
@@ -45,6 +58,7 @@ RUN mkdir $LLVM_SRC_DIR/llvm-project/build && cd $LLVM_SRC_DIR/llvm-project/buil
     -DLIBCXX_INSTALL_HEADERS=OFF \
     -DLIBCXXABI_ENABLE_SHARED=OFF \
     -DLIBCXXABI_ENABLE_STATIC=ON \
+    -DCOMPILER_RT_BUILD_SANITIZERS=OFF \
     -DLIBCXXABI_INSTALL_STATIC_LIBRARY=OFF \
     -DLLVM_ENABLE_RTTI=OFF \
     -DLLVM_OPTIMIZED_TABLEGEN=ON \
@@ -54,7 +68,7 @@ RUN mkdir $LLVM_SRC_DIR/llvm-project/build && cd $LLVM_SRC_DIR/llvm-project/buil
     -DLLVM_INCLUDE_BENCHMARKS=OFF \
     -DLLVM_BUILD_TESTS=OFF \
     -DLLVM_INSTALL_UTILS=ON \
-    -DLLVM_INSTALL_GTEST=ON \
+    -DLLVM_INSTALL_GTEST=OFF \
     -DLLVM_INCLUDE_TESTS=OFF \
     -DCLANG_INCLUDE_TESTS=OFF \
     -DLLVM_BUILD_DOCS=OFF \
@@ -75,8 +89,7 @@ RUN mkdir $LLVM_SRC_DIR/llvm-project/build && cd $LLVM_SRC_DIR/llvm-project/buil
     -DCMAKE_SKIP_BUILD_RPATH=TRUE \
     -DCMAKE_SKIP_INSTALL_RPATH=TRUE \
     -DFLANG_INCLUDE_DOCS=OFF \
-    ../llvm && LD_LIBRARY_PATH=$LLVM_SRC_DIR/llvm-project/build/lib ninja install &&  \
-    rm -rf $LLVM_SRC_DIR/llvm-project/build
+    $LLVM_SRC_DIR/llvm-project/llvm && LD_LIBRARY_PATH=/opt/luthier/llvm/lib ninja
 ## Install LLVM Lit
 RUN pip install $LLVM_SRC_DIR/llvm-project/llvm/utils/lit/ --break-system-packages
 ## Install ROCm Device Libs
@@ -87,7 +100,7 @@ RUN cd $LLVM_SRC_DIR/llvm-project/amd/device-libs && mkdir build && cd build && 
     rm -rf $LLVM_SRC_DIR/llvm-project/amd/device-libs/build/
 ## HIPCC Installation
 RUN cd $LLVM_SRC_DIR/llvm-project/amd/hipcc/ && mkdir build && cd build &&  \
-    cmake -G Ninja -DCMAKE_INSTALL_PREFIX=/opt/luthier/ -DCMAKE_PREFIX_PATH="/opt/luthier/"  \
+    cmake -G Ninja -DCMAKE_INSTALL_PREFIX=/opt/luthier/ -DCMAKE_PREFIX_PATH="/opt/luthier/;/opt/rocm/"  \
     -DCMAKE_BUILD_TYPE=$LLVM_BUILD_TYPE  \
     .. && LD_LIBRARY_PATH=/opt/luthier/llvm/lib/ ninja install && rm -rf $LLVM_SRC_DIR/llvm-project/amd/hipcc/build/
 ## SPIRV Installation
