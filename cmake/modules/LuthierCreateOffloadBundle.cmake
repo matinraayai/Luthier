@@ -152,6 +152,24 @@ function(luthier_create_offload_bundle target source)
             "LuthierToolCXXCompilationPlugin not found")
   endif ()
 
+  # Add a file-level dependency on the CXX and IR plugins through a stamp file.
+  set(_IR_PLUGIN_STAMP "${CMAKE_CURRENT_BINARY_DIR}/${target}.ir_plugin.stamp")
+  add_custom_command(
+          OUTPUT "${_IR_PLUGIN_STAMP}"
+          COMMAND "${CMAKE_COMMAND}" -E touch "${_IR_PLUGIN_STAMP}"
+          DEPENDS "${_LUTHIER_IR_PLUGIN}"
+          COMMENT "luthier_create_offload_bundle(${target}): track the IR compilation plugin"
+          VERBATIM)
+
+  set(_CXX_PLUGIN_STAMP "${CMAKE_CURRENT_BINARY_DIR}/${target}.cxx_plugin.stamp")
+  add_custom_command(
+          OUTPUT "${_CXX_PLUGIN_STAMP}"
+          COMMAND "${CMAKE_COMMAND}" -E touch "${_CXX_PLUGIN_STAMP}"
+          DEPENDS "${_LUTHIER_CXX_PLUGIN}"
+          COMMENT "luthier_create_offload_bundle(${target}): track the CXX compilation plugin"
+          VERBATIM)
+  set_source_files_properties(${_DEV_SOURCE} PROPERTIES OBJECT_DEPENDS "${_IR_PLUGIN_STAMP};${_CXX_PLUGIN_STAMP}")
+
 
   # Resolve clang-offload-bundler path from LLVM's tool directory.
   find_program(LUTHIER_CLANG_OFFLOAD_BUNDLER
@@ -288,7 +306,7 @@ function(luthier_create_offload_bundle target source)
   add_library(${target} OBJECT ${_ABS_SOURCE})
   set_source_files_properties(${_ABS_SOURCE} PROPERTIES
           LANGUAGE HIP
-          OBJECT_DEPENDS "${_TARGET_FATBIN}")
+          OBJECT_DEPENDS "${_TARGET_FATBIN};${_IR_PLUGIN_STAMP};${_CXX_PLUGIN_STAMP}")
   set_target_properties(${target} PROPERTIES HIP_ARCHITECTURES OFF)
 
   # -cuid names the compilation unit, and ToolDeviceCodeOffloadParserPass builds
