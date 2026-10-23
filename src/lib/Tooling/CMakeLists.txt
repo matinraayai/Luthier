@@ -1,4 +1,4 @@
-add_library(LuthierTooling SHARED
+add_library(LuthierTooling STATIC
         DevicePrintf.cpp
         HiddenArgBuffers.cpp
         HostcallHandler.cpp
