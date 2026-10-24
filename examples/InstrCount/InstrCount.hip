@@ -88,27 +88,11 @@ struct InstrCountTool
   /// the instruction is counted iff a single active thread executes
   /// it.
   __attribute__((device, used)) static void
-  countInstructionsVector(bool CountWaveFrontLevel) {
-    unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
-    const uint32_t LaneId = __lane_id() + 1;
-    uint32_t FirstActiveThreadId = __ffsll(ExecMask);
-    uint32_t NumActiveThreads = __popcll(ExecMask);
+  countInstructionsVector(bool CountWaveFrontLevel);
 
-    if (FirstActiveThreadId == LaneId) {
-      if (CountWaveFrontLevel) {
-        if (NumActiveThreads > 0)
-          atomicAdd(&InstrCountTool::Counter, 1);
-      } else {
-        atomicAdd(&InstrCountTool::Counter, NumActiveThreads);
-      }
-    }
-  }
-
-  /// Used to count the number of scalar instructions (i.e., 
-  /// instructions that execute regardless of the execute mask). 
-  __attribute__((device, used)) static void countInstructionsScalar() {
-    atomicAdd(&InstrCountTool::Counter, 1ULL);
-  }
+  /// Used to count the number of scalar instructions (i.e.,
+  /// instructions that execute regardless of the execute mask).
+  __attribute__((device, used)) static void countInstructionsScalar();
 
   /// Per-tool CLI options. 
   struct Options {
@@ -189,6 +173,27 @@ struct InstrCountTool
 
 
 __attribute__((device)) uint64_t InstrCountTool::Counter;
+
+__attribute__((device, used)) void
+InstrCountTool::countInstructionsVector(bool CountWaveFrontLevel) {
+  unsigned long long int ExecMask = __builtin_amdgcn_read_exec();
+  const uint32_t LaneId = __lane_id() + 1;
+  uint32_t FirstActiveThreadId = __ffsll(ExecMask);
+  uint32_t NumActiveThreads = __popcll(ExecMask);
+
+  if (FirstActiveThreadId == LaneId) {
+    if (CountWaveFrontLevel) {
+      if (NumActiveThreads > 0)
+        atomicAdd(&InstrCountTool::Counter, 1);
+    } else {
+      atomicAdd(&InstrCountTool::Counter, NumActiveThreads);
+    }
+  }
+}
+
+__attribute__((device, used)) void InstrCountTool::countInstructionsScalar() {
+  atomicAdd(&InstrCountTool::Counter, 1ULL);
+}
 
 
 LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(InstrCountTool)
