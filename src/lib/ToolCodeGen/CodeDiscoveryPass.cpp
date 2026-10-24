@@ -1368,7 +1368,9 @@ convertAndAddMCOperandsToMI(const llvm::MCInst &RealInst,
 
   if (const int RealFIIdx = llvm::AMDGPU::getNamedOperandIdx(
           RealInst.getOpcode(), llvm::AMDGPU::OpName::fi);
-      RealFIIdx != -1) {
+      RealFIIdx != -1 &&
+      llvm::AMDGPU::getNamedOperandIdx(Opcode, llvm::AMDGPU::OpName::fi) ==
+          -1) {
     LLVM_DEBUG(luthier::dbgs()
                << "[CodeDiscoveryPass] Dropping the $fi operand, which the "
                   "pseudo opcode does not model\n");
