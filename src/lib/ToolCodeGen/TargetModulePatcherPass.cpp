@@ -1805,6 +1805,15 @@ emitSICallAtPatchpoint(llvm::MachineInstr &PatchpointMI,
   const llvm::MCRegister ScavengedPair = Regs.Pair;
   const llvm::MCRegister SCCSaveSGPR = Regs.SCCSave;
 
+  // Wait on SMEM loads before writing into any SGPRs.
+  // FIXME: Add logic to only emit this when necessary
+  const llvm::AMDGPU::IsaVersion IV = llvm::AMDGPU::getIsaVersion(ST.getCPU());
+  (void)llvm::BuildMI(*PatchpointMI.getParent(), PatchpointMI, DL,
+                      TII->get(llvm::AMDGPU::S_WAITCNT))
+      .addImm(llvm::AMDGPU::encodeWaitcnt(IV, llvm::AMDGPU::getVmcntBitMask(IV),
+                                          llvm::AMDGPU::getExpcntBitMask(IV),
+                                          /*Lgkmcnt=*/0));
+
   // Nothing was dead at this site, so the registers we are about to build the
   // call out of still hold application values. Park them in the SVA first;
   // the matching reload goes in right after the SI_CALL, at the address the
