@@ -43,6 +43,7 @@
 #include <llvm/TargetParser/AMDGPUTargetParser.h>
 #include <memory>
 #include <tuple>
+#include <GCNSubtarget.h>
 
 #ifdef LUTHIER_HAS_SPIRV_TRANSLATOR
 #include "luthier/ToolIRCompilation/FinalizeIntrinsicsPass.h"
@@ -240,11 +241,12 @@ ToolDeviceCodeParser::findCompatibleSlice(
   };
 
   /// Features that must exactly match
-  static constexpr llvm::StringLiteral BinaryFeatures[] = {
-      "+wavefrontsize64", "+cumode", "+tgsplit"};
+  static constexpr unsigned BinaryFeatures[3] = {
+      llvm::AMDGPU::FeatureTgSplitSupport, llvm::AMDGPU::FeatureWavefrontSize64,
+      llvm::AMDGPU::FeatureCuMode};
 
   for (const SliceInfo &S : Slices) {
-    if (S.TT != T || S.CPU != CPU)
+    if (!S.TT.isCompatibleWith(T) || S.CPU != CPU)
       continue;
 
     const std::string SliceFS = S.Features.getString();
@@ -262,8 +264,8 @@ ToolDeviceCodeParser::findCompatibleSlice(
       continue;
 
     bool BinaryMismatch = false;
-    for (llvm::StringRef Feat : BinaryFeatures) {
-      if (ReqSTI->checkFeatures(Feat) != SliceSTI->checkFeatures(Feat)) {
+    for (unsigned Feat : BinaryFeatures) {
+      if (ReqSTI->hasFeature(Feat) != SliceSTI->hasFeature(Feat)) {
         BinaryMismatch = true;
         break;
       }
