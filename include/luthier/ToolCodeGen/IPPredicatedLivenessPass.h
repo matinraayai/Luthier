@@ -148,7 +148,7 @@ public:
 
 /// \brief Prints the result of \c IPPredicatedLivenessAnalysis for \p IP.
 class IPPredicatedLivenessPrinter
-    : public llvm::PassInfoMixin<IPPredicatedLivenessPrinter> {
+    : public llvm::RequiredPassInfoMixin<IPPredicatedLivenessPrinter> {
   llvm::raw_ostream &OS;
 
 public:

@@ -193,7 +193,7 @@ public:
 
 /// Pass that prints the \c PrototypeCallGraph result to an output stream.
 class PrototypeCallGraphPrinter
-    : public llvm::PassInfoMixin<PrototypeCallGraphPrinter> {
+    : public llvm::RequiredPassInfoMixin<PrototypeCallGraphPrinter> {
   llvm::raw_ostream &OS;
 
 public:

@@ -37,7 +37,7 @@ namespace luthier {
 
 /// \brief Companion pass for the \c ToolDeviceCodeOffloadParserPass
 class ToolDeviceCodeOffloadParserPass
-    : public llvm::PassInfoMixin<ToolDeviceCodeOffloadParserPass> {
+    : public llvm::RequiredPassInfoMixin<ToolDeviceCodeOffloadParserPass> {
 public:
   ToolDeviceCodeOffloadParserPass() = default;
 

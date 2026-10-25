@@ -454,7 +454,9 @@ int main(int argc, char **argv) {
   cl::AddExtraVersionPrinter(TargetRegistry::printRegisteredTargetsForVersion);
 
   luthier::registerDebugCLOptions();
-  cl::ParseCommandLineOptions(argc, argv, "llvm system compiler\n");
+  LLVMContext Context;
+  cl::parseCommandLineOptions(Context.getLibraryOptions(), ArrayRef(argv, argc),
+                              "llvm system compiler\n");
 
   if (TimeTrace)
     timeTraceProfilerInitialize(TimeTraceGranularity, argv[0]);
@@ -470,7 +472,6 @@ int main(int argc, char **argv) {
     }
   });
 
-  LLVMContext Context;
   Context.setDiscardValueNames(DiscardValueNames);
 
   // Set a diagnostic handler that doesn't exit on the first error
@@ -539,6 +540,7 @@ static int compileModule(char **argv,
   TargetOptions Options;
   auto InitializeOptions = [&](const Triple &TheTriple) {
     Options = codegen::InitTargetOptionsFromCodeGenFlags(TheTriple);
+    Options.MCOptions.LibraryOptions = &Context.getLibraryOptions();
 
     if (Options.XCOFFReadOnlyPointers) {
       if (!TheTriple.isOSAIX())
@@ -558,14 +560,8 @@ static int compileModule(char **argv,
                     InputFilename);
     }
 
-    if (TheTriple.isX86() &&
-        codegen::getFuseFPOps() != FPOpFusion::FPOpFusionMode::Standard)
-      WithColor::warning(errs(), argv[0])
-          << "X86 backend ignores --fp-contract setting; use IR fast-math "
-             "flags instead.";
-
-    Options.BinutilsVersion =
-        TargetMachine::parseBinutilsVersion(BinutilsVersion);
+    Options.MCOptions.BinutilsVersion =
+        MCTargetOptions::parseBinutilsVersion(BinutilsVersion);
     Options.MCOptions.ShowMCEncoding = ShowMCEncoding;
     Options.MCOptions.AsmVerbose = AsmVerbose;
     Options.MCOptions.PreserveAsmComments = PreserveComments;
@@ -700,8 +696,6 @@ static int compileModule(char **argv,
   }
 
   assert(IP && "should have constructed an Prototype above");
-  if (codegen::getFloatABIForCalls() != FloatABI::Default)
-    Target->Options.FloatABIType = codegen::getFloatABIForCalls();
 
   // Figure out where we are going to send the output.
   std::unique_ptr<ToolOutputFile> Out = GetOutputStream(TheTriple.getOS());
@@ -760,13 +754,6 @@ static int compileModule(char **argv,
   CodeGenFileType FileType = codegen::getFileType();
   StringRef Arg0 = argv[0];
 
-  if (!PassPipeline.empty() && TargetPassConfig::hasLimitedCodeGenPipeline()) {
-    WithColor::error(errs(), Arg0)
-        << "--passes cannot be used with "
-        << TargetPassConfig::getLimitedCodeGenPipelineReason() << ".\n";
-    return 1;
-  }
-
   raw_pwrite_stream *OS = &Out->os();
 
   std::unique_ptr<buffer_ostream> BOS;
@@ -776,14 +763,28 @@ static int compileModule(char **argv,
     OS = BOS.get();
   }
 
-  CGPassBuilderOption Opt = getCGPassBuilderOption();
+  CGPassBuilderOption Opt = getCGPassBuilderOption(*Target);
   Opt.DisableVerify = VK != VerifierKind::InputOutput;
+  if (VK == VerifierKind::EachPass)
+    Opt.VerifyMachineCode = MachineVerifierMode::Each;
   Opt.DebugPM = DebugPM;
   Opt.RegAlloc = RegAlloc;
 
   MachineModuleInfo MMI(Target.get());
 
   PassInstrumentationCallbacks PIC;
+  if (!PassPipeline.empty()) {
+    auto InfoOrErr = TargetPassConfig::getStartStopInfo(*Target, PIC);
+    if (auto Err = InfoOrErr.takeError()) {
+      logAllUnhandledErrors(std::move(Err), errs(), "error: ");
+      return 1;
+    }
+    if (InfoOrErr->isLimited()) {
+      WithColor::error(errs(), Arg0) << "--passes cannot be used with "
+                                     << InfoOrErr->getLimitReason() << ".\n";
+      return 1;
+    }
+  }
   StandardInstrumentations SI(Context, Opt.DebugPM,
                               VK == VerifierKind::EachPass);
   registerCodeGenCallback(PIC, *Target);
@@ -847,12 +848,7 @@ static int compileModule(char **argv,
   for (ModuleAnalysisManager *M : {&TargetMAM, &IMAM}) {
     M->registerPass([&] {
       const TargetOptions &Opts = Target->Options;
-      return RuntimeLibraryAnalysis(IP->getTargetModule().getTargetTriple(),
-                                    Target->Options.ExceptionModel,
-                                    Target->Options.FloatABIType,
-                                    Target->Options.EABIVersion,
-                                    Opts.MCOptions.ABIName,
-                                    Target->Options.VecLib);
+      return RuntimeLibraryAnalysis(Opts.MCOptions.ABIName, Opts.VecLib);
     });
     M->registerPass([&] { return LibcallLoweringModuleAnalysis(); });
     M->registerPass([&] { return MachineModuleAnalysis(MMI); });
@@ -957,7 +953,7 @@ static int compileModule(char **argv,
       ModulePassManager TargetMPM;
       TargetMPM.addPass(PrintMIRPreparePass(*OS));
       MachineFunctionPassManager MFPM;
-      if (VK == VerifierKind::InputOutput)
+      if (Opt.VerifyMachineCode == MachineVerifierMode::End)
         MFPM.addPass(MachineVerifierPass());
       MFPM.addPass(PrintMIRPass(*OS));
       FunctionPassManager FPM;
@@ -987,14 +983,16 @@ static int compileModule(char **argv,
   // When EmitLuthierFile is set and -passes is empty, the driver runs no
   // default pipeline: the tool re-emits the Prototype as-is.
 
-  if (PrintPipelinePasses) {
+  if (std::optional<PrintPipelinePassesFormat> Format =
+          PB.getPrintPipelinePasses()) {
     std::string PipelineStr;
     raw_string_ostream PSO(PipelineStr);
     IPPM.printPipeline(PSO, [&PIC](StringRef ClassName) {
       auto PassName = PIC.getPassNameForClassName(ClassName);
       return PassName.empty() ? ClassName : PassName;
     });
-    outs() << PipelineStr << '\n';
+    printFormattedPipelinePasses(outs(), PipelineStr, *Format);
+    outs() << '\n';
     return 0;
   }
 

@@ -129,10 +129,6 @@ executableSymbolGetKernelKernargSegmentSize(
 //===----------------------------------------------------------------------===//
 
 template <> struct llvm::DenseMapInfo<hsa_executable_symbol_t> {
-  static hsa_executable_symbol_t getEmptyKey() {
-    return hsa_executable_symbol_t{
-        DenseMapInfo<decltype(hsa_executable_symbol_t::handle)>::getEmptyKey()};
-  }
 
   static unsigned getHashValue(const hsa_executable_symbol_t &Symbol) {
     return DenseMapInfo<

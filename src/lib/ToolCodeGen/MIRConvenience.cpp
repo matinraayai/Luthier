@@ -32,7 +32,7 @@
 namespace luthier {
 
 bool shouldImplicitReadExec(const llvm::MachineInstr &MI) {
-  if (llvm::SIInstrInfo::isVALU(MI)) {
+  if (llvm::SIInstrInfo::isVALU(MI, true)) {
     switch (MI.getOpcode()) {
     case llvm::AMDGPU::V_READLANE_B32:
     case llvm::AMDGPU::SI_RESTORE_S32_FROM_VGPR:

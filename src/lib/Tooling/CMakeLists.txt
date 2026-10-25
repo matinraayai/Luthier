@@ -1,4 +1,4 @@
-add_library(LuthierTooling SHARED
+add_library(LuthierTooling STATIC
         DevicePrintf.cpp
         HiddenArgBuffers.cpp
         HostcallHandler.cpp
@@ -38,6 +38,8 @@ target_include_directories(LuthierTooling
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/luthier/AMDGPU>"
 )
+
+target_compile_options(LuthierTooling PUBLIC ${LUTHIER_RTTI_FLAG})
 
 target_link_libraries(LuthierTooling
         PUBLIC LuthierAMDGPU ${CMAKE_DL_LIBS}

@@ -255,10 +255,6 @@ agentCanAccessMemoryPool(const ApiTableContainer<::AmdExtTable> &AmdExt,
 //===----------------------------------------------------------------------===//
 
 template <> struct llvm::DenseMapInfo<hsa_amd_memory_pool_t> {
-  static hsa_amd_memory_pool_t getEmptyKey() {
-    return hsa_amd_memory_pool_t(
-        {DenseMapInfo<decltype(hsa_amd_memory_pool_t::handle)>::getEmptyKey()});
-  }
   static unsigned getHashValue(const hsa_amd_memory_pool_t &P) {
     return DenseMapInfo<decltype(hsa_amd_memory_pool_t::handle)>::getHashValue(
         P.handle);

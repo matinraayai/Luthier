@@ -133,7 +133,8 @@ public:
 /// \brief Printer pass for \c InjectedPayloadSideEffectsAnalysis used for
 /// testing.
 class InjectedPayloadSideEffectsPrinterPass
-    : public llvm::PassInfoMixin<InjectedPayloadSideEffectsPrinterPass> {
+    : public llvm::RequiredPassInfoMixin<
+          InjectedPayloadSideEffectsPrinterPass> {
   llvm::raw_ostream &OS;
 
 public:

@@ -54,6 +54,10 @@
 #include <rocprofiler-sdk/spm.h>
 #endif
 
+#if ROCPROFILER_SDK_VERSION >= ROCPROFILER_SDK_COMPUTE_VERSION(1, 3, 0)
+#include <rocprofiler-sdk/experimental/spm.h>
+#endif
+
 #if ROCPROFILER_SDK_VERSION >= ROCPROFILER_SDK_COMPUTE_VERSION(1, 0, 0)
 /* rocprofiler-sdk/agent.h */
 LUTHIER_ROCPROFILER_LIBRARY_FUNCTION_ENTRY(rocprofiler_query_available_agents)
@@ -97,6 +101,7 @@ LUTHIER_ROCPROFILER_LIBRARY_FUNCTION_ENTRY(rocprofiler_stop_context)
 LUTHIER_ROCPROFILER_LIBRARY_FUNCTION_ENTRY(rocprofiler_create_counter_config)
 LUTHIER_ROCPROFILER_LIBRARY_FUNCTION_ENTRY(rocprofiler_destroy_counter_config)
 /* rocprofiler-sdk/counters.h */
+LUTHIER_ROCPROFILER_LIBRARY_FUNCTION_ENTRY(rocprofiler_create_counter)
 LUTHIER_ROCPROFILER_LIBRARY_FUNCTION_ENTRY(
     rocprofiler_iterate_agent_supported_counters)
 LUTHIER_ROCPROFILER_LIBRARY_FUNCTION_ENTRY(rocprofiler_query_counter_info)

@@ -103,7 +103,7 @@ class InstrumentationPipelineTrait {
   /// module's MIR and writes into the instrumentation module, so it needs both
   /// halves of the prototype rather than a single module.
   struct InjectPayloadsAdapter
-      : public llvm::PassInfoMixin<InjectPayloadsAdapter> {
+      : public llvm::RequiredPassInfoMixin<InjectPayloadsAdapter> {
     Derived *T;
     explicit InjectPayloadsAdapter(Derived *T) : T(T) {}
     llvm::PreservedAnalyses run(Prototype &P, PrototypeAnalysisManager &PAM) {
@@ -592,7 +592,7 @@ private:
     llvm::SmallVector<char, 0> ObjBuf;
     llvm::raw_svector_ostream ObjOS(ObjBuf);
 
-    llvm::CGPassBuilderOption CGPBO = llvm::getCGPassBuilderOption();
+    llvm::CGPassBuilderOption CGPBO = llvm::getCGPassBuilderOption(*TM);
 
     luthier::PrototypePassManager IPPM;
     LUTHIER_RETURN_ON_ERROR(PB.buildInstrumentationPipeline(

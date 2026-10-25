@@ -221,10 +221,6 @@ isaCompatible(const ApiTableContainer<::CoreApiTable> &CoreApi,
 //===----------------------------------------------------------------------===//
 
 template <> struct llvm::DenseMapInfo<hsa_isa_t> {
-  static hsa_isa_t getEmptyKey() {
-    return hsa_isa_t(
-        {DenseMapInfo<decltype(hsa_isa_t::handle)>::getEmptyKey()});
-  }
 
   static unsigned getHashValue(const hsa_isa_t &ISA) {
     return DenseMapInfo<decltype(hsa_isa_t::handle)>::getHashValue(ISA.handle);

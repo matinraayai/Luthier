@@ -17,6 +17,12 @@ find_package(LLVM REQUIRED CONFIG)
 
 find_package(Clang REQUIRED CONFIG)
 
+if (NOT LLVM_ENABLE_RTTI)
+    set(LUTHIER_RTTI_FLAG $<$<COMPILE_LANGUAGE:CXX,HIP>:-fno-rtti>)
+else()
+    set(LUTHIER_RTTI_FLAG "")
+endif ()
+
 if (${LUTHIER_ENABLE_SPIRV})
     include(FindLLVMSPIRVTranslator)
     find_package(LLVMSPIRVTranslator)

@@ -19,7 +19,6 @@
 #include "luthier/ToolCodeGen/TargetModulePatcherPass.h"
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
-#include "luthier/LLVM/Cloning.h"
 #include "luthier/LLVM/streams.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
@@ -217,12 +216,13 @@ template struct PrivateAccessor<SIMFI_NumUserSGPRsTag,
 // underlying \c MachineFunction. See \c movePayloadMFIntoTarget below.
 //
 // The two private members we need (declared at
-// \c llvm/IR/PassManager.h:571,575):
+// \c llvm/IR/PassManager.h:576,580):
 //   * \c AnalysisResultLists — \c DenseMap<Function*, ResultListT>, where
-//     \c ResultListT is a \c std::list of
-//     \c pair<AnalysisKey*, unique_ptr<ResultConceptT>>.
+//     \c ResultListT is a \c SmallVector<..., 8> of
+//     \c pair<AnalysisKey*, ResultConceptT::unique_ptr>.
 //   * \c AnalysisResults — \c DenseMap<pair<AnalysisKey*, Function*>,
-//     ResultListT::iterator>, indexing into the above list.
+//     ResultConceptT*>, pointing at the heap-allocated result owned by the
+//     above list.
 //
 // The \c ResultConceptT template argument set (Function + FAM's public
 // nested \c Invalidator class) is spelled out here because both the
@@ -231,14 +231,16 @@ template struct PrivateAccessor<SIMFI_NumUserSGPRsTag,
 // aliases in sync with LLVM's PassManager.h is a maintenance edge — if
 // the upstream layout ever changes, this whole helper needs revisiting.
 using FAM = llvm::FunctionAnalysisManager;
+using FAMResultConceptT =
+    llvm::detail::AnalysisResultConcept<llvm::Function, FAM::Invalidator>;
 using FAMResultListT =
-    std::list<std::pair<llvm::AnalysisKey *,
-                        std::unique_ptr<llvm::detail::AnalysisResultConcept<
-                            llvm::Function, FAM::Invalidator>>>>;
+    llvm::SmallVector<std::pair<llvm::AnalysisKey *,
+                                FAMResultConceptT::unique_ptr>,
+                      8>;
 using FAMResultListMapT = llvm::DenseMap<llvm::Function *, FAMResultListT>;
 using FAMResultMapT =
     llvm::DenseMap<std::pair<llvm::AnalysisKey *, llvm::Function *>,
-                   FAMResultListT::iterator>;
+                   FAMResultConceptT *>;
 
 struct FAMResultListsTag {
   using MemberT = FAMResultListMapT FAM::*;
@@ -251,6 +253,12 @@ struct FAMResultsTag {
   friend MemberT get(FAMResultsTag);
 };
 template struct PrivateAccessor<FAMResultsTag, &FAM::AnalysisResults>;
+
+/// Private field accessor for the \c GCNUserSGPRUsageInfo::NumUsedUserSGPRsTag
+/// field.
+unsigned getNumUsedUserSGPRs(const llvm::GCNUserSGPRUsageInfo &Info) {
+  return Info.*get(NumUsedUserSGPRsTag{});
+}
 
 /// Force \c GCNUserSGPRUsageInfo::FlatScratchInit true. AMDGPUAsmPrinter
 /// reads that flag to decide the KD's
@@ -530,7 +538,7 @@ static ForceEnableResult forceEnableRequestedUserSGPRPreloads(
   //    any SIMFI state. The block sits at the tail of the app kernel's
   //    used user SGPRs.
   auto &Info = SIMFI.getUserSGPRInfo();
-  const unsigned OrigNumUsedUserSGPRs = Info.getNumUsedUserSGPRs();
+  const unsigned OrigNumUsedUserSGPRs = getNumUsedUserSGPRs(Info);
   if (OrigPreloadLength > 0 && OrigNumUsedUserSGPRs >= OrigPreloadLength) {
     FR.OrigPreloadStartSGPR = llvm::MCRegister::from(
         llvm::AMDGPU::SGPR0 + OrigNumUsedUserSGPRs - OrigPreloadLength);
@@ -639,7 +647,7 @@ static ForceEnableResult forceEnableRequestedUserSGPRPreloads(
   //    \c s[FixedAfterForce + OrigPreloadLength ..], matching the KD's
   //    dispatch-time layout.
   if (ST.hasKernargPreload() && OrigPreloadLength > 0) {
-    const unsigned NewFixedUserSGPRs = Info.getNumUsedUserSGPRs();
+    const unsigned NewFixedUserSGPRs = getNumUsedUserSGPRs(Info);
     if (NewFixedUserSGPRs + OrigPreloadLength > ST.getMaxNumUserSGPRs()) {
       Info.*get(NumKernargPreloadSGPRsTag{}) = 0;
       FR.KernargPreloadDisabled = true;
@@ -1797,6 +1805,15 @@ emitSICallAtPatchpoint(llvm::MachineInstr &PatchpointMI,
   const llvm::MCRegister ScavengedPair = Regs.Pair;
   const llvm::MCRegister SCCSaveSGPR = Regs.SCCSave;
 
+  // Wait on SMEM loads before writing into any SGPRs.
+  // FIXME: Add logic to only emit this when necessary
+  const llvm::AMDGPU::IsaVersion IV = llvm::AMDGPU::getIsaVersion(ST.getCPU());
+  (void)llvm::BuildMI(*PatchpointMI.getParent(), PatchpointMI, DL,
+                      TII->get(llvm::AMDGPU::S_WAITCNT))
+      .addImm(llvm::AMDGPU::encodeWaitcnt(IV, llvm::AMDGPU::getVmcntBitMask(IV),
+                                          llvm::AMDGPU::getExpcntBitMask(IV),
+                                          /*Lgkmcnt=*/0));
+
   // Nothing was dead at this site, so the registers we are about to build the
   // call out of still hold application values. Park them in the SVA first;
   // the matching reload goes in right after the SI_CALL, at the address the
@@ -1945,8 +1962,8 @@ emitSICallAtPatchpoint(llvm::MachineInstr &PatchpointMI,
 /// \c MachineFunction.
 ///
 /// The steal is done via the \c FAMResults / \c FAMResultLists ADL tags
-/// declared above. \c std::list::splice is used so the \c unique_ptr owning the
-/// \c MachineFunction migrates atomically between the two FAMs' storage.
+/// declared above. The \c unique_ptr owning the result is moved between the
+/// two FAMs' storage, so the \c MachineFunction itself never moves.
 ///
 /// Fails if \p IFAM has no cached \c MachineFunctionAnalysis result for
 /// \p PayloadFn.
@@ -1973,10 +1990,7 @@ llvm::Error movePayloadMFIntoTarget(llvm::Function &PayloadFn,
   // reference their \c GlobalValue directly and are invisible to IR RAUW.
   // Left un-remapped they turn into dangling pointers the moment Pass 1
   // erases the placeholder in \c DeclsToErase, and the assembly printer
-  // crashes in \c Mangler::getNameWithPrefix on the freed GV. The full
-  // MF-clone path already does this in \c cloneMFInto (\c Cloning.cpp:390);
-  // the splice path here has to open-code it because there's no clone
-  // pass to catch it.
+  // crashes in \c Mangler::getNameWithPrefix on the freed GV.
   if (auto *MFRes =
           IFAM.getCachedResult<llvm::MachineFunctionAnalysis>(PayloadFn)) {
     for (llvm::MachineBasicBlock &MBB : MFRes->getMF()) {
@@ -2011,19 +2025,28 @@ llvm::Error movePayloadMFIntoTarget(llvm::Function &PayloadFn,
         "ISel/machine-passes stage must have failed to lower it.",
         PayloadFn.getName()));
 
-  FAMResultListT::iterator ListIt = ResIt->second;
+  FAMResultConceptT *Result = ResIt->second;
   FAMResultListT &ISlot = ILists[&PayloadFn];
   FAMResultListT &TSlot = TLists[&PayloadFn];
 
-  // std::list::splice(pos, other, it) moves a single node from `other`
-  // to `*this` before `pos`. The node's iterator (`ListIt`) stays valid
-  // and now refers to the moved element in TSlot.
-  TSlot.splice(TSlot.end(), ISlot, ListIt);
+  // Results are heap allocated behind the list's unique_ptrs, so moving
+  // the owning entry between the two lists leaves \c Result (and the
+  // \c MachineFunction it owns) at the same address.
+  auto ListIt = llvm::find_if(
+      ISlot, [ID](const auto &Entry) { return Entry.first == ID; });
+  if (ListIt == ISlot.end())
+    return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+        "TargetModulePatcherPass: IModule's FAM indexes a "
+        "MachineFunctionAnalysis result for '{0}' that is missing from its "
+        "per-function result list.",
+        PayloadFn.getName()));
+  TSlot.emplace_back(ID, std::move(ListIt->second));
+  ISlot.erase(ListIt);
 
   // 3. Update the index maps. Erase from IFAM, insert into TargetFAM
-  // with the now-migrated iterator.
+  // with the same result pointer.
   IResults.erase(ResIt);
-  TResults[{ID, &PayloadFn}] = ListIt;
+  TResults[{ID, &PayloadFn}] = Result;
 
   // 4. Clean up the IModule's per-function list slot if it became empty
   // (mirrors AnalysisManager::clear behavior).
@@ -3160,7 +3183,7 @@ emitInitialEntryKernelSetup(llvm::MachineFunction &KernelMF,
       // the post-aggregator user-SGPR count (block sits at the tail of
       // \c NumUsedUserSGPRs). Skip when it hasn't moved.
       const unsigned NewNumUsedUserSGPRs =
-          SIMFI.getUserSGPRInfo().getNumUsedUserSGPRs();
+          getNumUsedUserSGPRs(SIMFI.getUserSGPRInfo());
       if (NewNumUsedUserSGPRs < OrigPreloadLength)
         return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
             "TargetModulePatcherPass: kernel '{0}' post-aggregator "
@@ -3426,12 +3449,14 @@ llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
   }
 
   // Module-level inline asm.
-  if (!IModule.getModuleInlineAsm().empty()) {
+  if (IModule.hasModuleInlineAsm()) {
     LLVM_DEBUG(luthier::dbgs()
                << "[TargetModulePatcherPass]   append module inline asm ("
-               << IModule.getModuleInlineAsm().size() << " chars)\n");
-    TargetModule.appendModuleInlineAsm(IModule.getModuleInlineAsm());
-    IModule.setModuleInlineAsm("");
+               << IModule.getModuleInlineAsm().size() << " fragments)\n");
+    for (llvm::Module::GlobalAsmFragment &Fragment :
+         IModule.getModuleInlineAsm())
+      TargetModule.appendModuleInlineAsm(std::move(Fragment));
+    IModule.removeModuleInlineAsm();
   }
 
   // Pass 2 — re-home each moved definition's MIR.

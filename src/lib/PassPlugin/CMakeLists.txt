@@ -4,6 +4,9 @@ add_library(LuthierPassPlugin OBJECT
 
 target_compile_definitions(LuthierPassPlugin PRIVATE ${LLVM_DEFINITIONS})
 
+target_compile_options(LuthierPassPlugin
+        PUBLIC ${LUTHIER_RTTI_FLAG})
+
 target_include_directories(LuthierPassPlugin
         PRIVATE
         ${LLVM_INCLUDE_DIRS}

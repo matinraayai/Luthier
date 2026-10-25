@@ -44,7 +44,7 @@ namespace luthier {
 /// either partition) and \c InjectedPayloadSideEffectsAnalysis (for
 /// Reads/Writes).
 class InjectedPayloadPreserveLiveRegsPass
-    : public llvm::PassInfoMixin<InjectedPayloadPreserveLiveRegsPass> {
+    : public llvm::RequiredPassInfoMixin<InjectedPayloadPreserveLiveRegsPass> {
 public:
   InjectedPayloadPreserveLiveRegsPass() = default;
 

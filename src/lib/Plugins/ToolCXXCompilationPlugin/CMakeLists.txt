@@ -17,7 +17,7 @@ target_link_libraries(LuthierToolCXXCompilationPlugin PRIVATE
         clangLex
         clangSema)
 
-set_target_properties(LuthierToolCXXCompilationPlugin
-        PROPERTIES CXX_RTTI OFF)
+target_compile_options(LuthierToolCXXCompilationPlugin
+        PUBLIC ${LUTHIER_RTTI_FLAG})
 
 add_library(luthier::LuthierToolCXXCompilationPlugin ALIAS LuthierToolCXXCompilationPlugin)

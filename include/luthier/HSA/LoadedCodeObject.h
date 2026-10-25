@@ -204,10 +204,6 @@ loadedCodeObjectGetStorageMemory(const LoaderTableType &LoaderApiTable,
 //===----------------------------------------------------------------------===//
 
 template <> struct llvm::DenseMapInfo<hsa_loaded_code_object_t> {
-  static hsa_loaded_code_object_t getEmptyKey() {
-    return hsa_loaded_code_object_t({DenseMapInfo<
-        decltype(hsa_loaded_code_object_t::handle)>::getEmptyKey()});
-  }
 
   static unsigned getHashValue(const hsa_loaded_code_object_t &LCO) {
     return DenseMapInfo<

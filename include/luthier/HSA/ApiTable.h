@@ -22,6 +22,7 @@
 #include "luthier/HSA/HsaError.h"
 #include "luthier/Common/ErrorCheck.h"
 #include <hsa/hsa_api_trace.h>
+#include <hsa/hsa_ven_amd_aqlprofile.h>
 #include <hsa/hsa_ven_amd_loader.h>
 #include <llvm/Support/Error.h>
 
@@ -243,6 +244,9 @@ DEFINE_HSA_API_INFO(::ImageExtTable, hsa_ext_sampler_destroy)
 DEFINE_HSA_API_INFO(::ImageExtTable, hsa_ext_image_get_capability_with_layout)
 DEFINE_HSA_API_INFO(::ImageExtTable, hsa_ext_image_data_get_info_with_layout)
 DEFINE_HSA_API_INFO(::ImageExtTable, hsa_ext_image_create_with_layout)
+#if HSA_IMAGE_API_TABLE_STEP_VERSION >= 0x01
+DEFINE_HSA_API_INFO(::ImageExtTable, hsa_ext_sampler_create_v2)
+#endif
 
 DEFINE_HSA_API_INFO(::FinalizerExtTable, hsa_ext_program_create)
 DEFINE_HSA_API_INFO(::FinalizerExtTable, hsa_ext_program_destroy)
@@ -250,6 +254,14 @@ DEFINE_HSA_API_INFO(::FinalizerExtTable, hsa_ext_program_add_module)
 DEFINE_HSA_API_INFO(::FinalizerExtTable, hsa_ext_program_iterate_modules)
 DEFINE_HSA_API_INFO(::FinalizerExtTable, hsa_ext_program_get_info)
 DEFINE_HSA_API_INFO(::FinalizerExtTable, hsa_ext_program_finalize)
+
+DEFINE_HSA_API_INFO(::PcSamplingExtTable, hsa_ven_amd_pcs_iterate_configuration)
+DEFINE_HSA_API_INFO(::PcSamplingExtTable, hsa_ven_amd_pcs_create)
+DEFINE_HSA_API_INFO(::PcSamplingExtTable, hsa_ven_amd_pcs_create_from_id)
+DEFINE_HSA_API_INFO(::PcSamplingExtTable, hsa_ven_amd_pcs_destroy)
+DEFINE_HSA_API_INFO(::PcSamplingExtTable, hsa_ven_amd_pcs_start)
+DEFINE_HSA_API_INFO(::PcSamplingExtTable, hsa_ven_amd_pcs_stop)
+DEFINE_HSA_API_INFO(::PcSamplingExtTable, hsa_ven_amd_pcs_flush)
 // clang-format on
 
 #if HSA_AMD_EXT_API_TABLE_MAJOR_VERSION >= 0x02
@@ -290,6 +302,45 @@ DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_portable_export_dmabuf_v2)
 #if HSA_AMD_EXT_API_TABLE_STEP_VERSION >= 0x08
 DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_ais_file_write)
 DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_ais_file_read)
+#endif
+#if HSA_AMD_EXT_API_TABLE_STEP_VERSION >= 0x09
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_counted_queue_acquire)
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_counted_queue_release)
+#endif
+#if HSA_AMD_EXT_API_TABLE_STEP_VERSION >= 0x0A
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_memory_async_batch_copy)
+#endif
+#if HSA_AMD_EXT_API_TABLE_STEP_VERSION >= 0x0B
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_agent_preload)
+#endif
+#if HSA_AMD_EXT_API_TABLE_STEP_VERSION >= 0x0C
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_svm_discard_batch_async)
+#endif
+#if HSA_AMD_EXT_API_TABLE_STEP_VERSION >= 0x0D
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_signal_get_event_id)
+#endif
+#if HSA_AMD_EXT_API_TABLE_STEP_VERSION >= 0x0E
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_external_semaphore_handle_open)
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_external_semaphore_handle_close)
+#endif
+#if HSA_AMD_EXT_API_TABLE_STEP_VERSION >= 0x0F
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_vmem_export_fabric_handle)
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_vmem_import_fabric_handle)
+#endif
+#if HSA_AMD_EXT_API_TABLE_STEP_VERSION >= 0x10
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_queue_create)
+#endif
+#if HSA_AMD_EXT_API_TABLE_STEP_VERSION >= 0x11
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_queue_signal_external_semaphore)
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_queue_wait_external_semaphore)
+#endif
+#if HSA_AMD_EXT_API_TABLE_STEP_VERSION >= 0x12
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_image_create_v2)
+DEFINE_HSA_API_INFO(::AmdExtTable, hsa_amd_interop_map_buffer_with_size)
+#endif
+#if HSA_AMD_EXT_API_TABLE_STEP_VERSION >= 0x13
+DEFINE_HSA_API_INFO(::AmdExtTable,
+                    hsa_amd_svm_discard_and_prefetch_batch_async)
 #endif
 #endif
 
@@ -388,6 +439,12 @@ template <> struct ExtensionApiTableInfo<HSA_EXTENSION_AMD_LOADER> {
   using TableType = hsa_ven_amd_loader_1_03_pfn_t;
   static constexpr auto MajorVer = 1;
   static constexpr auto StepVer = 3;
+};
+
+template <> struct ExtensionApiTableInfo<HSA_EXTENSION_AMD_AQLPROFILE> {
+  using TableType = hsa_ven_amd_aqlprofile_1_00_pfn_t;
+  static constexpr auto MajorVer = HSA_AQLPROFILE_API_TABLE_MAJOR_VERSION;
+  static constexpr auto StepVer = HSA_AQLPROFILE_API_TABLE_STEP_VERSION;
 };
 
 template <> struct ExtensionApiTableInfo<HSA_EXTENSION_AMD_PC_SAMPLING> {

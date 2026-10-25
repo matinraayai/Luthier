@@ -39,6 +39,9 @@ target_include_directories(LuthierPatchPCUsagesPass
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
 
+target_compile_options(LuthierPatchPCUsagesPass
+        PUBLIC ${LUTHIER_RTTI_FLAG})
+
 target_link_libraries(LuthierPatchPCUsagesPass PUBLIC LuthierAMDGPU)
 
 foreach (_DEVICE_TARGET IN LISTS LuthierPatchPCUsagesPass_DEVICE_TARGETS)
@@ -72,6 +75,9 @@ target_include_directories(LuthierRebaseAppScratchAccessesPass
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
         "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
+
+target_compile_options(LuthierRebaseAppScratchAccessesPass
+        PUBLIC ${LUTHIER_RTTI_FLAG})
 
 target_link_libraries(LuthierRebaseAppScratchAccessesPass PUBLIC LuthierAMDGPU)
 
@@ -151,6 +157,9 @@ target_include_directories(LuthierToolCodeGen
 )
 
 target_link_libraries(LuthierToolCodeGen PRIVATE LuthierAMDGPU)
+
+target_compile_options(LuthierToolCodeGen
+        PUBLIC ${LUTHIER_RTTI_FLAG})
 
 if (${LUTHIER_ENABLE_SPIRV})
     target_compile_definitions(LuthierToolCodeGen PRIVATE LUTHIER_HAS_SPIRV_TRANSLATOR)

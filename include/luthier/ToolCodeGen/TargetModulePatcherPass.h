@@ -68,7 +68,7 @@
 namespace luthier {
 
 class TargetModulePatcherPass
-    : public llvm::PassInfoMixin<TargetModulePatcherPass> {
+    : public llvm::RequiredPassInfoMixin<TargetModulePatcherPass> {
 public:
   TargetModulePatcherPass() = default;
 

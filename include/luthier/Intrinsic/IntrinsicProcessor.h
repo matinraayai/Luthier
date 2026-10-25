@@ -40,7 +40,7 @@ class MachineInstr;
 
 class MachineOperand;
 
-class TargetRegisterClass;
+class MCRegisterClass;
 
 class Register;
 
@@ -167,7 +167,7 @@ typedef std::function<llvm::Error(
     llvm::ArrayRef<
         std::pair<llvm::InlineAsm::Flag, const llvm::MachineOperand *>>,
     const std::function<llvm::MachineInstrBuilder(int)> &,
-    const std::function<llvm::Register(const llvm::TargetRegisterClass *)> &)>
+    const std::function<llvm::Register(const llvm::MCRegisterClass *)> &)>
     IntrinsicMIRProcessorFunc;
 
 /// \brief Used internally to store the intrinsic processors

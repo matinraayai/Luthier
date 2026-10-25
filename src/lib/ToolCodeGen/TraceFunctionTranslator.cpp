@@ -182,10 +182,10 @@ public:
                        llvm::Value *RHS) const override {
     return Base.FoldCmp(P, LHS, RHS);
   }
-  llvm::Value *FoldGEP(llvm::Type *Ty, llvm::Value *Ptr,
-                       llvm::ArrayRef<llvm::Value *> IdxList,
+  llvm::Value *FoldGEP(const llvm::DataLayout &DL, llvm::Type *Ty,
+                       llvm::Value *Ptr, llvm::ArrayRef<llvm::Value *> IdxList,
                        llvm::GEPNoWrapFlags NW) const override {
-    return Base.FoldGEP(Ty, Ptr, IdxList, NW);
+    return Base.FoldGEP(DL, Ty, Ptr, IdxList, NW);
   }
   llvm::Value *FoldSelect(llvm::Value *C, llvm::Value *True, llvm::Value *False,
                           llvm::FastMathFlags FMF =
@@ -218,20 +218,21 @@ public:
                         llvm::Type *DestTy) const override {
     return Base.FoldCast(Op, V, DestTy);
   }
-  llvm::Value *FoldUnaryIntrinsic(
-      llvm::Intrinsic::ID ID, llvm::Value *Op, llvm::Type *Ty,
-      llvm::FastMathFlags FMF = llvm::FastMathFlags()) const override {
-    if (llvm::Value *V = tryFoldAMDGPUIntrinsic(ID, {Op}))
+  llvm::Value *
+  FoldIntrinsic(llvm::Intrinsic::ID ID, llvm::ArrayRef<llvm::Value *> Ops,
+                llvm::Type *Ty, llvm::FastMathFlags FMF = {},
+                llvm::Function *CtxF = nullptr) const override {
+    if (llvm::Value *V = tryFoldAMDGPUIntrinsic(ID, Ops))
       return V;
-    return Base.FoldUnaryIntrinsic(ID, Op, Ty, FMF);
+    return Base.FoldIntrinsic(ID, Ops, Ty, FMF, CtxF);
   }
-  llvm::Value *FoldBinaryIntrinsic(
-      llvm::Intrinsic::ID ID, llvm::Value *LHS, llvm::Value *RHS,
-      llvm::Type *Ty,
-      llvm::FastMathFlags FMF = llvm::FastMathFlags()) const override {
-    if (llvm::Value *V = tryFoldAMDGPUIntrinsic(ID, {LHS, RHS}))
-      return V;
-    return Base.FoldBinaryIntrinsic(ID, LHS, RHS, Ty, FMF);
+  llvm::Value *FoldBitInsert(llvm::Value *BaseV, llvm::Value *Val,
+                             llvm::Value *Offset) const override {
+    return Base.FoldBitInsert(BaseV, Val, Offset);
+  }
+  llvm::Value *FoldBitExtract(llvm::Type *Ty, llvm::Value *Src,
+                              llvm::Value *Offset) const override {
+    return Base.FoldBitExtract(Ty, Src, Offset);
   }
   llvm::Value *CreatePointerCast(llvm::Constant *C,
                                  llvm::Type *DestTy) const override {
@@ -2803,7 +2804,7 @@ bool TraceFunctionTranslator::shouldEmitGPRIndexAccess(
     const llvm::MachineInstr &MI, llvm::MCRegister Reg) const {
   if (!ST.hasVGPRIndexMode())
     return false;
-  if (!llvm::SIInstrInfo::isVALU(MI))
+  if (!llvm::SIInstrInfo::isVALU(MI, /*AllowLDSDMA=*/false))
     return false;
   /// Limit Phase B's first cut to 32-bit single-VGPR operands. For
   /// wider VGPR operands (e.g. v_*_b64 reading a pair) the indexed

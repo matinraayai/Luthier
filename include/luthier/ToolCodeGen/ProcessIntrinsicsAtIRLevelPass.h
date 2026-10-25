@@ -28,7 +28,7 @@ namespace luthier {
 /// \brief A pass that applies the IR processing stage of intrinsics
 /// inside the instrumentation module
 class ProcessIntrinsicsAtIRLevelPass
-    : public llvm::PassInfoMixin<ProcessIntrinsicsAtIRLevelPass> {
+    : public llvm::RequiredPassInfoMixin<ProcessIntrinsicsAtIRLevelPass> {
 
 public:
   ProcessIntrinsicsAtIRLevelPass() = default;

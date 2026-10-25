@@ -330,7 +330,7 @@ static void atToolInit(void *) {
     luthier::registerDebugCLOptions();
     LUTHIER_REPORT_FATAL_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
         llvm::cl::ParseCommandLineOptions(
-            0, &Argv, "Luthier Kernel Argument Intrinsic Tool",
+            1, &Argv, "Luthier Kernel Argument Intrinsic Tool",
             &luthier::errs(), nullptr, "LUTHIER_ARGS"),
         "Failed to parse the command line arguments."));
     llvm::EnablePrettyStackTrace();

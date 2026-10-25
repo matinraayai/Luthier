@@ -461,9 +461,6 @@ protected:
     using PtrInfo =
         llvm::DenseMapInfo<const llvm::amdhsa::kernel_descriptor_t *>;
     using U64Info = llvm::DenseMapInfo<uint64_t>;
-    static Key getEmptyKey() {
-      return Key{PtrInfo::getEmptyKey(), U64Info::getEmptyKey()};
-    }
     static unsigned getHashValue(const Key &K) {
       return llvm::detail::combineHashValue(PtrInfo::getHashValue(K.KD),
                                             U64Info::getHashValue(K.Preset));

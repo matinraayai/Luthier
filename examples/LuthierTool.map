@@ -1,0 +1,4 @@
+{
+  global: rocprofiler_configure;
+  local: *;
+};

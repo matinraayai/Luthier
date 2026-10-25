@@ -1,11 +1,13 @@
 add_library(LuthierLLVM OBJECT
-        Cloning.cpp
         CodeGenHelpers.cpp
         LLVMError.cpp
         streams.cpp
 )
 
 target_compile_definitions(LuthierLLVM PRIVATE AMD_INTERNAL_BUILD ${LLVM_DEFINITIONS})
+
+target_compile_options(LuthierLLVM
+        PUBLIC ${LUTHIER_RTTI_FLAG})
 
 target_include_directories(LuthierLLVM
         PUBLIC

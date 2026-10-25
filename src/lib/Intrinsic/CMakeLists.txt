@@ -10,6 +10,9 @@ add_library(LuthierIntrinsic OBJECT
 
 target_compile_definitions(LuthierIntrinsic PRIVATE ${LLVM_DEFINITIONS})
 
+target_compile_options(LuthierIntrinsic
+        PUBLIC ${LUTHIER_RTTI_FLAG})
+
 target_include_directories(LuthierIntrinsic
         PRIVATE
         ${LLVM_INCLUDE_DIRS}

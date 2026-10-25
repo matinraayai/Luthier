@@ -104,6 +104,13 @@ public:
     return PIC;
   }
 
+  /// Returns the format -print-pipeline-passes requests of the wrapped
+  /// \c llvm::PassBuilder, or \c std::nullopt if it is not given.
+  std::optional<llvm::PrintPipelinePassesFormat>
+  getPrintPipelinePasses() const {
+    return PB->getPrintPipelinePasses();
+  }
+
   /// \brief The LLVM analysis managers serving a single module of a
   /// \c Prototype.
   ///
@@ -267,7 +274,7 @@ private:
   /// pipeline, deliberately kept empty.
   ///
   /// \details LLVM's \c StandardInstrumentations dispatches on the IR unit type
-  /// via \c llvm::Any and \c llvm_unreachable s on anything outside
+  /// via \c llvm::IRUnitRef and \c llvm_unreachable s on anything outside
   /// Module/Function/SCC/Loop/MachineFunction (see \c getIRName in
   /// \c StandardInstrumentations.cpp). \c Prototype is a Luthier-only IR unit,
   /// so routing \c PassManager<Prototype> 's before/after-pass callbacks

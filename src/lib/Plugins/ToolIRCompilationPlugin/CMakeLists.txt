@@ -3,6 +3,10 @@ add_llvm_pass_plugin(LuthierToolIRCompilationPlugin
         $<TARGET_OBJECTS:LuthierToolIRCompilation>
         $<TARGET_OBJECTS:LuthierCommon>)
 
+
+target_compile_options(LuthierToolIRCompilationPlugin
+        PUBLIC ${LUTHIER_RTTI_FLAG})
+
 target_include_directories(LuthierToolIRCompilationPlugin PRIVATE
         "$<BUILD_INTERFACE:${LLVM_INCLUDE_DIRS}>"
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")

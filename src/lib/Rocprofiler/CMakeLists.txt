@@ -5,6 +5,9 @@ add_library(LuthierRocprofilerSDK OBJECT
 
 target_compile_definitions(LuthierRocprofilerSDK PRIVATE ${LLVM_DEFINITIONS} ${hip_COMPILE_DEFINITIONS})
 
+target_compile_options(LuthierRocprofilerSDK
+        PUBLIC ${LUTHIER_RTTI_FLAG})
+
 target_include_directories(LuthierRocprofilerSDK
         PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"

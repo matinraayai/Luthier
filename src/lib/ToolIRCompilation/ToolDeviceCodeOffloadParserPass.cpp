@@ -230,7 +230,7 @@ ToolDeviceCodeOffloadParserPass::run(llvm::Module &M,
                                      llvm::ModuleAnalysisManager &MAM) {
   llvm::Triple T(M.getTargetTriple());
   /// Only operate on host code
-  if (T.getArch() == llvm::Triple::ArchType::amdgcn)
+  if (T.getArch() == llvm::Triple::ArchType::amdgpu)
     return llvm::PreservedAnalyses::all();
   llvm::LLVMContext &C = M.getContext();
 

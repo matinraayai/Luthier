@@ -545,10 +545,10 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
           // \c LiveIntervals manufactures the reaching def from the entry
           // block's live-in list and the coalescer has nothing to complain
           // about.
-          if (PhysReg != llvm::AMDGPU::SCC)
-            (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
-                                TII->get(llvm::AMDGPU::IMPLICIT_DEF))
-                .addReg(PhysReg, llvm::RegState::Define);
+          // if (PhysReg != llvm::AMDGPU::SCC)
+          // (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
+          // TII->get(llvm::AMDGPU::IMPLICIT_DEF))
+          // .addReg(PhysReg, llvm::RegState::Define);
           Preserved.push_back(
               {PhysReg, MRI.createVirtualRegister(CrossCopyRC),
                IsWholeWave ? MRI.createVirtualRegister(CrossCopyRC)

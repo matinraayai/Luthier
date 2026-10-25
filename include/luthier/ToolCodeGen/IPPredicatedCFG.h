@@ -209,7 +209,7 @@ public:
              PrototypeAnalysisManager &IPAM);
 };
 
-class IPPredCFGPrinter : public llvm::PassInfoMixin<IPPredCFGAnalysis> {
+class IPPredCFGPrinter : public llvm::RequiredPassInfoMixin<IPPredCFGAnalysis> {
   llvm::raw_ostream &OS;
 
 public:

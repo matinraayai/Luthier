@@ -207,15 +207,20 @@ class BadRefCollector : public clang::DiagnosticConsumer {
                : Info.getArgSInt(I);
   }
 
+  /// Matches a \c __device__ function referenced from \c __host__ or
+  /// \c __host__ \c __device__ code.
   static bool isDeviceFromHostBadRef(const clang::Diagnostic &Info) {
     if (Info.getID() != clang::diag::err_ref_bad_target ||
         Info.getNumArgs() < 4 ||
         Info.getArgKind(2) != clang::DiagnosticsEngine::ak_nameddecl)
       return false;
+    int64_t CallerTarget = asInt(Info, 3);
     return asInt(Info, 0) ==
                static_cast<int64_t>(clang::CUDAFunctionTarget::Device) &&
-           asInt(Info, 3) ==
-               static_cast<int64_t>(clang::CUDAFunctionTarget::Host);
+           (CallerTarget ==
+                static_cast<int64_t>(clang::CUDAFunctionTarget::Host) ||
+            CallerTarget ==
+                static_cast<int64_t>(clang::CUDAFunctionTarget::HostDevice));
   }
 
 public:

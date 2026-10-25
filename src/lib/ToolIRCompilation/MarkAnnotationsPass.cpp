@@ -37,7 +37,7 @@ llvm::PreservedAnalyses
 MarkAnnotationsPass::run(llvm::Module &M, llvm::ModuleAnalysisManager &) {
   llvm::Triple T(M.getTargetTriple());
   /// Only operate on device code
-  if (T.getArch() != llvm::Triple::ArchType::amdgcn)
+  if (T.getArch() != llvm::Triple::ArchType::amdgpu)
     return llvm::PreservedAnalyses::all();
 
   llvm::GlobalVariable *AnnotationGV =
