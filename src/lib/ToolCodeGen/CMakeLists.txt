@@ -125,7 +125,6 @@ add_library(LuthierToolCodeGen OBJECT
         TraceFunctionTranslationAnalysis.cpp
         RegValueMetadata.cpp
         MIInlineAsmEmitter.cpp
-        NewPMAsmPrinter.cpp
         FunctionAnnotations.cpp
         PrototypeCallGraph.cpp
         PredicatedMachineBasicBlock.cpp
