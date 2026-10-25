@@ -6,26 +6,15 @@
 #   → IPPredicatedLivenessAnalysis → InjectedPayloadPreserveLiveRegsPass
 #   → LRStateValueStorageAndLoadLocationsAnalysis → InjectedPayloadPEIPass
 #   → TargetModulePatcherPass)
-# and then chains Luthier's new-PM AsmPrinter
-# (luthier::NewPMAsmPrinter, exposed via the pass plugin as the
-# pipeline-parseable name "luthier-asm-printer") to emit the final
-# assembly to stdout.
-#
-# NewPMAsmPrinter is documented as a "work-around for printing the
-# assembly using the new PM" — it borrows the post-pipeline
-# MachineModuleInfo out of MachineModuleAnalysis and runs a tiny legacy
-# pass manager (TargetLibraryInfo + DummyCGSCC + TargetPassConfig +
-# DummyMachineModuleInfoWrapperPass + AMDGPUResourceUsageAnalysis +
-# addAsmPrinter) to drive the AMDGPU AsmPrinter against the borrowed
-# MMI. This test pins down that the full chain runs to AsmPrinter
-# without crashing or producing empty output.
+# and then chains LLVM's new-PM AMDGPU AsmPrinter over the target module to emit
+# the final assembly to stdout;
 
 # This file is the prototype: it carries the lifted target MIR and the payload already
 # taken through intrinsic MIR lowering, live-reg preservation and the
 # injected-payload PEI, so the run below exercises exactly one pass: the
-# target module patcher. luthier-asm-printer only prints its result.
+# target module patcher.
 # RUN: luthier-llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx908 \
-# RUN:    '-passes=luthier-target-module-patcher,target(luthier-asm-printer)' \
+# RUN:    '-passes=luthier-target-module-patcher,target(amdgpu-asm-printer-begin,function(machine-function(amdgpu-asm-printer)),amdgpu-asm-printer-end)' \
 # RUN:    %s -o /dev/null > %t.asm 2>&1 && \
 # RUN: FileCheck %s < %t.asm
 

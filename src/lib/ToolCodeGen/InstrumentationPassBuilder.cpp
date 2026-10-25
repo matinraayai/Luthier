@@ -30,7 +30,6 @@
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
 #include "luthier/ToolCodeGen/IntrinsicMIRLoweringPass.h"
-#include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
 #include "luthier/ToolCodeGen/ProcessIntrinsicsAtIRLevelPass.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
@@ -42,6 +41,7 @@
 #include "luthier/ToolCodeGen/TraceFunctionTranslationAnalysis.h"
 
 #include <AMDGPU.h>
+#include <AMDGPUAsmPrinter.h>
 #include <AMDGPUCtorDtorLowering.h>
 #include <AMDGPUExportKernelRuntimeHandles.h>
 #include <AMDGPUISelDAGToDAG.h>
@@ -80,6 +80,8 @@
 #include <llvm/Analysis/CGSCCPassManager.h>
 #include <llvm/Analysis/ProfileSummaryInfo.h>
 #include <llvm/Analysis/UniformityAnalysis.h>
+#include <llvm/CodeGen/AsmPrinter.h>
+#include <llvm/CodeGen/AsmPrinterAnalysis.h>
 #include <llvm/CodeGen/AtomicExpand.h>
 #include <llvm/CodeGen/BranchRelaxation.h>
 #include <llvm/CodeGen/DeadMachineInstructionElim.h>
@@ -114,6 +116,8 @@
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/PassManagerInternal.h>
 #include <llvm/IR/PrintPasses.h>
+#include <llvm/MC/MCStreamer.h>
+#include <llvm/MC/TargetRegistry.h>
 #include <llvm/Passes/CodeGenPassBuilder.h>
 #include <llvm/Passes/OptimizationLevel.h>
 #include <llvm/Passes/PassBuilder.h>
@@ -1462,11 +1466,12 @@ Error InstrumentationPassBuilder::parsePipeline(PrototypePassManager &PPM,
 //===----------------------------------------------------------------------===//
 
 Error InstrumentationPassBuilder::buildInstrumentationPipeline(
-    PrototypePassManager &PPM, PreInstrumentationCallback InstCallback,
+    PrototypePassManager &PPM, llvm::ModuleAnalysisManager &TargetMAM,
+    PreInstrumentationCallback InstCallback,
     PatchPCUsagesPass::TargetAddressHostResolverFn PatchPCUsagesHostCallback,
     llvm::OptimizationLevel Level, llvm::CodeGenFileType FileType,
     llvm::CGPassBuilderOption &CGPBO, llvm::raw_pwrite_stream *Out,
-    llvm::PassInstrumentationCallbacks *PIC) {
+    llvm::MCContext &MCCtx, llvm::PassInstrumentationCallbacks *PIC) {
   /// Invoke Pre-code discovery callbacks
   for (auto &CB : PreCodeDiscoveryCallBacks) {
     CB(PPM, Level);
@@ -1574,8 +1579,28 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
                                llvm::createFunctionToMachineFunctionPassAdaptor(
                                    AMDGPUPreloadKernArgPrologPass())));
 
-  if (Out)
-    addTargetModulePass(PPM, NewPMAsmPrinter(FileType, *Out, true));
+  if (Out) {
+    llvm::Expected<std::unique_ptr<llvm::MCStreamer>> StreamerOrErr =
+        TM.createMCStreamer(*Out, /*DwoOut=*/nullptr, FileType, MCCtx);
+    if (!StreamerOrErr)
+      return StreamerOrErr.takeError();
+
+    std::unique_ptr<llvm::AsmPrinter> Printer(
+        TM.getTarget().createAsmPrinter(TM, std::move(*StreamerOrErr)));
+    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
+            Printer != nullptr, "Failed to create the AMDGPU asm printer."));
+
+    TargetMAM.registerPass(
+        [&] { return llvm::AsmPrinterAnalysis(std::move(Printer)); });
+
+    llvm::ModulePassManager AsmPrinterMPM;
+    AsmPrinterMPM.addPass(llvm::AMDGPUAsmPrinterBeginPass());
+    AsmPrinterMPM.addPass(llvm::createModuleToFunctionPassAdaptor(
+        llvm::createFunctionToMachineFunctionPassAdaptor(
+            llvm::AMDGPUAsmPrinterPass())));
+    AsmPrinterMPM.addPass(llvm::AMDGPUAsmPrinterEndPass());
+    addTargetModulePass(PPM, std::move(AsmPrinterMPM));
+  }
 
   return Error::success();
 }

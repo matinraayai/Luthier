@@ -45,7 +45,6 @@
 #include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
-#include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
 #include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
@@ -518,6 +517,9 @@ private:
 
     llvm::MachineModuleInfo MMI(TM.get());
 
+    llvm::SmallVector<char, 0> ObjBuf;
+    llvm::raw_svector_ostream ObjOS(ObjBuf);
+
     // Each of the prototype's two modules gets its own set of managers. They
     // must not be shared: LLVM reaches a module's inner managers through
     // proxies whose invalidation hook clears the inner manager wholesale
@@ -589,14 +591,11 @@ private:
       M->registerPass(
           [&ParentMap] { return luthier::ParentPrototypeAnalysis(ParentMap); });
 
-    llvm::SmallVector<char, 0> ObjBuf;
-    llvm::raw_svector_ostream ObjOS(ObjBuf);
-
     llvm::CGPassBuilderOption CGPBO = llvm::getCGPassBuilderOption(*TM);
 
     luthier::PrototypePassManager IPPM;
     LUTHIER_RETURN_ON_ERROR(PB.buildInstrumentationPipeline(
-        IPPM,
+        IPPM, TargetMAM,
         // The instrumentation stage: the tool's own payload injection, then any
         // extra IR-level passes it asks for.
         [&D](luthier::PrototypePassManager &PPM, llvm::OptimizationLevel) {
@@ -607,7 +606,7 @@ private:
             D.preIROptimizationPasses(PPM);
         },
         patchPCUsagesHostCallback, Level, llvm::CodeGenFileType::ObjectFile,
-        CGPBO, &ObjOS, &PIC));
+        CGPBO, &ObjOS, MMI.getContext(), &PIC));
 
     // ParentPrototypeAnalysis is consumed via getCachedResult, so materialize
     // it for both modules up front, each in its own manager.

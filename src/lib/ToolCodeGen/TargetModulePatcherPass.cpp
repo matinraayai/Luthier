@@ -3463,7 +3463,7 @@ llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
   //
   // Moving the Function does not move its MachineFunction: that lives in the
   // instrumentation module's FunctionAnalysisManager, keyed by this Function,
-  // while NewPMAsmPrinter looks the target module's MIR up in the target FAM.
+  // while the asm printer looks the target module's MIR up in the target FAM.
   // Hand the MachineFunction over by moving the unique_ptr the analysis result
   // owns, rather than deep-copying the body into a freshly built MF.
   //
@@ -3792,7 +3792,7 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
   // cross-module operands resolve. Helper MFs are constructed in the
   // target FAM (via MachineFunctionAnalysis::run) and populated with
   // cloneMFInto, so they're visible to subsequent target-side loops
-  // and to NewPMAsmPrinter's per-Function MF lookup.
+  // and to the asm printer's per-Function MF lookup.
   LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] === Phase B.1: "
                                 "moveIModuleIntoTarget ===\n");
   llvm::ValueToValueMapTy VMap;

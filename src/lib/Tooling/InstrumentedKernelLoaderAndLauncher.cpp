@@ -894,8 +894,7 @@ InstrumentedKernelLoaderAndLauncher::loadInstrumented(
                       Agent.handle)));
   }
 
-  // The instrumented bytes come out of NewPMAsmPrinter as a REL; link to a
-  // shared object so we get a proper .dynsym + PT_DYNAMIC layout.
+  // Link the relocatable.
   llvm::SmallVector<char, 0> LinkedBuf;
   LUTHIER_RETURN_ON_ERROR(linker::linkRelocatableToExecutable(
       llvm::ArrayRef<char>(Relocatable->getBufferStart(),

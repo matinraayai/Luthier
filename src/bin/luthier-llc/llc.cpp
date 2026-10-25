@@ -22,25 +22,26 @@
 #include "luthier/ToolCodeGen/InjectedPayloadAndInstPointAnalysis.h"
 #include "luthier/ToolCodeGen/InjectedPayloadSideEffectsAnalysis.h"
 #include "luthier/ToolCodeGen/InstrumentationPassBuilder.h"
-#include "luthier/ToolCodeGen/PatchPCUsagesPass.h"
-#include "luthier/ToolCodeGen/RebaseAppScratchAccessesPass.h"
+#include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
+#include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
 #include "luthier/ToolCodeGen/LuthierFile.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 #include "luthier/ToolCodeGen/MockAMDGPULoader.h"
 #include "luthier/ToolCodeGen/MockLoadAMDGPUCodeObjects.h"
 #include "luthier/ToolCodeGen/MockLoaderMemoryAccessor.h"
-#include "luthier/ToolCodeGen/NewPMAsmPrinter.h"
-#include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
-#include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
 #include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
+#include "luthier/ToolCodeGen/PatchPCUsagesPass.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
+#include "luthier/ToolCodeGen/RebaseAppScratchAccessesPass.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/RuntimeLibcallInfo.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/CodeGen/AsmPrinter.h"
+#include "llvm/CodeGen/AsmPrinterAnalysis.h"
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/CodeGen/LibcallLoweringInfo.h"
 #include "llvm/CodeGen/LinkAllAsmWriterComponents.h"
@@ -67,6 +68,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/InitializePasses.h"
+#include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCTargetOptionsCommandFlags.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Pass.h"
@@ -141,12 +143,6 @@ static std::unique_ptr<luthier::MockAMDGPULoader> Loader =
     std::make_unique<luthier::MockAMDGPULoader>();
 
 static luthier::MockAMDGPULoaderAnalysisOptions MockLoaderOptions;
-
-
-
-
-
-
 
 static cl::opt<RegAllocType, false, RegAllocTypeParser>
     RegAlloc("regalloc-npm",
@@ -343,8 +339,7 @@ static void setPGOOptions(TargetMachine &TM) {
     TM.setPGOOption(PGOOpt);
 }
 
-static int compileModule(char **argv,
-                         SmallVectorImpl<luthier::PassPlugin> &,
+static int compileModule(char **argv, SmallVectorImpl<luthier::PassPlugin> &,
                          LLVMContext &Context, std::string &OutputFilename);
 
 [[noreturn]] static void reportError(Twine Msg, StringRef Filename = "") {
@@ -792,18 +787,17 @@ static int compileModule(char **argv,
   luthier::InstrumentationPassBuilder PB(*Target, PipelineTuningOptions(),
                                          std::nullopt, &PIC);
 
-
   // Each of the prototype's two modules gets its own set of managers. Sharing
   // one set is what let a pass over the instrumentation module clear the target
   // module's cached MachineFunctionAnalysis results: LLVM's per-module proxies
-  // clear the inner manager they reach wholesale whenever a module pass does not
-  // preserve them (FunctionAnalysisManagerModuleProxy::Result::invalidate in
-  // PassManager.cpp), and a nested llvm::ModulePassManager re-invalidates after
-  // every pass it runs.
+  // clear the inner manager they reach wholesale whenever a module pass does
+  // not preserve them (FunctionAnalysisManagerModuleProxy::Result::invalidate
+  // in PassManager.cpp), and a nested llvm::ModulePassManager re-invalidates
+  // after every pass it runs.
   //
   // Declaration order matters and must run innermost -> outermost, because
-  // destruction runs in reverse and a proxy Result's destructor calls clear() on
-  // the managers it proxies. An outer manager therefore has to be destroyed
+  // destruction runs in reverse and a proxy Result's destructor calls clear()
+  // on the managers it proxies. An outer manager therefore has to be destroyed
   // *before* every manager it proxies, or the proxy result's destructor writes
   // into a freed AnalysisManager. PAM is the outermost of all (it proxies both
   // modules' MAM, FAM and MFAM), so it goes last; each MAM proxies its own FAM
@@ -867,7 +861,8 @@ static int compileModule(char **argv,
         []() { return luthier::ParentPrototypeAnalysis(ParentPrototypeMap); });
 
     M->registerPass([]() { return luthier::CodeObjectManagerAnalysis(); });
-    M->registerPass([]() { return luthier::MockAMDGPULoaderAnalysis(*Loader); });
+    M->registerPass(
+        []() { return luthier::MockAMDGPULoaderAnalysis(*Loader); });
 
     // Intrinsic-lowering passes (ProcessIntrinsicsAtIRLevelPass,
     // IntrinsicMIRLoweringPass) query this to find the processor for each
@@ -883,11 +878,6 @@ static int compileModule(char **argv,
   PB.registerPipelineParsingCallback(
       [&](llvm::StringRef Name, llvm::ModulePassManager &MPM,
           llvm::ArrayRef<llvm::PassBuilder::PipelineElement>) {
-        if (Name == "luthier-asm-printer") {
-          MPM.addPass(luthier::NewPMAsmPrinter(
-              llvm::CodeGenFileType::AssemblyFile, llvm::outs(), false));
-          return true;
-        }
         if (Name == "luthier-mock-load-amdgpu-code-objects") {
           MPM.addPass(luthier::MockLoadAMDGPUCodeObjects(MockLoaderOptions));
           return true;
@@ -941,6 +931,30 @@ static int compileModule(char **argv,
   luthier::PrototypePassManager IPPM;
 
   if (!PassPipeline.empty()) {
+    /// Add the assembly printer analysis manually if the output file is
+    /// not a luthier file
+    {
+      bool EmitsLuthier = StringRef(OutputFilename).ends_with(".luthier");
+      if (!EmitsLuthier) {
+        Expected<std::unique_ptr<MCStreamer>> StreamerOrErr =
+            Target->createMCStreamer(Out->os(), /*DwoOut=*/nullptr,
+                                     codegen::getFileType(), MMI.getContext());
+        if (auto Err = StreamerOrErr.takeError()) {
+          logAllUnhandledErrors(std::move(Err), errs(), "error: ");
+          return 1;
+        }
+        std::unique_ptr<AsmPrinter> Printer(
+            Target->getTarget().createAsmPrinter(*Target,
+                                                 std::move(*StreamerOrErr)));
+        if (!Printer) {
+          WithColor::error(errs(), Arg0)
+              << "failed to create the AsmPrinter.\n";
+          return 1;
+        }
+        TargetMAM.registerPass(
+            [&] { return AsmPrinterAnalysis(std::move(Printer)); });
+      }
+    }
 
     if (auto Err = PB.parsePipeline(IPPM, PassPipeline)) {
       logAllUnhandledErrors(std::move(Err), errs(), "error: ");
@@ -971,10 +985,10 @@ static int compileModule(char **argv,
     }
     llvm::Error PipelineErr = llvm::Error::success();
     if (auto Err = PB.buildInstrumentationPipeline(
-            IPPM,
+            IPPM, TargetMAM,
             [](luthier::PrototypePassManager &, llvm::OptimizationLevel) {},
             /*PatchPCUsagesHostCallback=*/nullptr, OptimizationLevel::O2,
-            FileType, Opt, OS, &PIC)) {
+            FileType, Opt, OS, MMI.getContext(), &PIC)) {
       logAllUnhandledErrors(std::move(Err), errs(), "error: ");
       return 1;
     }
