@@ -37,13 +37,6 @@ namespace luthier {
 class PatchPCUsagesPass
     : public llvm::RequiredPassInfoMixin<PatchPCUsagesPass> {
 public:
-  /// One entry of the \c EntryPointToTraceFunctionAddrMap
-  /// table: a trace function's entry point address and its associated
-  /// LLVM \c Function's handle address in the loaded tool module.
-  struct EntryPointTraceFunctionEntry {
-    uint64_t TraceAddr;
-    uint64_t FnHandleAddr;
-  };
 
   /// Signature of the host callback. Matches the argument layout the AMD
   /// hostcall \c FUNCTION_CALL service uses: \p Out is a 2-word out
@@ -75,59 +68,7 @@ public:
 
   class Parser : public ToolDeviceCodeOffloadParserTrait<Parser> {
   public:
-    using luthier::ToolDeviceCodeOffloadParserTrait<
-        Parser>::ToolDeviceCodeOffloadParserTrait;
-
-#if defined(__HIPCC__)
-
-    /// Writes a single, statically-known target address into
-    /// \p Reg. Emitted at every site with only a single possible target.
-    __attribute__((device)) static void
-    patchRegSingle(llvm::MCRegister Reg, std::uint64_t FnHandleAddr);
-
-    /// Variadic-template multi-target hook. Every pack element is a
-    /// \c EntryPointTraceFunctionEntry enumerating one candidate branch target
-    /// known statically. At runtime the hook reads \p Reg, checks each
-    /// compile-time pair, writes the matching \c FnHandleAddr on hit, or drops
-    /// through to the \c EntryPointToTraceFunctionAddrMap + hostcall fallback
-    /// when nothing matches.
-    template <typename... Pairs>
-    __attribute__((device)) static void
-    patchRegMulti(llvm::MCRegister Reg, std::uint64_t HostFnPtr, Pairs... Ps);
-
-    /// Runtime resolver table the \c patchRegMulti fallback path walks.
-    __attribute__((device)) static EntryPointTraceFunctionEntry
-        *EntryPointToTraceFunctionAddrMap;
-    __attribute__((
-        device)) static std::uint32_t EntryPointToTraceFunctionAddrMapSize;
-    __attribute__((
-        device)) static std::uint32_t EntryPointToTraceFunctionAddrMapMaxSize;
-    /// Wave-uniform spinlock. Zero when free, one when held. The
-    /// \c patchRegMulti fallback holds it across the entire read-then-
-    /// hostcall region so the host callback can grow the table in place
-    /// without racing concurrent readers.
-    __attribute__((
-        device)) static std::uint32_t EntryPointToTraceFunctionAddrMapLock;
-
-    /// A set of statically-known \c EntryPointTraceFunctionEntry table +
-    /// entry count. Used to initialize the \c EntryPointToTraceFunctionAddrMap
-    /// value at load time. Only emitted when the initial entry point is a
-    /// kernel.
-    __attribute__((device, constant)) static const EntryPointTraceFunctionEntry
-        *EntryPointToTraceFunctionAddrMapSeed;
-    __attribute__((device, constant)) static std::uint32_t
-        EntryPointToTraceFunctionAddrMapSeedSize;
-
-    /// ctor used to dynamically allocate the
-    /// \c EntryPointToTraceFunctionAddrMap
-    __attribute__((device, used, constructor)) static void
-    initEntryPointToTraceFunctionAddrMap();
-
-    /// dtor used to release the table \c initEntryPointToTraceFunctionAddrMap
-    /// allocated.
-    __attribute__((device, destructor)) static void
-    finiEntryPointToTraceFunctionAddrMap();
-#endif
+    using ToolDeviceCodeOffloadParserTrait::ToolDeviceCodeOffloadParserTrait;
   };
 
   /// \param TargetAddressHostResolver raw host function pointer instrumentation

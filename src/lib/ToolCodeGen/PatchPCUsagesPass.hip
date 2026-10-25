@@ -76,40 +76,82 @@
 // Device side
 //===----------------------------------------------------------------------===//
 
-#if defined(__HIPCC__)
+namespace {
 
+/// One entry of the \c EntryPointToTraceFunctionAddrMap
+/// table: a trace function's entry point address and its associated
+/// LLVM \c Function's handle address in the loaded tool module.
+struct EntryPointTraceFunctionEntry {
+  uint64_t TraceAddr;
+  uint64_t FnHandleAddr;
+};
+
+
+/// Runtime resolver table the \c patchRegMulti fallback path walks.
+__attribute__((device, used))
+EntryPointTraceFunctionEntry * EntryPointToTraceFunctionAddrMap;
 
 __attribute__((device, used))
-luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry *
-    luthier::PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMap;
+std::uint32_t EntryPointToTraceFunctionAddrMapSize;
 
 __attribute__((device, used))
-std::uint32_t luthier::PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSize;
+std::uint32_t EntryPointToTraceFunctionAddrMapMaxSize;
 
+/// Wave-uniform spinlock. Zero when free, one when held. The
+/// \c patchRegMulti fallback holds it across the entire read-then-
+/// hostcall region so the host callback can grow the table in place
+/// without racing concurrent readers.
 __attribute__((device, used))
-std::uint32_t
-    luthier::PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapMaxSize;
+std::uint32_t EntryPointToTraceFunctionAddrMapLock;
 
-__attribute__((device, used))
-std::uint32_t luthier::PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapLock;
+
+/// A set of statically-known \c EntryPointTraceFunctionEntry table +
+/// entry count. Used to initialize the \c EntryPointToTraceFunctionAddrMap
+/// value at load time. Only emitted when the initial entry point is a
+/// kernel.
+__attribute__((device, used, constant))
+const EntryPointTraceFunctionEntry *
+    EntryPointToTraceFunctionAddrMapSeed{nullptr};
 
 __attribute__((device, used, constant))
-const luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry *
-    luthier::PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeed =
-        nullptr;
-
-__attribute__((device, used, constant))
 std::uint32_t
-    luthier::PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeedSize =
+    EntryPointToTraceFunctionAddrMapSeedSize =
         0;
 
+
+/// Writes a single, statically-known target address into
+/// \p Reg. Emitted at every site with only a single possible target.
+static __attribute__((device)) void
+patchRegSingle(llvm::MCRegister Reg, std::uint64_t FnHandleAddr);
+  
+/// Variadic-template multi-target hook. Every pack element is a
+/// \c EntryPointTraceFunctionEntry enumerating one candidate branch target
+/// known statically. At runtime the hook reads \p Reg, checks each
+/// compile-time pair, writes the matching \c FnHandleAddr on hit, or drops
+/// through to the \c EntryPointToTraceFunctionAddrMap + hostcall fallback
+/// when nothing matches.
+template <typename... Pairs>
+static __attribute__((device)) void
+patchRegMulti(llvm::MCRegister Reg, std::uint64_t HostFnPtr, Pairs... Ps);
+
+
+/// ctor used to dynamically allocate the
+/// \c EntryPointToTraceFunctionAddrMap
+__attribute__((device, used, constructor)) static void
+initEntryPointToTraceFunctionAddrMap();
+
+/// dtor used to release the table \c initEntryPointToTraceFunctionAddrMap
+/// allocated.
+__attribute__((device, destructor)) static void
+finiEntryPointToTraceFunctionAddrMap();
+
+
+
 __attribute__((device, used, constructor))
-void luthier::PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap() {
-  using P = luthier::PatchPCUsagesPass::Parser;
-  using TE = luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry;
+void initEntryPointToTraceFunctionAddrMap() {
   // Size the allocation to the codegen-time seed count + 5, so the host
   // callback can append 5 more entries before it has to reallocate.
-  const std::uint32_t SeedN = P::EntryPointToTraceFunctionAddrMapSeedSize;
+  const std::uint32_t SeedN = EntryPointToTraceFunctionAddrMapSeedSize;
 
   // Two entry modes: a first-time init that allocates a fresh runtime
   // table sized to the seed + 5-entry slack, and an extend-into-place mode
@@ -119,17 +161,17 @@ void luthier::PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap() 
   // it lets a later-loaded code object contribute its own trace-fn entries
   // without a "discover the initial entry point" step at load time — the
   // table just grows.
-  if (P::EntryPointToTraceFunctionAddrMap != nullptr &&
-      P::EntryPointToTraceFunctionAddrMapMaxSize > 0u) {
-    const std::uint32_t OldSize = P::EntryPointToTraceFunctionAddrMapSize;
+  if (EntryPointToTraceFunctionAddrMap != nullptr &&
+      EntryPointToTraceFunctionAddrMapMaxSize > 0u) {
+    const std::uint32_t OldSize = EntryPointToTraceFunctionAddrMapSize;
     const std::uint32_t Needed = OldSize + SeedN;
-    if (Needed > P::EntryPointToTraceFunctionAddrMapMaxSize) {
+    if (Needed > EntryPointToTraceFunctionAddrMapMaxSize) {
       // Grow to \c Needed + 5-entry slack so subsequent extends /
       // host-callback appends have headroom.
       const std::uint32_t NewCapacity = Needed + 5u;
-      TE *NewBuf = static_cast<TE *>(malloc(sizeof(TE) * NewCapacity));
+      auto NewBuf = static_cast<EntryPointTraceFunctionEntry *>(malloc(sizeof(EntryPointTraceFunctionEntry) * NewCapacity));
       for (std::uint32_t I = 0; I < OldSize; ++I)
-        NewBuf[I] = P::EntryPointToTraceFunctionAddrMap[I];
+        NewBuf[I] = EntryPointToTraceFunctionAddrMap[I];
       // Deliberately do NOT free the old buffer here. This constructor does
       // not hold \c EntryPointToTraceFunctionAddrMapLock (it cannot: a
       // reader in \c patchRegMultiFallback holds that lock across its
@@ -141,22 +183,22 @@ void luthier::PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap() 
       // lands. The table holds a handful of 16-byte entries and only grows
       // when a new code object is loaded, so retaining the old array is far
       // cheaper than a use-after-free. The destructor frees the live one.
-      __hip_atomic_store(&P::EntryPointToTraceFunctionAddrMapMaxSize,
+      __hip_atomic_store(&EntryPointToTraceFunctionAddrMapMaxSize,
                          NewCapacity, __ATOMIC_RELAXED,
                          __HIP_MEMORY_SCOPE_AGENT);
-      __hip_atomic_store(&P::EntryPointToTraceFunctionAddrMap, NewBuf,
+      __hip_atomic_store(&EntryPointToTraceFunctionAddrMap, NewBuf,
                          __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_AGENT);
     }
     for (std::uint32_t I = 0; I < SeedN; ++I)
-      P::EntryPointToTraceFunctionAddrMap[OldSize + I] =
-          P::EntryPointToTraceFunctionAddrMapSeed[I];
+      EntryPointToTraceFunctionAddrMap[OldSize + I] =
+          EntryPointToTraceFunctionAddrMapSeed[I];
     // Release-store the count at agent scope: it is what publishes the entries
     // written just above to waves of other dispatches that are already
     // running and polling this table. Those waves acquire-load it in
     // \c patchRegMultiFallback, so a plain store here would leave them reading
     // a stale count out of an incoherent scalar cache and falling back to the
     // host forever.
-    __hip_atomic_store(&P::EntryPointToTraceFunctionAddrMapSize, Needed,
+    __hip_atomic_store(&EntryPointToTraceFunctionAddrMapSize, Needed,
                        __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_AGENT);
     return;
   }
@@ -165,12 +207,12 @@ void luthier::PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap() 
   // + 5, so the host callback can append 5 more entries before it has to
   // reallocate.
   const std::uint32_t Capacity = SeedN + 5u;
-  TE *Buf = static_cast<TE *>(malloc(sizeof(TE) * Capacity));
+  auto *Buf = static_cast<EntryPointTraceFunctionEntry *>(malloc(sizeof(EntryPointTraceFunctionEntry) * Capacity));
   // Copy the constant-AS seed entries into the freshly-allocated runtime
   // table. Ordering matches the seed exactly.
   for (std::uint32_t I = 0; I < SeedN; ++I)
-    Buf[I] = P::EntryPointToTraceFunctionAddrMapSeed[I];
-  __hip_atomic_store(&P::EntryPointToTraceFunctionAddrMapMaxSize, Capacity,
+    Buf[I] = EntryPointToTraceFunctionAddrMapSeed[I];
+  __hip_atomic_store(&EntryPointToTraceFunctionAddrMapMaxSize, Capacity,
                      __ATOMIC_RELAXED, __HIP_MEMORY_SCOPE_AGENT);
   // Publish the buffer, then the count, as agent-scope release stores — the
   // same publication the extend-into-place path above performs, for the same
@@ -184,9 +226,9 @@ void luthier::PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap() 
   // waves faithfully, but what it guards is a read that always returns empty.
   // The count goes last because its release also publishes the entries and
   // the buffer pointer stored before it.
-  __hip_atomic_store(&P::EntryPointToTraceFunctionAddrMap, Buf,
+  __hip_atomic_store(&EntryPointToTraceFunctionAddrMap, Buf,
                      __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_AGENT);
-  __hip_atomic_store(&P::EntryPointToTraceFunctionAddrMapSize, SeedN,
+  __hip_atomic_store(&EntryPointToTraceFunctionAddrMapSize, SeedN,
                      __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_AGENT);
   // NOTE: the lock is intentionally not reset here. It is zero-initialized,
   // and this constructor can run while a reader of a previously loaded code
@@ -195,14 +237,13 @@ void luthier::PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap() 
 }
 
 __attribute__((device, used, destructor))
-void luthier::PatchPCUsagesPass::Parser::finiEntryPointToTraceFunctionAddrMap() {
-  using P = luthier::PatchPCUsagesPass::Parser;
-  if (P::EntryPointToTraceFunctionAddrMap != nullptr) {
-    free(P::EntryPointToTraceFunctionAddrMap);
-    P::EntryPointToTraceFunctionAddrMap = nullptr;
+void finiEntryPointToTraceFunctionAddrMap() {
+  if (EntryPointToTraceFunctionAddrMap != nullptr) {
+    free(EntryPointToTraceFunctionAddrMap);
+    EntryPointToTraceFunctionAddrMap = nullptr;
   }
-  P::EntryPointToTraceFunctionAddrMapSize = 0;
-  P::EntryPointToTraceFunctionAddrMapMaxSize = 0;
+  EntryPointToTraceFunctionAddrMapSize = 0;
+  EntryPointToTraceFunctionAddrMapMaxSize = 0;
 }
 
 // ROCm device libraries' host-function-call hostcall entrypoint.
@@ -216,12 +257,10 @@ __ockl_call_host_function(unsigned long fptr, unsigned long arg0,
                           unsigned long arg5, unsigned long arg6);
 
 __attribute__((device, used)) void
-luthier::PatchPCUsagesPass::Parser::patchRegSingle(
-    llvm::MCRegister Reg, std::uint64_t FnHandleAddr) {
+patchRegSingle(llvm::MCRegister Reg, std::uint64_t FnHandleAddr) {
   luthier::writeReg<std::uint64_t>(Reg, FnHandleAddr);
 }
 
-namespace {
 
 /// Shared fallback body used by every explicit instantiation of
 /// \c Parser::patchRegMulti once its compile-time candidate list has been
@@ -234,8 +273,6 @@ namespace {
 __attribute__((always_inline, device)) inline void
 patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
                       std::uint64_t HostFnPtr) {
-  using PCP = luthier::PatchPCUsagesPass;
-
   // Acquire the wave-uniform spinlock. No lane guard is needed: every payload
   // the PC patcher injects runs in \c PayloadLaneMode::SingleLane , so the
   // injected-payload prologue has already forced <tt>EXEC = 1</tt> and only
@@ -243,7 +280,7 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
   // worse than redundant — the compiler structurizes the guarded CAS loop by
   // masking EXEC, which retires the winning lane out of EXEC before the
   // matching release below and deadlocks the wave.
-  while (atomicCAS(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u,
+  while (atomicCAS(&EntryPointToTraceFunctionAddrMapLock, 0u,
                    1u) != 0u) {
   }
 
@@ -266,10 +303,10 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
   // The spinlock above is already an atomic, which is why it works; these were
   // the reads left behind.
   const auto *BR = __hip_atomic_load(
-      &PCP::Parser::EntryPointToTraceFunctionAddrMap, __ATOMIC_ACQUIRE,
+      &EntryPointToTraceFunctionAddrMap, __ATOMIC_ACQUIRE,
       __HIP_MEMORY_SCOPE_AGENT);
   const std::uint32_t BRN = __hip_atomic_load(
-      &PCP::Parser::EntryPointToTraceFunctionAddrMapSize, __ATOMIC_ACQUIRE,
+      &EntryPointToTraceFunctionAddrMapSize, __ATOMIC_ACQUIRE,
       __HIP_MEMORY_SCOPE_AGENT);
   for (std::uint32_t I = 0; I < BRN; ++I) {
     const std::uint64_t TraceAddr = __hip_atomic_load(
@@ -285,14 +322,14 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
       luthier::writeReg<std::uint64_t>(
           Reg, __hip_atomic_load(&BR[I].FnHandleAddr, __ATOMIC_RELAXED,
                                  __HIP_MEMORY_SCOPE_AGENT));
-      atomicExch(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u);
+      atomicExch(&EntryPointToTraceFunctionAddrMapLock, 0u);
       return;
     }
   }
 
   // Miss: hand off to the host, still holding the lock so the callback can
   // safely append to (or reallocate) the table under exclusive access.
-  const unsigned long DispatchPacketAddr =
+  const auto DispatchPacketAddr =
       reinterpret_cast<unsigned long>(__builtin_amdgcn_dispatch_ptr());
   // The hostcall is issued from a single lane, but the single lane comes from
   // \c PayloadLaneMode::SingleLane rather than from a \c __lane_id() guard.
@@ -307,12 +344,12 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
   // active lane's answer is the whole wave's answer.
   __luthier_ockl_long2 Result = __ockl_call_host_function(
       HostFnPtr, static_cast<unsigned long>(Cur), DispatchPacketAddr,
-      reinterpret_cast<unsigned long>(&PCP::Parser::EntryPointToTraceFunctionAddrMap),
-      reinterpret_cast<unsigned long>(&PCP::Parser::EntryPointToTraceFunctionAddrMapSize),
-      reinterpret_cast<unsigned long>(&PCP::Parser::EntryPointToTraceFunctionAddrMapMaxSize),
+      reinterpret_cast<unsigned long>(&EntryPointToTraceFunctionAddrMap),
+      reinterpret_cast<unsigned long>(&EntryPointToTraceFunctionAddrMapSize),
+      reinterpret_cast<unsigned long>(&EntryPointToTraceFunctionAddrMapMaxSize),
       0, 0);
-  std::uint64_t Handle = static_cast<std::uint64_t>(Result[0]);
-  atomicExch(&PCP::Parser::EntryPointToTraceFunctionAddrMapLock, 0u);
+  auto Handle = static_cast<std::uint64_t>(Result[0]);
+  atomicExch(&EntryPointToTraceFunctionAddrMapLock, 0u);
   // The hostcall's side effect is that the host loads a *new code object*
   // holding the callee this wave is about to branch to. Those instruction
   // bytes are written after the wave started, so this CU's instruction cache
@@ -334,7 +371,6 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
                static_cast<std::uint64_t>(HandleLo));
 }
 
-} // namespace
 
 //===----------------------------------------------------------------------===//
 // Variadic-template multi-target hook definition + explicit instantiations
@@ -342,10 +378,9 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
 //===----------------------------------------------------------------------===//
 
 template <typename... Pairs>
-__attribute__((device, used)) void
-luthier::PatchPCUsagesPass::Parser::patchRegMulti(
+__attribute__((device, used)) void patchRegMulti(
     llvm::MCRegister Reg, std::uint64_t HostFnPtr, Pairs... Ps) {
-  const std::uint64_t Cur = luthier::readReg<std::uint64_t>(Reg);
+  const auto Cur = luthier::readReg<std::uint64_t>(Reg);
   // Fold expression over the parameter pack: for every pair, check
   // \c TraceAddr against \c Cur; on a match, write \c FnHandleAddr and
   // fold-return \c true so the \c || short-circuits the remaining pairs.
@@ -359,48 +394,40 @@ luthier::PatchPCUsagesPass::Parser::patchRegMulti(
     patchRegMultiFallback(Reg, Cur, HostFnPtr);
 }
 
-using __luthier_relocatable_pc_TE =
-    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry;
 
 // Force emission of each specialization.
 template __attribute__((device, used)) void
-luthier::PatchPCUsagesPass::Parser::patchRegMulti<
-    __luthier_relocatable_pc_TE>(llvm::MCRegister, std::uint64_t,
-                                  __luthier_relocatable_pc_TE);
+patchRegMulti<EntryPointTraceFunctionEntry>(llvm::MCRegister, std::uint64_t,
+                                  EntryPointTraceFunctionEntry);
 template __attribute__((device, used)) void
-luthier::PatchPCUsagesPass::Parser::patchRegMulti<
-    __luthier_relocatable_pc_TE, __luthier_relocatable_pc_TE>(
-    llvm::MCRegister, std::uint64_t, __luthier_relocatable_pc_TE,
-    __luthier_relocatable_pc_TE);
+patchRegMulti<
+    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry>(
+    llvm::MCRegister, std::uint64_t, EntryPointTraceFunctionEntry,
+    EntryPointTraceFunctionEntry);
 template __attribute__((device, used)) void
-luthier::PatchPCUsagesPass::Parser::patchRegMulti<
-    __luthier_relocatable_pc_TE, __luthier_relocatable_pc_TE,
-    __luthier_relocatable_pc_TE>(
-    llvm::MCRegister, std::uint64_t, __luthier_relocatable_pc_TE,
-    __luthier_relocatable_pc_TE, __luthier_relocatable_pc_TE);
+patchRegMulti<
+    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry,
+    EntryPointTraceFunctionEntry>(
+    llvm::MCRegister, std::uint64_t, EntryPointTraceFunctionEntry,
+    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry);
 template __attribute__((device, used)) void
-luthier::PatchPCUsagesPass::Parser::patchRegMulti<
-    __luthier_relocatable_pc_TE, __luthier_relocatable_pc_TE,
-    __luthier_relocatable_pc_TE, __luthier_relocatable_pc_TE>(
-    llvm::MCRegister, std::uint64_t, __luthier_relocatable_pc_TE,
-    __luthier_relocatable_pc_TE, __luthier_relocatable_pc_TE,
-    __luthier_relocatable_pc_TE);
+patchRegMulti<
+    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry,
+    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry>(
+    llvm::MCRegister, std::uint64_t, EntryPointTraceFunctionEntry,
+    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry,
+    EntryPointTraceFunctionEntry);
 template __attribute__((device, used)) void
-luthier::PatchPCUsagesPass::Parser::patchRegMulti<
-    __luthier_relocatable_pc_TE, __luthier_relocatable_pc_TE,
-    __luthier_relocatable_pc_TE, __luthier_relocatable_pc_TE,
-    __luthier_relocatable_pc_TE>(
-    llvm::MCRegister, std::uint64_t, __luthier_relocatable_pc_TE,
-    __luthier_relocatable_pc_TE, __luthier_relocatable_pc_TE,
-    __luthier_relocatable_pc_TE, __luthier_relocatable_pc_TE);
+patchRegMulti<
+    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry,
+    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry,
+    EntryPointTraceFunctionEntry>(
+    llvm::MCRegister, std::uint64_t, EntryPointTraceFunctionEntry,
+    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry,
+    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry);
 
-#endif // __HIPCC__
+} // namespace
 
-//===----------------------------------------------------------------------===//
-// Host side — LLVM CodeGen driver logic. Only compiled during the HIP host
-// compile pass (the device pass has no include path for the AMDGPU backend
-// headers).
-//===----------------------------------------------------------------------===//
 
 #ifndef __HIP_DEVICE_COMPILE__
 
@@ -642,13 +669,12 @@ llvm::Error emitEntryPointSeed(
 
   auto SeedPtrGVOrErr = findGVByShadowHandle(
       OffloadParser, IModule,
-      &PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeed);
+      &EntryPointToTraceFunctionAddrMapSeed);
   LUTHIER_RETURN_ON_ERROR(SeedPtrGVOrErr.takeError());
   llvm::GlobalVariable *SeedPtrGV = *SeedPtrGVOrErr;
   auto SeedSizeGVOrErr = findGVByShadowHandle(
       OffloadParser, IModule,
-      &PatchPCUsagesPass::Parser::
-          EntryPointToTraceFunctionAddrMapSeedSize);
+      &EntryPointToTraceFunctionAddrMapSeedSize);
   LUTHIER_RETURN_ON_ERROR(SeedSizeGVOrErr.takeError());
   llvm::GlobalVariable *SeedSizeGV = *SeedSizeGVOrErr;
 
@@ -819,9 +845,9 @@ bindRuntimeTableToEnclosingKernel(Prototype &P,
     return llvm::Error::success();
   };
   LUTHIER_RETURN_ON_ERROR(CollectSeedGV(
-      &PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeed));
+      &EntryPointToTraceFunctionAddrMapSeed));
   LUTHIER_RETURN_ON_ERROR(CollectSeedGV(
-      &PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeedSize));
+      &EntryPointToTraceFunctionAddrMapSeedSize));
 
   for (llvm::GlobalVariable &GV : IModule.globals()) {
     if (GV.isDeclaration() || GV.hasLocalLinkage() || SeedGVs.contains(&GV) ||
@@ -866,9 +892,9 @@ bindRuntimeTableToEnclosingKernel(Prototype &P,
     return llvm::Error::success();
   };
   LUTHIER_RETURN_ON_ERROR(LocalizeGV(
-      &PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeed));
+      &EntryPointToTraceFunctionAddrMapSeed));
   LUTHIER_RETURN_ON_ERROR(LocalizeGV(
-      &PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeedSize));
+      &EntryPointToTraceFunctionAddrMapSeedSize));
   return llvm::Error::success();
 }
 
@@ -936,14 +962,13 @@ llvm::Error handleEntryPointToTraceFunctionAddrMapCtorDtor(
     return llvm::Error::success();
   };
   LUTHIER_RETURN_ON_ERROR(CollectByShadowHandleFn(
-      &PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap));
+      &initEntryPointToTraceFunctionAddrMap));
   LUTHIER_RETURN_ON_ERROR(CollectByShadowHandleFn(
-      &PatchPCUsagesPass::Parser::finiEntryPointToTraceFunctionAddrMap));
+      &finiEntryPointToTraceFunctionAddrMap));
   LUTHIER_RETURN_ON_ERROR(CollectByShadowHandleGV(
-      &PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeed));
+      &EntryPointToTraceFunctionAddrMapSeed));
   LUTHIER_RETURN_ON_ERROR(CollectByShadowHandleGV(
-      &PatchPCUsagesPass::Parser::
-          EntryPointToTraceFunctionAddrMapSeedSize));
+      &EntryPointToTraceFunctionAddrMapSeedSize));
   llvm::removeFromUsedLists(IModule, [&](llvm::Constant *C) {
     return C && ToUnpin.contains(C->stripPointerCasts());
   });
@@ -969,10 +994,10 @@ llvm::Error handleEntryPointToTraceFunctionAddrMapCtorDtor(
   };
 
   LUTHIER_RETURN_ON_ERROR(EraseByShadowHandle(
-      &PatchPCUsagesPass::Parser::initEntryPointToTraceFunctionAddrMap,
+      &initEntryPointToTraceFunctionAddrMap,
       "llvm.global_ctors"));
   LUTHIER_RETURN_ON_ERROR(EraseByShadowHandle(
-      &PatchPCUsagesPass::Parser::finiEntryPointToTraceFunctionAddrMap,
+      &finiEntryPointToTraceFunctionAddrMap,
       "llvm.global_dtors"));
 
   auto DropGVByShadowHandle = [&](auto *Handle) -> llvm::Error {
@@ -984,10 +1009,9 @@ llvm::Error handleEntryPointToTraceFunctionAddrMapCtorDtor(
     return llvm::Error::success();
   };
   LUTHIER_RETURN_ON_ERROR(DropGVByShadowHandle(
-      &PatchPCUsagesPass::Parser::EntryPointToTraceFunctionAddrMapSeed));
+      &EntryPointToTraceFunctionAddrMapSeed));
   LUTHIER_RETURN_ON_ERROR(DropGVByShadowHandle(
-      &PatchPCUsagesPass::Parser::
-          EntryPointToTraceFunctionAddrMapSeedSize));
+      &EntryPointToTraceFunctionAddrMapSeedSize));
   return llvm::Error::success();
 }
 
@@ -1613,22 +1637,22 @@ PatchPCUsagesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   };
 
   using TE = EntryPointTraceFunctionEntry;
-  if (auto Err = BindHandle(RC.PatchRegSingleFn, &Parser::patchRegSingle))
+  if (auto Err = BindHandle(RC.PatchRegSingleFn, &patchRegSingle))
     return EmitAndReturn(std::move(Err), /*Mutated=*/true);
   if (auto Err = BindHandle(RC.PatchRegMultiHookByN[0],
-                            &Parser::patchRegMulti<TE>))
+                            &patchRegMulti<TE>))
     return EmitAndReturn(std::move(Err), /*Mutated=*/true);
   if (auto Err = BindHandle(RC.PatchRegMultiHookByN[1],
-                            &Parser::patchRegMulti<TE, TE>))
+                            &patchRegMulti<TE, TE>))
     return EmitAndReturn(std::move(Err), /*Mutated=*/true);
   if (auto Err = BindHandle(RC.PatchRegMultiHookByN[2],
-                            &Parser::patchRegMulti<TE, TE, TE>))
+                            &patchRegMulti<TE, TE, TE>))
     return EmitAndReturn(std::move(Err), /*Mutated=*/true);
   if (auto Err = BindHandle(RC.PatchRegMultiHookByN[3],
-                            &Parser::patchRegMulti<TE, TE, TE, TE>))
+                            &patchRegMulti<TE, TE, TE, TE>))
     return EmitAndReturn(std::move(Err), /*Mutated=*/true);
   if (auto Err = BindHandle(RC.PatchRegMultiHookByN[4],
-                            &Parser::patchRegMulti<TE, TE, TE, TE, TE>))
+                            &patchRegMulti<TE, TE, TE, TE, TE>))
     return EmitAndReturn(std::move(Err), /*Mutated=*/true);
 
   // NOTE: marking these hooks' parameters \c inreg here (via

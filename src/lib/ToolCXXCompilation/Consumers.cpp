@@ -498,7 +498,8 @@ bool EmitHostHandleForDevFuncConsumer::HandleTopLevelDecl(
     } else {
       Dev = llvm::dyn_cast<clang::FunctionDecl>(D);
     }
-    if (!Dev)
+    /// Skip template function specialization declarations
+    if (!Dev || Dev->getPrimaryTemplate())
       continue;
 
     std::string Key = keyOf(SM, Dev);
