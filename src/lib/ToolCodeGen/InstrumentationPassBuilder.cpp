@@ -1590,11 +1590,8 @@ Error InstrumentationPassBuilder::buildInstrumentationPipeline(
     LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
             Printer != nullptr, "Failed to create the AMDGPU asm printer."));
 
-    bool Registered = TargetMAM.registerPass(
+    TargetMAM.registerPass(
         [&] { return llvm::AsmPrinterAnalysis(std::move(Printer)); });
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        Registered, "An asm printer is already registered with the target "
-                    "module's analysis manager."));
 
     llvm::ModulePassManager AsmPrinterMPM;
     AsmPrinterMPM.addPass(llvm::AMDGPUAsmPrinterBeginPass());
