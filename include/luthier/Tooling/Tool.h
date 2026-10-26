@@ -19,15 +19,16 @@
 #ifndef LUTHIER_TOOLING_TOOL_H
 #define LUTHIER_TOOLING_TOOL_H
 
+#include "luthier/Common/GenericLuthierError.h"
 #include "luthier/Common/Singleton.h"
-#include "luthier/Tooling/InstrumentationPipelineTrait.h"
-#include "luthier/Tooling/InstrumentedKernelLoaderAndLauncher.h"
-#include "luthier/Tooling/LoadedCodeObjectCache.h"
-#include "luthier/Tooling/PacketMonitorTrait.h"
 #include "luthier/PassPlugin/LuthierPassPlugin.h"
 #include "luthier/Rocprofiler/ApiTableSnapshot.h"
 #include "luthier/ToolCodeGen/IntrinsicProcessorRegistry.h"
 #include "luthier/ToolCodeGen/ToolDeviceCodeOffloadParser.h"
+#include "luthier/Tooling/InstrumentationPipelineTrait.h"
+#include "luthier/Tooling/InstrumentedKernelLoaderAndLauncher.h"
+#include "luthier/Tooling/LoadedCodeObjectCache.h"
+#include "luthier/Tooling/PacketMonitorTrait.h"
 #include <hsa/hsa_ext_amd.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/Demangle/Demangle.h>
@@ -85,9 +86,8 @@ public:
        const rocprofiler::HsaExtensionTableSnapshot<HSA_EXTENSION_AMD_LOADER>
            &VenLoader,
        llvm::Error &Err)
-      : Singleton<Derived>(),
-        LoadedCodeObjectCacheTrait<Derived>(RocprofilerLib, CoreApi, VenLoader,
-                                            Err),
+      : Singleton<Derived>(), LoadedCodeObjectCacheTrait<Derived>(
+                                  RocprofilerLib, CoreApi, VenLoader, Err),
         ToolDeviceCodeOffloadParserTrait<Derived>(Err),
         InstrumentedKernelLoaderAndLauncherTrait<Derived>(
             RocprofilerLib, CoreApi, AmdExt, VenLoader, Err),
@@ -95,37 +95,6 @@ public:
                                                            VenLoader),
         PacketMonitorTrait<Derived>(RocprofilerLib, CoreApi, AmdExt, VenLoader,
                                     Err) {}
-
-  /// Resolve a payload function's host shadow handle to the corresponding
-  /// \c llvm::Function inside the given instrumentation module.
-  ///
-  /// \c lookupHandleName returns the device-side mangled name as
-  /// recorded by \c ToolDeviceCodeOffloadParserPass. For \c __global__ kernels
-  /// (HIP \c __hipRegisterFunction path) the recorded name is the
-  /// kernel's natural Itanium mangling; for tagged \c __device__
-  /// functions (CXX-plugin export-handle path) the IR pass already
-  /// demangles the synthesized host sibling and stores the original
-  /// device function's Itanium-mangled name. In both cases a single
-  /// \c Module::getFunction lookup against the IModule resolves the
-  /// payload.
-  ///
-  /// The handle is taken as a typed pointer so callers can pass
-  /// \c &MyTool::myHook directly; \c lookupHandleName does the cast to the
-  /// opaque key internally.
-  template <typename T>
-  llvm::Expected<llvm::Function *>
-  resolvePayloadHandle(T *HostHandle, llvm::Module &InstrumentationModule) {
-    auto &Self = static_cast<Derived &>(*this);
-    auto NameOrErr = Self.lookupHandleName(HostHandle);
-    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
-
-    if (llvm::Function *F = InstrumentationModule.getFunction(*NameOrErr))
-      return F;
-
-    return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-        "Payload function '{0}' not present in the instrumentation module.",
-        *NameOrErr));
-  }
 
   /// Convenience overload that takes a HIP host-shadow handle (the
   /// pointer used by HIP to reference a \c __device__ function from the
@@ -148,12 +117,15 @@ public:
       T *HostHandle, Prototype &P, PrototypeAnalysisManager &PAM,
       llvm::MachineInstr &TargetMI, llvm::ArrayRef<PayloadArg> Args = {},
       PayloadLaneMode LaneMode = PayloadLaneMode::AllActiveLanes) {
-    auto FnOrErr = resolvePayloadHandle(HostHandle, P.getInstrumentationModule());
-    LUTHIER_RETURN_ON_ERROR(FnOrErr.takeError());
+    auto Fn = this->template getLLVMHandle<llvm::Function>(
+        P.getInstrumentationModule(), HostHandle);
+    if (!Fn)
+      return LUTHIER_MAKE_GENERIC_ERROR(
+          llvm::formatv("Failed to find function handle {0:x}", HostHandle));
     llvm::FunctionAnalysisManager &IFAM =
         PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
             .getManager();
-    return P.createInjectedPayload(**FnOrErr, TargetMI, IFAM, Args, LaneMode)
+    return P.createInjectedPayload(*Fn, TargetMI, IFAM, Args, LaneMode)
         .takeError();
   }
 
@@ -177,18 +149,21 @@ public:
       llvm::function_ref<llvm::Error(llvm::Function &, llvm::IRBuilderBase &)>
           Build,
       PayloadLaneMode LaneMode = PayloadLaneMode::AllActiveLanes) {
-    auto FnOrErr = resolvePayloadHandle(HostHandle, P.getInstrumentationModule());
-    LUTHIER_RETURN_ON_ERROR(FnOrErr.takeError());
+    auto Fn = this->template getLLVMHandle<llvm::Function>(
+        P.getInstrumentationModule(), HostHandle);
+    if (!Fn)
+      return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "Failed to find the function associated with {0:x}", HostHandle));
     llvm::FunctionAnalysisManager &IFAM =
         PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
             .getManager();
-    llvm::Function &Hook = **FnOrErr;
-    return P.createInjectedPayload(
-                 TargetMI, IFAM,
-                 [&](llvm::IRBuilderBase &Builder) -> llvm::Error {
-                   return Build(Hook, Builder);
-                 },
-                 LaneMode)
+    return P
+        .createInjectedPayload(
+            TargetMI, IFAM,
+            [&](llvm::IRBuilderBase &Builder) -> llvm::Error {
+              return Build(*Fn, Builder);
+            },
+            LaneMode)
         .takeError();
   }
 
@@ -206,10 +181,12 @@ public:
   llvm::Expected<hsa_executable_symbol_t>
   lookupGlobalVariable(T *Handle, const llvm::amdhsa::kernel_descriptor_t *KD,
                        uint64_t Preset = 0) {
-    auto NameOrErr = this->lookupHandleName(Handle);
-    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
-    return InstrumentedKernelLoaderAndLauncher::lookupGlobalVariable(
-        *NameOrErr, KD, Preset);
+    auto Name = this->lookupHandleName(Handle);
+    if (Name.empty())
+      return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "Failed to find the name associated with handle {0:x}", Handle));
+    return InstrumentedKernelLoaderAndLauncher::lookupGlobalVariable(Name, KD,
+                                                                     Preset);
   }
 };
 

@@ -116,11 +116,12 @@ public:
   /// name, or if the type of the named global found in \p M doesn't match
   /// \c NamedGlobalTy
   template <typename NamedGlobalTy, typename HandleTy>
-  NamedGlobalTy *getLLVMHandle(const llvm::Module &M, HandleTy *Handle) const {
+  const NamedGlobalTy *getLLVMHandle(const llvm::Module &M,
+                                     HandleTy *Handle) const {
     llvm::StringRef HandleName = lookupHandleName(Handle);
     return HandleName.empty() ? nullptr
                               : llvm::dyn_cast_or_null<NamedGlobalTy>(
-                                    M.getNamedGlobal(HandleName));
+                                    M.getNamedValue(HandleName));
   }
 
   template <typename NamedGlobalTy, typename HandleTy>
@@ -128,7 +129,7 @@ public:
     llvm::StringRef HandleName = lookupHandleName(Handle);
     return HandleName.empty() ? nullptr
                               : llvm::dyn_cast_or_null<NamedGlobalTy>(
-                                    M.getNamedGlobal(HandleName));
+                                    M.getNamedValue(HandleName));
   }
 };
 
