@@ -538,4 +538,21 @@ ToolDeviceCodeParser::parseModule(const llvm::Triple &T, llvm::StringRef CPU,
       T.str(), CPU, Features.getString(), Slices.size(), AvailKeys));
 }
 
+llvm::Error ToolDeviceCodeParser::parseAndLinkIntoModule(
+    llvm::StringRef CPU, const llvm::SubtargetFeatures &Features,
+    llvm::Module &DestModule, llvm::Linker::Flags Flag,
+    llvm::OptimizationLevel OptLevel) {
+  llvm::LLVMContext &Ctx = DestModule.getContext();
+  const llvm::Triple TT = DestModule.getTargetTriple();
+
+  auto SubOrErr = parseModule(TT, CPU, Features, Ctx, OptLevel);
+  LUTHIER_RETURN_ON_ERROR(SubOrErr.takeError());
+  std::unique_ptr<llvm::Module> Sub = std::move(*SubOrErr);
+
+  llvm::Linker L(DestModule);
+  if (L.linkInModule(std::move(Sub), Flag))
+    return LUTHIER_MAKE_GENERIC_ERROR("Failed to link the modules together");
+  return llvm::Error::success();
+}
+
 } // namespace luthier

@@ -24,6 +24,7 @@
 #include <llvm/ADT/StringMap.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Linker/Linker.h>
 #include <llvm/Passes/OptimizationLevel.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/MemoryBuffer.h>
@@ -132,8 +133,19 @@ public:
   parseModule(const llvm::Triple &T, llvm::StringRef CPU,
               const llvm::SubtargetFeatures &Features, llvm::LLVMContext &Ctx,
               llvm::OptimizationLevel OptLevel = llvm::OptimizationLevel::O3);
+
+  /// Parses the embedded tool bitcode for the LLVM ISA tuple signified by
+  /// \p DestModule's Triple, \p CPU and \p Features, and links it against
+  /// \p DestModule. \p Flag controls the flag used in the module
+  /// linking operation; \p OptLevel indicates the optimization level used when
+  /// falling back to the SPIRV translation path (if enabled in the build)
+  llvm::Error parseAndLinkIntoModule(
+      llvm::StringRef CPU, const llvm::SubtargetFeatures &Features,
+      llvm::Module &DestModule,
+      llvm::Linker::Flags Flag = llvm::Linker::Flags::LinkOnlyNeeded,
+      llvm::OptimizationLevel OptLevel = llvm::OptimizationLevel::O3);
 };
 
 } // namespace luthier
 
-#endif // LUTHIER_TOOL_CODEGEN_DEVICE_TOOL_CODE_PARSER_H
+#endif // LUTHIER_TOOL_CODEGEN_TOOL_DEVICE_CODE_PARSER_H
