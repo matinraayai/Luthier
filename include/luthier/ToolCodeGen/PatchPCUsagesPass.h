@@ -32,6 +32,8 @@
 
 namespace luthier {
 
+class PrototypeCallGraph;
+
 /// \brief Prototype-level pass that rewrites the target module's trace
 /// PC-operating instructions so the code becomes relocatable.
 class PatchPCUsagesPass
@@ -66,11 +68,6 @@ public:
   using TargetAddressHostResolverFn = void (*)(uint64_t Out[2],
                                                const uint64_t In[7]);
 
-  class Parser : public ToolDeviceCodeOffloadParserTrait<Parser> {
-  public:
-    using ToolDeviceCodeOffloadParserTrait::ToolDeviceCodeOffloadParserTrait;
-  };
-
   /// \param TargetAddressHostResolver raw host function pointer instrumentation
   /// logic has to call in order to resolve missing target function addresses
   /// \param Err Error in case of failure to construct the pass
@@ -80,8 +77,23 @@ public:
   llvm::PreservedAnalyses run(Prototype &P, PrototypeAnalysisManager &PAM);
 
 private:
+  class Parser : public ToolDeviceCodeOffloadParserTrait<Parser> {
+  public:
+    using ToolDeviceCodeOffloadParserTrait::ToolDeviceCodeOffloadParserTrait;
+  };
+
+  llvm::Error emitEntryPointSeed(Prototype &P) const;
+
+  llvm::Error bindRuntimeTableToEnclosingKernel(Prototype &P) const;
+
+  llvm::Error handleEntryPointToTraceFunctionAddrMapCtorDtor(
+    Prototype &P, const EntryPoint &EP, const PrototypeCallGraph &CG) const;
+
+  /// Resolver method called when there are no instrumented entries for an
+  /// entry point
   TargetAddressHostResolverFn TargetAddressHostResolver;
 
+  /// \c ToolDeviceCodeOffloaderParser instance used to parse the device bitcode
   std::unique_ptr<Parser> OffloadParser;
 };
 

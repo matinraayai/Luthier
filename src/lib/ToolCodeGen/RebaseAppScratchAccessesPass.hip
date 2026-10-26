@@ -749,14 +749,12 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   /// Resolve one of the payload hooks to its \c llvm::Function in the IModule.
   auto hookFor = [&](auto *HostHandle) -> llvm::Expected<llvm::Function *> {
     LUTHIER_RETURN_ON_ERROR(ensureLinked());
-    auto NameOrErr = OffloadParser->lookupHandleName(HostHandle);
-    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
-    llvm::Function *F = IModule.getFunction(*NameOrErr);
+    auto *F = OffloadParser->getLLVMHandle<llvm::Function>(IModule, HostHandle);
     if (!F || F->isDeclaration())
       return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-          "RebaseAppScratchAccessesPass: payload hook '{0}' is missing from "
+          "RebaseAppScratchAccessesPass: payload hook '{0:x}' is missing from "
           "the instrumentation module after linking.",
-          *NameOrErr));
+          HostHandle));
     return F;
   };
 

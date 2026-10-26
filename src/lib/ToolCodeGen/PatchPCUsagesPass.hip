@@ -437,12 +437,10 @@ namespace luthier {
 // Helpers
 //===----------------------------------------------------------------------===//
 
-namespace {
-
 
 /// Read the trace-instruction address recorded on an IR Instruction via
 /// `MD_pcsections`
-std::optional<std::uint64_t> getIRTraceAddr(const llvm::Instruction *I) {
+static std::optional<std::uint64_t> getIRTraceAddr(const llvm::Instruction *I) {
   auto *MD = llvm::dyn_cast_or_null<TargetMachineInstrMDNode>(
       I->getMetadata(llvm::LLVMContext::MD_pcsections));
   if (!MD)
@@ -451,7 +449,7 @@ std::optional<std::uint64_t> getIRTraceAddr(const llvm::Instruction *I) {
 }
 
 /// Reads the trace address off a MachineInstr's `TargetMachineInstrMDNode`.
-std::optional<std::uint64_t> getMITraceAddr(const llvm::MachineInstr &MI) {
+static std::optional<std::uint64_t> getMITraceAddr(const llvm::MachineInstr &MI) {
   if (auto *MD = TargetMachineInstrMDNode::getInstrMDNodeIfExists(MI))
     return MD->getTraceInstrAddress();
   return std::nullopt;
@@ -461,15 +459,19 @@ std::optional<std::uint64_t> getMITraceAddr(const llvm::MachineInstr &MI) {
 /// direct (single, fully-determined target), the payload should be the
 /// `patchRegSingle` shape; otherwise the callee list becomes a codegen-time
 /// constant table.
+
+namespace {
+
 struct SiteResolution {
   llvm::SmallVector<llvm::Function *, 4> Targets;
   bool IsIncomplete{true};
 };
+}
 
 /// Build a `trace-addr → SiteResolution` map by walking every CallInst the
 /// PrototypeCallGraph produced targets for and pulling each CallInst's
 /// trace address out of its `MD_pcsections` metadata.
-llvm::DenseMap<std::uint64_t, SiteResolution>
+static llvm::DenseMap<std::uint64_t, SiteResolution>
 buildTraceAddrIndex(const PrototypeCallGraph &CG) {
   llvm::DenseMap<std::uint64_t, SiteResolution> Out;
   for (const auto &Entry : CG.call_targets()) {
@@ -487,7 +489,7 @@ buildTraceAddrIndex(const PrototypeCallGraph &CG) {
 
 /// Find a dead SGPR pair at `MI` for use as a scavenged jump-target register
 /// for `S_CALL_B64` / `S_ADD_PC_I64` rewrites.
-llvm::MCRegister scavengeSReg64PairAt(const llvm::MachineInstr &MI,
+static llvm::MCRegister scavengeSReg64PairAt(const llvm::MachineInstr &MI,
                                       const IPPredicatedCFG &IPCFG,
                                       const IPPredicatedLiveness &IPLiveness) {
   const llvm::MachineFunction &MF = *MI.getMF();
@@ -565,31 +567,6 @@ void emitMaterialize64BitImm(llvm::MachineBasicBlock &MBB,
 // EntryPointToTraceFunctionAddrMap global emission
 //===----------------------------------------------------------------------===//
 
-/// Link this pass' module into the IModule
-llvm::Error linkParserModuleIntoIModule(
-    PatchPCUsagesPass::Parser &OffloadParser, llvm::Module &IModule,
-    llvm::ModuleAnalysisManager &IMAM) {
-  llvm::LLVMContext &Ctx = IModule.getContext();
-  const llvm::TargetMachine &TM =
-      IMAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI().getTarget();
-  llvm::Triple TT = TM.getTargetTriple();
-  std::string CPU(TM.getTargetCPU());
-  llvm::SubtargetFeatures Features(TM.getTargetFeatureString());
-
-  auto SubOrErr = OffloadParser.parseModule(TT, CPU, Features, Ctx);
-  LUTHIER_RETURN_ON_ERROR(SubOrErr.takeError());
-  std::unique_ptr<llvm::Module> Sub = std::move(*SubOrErr);
-  Sub->setTargetTriple(IModule.getTargetTriple());
-  Sub->setDataLayout(IModule.getDataLayout());
-
-  llvm::Linker L(IModule);
-  if (L.linkInModule(std::move(Sub), llvm::Linker::Flags::LinkOnlyNeeded))
-    return LUTHIER_MAKE_GENERIC_ERROR(
-        "PatchPCUsagesPass: failed to link the pass's device-side "
-        "payload module into the prototype's instrumentation module.");
-  return llvm::Error::success();
-}
-
 /// Remove every entry in \p CtorArrayGV (\c @llvm.global_ctors or
 /// \c @llvm.global_dtors) that references \p Target, then eliminate the
 /// array if the removal leaves it empty. Called when the pass has to strip
@@ -597,7 +574,7 @@ llvm::Error linkParserModuleIntoIModule(
 ///
 /// The array's shape is \c \[N x { i32, void()*, i8* }\]; slot 1 of each
 /// struct is the ctor/dtor function pointer.
-void removeFromCtorDtorArray(llvm::Module &M, llvm::StringRef ArrayName,
+static void removeFromCtorDtorArray(llvm::Module &M, llvm::StringRef ArrayName,
                              llvm::Function &Target) {
   llvm::GlobalVariable *GV = M.getNamedGlobal(ArrayName);
   if (!GV || !GV->hasInitializer())
@@ -636,18 +613,6 @@ void removeFromCtorDtorArray(llvm::Module &M, llvm::StringRef ArrayName,
   GV->eraseFromParent();
 }
 
-/// Small helper: look up a shadow-handle → device symbol name in
-/// \p OffloadParser and return the matching \c GlobalVariable in
-/// \p IModule (or \c nullptr if it doesn't exist).
-template <typename T>
-llvm::Expected<llvm::GlobalVariable *>
-findGVByShadowHandle(PatchPCUsagesPass::Parser &OffloadParser,
-                     llvm::Module &IModule, T *Handle) {
-  auto NameOrErr = OffloadParser.lookupHandleName(Handle);
-  LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
-  return IModule.getNamedGlobal(*NameOrErr);
-}
-
 /// Populate \c EntryPointToTraceFunctionAddrMapSeed and
 /// \c EntryPointToTraceFunctionAddrMapSeedSize on the IModule from the
 /// set of already-discovered trace Functions in the target module.
@@ -661,22 +626,17 @@ findGVByShadowHandle(PatchPCUsagesPass::Parser &OffloadParser,
 /// but its seed is exactly the (TraceAddr, FnHandleAddr) pair that its
 /// ctor appends to that table at load time, which is how the runtime
 /// resolver learns where the instrumented device function lives.
-llvm::Error emitEntryPointSeed(
-    Prototype &P, PatchPCUsagesPass::Parser &OffloadParser) {
+llvm::Error PatchPCUsagesPass::emitEntryPointSeed(
+    Prototype &P) const {
   llvm::Module &IModule = P.getInstrumentationModule();
   llvm::Module &TM = P.getTargetModule();
   llvm::LLVMContext &Ctx = IModule.getContext();
 
-  auto SeedPtrGVOrErr = findGVByShadowHandle(
-      OffloadParser, IModule,
+  auto SeedPtrGV = OffloadParser->getLLVMHandle<llvm::GlobalVariable>(IModule,
       &EntryPointToTraceFunctionAddrMapSeed);
-  LUTHIER_RETURN_ON_ERROR(SeedPtrGVOrErr.takeError());
-  llvm::GlobalVariable *SeedPtrGV = *SeedPtrGVOrErr;
-  auto SeedSizeGVOrErr = findGVByShadowHandle(
-      OffloadParser, IModule,
+  auto SeedSizeGV = OffloadParser->getLLVMHandle<llvm::GlobalVariable>(
+      IModule,
       &EntryPointToTraceFunctionAddrMapSeedSize);
-  LUTHIER_RETURN_ON_ERROR(SeedSizeGVOrErr.takeError());
-  llvm::GlobalVariable *SeedSizeGV = *SeedSizeGVOrErr;
 
   if (!SeedPtrGV || !SeedSizeGV)
     return llvm::Error::success();
@@ -790,16 +750,13 @@ llvm::Error emitEntryPointSeed(
 /// local binding so each object reads its own seed instead of colliding with,
 /// or being resolved to, the enclosing kernel's.
 llvm::Error
-bindRuntimeTableToEnclosingKernel(Prototype &P,
-                                  PatchPCUsagesPass::Parser &OffloadParser) {
+PatchPCUsagesPass::bindRuntimeTableToEnclosingKernel(Prototype &P) const {
   llvm::Module &IModule = P.getInstrumentationModule();
 
   /// Turn a definition into a declaration the loader can bind externally.
   llvm::SmallPtrSet<llvm::Constant *, 4> Externalized;
   auto ExternalizeGV = [&](auto *Handle) -> llvm::Error {
-    auto GVOrErr = findGVByShadowHandle(OffloadParser, IModule, Handle);
-    LUTHIER_RETURN_ON_ERROR(GVOrErr.takeError());
-    llvm::GlobalVariable *GV = *GVOrErr;
+    auto GV = OffloadParser->getLLVMHandle<llvm::GlobalVariable>(IModule, Handle);
     if (GV == nullptr)
       return llvm::Error::success();
     GV->setInitializer(nullptr);
@@ -838,9 +795,8 @@ bindRuntimeTableToEnclosingKernel(Prototype &P,
   // local binding below.
   llvm::SmallPtrSet<const llvm::GlobalVariable *, 2> SeedGVs;
   auto CollectSeedGV = [&](auto *Handle) -> llvm::Error {
-    auto GVOrErr = findGVByShadowHandle(OffloadParser, IModule, Handle);
-    LUTHIER_RETURN_ON_ERROR(GVOrErr.takeError());
-    if (llvm::GlobalVariable *GV = *GVOrErr)
+    auto *GV = OffloadParser->getLLVMHandle<llvm::GlobalVariable>(IModule, Handle);
+    if (GV)
       SeedGVs.insert(GV);
     return llvm::Error::success();
   };
@@ -871,9 +827,7 @@ bindRuntimeTableToEnclosingKernel(Prototype &P,
 
   /// Give this object's own seed local binding.
   auto LocalizeGV = [&](auto *Handle) -> llvm::Error {
-    auto GVOrErr = findGVByShadowHandle(OffloadParser, IModule, Handle);
-    LUTHIER_RETURN_ON_ERROR(GVOrErr.takeError());
-    llvm::GlobalVariable *GV = *GVOrErr;
+    auto *GV = OffloadParser->getLLVMHandle<llvm::GlobalVariable>(IModule, Handle);
     if (GV == nullptr || GV->isDeclaration())
       return llvm::Error::success();
     GV->setLinkage(llvm::GlobalValue::InternalLinkage);
@@ -925,9 +879,8 @@ bindRuntimeTableToEnclosingKernel(Prototype &P,
 /// the IModule (plus their \c @llvm.global_ctors / \c @llvm.global_dtors
 /// entries) — no wave ever hits the fallback path, and the runtime table +
 /// spinlock become pure dead weight.
-llvm::Error handleEntryPointToTraceFunctionAddrMapCtorDtor(
-    Prototype &P, const EntryPoint &EP, const PrototypeCallGraph &CG,
-    PatchPCUsagesPass::Parser &OffloadParser) {
+llvm::Error PatchPCUsagesPass::handleEntryPointToTraceFunctionAddrMapCtorDtor(
+    Prototype &P, const EntryPoint &EP, const PrototypeCallGraph &CG) const {
   const bool AllSingleTargetAndFullyRecovered =
       CG.isFullyRecovered() &&
       llvm::all_of(CG.call_targets(), [](const auto &Entry) {
@@ -935,10 +888,10 @@ llvm::Error handleEntryPointToTraceFunctionAddrMapCtorDtor(
       });
 
   if (!EP.isKernel() || !AllSingleTargetAndFullyRecovered) {
-    LUTHIER_RETURN_ON_ERROR(emitEntryPointSeed(P, OffloadParser));
+    LUTHIER_RETURN_ON_ERROR(emitEntryPointSeed(P));
     if (!EP.isKernel())
       LUTHIER_RETURN_ON_ERROR(
-          bindRuntimeTableToEnclosingKernel(P, OffloadParser));
+          bindRuntimeTableToEnclosingKernel(P));
     return llvm::Error::success();
   }
 
@@ -948,16 +901,13 @@ llvm::Error handleEntryPointToTraceFunctionAddrMapCtorDtor(
   // them from `@llvm.used` / `@llvm.compiler.used`
   llvm::SmallPtrSet<llvm::Constant *, 8> ToUnpin;
   auto CollectByShadowHandleFn = [&](auto *Handle) -> llvm::Error {
-    auto NameOrErr = OffloadParser.lookupHandleName(Handle);
-    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
-    if (llvm::Function *F = IModule.getFunction(*NameOrErr))
+    if (auto *F = OffloadParser->getLLVMHandle<llvm::Function>(IModule, Handle))
       ToUnpin.insert(F);
     return llvm::Error::success();
   };
   auto CollectByShadowHandleGV = [&](auto *Handle) -> llvm::Error {
-    auto GVOrErr = findGVByShadowHandle(OffloadParser, IModule, Handle);
-    LUTHIER_RETURN_ON_ERROR(GVOrErr.takeError());
-    if (llvm::GlobalVariable *GV = *GVOrErr)
+    auto *GV = OffloadParser->getLLVMHandle<llvm::GlobalVariable>(IModule, Handle);
+    if (GV)
       ToUnpin.insert(GV);
     return llvm::Error::success();
   };
@@ -975,9 +925,7 @@ llvm::Error handleEntryPointToTraceFunctionAddrMapCtorDtor(
 
   auto EraseByShadowHandle = [&](auto *Handle, llvm::StringRef ArrayName)
       -> llvm::Error {
-    auto NameOrErr = OffloadParser.lookupHandleName(Handle);
-    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
-    if (llvm::Function *F = IModule.getFunction(*NameOrErr)) {
+    if (auto *F = OffloadParser->getLLVMHandle<llvm::Function>(IModule, Handle)) {
       removeFromCtorDtorArray(IModule, ArrayName, *F);
       // `replaceAllUsesWith` with `nullptr` isn't valid on Functions
       // (their pointer type is fixed), but at this point the only
@@ -1001,10 +949,8 @@ llvm::Error handleEntryPointToTraceFunctionAddrMapCtorDtor(
       "llvm.global_dtors"));
 
   auto DropGVByShadowHandle = [&](auto *Handle) -> llvm::Error {
-    auto GVOrErr = findGVByShadowHandle(OffloadParser, IModule, Handle);
-    LUTHIER_RETURN_ON_ERROR(GVOrErr.takeError());
-    if (llvm::GlobalVariable *GV = *GVOrErr;
-        GV && GV->use_empty())
+    auto *GV = OffloadParser->getLLVMHandle<llvm::GlobalVariable>(IModule, Handle);
+    if (GV && GV->use_empty())
       GV->eraseFromParent();
     return llvm::Error::success();
   };
@@ -1064,7 +1010,7 @@ getOrInsertIModulePlaceholder(llvm::Module &IModule, llvm::Function &Target) {
 }
 
 /// Build the `std::vector<PayloadArg>` for `patchRegSingle(Reg, FnAddr)`.
-llvm::SmallVector<PayloadArg, 2>
+static llvm::SmallVector<PayloadArg, 2>
 buildSingleArgs(llvm::Module &IModule, llvm::MCRegister Reg,
                 llvm::Function *Target) {
   llvm::LLVMContext &Ctx = IModule.getContext();
@@ -1103,7 +1049,7 @@ buildSingleArgs(llvm::Module &IModule, llvm::MCRegister Reg,
 /// Byref allocas are inserted through \p Builder, so this must be called from
 /// inside the injected payload's build callback (the lambda passed to
 /// \c Prototype::createInjectedPayload).
-llvm::SmallVector<llvm::Value *, 8>
+static llvm::SmallVector<llvm::Value *, 8>
 buildMultiHookArgs(llvm::Module &IModule, llvm::Function &Hook,
                    llvm::MCRegister Reg,
                    llvm::ArrayRef<llvm::Function *> Targets,
@@ -1170,8 +1116,6 @@ buildMultiHookArgs(llvm::Module &IModule, llvm::Function &Hook,
   }
   return Args;
 }
-
-} // namespace
 
 
 LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(
@@ -1575,7 +1519,11 @@ PatchPCUsagesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   // instrumentation module. Their `llvm::Function*` and `GlobalVariable*`
   // handles are what every subsequent shadow-handle lookup below expects
   // to find in the IModule.
-  if (auto Err = linkParserModuleIntoIModule(*OffloadParser, IModule, IMAM))
+  const llvm::TargetMachine &TM =
+      IMAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI().getTarget();
+  std::string CPU(TM.getTargetCPU());
+  llvm::SubtargetFeatures Features(TM.getTargetFeatureString());
+  if (auto Err = OffloadParser->parseAndLinkIntoModule(CPU, Features, IModule))
     return EmitAndReturn(std::move(Err), /*Mutated=*/false);
 
   // Fetch the callgraph before the ctor/dtor decision — the kernel-entry
@@ -1584,7 +1532,7 @@ PatchPCUsagesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   const auto &CG = PAM.getResult<PrototypeCallGraphAnalysis>(P);
 
   if (auto Err = handleEntryPointToTraceFunctionAddrMapCtorDtor(
-          P, EP, CG, *OffloadParser))
+          P, EP, CG))
     return EmitAndReturn(std::move(Err), /*Mutated=*/true);
 
   // Inter-procedural predicated liveness. The scavenger reads live-outs
@@ -1619,14 +1567,12 @@ PatchPCUsagesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   // switch to PA::none() once we've reached this point since
   // `linkParserModuleIntoIModule` mutated the IModule.
   auto ResolveHandle = [&](auto *HostHandle) -> llvm::Expected<llvm::Function *> {
-    auto NameOrErr = OffloadParser->lookupHandleName(HostHandle);
-    LUTHIER_RETURN_ON_ERROR(NameOrErr.takeError());
-    if (llvm::Function *F = IModule.getFunction(*NameOrErr))
+    if (llvm::Function *F = OffloadParser->getLLVMHandle<llvm::Function>(IModule, HostHandle))
       return F;
     return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-        "failed to resolve device-side symbol '{0}' in the "
+        "failed to resolve device-side symbol '{0:x}' in the "
         "instrumentation module after linking the offload bundle.",
-        *NameOrErr));
+        HostHandle));
   };
 
   auto BindHandle = [&](llvm::Function *&Dst, auto *HostHandle) -> llvm::Error {
