@@ -54,11 +54,6 @@ luthier::ProcessIntrinsicsAtIRLevelPass::run(llvm::Module &IModule,
   auto &TM = reinterpret_cast<const llvm::GCNTargetMachine &>(
       MAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI().getTarget());
 
-  // Per-run dedup map: signature -> opaque key. Two semantically identical
-  // intrinsic invocations share the same key and named-MD entry.
-  llvm::StringMap<std::string> SignatureToKey;
-  unsigned NextKeyId = 0;
-
   // Iterate over all functions and find the ones marked as a Luthier
   // intrinsic. Early increment since we remove the intrinsic function once
   // we have processed all its users.
