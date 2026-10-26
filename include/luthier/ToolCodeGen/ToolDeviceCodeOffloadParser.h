@@ -102,7 +102,7 @@ public:
   /// Looks up the name associated with the HIP host shadow \p Handle registered
   /// with this parser; An empty \c llvm::StringRef is returned if the \p
   /// Handle is not managed by the parser
-  template <typename T> llvm::StringRef lookupHandleName(T *Handle) {
+  template <typename T> llvm::StringRef lookupHandleName(T *Handle) const {
     std::lock_guard Lock(Mutex);
     const auto It = HandleToName.find(reinterpret_cast<const void *>(Handle));
     return It != HandleToName.end() ? llvm::StringRef{It->second}
@@ -116,7 +116,15 @@ public:
   /// name, or if the type of the named global found in \p M doesn't match
   /// \c NamedGlobalTy
   template <typename NamedGlobalTy, typename HandleTy>
-  NamedGlobalTy *getLLVMHandle(const llvm::Module &M, HandleTy *Handle) {
+  NamedGlobalTy *getLLVMHandle(const llvm::Module &M, HandleTy *Handle) const {
+    llvm::StringRef HandleName = lookupHandleName(Handle);
+    return HandleName.empty() ? nullptr
+                              : llvm::dyn_cast_or_null<NamedGlobalTy>(
+                                    M.getNamedGlobal(HandleName));
+  }
+
+  template <typename NamedGlobalTy, typename HandleTy>
+  NamedGlobalTy *getLLVMHandle(llvm::Module &M, HandleTy *Handle) const {
     llvm::StringRef HandleName = lookupHandleName(Handle);
     return HandleName.empty() ? nullptr
                               : llvm::dyn_cast_or_null<NamedGlobalTy>(
@@ -166,8 +174,8 @@ public:
 /// to the TU's FAT binary and its host shadow handles
 #define LUTHIER_DEFINE_TOOL_OFFLOAD_PARSER_HANDLES(DERIVED)                    \
   template <>                                                                  \
-  __attribute__((managed, used)) char ::luthier::                              \
-      ToolDeviceCodeOffloadParserTrait<DERIVED>::DeviceCodeMarker{};           \
+  __attribute__((managed, used)) char(::luthier::                             \
+      ToolDeviceCodeOffloadParserTrait<DERIVED>::DeviceCodeMarker){};          \
   template <>                                                                  \
   __attribute__((                                                              \
       used, annotate(LUTHIER_STRINGIFY(LUTHIER_CLANG_OFFLOAD_SECTION_BEGIN)))) \

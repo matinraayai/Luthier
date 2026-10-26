@@ -63,7 +63,7 @@ namespace luthier {
 class ToolDeviceCodeParser {
 protected:
   /// Mutex to protect internal state of slices.
-  std::recursive_mutex Mutex;
+  mutable std::recursive_mutex Mutex;
 
   struct SliceInfo {
     llvm::Triple TT;
