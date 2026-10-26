@@ -99,16 +99,28 @@ protected:
   }
 
 public:
-  /// Resolve a HIP host shadow handle (the \c __hipRegister* host-side pointer,
-  /// e.g. \c &MyTool::MyDeviceVar) to its device-side symbol name
-  template <typename T>
-  llvm::Expected<llvm::StringRef> lookupHandleName(T *Handle) {
+  /// Looks up the name associated with the HIP host shadow \p Handle registered
+  /// with this parser; An empty \c llvm::StringRef is returned if the \p
+  /// Handle is not managed by the parser
+  template <typename T> llvm::StringRef lookupHandleName(T *Handle) {
     std::lock_guard Lock(Mutex);
-    auto It = HandleToName.find(reinterpret_cast<const void *>(Handle));
-    LUTHIER_RETURN_ON_ERROR(LUTHIER_GENERIC_ERROR_CHECK(
-        It != HandleToName.end(),
-        "No device-side symbol registered for the given host handle."));
-    return llvm::StringRef{It->second};
+    const auto It = HandleToName.find(reinterpret_cast<const void *>(Handle));
+    return It != HandleToName.end() ? llvm::StringRef{It->second}
+                                    : llvm::StringRef{};
+  }
+
+  /// Looks up the LLVM Named Global handle associated with the \p Handle inside
+  /// the \c llvm::Module \p M; If found, also casts it to \c NamedGlobalTy.
+  /// \c nullptr is returned if the \p Handle is not managed by the parser,
+  /// if \p M doesn't have any named globals associated with the \p Handle's
+  /// name, or if the type of the named global found in \p M doesn't match
+  /// \c NamedGlobalTy
+  template <typename NamedGlobalTy, typename HandleTy>
+  NamedGlobalTy *getLLVMHandle(const llvm::Module &M, HandleTy *Handle) {
+    llvm::StringRef HandleName = lookupHandleName(Handle);
+    return HandleName.empty() ? nullptr
+                              : llvm::dyn_cast_or_null<NamedGlobalTy>(
+                                    M.getNamedGlobal(HandleName));
   }
 };
 
