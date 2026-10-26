@@ -14,10 +14,7 @@
 // limitations under the License.
 //===----------------------------------------------------------------------===//
 /// \file
-/// Implements \c RebaseAppScratchAccessesPass : both the device-side payloads
-/// that re-perform an application's private-memory access at the displaced
-/// address, and the host-side pass that attaches them and erases the original
-/// instructions.
+/// Implements \c RebaseAppScratchAccessesPass.
 //===----------------------------------------------------------------------===//
 #include "luthier/ToolCodeGen/RebaseAppScratchAccessesPass.h"
 
