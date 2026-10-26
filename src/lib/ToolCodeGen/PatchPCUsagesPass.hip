@@ -183,11 +183,11 @@ void initEntryPointToTraceFunctionAddrMap() {
       // lands. The table holds a handful of 16-byte entries and only grows
       // when a new code object is loaded, so retaining the old array is far
       // cheaper than a use-after-free. The destructor frees the live one.
-      __hip_atomic_store(&EntryPointToTraceFunctionAddrMapMaxSize,
-                         NewCapacity, __ATOMIC_RELAXED,
-                         __HIP_MEMORY_SCOPE_AGENT);
-      __hip_atomic_store(&EntryPointToTraceFunctionAddrMap, NewBuf,
-                         __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_AGENT);
+      __scoped_atomic_store_n(&EntryPointToTraceFunctionAddrMapMaxSize,
+                              NewCapacity, __ATOMIC_RELAXED,
+                              __MEMORY_SCOPE_DEVICE);
+      __scoped_atomic_store_n(&EntryPointToTraceFunctionAddrMap, NewBuf,
+                              __ATOMIC_RELEASE, __MEMORY_SCOPE_DEVICE);
     }
     for (std::uint32_t I = 0; I < SeedN; ++I)
       EntryPointToTraceFunctionAddrMap[OldSize + I] =
@@ -198,8 +198,8 @@ void initEntryPointToTraceFunctionAddrMap() {
     // \c patchRegMultiFallback, so a plain store here would leave them reading
     // a stale count out of an incoherent scalar cache and falling back to the
     // host forever.
-    __hip_atomic_store(&EntryPointToTraceFunctionAddrMapSize, Needed,
-                       __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_AGENT);
+    __scoped_atomic_store_n(&EntryPointToTraceFunctionAddrMapSize, Needed,
+                            __ATOMIC_RELEASE, __MEMORY_SCOPE_DEVICE);
     return;
   }
 
@@ -212,8 +212,8 @@ void initEntryPointToTraceFunctionAddrMap() {
   // table. Ordering matches the seed exactly.
   for (std::uint32_t I = 0; I < SeedN; ++I)
     Buf[I] = EntryPointToTraceFunctionAddrMapSeed[I];
-  __hip_atomic_store(&EntryPointToTraceFunctionAddrMapMaxSize, Capacity,
-                     __ATOMIC_RELAXED, __HIP_MEMORY_SCOPE_AGENT);
+  __scoped_atomic_store_n(&EntryPointToTraceFunctionAddrMapMaxSize, Capacity,
+                          __ATOMIC_RELAXED, __MEMORY_SCOPE_DEVICE);
   // Publish the buffer, then the count, as agent-scope release stores — the
   // same publication the extend-into-place path above performs, for the same
   // reason. This path used plain stores, and a plain store publishes nothing:
@@ -226,10 +226,10 @@ void initEntryPointToTraceFunctionAddrMap() {
   // waves faithfully, but what it guards is a read that always returns empty.
   // The count goes last because its release also publishes the entries and
   // the buffer pointer stored before it.
-  __hip_atomic_store(&EntryPointToTraceFunctionAddrMap, Buf,
-                     __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_AGENT);
-  __hip_atomic_store(&EntryPointToTraceFunctionAddrMapSize, SeedN,
-                     __ATOMIC_RELEASE, __HIP_MEMORY_SCOPE_AGENT);
+  __scoped_atomic_store_n(&EntryPointToTraceFunctionAddrMap, Buf,
+                          __ATOMIC_RELEASE, __MEMORY_SCOPE_DEVICE);
+  __scoped_atomic_store_n(&EntryPointToTraceFunctionAddrMapSize, SeedN,
+                          __ATOMIC_RELEASE, __MEMORY_SCOPE_DEVICE);
   // NOTE: the lock is intentionally not reset here. It is zero-initialized,
   // and this constructor can run while a reader of a previously loaded code
   // object holds it (that reader's hostcall is what triggered this load), so
@@ -302,15 +302,15 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
   //
   // The spinlock above is already an atomic, which is why it works; these were
   // the reads left behind.
-  const auto *BR = __hip_atomic_load(
+  const auto *BR = __scoped_atomic_load_n(
       &EntryPointToTraceFunctionAddrMap, __ATOMIC_ACQUIRE,
-      __HIP_MEMORY_SCOPE_AGENT);
-  const std::uint32_t BRN = __hip_atomic_load(
+      __MEMORY_SCOPE_DEVICE);
+  const std::uint32_t BRN = __scoped_atomic_load_n(
       &EntryPointToTraceFunctionAddrMapSize, __ATOMIC_ACQUIRE,
-      __HIP_MEMORY_SCOPE_AGENT);
+      __MEMORY_SCOPE_DEVICE);
   for (std::uint32_t I = 0; I < BRN; ++I) {
-    const std::uint64_t TraceAddr = __hip_atomic_load(
-        &BR[I].TraceAddr, __ATOMIC_RELAXED, __HIP_MEMORY_SCOPE_AGENT);
+    const std::uint64_t TraceAddr = __scoped_atomic_load_n(
+        &BR[I].TraceAddr, __ATOMIC_RELAXED, __MEMORY_SCOPE_DEVICE);
     if (TraceAddr == Cur) {
       // Invalidate before installing the handle: the entry we just hit may
       // have been contributed by a code object loaded after this wave
@@ -320,8 +320,8 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
       // hostcall.
       luthier::sICacheInv();
       luthier::writeReg<std::uint64_t>(
-          Reg, __hip_atomic_load(&BR[I].FnHandleAddr, __ATOMIC_RELAXED,
-                                 __HIP_MEMORY_SCOPE_AGENT));
+          Reg, __scoped_atomic_load_n(&BR[I].FnHandleAddr, __ATOMIC_RELAXED,
+                                      __MEMORY_SCOPE_DEVICE));
       atomicExch(&EntryPointToTraceFunctionAddrMapLock, 0u);
       return;
     }
