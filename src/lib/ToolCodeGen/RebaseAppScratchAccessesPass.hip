@@ -678,12 +678,94 @@ llvm::PreservedAnalyses
 RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   llvm::Module &IModule = P.getInstrumentationModule();
   llvm::LLVMContext &Ctx = IModule.getContext();
+
+  /// First, get a list of instructions that (potentially) access scratch memory
+
+  struct MIScratchAccessDesc {
+    llvm::MachineInstr *MI;
+    AccessDesc D;
+  };
+
+  llvm::SmallVector<MIScratchAccessDesc, 16> ScratchAccessInstructions;
+
+  const llvm::TargetMachine &TM =
+      PAM.getResult<IModuleAnalysisManagerPrototypeProxy>(P)
+          .getManager()
+          .getResult<llvm::MachineModuleAnalysis>(IModule)
+          .getMMI()
+          .getTarget();
+
+
+  llvm::Error Err = llvm::Error::success();
+  P.forEachTargetMF(PAM, [&](llvm::MachineFunction &MF) {
+    if (Err)
+      return;
+    const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
+    const auto &TII = *ST.getInstrInfo();
+
+    for (llvm::MachineBasicBlock &MBB : MF) {
+      for (llvm::MachineInstr &MI : MBB) {
+        std::optional<AccessDesc::Kind> Class;
+        if (TII.isFLATScratch(MI))
+          Class = AccessDesc::Kind::Scratch;
+        else if (TII.isFLAT(MI) && !TII.isFLATGlobal(MI))
+          Class = AccessDesc::Kind::Flat;
+        else if (TII.isMUBUF(MI)) 
+          Class = AccessDesc::Kind::Buffer;
+        if (!Class)
+          continue;
+
+        llvm::StringRef Name = TII.getName(MI.getOpcode());
+        std::optional<AccessDesc> D = classifyByName(Name, *Class);
+
+        if (!D && *Class != AccessDesc::Kind::Scratch) {
+          // A buffer access reaches scratch only through the application's
+          // scratch V#, which requires idxen == 0; and a flat atomic on private
+          // memory is not something the hardware supports, so LLVM expands
+          // private atomics into a load and a store rather than emitting one.
+          // Everything in these two classes that this pass does not recognize
+          // is therefore global by construction and needs no rebasing.
+          continue;
+        }
+        if (!D) {
+          Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+              "RebaseAppScratchAccessesPass: '{0}' in '{1}' addresses the "
+              "wavefront's private segment but is not a form this pass knows "
+              "how to re-issue. Add a payload for it in "
+              "RebaseAppScratchAccessesPass.hip.",
+              Name, MF.getName()));
+          return;
+        }
+        // A scratch buffer requires idxen == 0, so the indexed addressing forms
+        // are global by construction. The index is folded into `vaddr` rather
+        // than carried in an operand of its own, so the opcode's own name is
+        // what distinguishes them.
+        if (*Class == AccessDesc::Kind::Buffer &&
+            (Name.ends_with("_IDXEN") || Name.ends_with("_BOTHEN")))
+          continue;
+
+        ScratchAccessInstructions.push_back({&MI, *D});
+      }
+    }
+  });
+
+  if (Err) {
+    Ctx.emitError(llvm::toString(std::move(Err)));
+    return llvm::PreservedAnalyses::all();
+  }
+
+  // Linking the payload module in is not free, so skip it entirely when no
+  // application instruction can reach the private segment.
+  if (ScratchAccessInstructions.empty()) {
+    LLVM_DEBUG(luthier::dbgs() << "[RebaseAppScratchAccessesPass] found no "
+                                  "application private-memory accesses\n");
+    return llvm::PreservedAnalyses::all();
+  }
+
   llvm::FunctionAnalysisManager &IFAM =
       PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
           .getManager();
 
-  // Linking the payload module in is not free, so hold it off until an
-  // application instruction that can reach the private segment turns up.
   /// Names of every payload the linked module contributed.
   ///
   /// Each payload is `__attribute__((used))`, which is what makes the device
@@ -698,21 +780,18 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   /// erased once every payload has been built.
   llvm::SmallVector<std::string, 64> LinkedPayloadNames;
 
-  bool Linked = false;
-  // The subtarget comes from a target MachineFunction rather than from the
-  // instrumentation module's MachineModuleAnalysis: the two always agree (a
-  // heterogeneous prototype is not supported), and a standalone
-  // `luthier-llc -passes=` run does not register the IModule's module-level
-  // analysis-manager proxy.
-  const llvm::TargetMachine *TM = nullptr;
-  auto ensureLinked = [&]() -> llvm::Error {
-    if (Linked)
-      return llvm::Error::success();
-    assert(TM && "no target machine to pick a bitcode slice with");
-    llvm::SubtargetFeatures Features(TM->getTargetFeatureString());
+  /// Emit \p E as a context error and bail out of the pass.
+  auto fail = [&](llvm::Error E) -> llvm::PreservedAnalyses {
+    Ctx.emitError(llvm::toString(std::move(E)));
+    return llvm::PreservedAnalyses::all();
+  };
+
+  {
+    llvm::SubtargetFeatures Features(TM.getTargetFeatureString());
     auto SubOrErr = OffloadParser->parseModule(
-        TM->getTargetTriple(), TM->getTargetCPU(), Features, Ctx);
-    LUTHIER_RETURN_ON_ERROR(SubOrErr.takeError());
+        TM.getTargetTriple(), TM.getTargetCPU(), Features, Ctx);
+    if (!SubOrErr)
+      return fail(SubOrErr.takeError());
     std::unique_ptr<llvm::Module> Sub = std::move(*SubOrErr);
     Sub->setTargetTriple(IModule.getTargetTriple());
     Sub->setDataLayout(IModule.getDataLayout());
@@ -735,17 +814,13 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
       LinkedPayloadNames.push_back(F->getName().str());
     }
     if (llvm::Linker(IModule).linkInModule(std::move(Sub)))
-      return LUTHIER_MAKE_GENERIC_ERROR(
+      return fail(LUTHIER_MAKE_GENERIC_ERROR(
           "RebaseAppScratchAccessesPass: failed to link the pass's device-side "
-          "payload module into the prototype's instrumentation module.");
-    Linked = true;
-    return llvm::Error::success();
-  };
-
+          "payload module into the prototype's instrumentation module."));
+  }
 
   /// Resolve one of the payload hooks to its \c llvm::Function in the IModule.
   auto hookFor = [&](auto *HostHandle) -> llvm::Expected<llvm::Function *> {
-    LUTHIER_RETURN_ON_ERROR(ensureLinked());
     auto *F = OffloadParser->getLLVMHandle<llvm::Function>(IModule, HostHandle);
     if (!F || F->isDeclaration())
       return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
@@ -854,219 +929,137 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
     return llvm::ConstantInt::get(I32, V);
   };
 
-  llvm::Error Err = llvm::Error::success();
-  llvm::SmallVector<llvm::MachineInstr *, 16> ToErase;
-
-  P.forEachTargetMF(PAM, [&](llvm::MachineFunction &MF) {
-    if (Err)
-      return;
+  for (const MIScratchAccessDesc &C : ScratchAccessInstructions) {
+    llvm::MachineInstr &MI = *C.MI;
+    const AccessDesc &D = C.D;
+    const llvm::MachineFunction &MF = *MI.getMF();
     const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
     const auto &TII = *ST.getInstrInfo();
     const auto &TRI = *ST.getRegisterInfo();
-    TM = &MF.getTarget();
+    llvm::StringRef Name = TII.getName(MI.getOpcode());
 
-    for (llvm::MachineBasicBlock &MBB : MF) {
-      for (llvm::MachineInstr &MI : MBB) {
-        if (Err)
-          return;
-        std::optional<AccessDesc::Kind> Class;
-        if (TII.isFLATScratch(MI))
-          Class = AccessDesc::Kind::Scratch;
-        else if (TII.isFLAT(MI) && !TII.isFLATGlobal(MI))
-          Class = AccessDesc::Kind::Flat;
-        // A buffer access can only reach the private segment on a target whose
-        // stack *is* a buffer, i.e. one that still has a private segment
-        // buffer. On architected-flat-scratch parts (gfx940+, gfx11+, gfx12+)
-        // there is no such descriptor to query at all --- the wave gets
-        // FLAT_SCRATCH from hardware and scratch is reached through
-        // SCRATCH_*/FLAT --- and the same holds wherever
-        // `enableFlatScratch()` moves the stack onto SCRATCH_*. In both cases
-        // every MUBUF is global by construction, so it must be left alone.
-        //
-        // This is also what keeps the payload buildable there: the state value
-        // array only reserves lanes for WAVEFRONT_PRIVATE_SEGMENT_BUFFER under
-        // exactly this predicate (see `findLowestFreeLanes` in
-        // StateValueArraySpecs.cpp), so a buffer payload emitted on an
-        // architected-flat-scratch target would read a slot that has no lane
-        // assignment and fail to lower.
-        else if (TII.isMUBUF(MI) && !ST.hasArchitectedFlatScratch() &&
-                 !ST.enableFlatScratch())
-          Class = AccessDesc::Kind::Buffer;
-        if (!Class)
+    // Cache-policy bits are a performance hint on private memory --- it is
+    // wave-private and coherent with nothing --- so they are dropped on the
+    // scratch path. On the flat and buffer paths the access may be global,
+    // where they are not droppable, and the re-issued access has no way to
+    // spell them: the buffer builtins take a compile-time-constant aux
+    // operand and a plain pointer dereference carries no policy at all.
+    const int64_t CPol = namedImmOr0(MI, llvm::AMDGPU::OpName::cpol);
+    if (CPol != 0 && D.Class != AccessDesc::Kind::Scratch)
+      return fail(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "RebaseAppScratchAccessesPass: '{0}' in '{1}' carries cache "
+          "policy {2}, which the re-issued access cannot reproduce.",
+          Name, MF.getName(), CPol)));
+
+    const int64_t InstOffset = namedImmOr0(MI, llvm::AMDGPU::OpName::offset);
+    const llvm::MachineOperand *VAddr =
+        findNamedOp(MI, llvm::AMDGPU::OpName::vaddr);
+    const llvm::MachineOperand *SAddr =
+        findNamedOp(MI, llvm::AMDGPU::OpName::saddr);
+    const llvm::MachineOperand *SOffset =
+        findNamedOp(MI, llvm::AMDGPU::OpName::soffset);
+    const llvm::MachineOperand *SRsrc =
+        findNamedOp(MI, llvm::AMDGPU::OpName::srsrc);
+    // The data operand's name is not uniform across the three classes: a
+    // FLAT or SCRATCH load defines `vdst`, while a MUBUF load defines
+    // `vdata` --- the same name its store reads. Try both rather than
+    // keying off the direction.
+    const llvm::MachineOperand *Data =
+        findNamedOp(MI, llvm::AMDGPU::OpName::vdst);
+    if (!Data)
+      Data = findNamedOp(MI, llvm::AMDGPU::OpName::vdata);
+    if (!Data || !Data->isReg() || !Data->getReg())
+      return fail(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "RebaseAppScratchAccessesPass: '{0}' in '{1}' has no data "
+          "register operand to re-issue through.",
+          Name, MF.getName())));
+
+    /// An address operand that may be absent, an immediate, or a register.
+    auto addrArg = [&](const llvm::MachineOperand *Op,
+                       llvm::Type *Ty) -> PayloadArg {
+      if (!Op)
+        return constI32(0);
+      if (Op->isImm())
+        return llvm::ConstantInt::get(Ty, Op->getImm());
+      if (!Op->isReg() || !Op->getReg())
+        return constI32(0);
+      return RegArg{Op->getReg().asMCReg(), Ty};
+    };
+
+    /// The \p I -th 32-bit channel of the data operand.
+    const llvm::MCRegister DataReg = Data->getReg().asMCReg();
+    auto dataChannel = [&](unsigned I) -> llvm::MCRegister {
+      if (D.NumDwords <= 1)
+        return DataReg;
+      return TRI.getSubReg(DataReg,
+                           llvm::SIRegisterInfo::getSubRegFromChannel(I));
+    };
+
+    // Every payload takes its data operands first --- the destination
+    // register ids a load writes back into, or the 32-bit channel values a
+    // store reads --- and its address operands after. The dword payloads
+    // always take four data slots; slots past the access width are unused
+    // and get a null register.
+    llvm::SmallVector<PayloadArg, 10> Args;
+    if (D.NumDwords) {
+      for (unsigned I = 0; I != 4; ++I) {
+        if (I >= D.NumDwords) {
+          Args.push_back(constI32(0));
           continue;
-
-        llvm::StringRef Name = TII.getName(MI.getOpcode());
-        std::optional<AccessDesc> D = classifyByName(Name, *Class);
-
-        if (!D && *Class != AccessDesc::Kind::Scratch) {
-          // A buffer access reaches scratch only through the application's
-          // scratch V#, which requires idxen == 0; and a flat atomic on private
-          // memory is not something the hardware supports, so LLVM expands
-          // private atomics into a load and a store rather than emitting one.
-          // Everything in these two classes that this pass does not recognize
-          // is therefore global by construction and needs no rebasing.
-          continue;
         }
-        if (!D) {
-          Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-              "RebaseAppScratchAccessesPass: '{0}' in '{1}' addresses the "
-              "wavefront's private segment but is not a form this pass knows "
-              "how to re-issue. Add a payload for it in "
-              "RebaseAppScratchAccessesPass.hip.",
-              Name, MF.getName()));
-          return;
-        }
-        // A scratch buffer requires idxen == 0, so the indexed addressing forms
-        // are global by construction. The index is folded into `vaddr` rather
-        // than carried in an operand of its own, so the opcode's own name is
-        // what distinguishes them.
-        if (*Class == AccessDesc::Kind::Buffer &&
-            (Name.ends_with("_IDXEN") || Name.ends_with("_BOTHEN")))
-          continue;
-
-        // Cache-policy bits are a performance hint on private memory --- it is
-        // wave-private and coherent with nothing --- so they are dropped on the
-        // scratch path. On the flat and buffer paths the access may be global,
-        // where they are not droppable, and the re-issued access has no way to
-        // spell them: the buffer builtins take a compile-time-constant aux
-        // operand and a plain pointer dereference carries no policy at all.
-        const int64_t CPol = namedImmOr0(MI, llvm::AMDGPU::OpName::cpol);
-        if (CPol != 0 && *Class != AccessDesc::Kind::Scratch) {
-          Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-              "RebaseAppScratchAccessesPass: '{0}' in '{1}' carries cache "
-              "policy {2}, which the re-issued access cannot reproduce.",
-              Name, MF.getName(), CPol));
-          return;
-        }
-
-        const int64_t InstOffset =
-            namedImmOr0(MI, llvm::AMDGPU::OpName::offset);
-        const llvm::MachineOperand *VAddr =
-            findNamedOp(MI, llvm::AMDGPU::OpName::vaddr);
-        const llvm::MachineOperand *SAddr =
-            findNamedOp(MI, llvm::AMDGPU::OpName::saddr);
-        const llvm::MachineOperand *SOffset =
-            findNamedOp(MI, llvm::AMDGPU::OpName::soffset);
-        const llvm::MachineOperand *SRsrc =
-            findNamedOp(MI, llvm::AMDGPU::OpName::srsrc);
-        // The data operand's name is not uniform across the three classes: a
-        // FLAT or SCRATCH load defines `vdst`, while a MUBUF load defines
-        // `vdata` --- the same name its store reads. Try both rather than
-        // keying off the direction.
-        const llvm::MachineOperand *Data =
-            findNamedOp(MI, llvm::AMDGPU::OpName::vdst);
-        if (!Data)
-          Data = findNamedOp(MI, llvm::AMDGPU::OpName::vdata);
-        if (!Data || !Data->isReg() || !Data->getReg()) {
-          Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-              "RebaseAppScratchAccessesPass: '{0}' in '{1}' has no data "
-              "register operand to re-issue through.",
-              Name, MF.getName()));
-          return;
-        }
-
-        /// An address operand that may be absent, an immediate, or a register.
-        auto addrArg = [&](const llvm::MachineOperand *Op,
-                           llvm::Type *Ty) -> PayloadArg {
-          if (!Op)
-            return constI32(0);
-          if (Op->isImm())
-            return llvm::ConstantInt::get(Ty, Op->getImm());
-          if (!Op->isReg() || !Op->getReg())
-            return constI32(0);
-          return RegArg{Op->getReg().asMCReg(), Ty};
-        };
-
-        /// The \p I -th 32-bit channel of the data operand.
-        const llvm::MCRegister DataReg = Data->getReg().asMCReg();
-        auto dataChannel = [&](unsigned I) -> llvm::MCRegister {
-          if (D->NumDwords <= 1)
-            return DataReg;
-          return TRI.getSubReg(DataReg,
-                               llvm::SIRegisterInfo::getSubRegFromChannel(I));
-        };
-
-        // Every payload takes its data operands first --- the destination
-        // register ids a load writes back into, or the 32-bit channel values a
-        // store reads --- and its address operands after. The dword payloads
-        // always take four data slots; slots past the access width are unused
-        // and get a null register.
-        llvm::SmallVector<PayloadArg, 10> Args;
-        if (D->NumDwords) {
-          for (unsigned I = 0; I != 4; ++I) {
-            if (I >= D->NumDwords) {
-              Args.push_back(constI32(0));
-              continue;
-            }
-            Args.push_back(D->IsStore
-                               ? PayloadArg{RegArg{dataChannel(I), I32}}
-                               : constI32(dataChannel(I).id()));
-          }
-        } else {
-          Args.push_back(D->IsStore ? PayloadArg{RegArg{DataReg, I32}}
-                                    : constI32(DataReg.id()));
-        }
-
-        switch (D->Class) {
-        case AccessDesc::Kind::Scratch:
-          Args.push_back(addrArg(VAddr, I32));
-          Args.push_back(addrArg(SAddr, I32));
-          Args.push_back(constI32(InstOffset));
-          break;
-        case AccessDesc::Kind::Flat:
-          Args.push_back(addrArg(VAddr, I64));
-          Args.push_back(constI32(InstOffset));
-          break;
-        case AccessDesc::Kind::Buffer: {
-          if (!SRsrc || !SRsrc->isReg() || !SRsrc->getReg()) {
-            Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-                "RebaseAppScratchAccessesPass: '{0}' in '{1}' has no resource "
-                "descriptor operand.",
-                Name, MF.getName()));
-            return;
-          }
-          const llvm::MCRegister Rsrc = SRsrc->getReg().asMCReg();
-          Args.push_back(RegArg{Rsrc, RsrcTy});
-          // Words 0 and 1 again, as plain integers: the runtime scratch test
-          // needs the V#'s 48-bit base and __amdgpu_buffer_rsrc_t is opaque.
-          Args.push_back(
-              RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub0), I32});
-          Args.push_back(
-              RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub1), I32});
-          Args.push_back(addrArg(VAddr, I32));
-          Args.push_back(addrArg(SOffset, I32));
-          Args.push_back(constI32(InstOffset));
-          break;
-        }
-        }
-
-        auto HookOrErr = selectHook(*D);
-        if (!HookOrErr) {
-          Err = HookOrErr.takeError();
-          return;
-        }
-        auto PayloadOrErr =
-            P.createInjectedPayload(**HookOrErr, MI, IFAM, Args);
-        if (!PayloadOrErr) {
-          Err = PayloadOrErr.takeError();
-          return;
-        }
-        ToErase.push_back(&MI);
+        Args.push_back(D.IsStore ? PayloadArg{RegArg{dataChannel(I), I32}}
+                                 : constI32(dataChannel(I).id()));
       }
+    } else {
+      Args.push_back(D.IsStore ? PayloadArg{RegArg{DataReg, I32}}
+                               : constI32(DataReg.id()));
     }
-  });
 
-  if (Err) {
-    Ctx.emitError(llvm::toString(std::move(Err)));
-    return llvm::PreservedAnalyses::all();
+    switch (D.Class) {
+    case AccessDesc::Kind::Scratch:
+      Args.push_back(addrArg(VAddr, I32));
+      Args.push_back(addrArg(SAddr, I32));
+      Args.push_back(constI32(InstOffset));
+      break;
+    case AccessDesc::Kind::Flat:
+      Args.push_back(addrArg(VAddr, I64));
+      Args.push_back(constI32(InstOffset));
+      break;
+    case AccessDesc::Kind::Buffer: {
+      if (!SRsrc || !SRsrc->isReg() || !SRsrc->getReg())
+        return fail(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+            "RebaseAppScratchAccessesPass: '{0}' in '{1}' has no resource "
+            "descriptor operand.",
+            Name, MF.getName())));
+      const llvm::MCRegister Rsrc = SRsrc->getReg().asMCReg();
+      Args.push_back(RegArg{Rsrc, RsrcTy});
+      // Words 0 and 1 again, as plain integers: the runtime scratch test
+      // needs the V#'s 48-bit base and __amdgpu_buffer_rsrc_t is opaque.
+      Args.push_back(RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub0), I32});
+      Args.push_back(RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub1), I32});
+      Args.push_back(addrArg(VAddr, I32));
+      Args.push_back(addrArg(SOffset, I32));
+      Args.push_back(constI32(InstOffset));
+      break;
+    }
+    }
+
+    auto HookOrErr = selectHook(D);
+    if (!HookOrErr)
+      return fail(HookOrErr.takeError());
+    auto PayloadOrErr = P.createInjectedPayload(**HookOrErr, MI, IFAM, Args);
+    if (!PayloadOrErr)
+      return fail(PayloadOrErr.takeError());
   }
 
-  // The payloads are anchored on the PATCHPOINT markers `createInjectedPayload`
-  // inserted *before* each of these instructions, not on the instructions
-  // themselves, so erasing them now leaves every binding intact. Carry each
-  // instruction's trace address over to its marker first: the callgraph, code
-  // discovery and the trace translator all index by it.
-  for (llvm::MachineInstr *MI : ToErase) {
+  // Every payload has been injected, so the instructions they replace can now
+  // be erased. The payloads are anchored on the PATCHPOINT markers
+  // `createInjectedPayload` inserted *before* each of these instructions, not
+  // on the instructions themselves, so erasing them leaves every binding
+  // intact. Carry each instruction's trace address over to its marker first:
+  // the callgraph, code discovery and the trace translator all index by it.
+  for (const MIScratchAccessDesc &C : ScratchAccessInstructions) {
+    llvm::MachineInstr *MI = C.MI;
     if (auto *MD = TargetMachineInstrMDNode::getInstrMDNodeIfExists(*MI)) {
       if (auto Addr = MD->getTraceInstrAddress()) {
         llvm::MachineInstr *Marker = MI->getPrevNode();
@@ -1083,41 +1076,34 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
 
   // Retire the out-of-line payload bodies; see LinkedPayloadNames above for why
   // none of them can be left behind.
-  if (!LinkedPayloadNames.empty()) {
-    llvm::SmallPtrSet<llvm::Function *, 32> ToRetire;
-    for (const std::string &Name : LinkedPayloadNames)
-      if (llvm::Function *F = IModule.getFunction(Name))
-        ToRetire.insert(F);
-    llvm::removeFromUsedLists(IModule, [&](llvm::Constant *C) {
-      auto *F = llvm::dyn_cast_or_null<llvm::Function>(
-          C ? C->stripPointerCasts() : nullptr);
-      return F && ToRetire.contains(F);
-    });
-    for (llvm::Function *F : ToRetire) {
-      // Each payload's `appendToCompilerUsed` erases the old llvm.compiler.used
-      // global and builds a new one, but LLVM keeps the superseded
-      // ConstantArrays alive, and each still counts as a use of everything it
-      // referenced. Drop those before concluding anything from use_empty().
-      F->removeDeadConstantUsers();
-      if (!F->use_empty()) {
-        Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-            "RebaseAppScratchAccessesPass: payload '{0}' still has {1} use(s) "
-            "after every injected payload was built; the ones this pass uses "
-            "are force-inlined and the rest are unused, so it should have "
-            "none.",
-            F->getName(), F->getNumUses()))));
-        return llvm::PreservedAnalyses::all();
-      }
-      F->eraseFromParent();
-    }
+  llvm::SmallPtrSet<llvm::Function *, 32> ToRetire;
+  for (const std::string &Name : LinkedPayloadNames)
+    if (llvm::Function *F = IModule.getFunction(Name))
+      ToRetire.insert(F);
+  llvm::removeFromUsedLists(IModule, [&](llvm::Constant *C) {
+    auto *F = llvm::dyn_cast_or_null<llvm::Function>(
+        C ? C->stripPointerCasts() : nullptr);
+    return F && ToRetire.contains(F);
+  });
+  for (llvm::Function *F : ToRetire) {
+    // Each payload's `appendToCompilerUsed` erases the old llvm.compiler.used
+    // global and builds a new one, but LLVM keeps the superseded
+    // ConstantArrays alive, and each still counts as a use of everything it
+    // referenced. Drop those before concluding anything from use_empty().
+    F->removeDeadConstantUsers();
+    if (!F->use_empty())
+      return fail(LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "RebaseAppScratchAccessesPass: payload '{0}' still has {1} use(s) "
+          "after every injected payload was built; the ones this pass uses "
+          "are force-inlined and the rest are unused, so it should have "
+          "none.",
+          F->getName(), F->getNumUses())));
+    F->eraseFromParent();
   }
 
   LLVM_DEBUG(luthier::dbgs()
-             << "[RebaseAppScratchAccessesPass] rebased " << ToErase.size()
+             << "[RebaseAppScratchAccessesPass] rebased " << ScratchAccessInstructions.size()
              << " application private-memory access(es)\n");
-
-  if (ToErase.empty())
-    return llvm::PreservedAnalyses::all();
 
   llvm::PreservedAnalyses PA = llvm::PreservedAnalyses::none();
   PA.preserve<TargetModuleAnalysisManagerPrototypeProxy>();
