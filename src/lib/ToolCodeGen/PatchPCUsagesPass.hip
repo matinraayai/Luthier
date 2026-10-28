@@ -76,7 +76,6 @@
 // Device side
 //===----------------------------------------------------------------------===//
 
-namespace {
 
 /// One entry of the \c EntryPointToTraceFunctionAddrMap
 /// table: a trace function's entry point address and its associated
@@ -117,6 +116,8 @@ __attribute__((device, used, constant))
 std::uint32_t
     EntryPointToTraceFunctionAddrMapSeedSize =
         0;
+
+namespace {
 
 
 /// Writes a single, statically-known target address into
@@ -319,9 +320,16 @@ patchRegMultiFallback(llvm::MCRegister Reg, std::uint64_t Cur,
       // that resolves has to do this — not just the one that took the
       // hostcall.
       luthier::sICacheInv();
+
+      const std::uint64_t Handle = __scoped_atomic_load_n(
+          &BR[I].FnHandleAddr, __ATOMIC_RELAXED, __MEMORY_SCOPE_DEVICE);
+      const unsigned HandleLo = __builtin_amdgcn_readfirstlane(
+          static_cast<unsigned>(Handle & 0xffffffffu));
+      const unsigned HandleHi =
+          __builtin_amdgcn_readfirstlane(static_cast<unsigned>(Handle >> 32));
       luthier::writeReg<std::uint64_t>(
-          Reg, __scoped_atomic_load_n(&BR[I].FnHandleAddr, __ATOMIC_RELAXED,
-                                      __MEMORY_SCOPE_DEVICE));
+          Reg, (static_cast<std::uint64_t>(HandleHi) << 32) |
+                   static_cast<std::uint64_t>(HandleLo));
       atomicExch(&EntryPointToTraceFunctionAddrMapLock, 0u);
       return;
     }
