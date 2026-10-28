@@ -132,7 +132,9 @@ def S_NOT_B64_sem : InstSISemantic<S_NOT_B64> {
 //   rdna4-instruction-set-architecture.pdf, page 235.
 def S_ABS_I32_sem : InstSISemantic<S_ABS_I32> {
   let Semantic = [
-    (DefVal $result, (LLVMIntrinsic si_llvm_i32_ty, int_abs, [(GetNamedOperand $src0, si_llvm_i32_ty)])),
+    (DefVal $result, (LLVMIntrinsic si_llvm_i32_ty, int_abs,
+                      [(GetNamedOperand $src0, si_llvm_i32_ty), (ConstantFalse si_llvm_i1_ty)])
+                      ),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $result), (ConstantInt si_llvm_i32_ty, 0))>.ret,
     (SetNamedOperand $sdst, (GetVal $result))
   ];
@@ -1190,7 +1192,7 @@ def S_ANDN1_WREXEC_B64_sem : InstSISemantic<S_ANDN1_WREXEC_B64> {
 def S_ANDN2_WREXEC_B32_sem : InstSISemantic<S_ANDN2_WREXEC_B32> {
   let Semantic = [
     (DefVal $temp, (LLVMAnd (GetNamedOperand $src0),
-                    (LLVMXor (ImplicitUse EXEC),
+                    (LLVMXor (ImplicitUse EXEC_LO),
                               (ConstantSignedInt si_llvm_i32_ty, -1)))),
     (ImplicitDef EXEC_LO, (GetVal $temp)),
     SetSCCImplicit<(LLVMCmp LLVMICmpNE, (GetVal $temp),
