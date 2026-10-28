@@ -21,6 +21,9 @@
 #include "luthier/Intrinsic/Intrinsics.h"
 #include "luthier/Intrinsic/ScalarValueArgument.h"
 
+#include <hsa/hsa.h>
+#include <SIInstrInfo.h>
+
 #ifndef __HIP_DEVICE_COMPILE__
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
@@ -120,47 +123,55 @@ privateOffsetToFlat(std::uint32_t Offset) {
   return (const void *)(Private<const char> *)(std::size_t)Offset;
 }
 
-/// \return the flat address a buffer instruction was going to access, given its
-/// V# words 0 and 1 and its three offset terms.
-///
-/// The V#'s 48-bit base plus the instruction's offsets *is* the address the
-/// hardware forms, so it is also the address to aperture-check --- there is no
-/// need to know where the wavefront's scratch starts, which matters because
-/// neither \c FLAT_SCRATCH nor \c WAVEFRONT_PRIVATE_SEGMENT_BUFFER is available
-/// from the state value array on every target (the specs only reserve lanes for
-/// them on non-architected-flat-scratch parts).
-///
-/// Word 1 of a V# carries \c base[47:32] in its low half only; the upper half
-/// is stride and swizzle configuration, hence the mask.
-///
-/// \c soffset is added outside the swizzle while \c vaddr and \c inst_offset go
-/// inside it, but that distinction does not change which *page* the access
-/// lands on, so the plain sum is what the aperture test needs.
-__attribute__((device)) inline const void *
-bufferAccessFlatAddr(std::uint32_t RsrcLo, std::uint32_t RsrcHi,
-                     std::uint32_t VOffset, std::uint32_t SOffset,
-                     std::int32_t InstOffset) {
-  const std::uint64_t Base =
-      static_cast<std::uint64_t>(RsrcLo) |
-      (static_cast<std::uint64_t>(RsrcHi & 0xFFFFu) << 32);
-  const std::uint64_t Addr = Base + static_cast<std::uint64_t>(SOffset) +
-                             static_cast<std::uint64_t>(VOffset) +
-                             static_cast<std::uint64_t>(
-                                 static_cast<std::int64_t>(InstOffset));
-  return reinterpret_cast<const void *>(Addr);
+/// \return the \c S_GETREG_B32 operand that reads all 32 bits of hardware
+/// register \p ID .
+constexpr std::uint16_t getRegAll32Bits(std::uint16_t ID) {
+  return static_cast<std::uint16_t>(ID | (31u << 11));
 }
 
-/// \return \p SOffset adjusted for a buffer access, iff the address that access
-/// was going to form falls inside this work-item's private segment.
+/// \return the base address of this wavefront's scratch space, i.e. its
+/// \c FLAT_SCRATCH .
 ///
-/// The decision is the same aperture test the \c FLAT_* payloads use, applied
-/// to the address reconstructed by \c bufferAccessFlatAddr . Deciding it from
-/// the address rather than from the identity of the descriptor is what makes
-/// this portable: it needs no state-value-array slot for the wavefront's
-/// scratch base, and \c __builtin_amdgcn_is_private lowers to whichever
-/// aperture source the target actually has --- \c SRC_PRIVATE_BASE , a code
-/// object v5 implicit kernarg, or a v4 queue-pointer load --- via
-/// \c SITargetLowering::getSegmentAperture .
+/// On targets with architected flat scratch the hardware initializes the base
+/// itself: GFX11+ exposes it through \c HW_REG_FLAT_SCR_LO / \c _HI (IDs 20 and
+/// 21), while gfx94x has no such hardware registers and keeps it in the
+/// \c FLAT_SCRATCH SGPR pair. On targets with absolute flat scratch it is
+/// whatever the kernel prologue installed, which the state value array keeps.
+__attribute__((device)) inline std::uint64_t wavefrontScratchBase() {
+#if defined(__GFX11__) || defined(__GFX12__) || defined(__GFX13__)
+  constexpr std::uint16_t HwRegFlatScrLo = 20;
+  constexpr std::uint16_t HwRegFlatScrHi = 21;
+  const std::uint32_t Lo =
+      __builtin_amdgcn_s_getreg(getRegAll32Bits(HwRegFlatScrLo));
+  const std::uint32_t Hi =
+      __builtin_amdgcn_s_getreg(getRegAll32Bits(HwRegFlatScrHi));
+  return static_cast<std::uint64_t>(Lo) |
+         (static_cast<std::uint64_t>(Hi) << 32);
+#elif defined(__gfx940__) || defined(__gfx941__) || defined(__gfx942__) ||     \
+    defined(__gfx950__) || defined(__gfx9_4_generic__)
+  return luthier::readReg<std::uint64_t>(llvm::AMDGPU::FLAT_SCR);
+#else
+  return luthier::readSVA<std::uint64_t>(luthier::FLAT_SCRATCH);
+#endif
+}
+
+/// \return the size in bytes of this wavefront's scratch space: the dispatch's
+/// per-work-item private segment size times the wavefront size. The dispatch
+/// was launched with the instrumentation's reserve included, so this covers
+/// both the instrumentation's and the application's part of the segment.
+__attribute__((device)) inline std::uint64_t wavefrontScratchSize() {
+  const auto *Packet = reinterpret_cast<const hsa_kernel_dispatch_packet_t *>(
+      luthier::readSVA<std::uint64_t>(luthier::DISPATCH_PTR));
+  return static_cast<std::uint64_t>(Packet->private_segment_size) *
+         static_cast<std::uint64_t>(__builtin_amdgcn_wavefrontsize());
+}
+
+/// \return \p SOffset adjusted for a buffer access, iff that access lands in
+/// this wavefront's scratch space.
+///
+/// FIXME: How to virtualize global accesses to scratch?
+/// Word 1 of a V# carries \c base[47:32] in its low half only; the upper half
+/// is stride and swizzle configuration, hence the mask.
 ///
 /// The displacement goes into \c soffset rather than into the offsets inside
 /// the swizzle: \c soffset is added *outside* it
@@ -171,10 +182,14 @@ bufferAccessFlatAddr(std::uint32_t RsrcLo, std::uint32_t RsrcHi,
 /// on flat scratch.
 __attribute__((device)) inline std::uint32_t
 displacedBufferSOffset(std::uint32_t RsrcLo, std::uint32_t RsrcHi,
-                       std::uint32_t VOffset, std::uint32_t SOffset,
-                       std::int32_t InstOffset) {
-  if (__builtin_amdgcn_is_private(
-          bufferAccessFlatAddr(RsrcLo, RsrcHi, VOffset, SOffset, InstOffset)))
+                       std::uint32_t SOffset) {
+  const std::uint64_t WaveAddr =
+      (static_cast<std::uint64_t>(RsrcLo) |
+       (static_cast<std::uint64_t>(RsrcHi & 0xFFFFu) << 32)) +
+      static_cast<std::uint64_t>(SOffset);
+  const std::uint64_t ScratchBase = wavefrontScratchBase();
+  if (WaveAddr >= ScratchBase &&
+      WaveAddr - ScratchBase < wavefrontScratchSize())
     SOffset += instrumentationReserve() *
                static_cast<std::uint32_t>(__builtin_amdgcn_wavefrontsize());
   return SOffset;
@@ -333,14 +348,16 @@ bufferLoadDwords(
     llvm::MCRegister D3, __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,
     std::uint32_t RsrcHi, std::uint32_t VOffset, std::uint32_t SOffset,
     std::int32_t InstOffset) {
-  const int SOff = static_cast<int>(
-      displacedBufferSOffset(RsrcLo, RsrcHi, VOffset, SOffset,
-                             InstOffset) +
-      static_cast<std::uint32_t>(InstOffset));
+  // The instruction offset sits inside the swizzle together with vaddr, so it
+  // travels in the vector offset; only the displacement goes into soffset.
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
   std::uint32_t V[4] = {0, 0, 0, 0};
   for (unsigned I = 0; I != N; ++I)
     V[I] = __builtin_amdgcn_raw_buffer_load_b32(
-        Rsrc, static_cast<int>(VOffset + 4 * I), SOff, 0);
+        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
   writeDwords<N>(D0, D1, D2, D3, V);
 }
 
@@ -350,14 +367,16 @@ bufferStoreDwords(
     std::uint32_t V0, std::uint32_t V1, std::uint32_t V2, std::uint32_t V3,
     __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo, std::uint32_t RsrcHi,
     std::uint32_t VOffset, std::uint32_t SOffset, std::int32_t InstOffset) {
-  const int SOff = static_cast<int>(
-      displacedBufferSOffset(RsrcLo, RsrcHi, VOffset, SOffset,
-                             InstOffset) +
-      static_cast<std::uint32_t>(InstOffset));
+  // The instruction offset sits inside the swizzle together with vaddr, so it
+  // travels in the vector offset; only the displacement goes into soffset.
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
   const std::uint32_t V[4] = {V0, V1, V2, V3};
   for (unsigned I = 0; I != N; ++I)
     __builtin_amdgcn_raw_buffer_store_b32(
-        V[I], Rsrc, static_cast<int>(VOffset + 4 * I), SOff, 0);
+        V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
 }
 
 template <typename T>
@@ -366,17 +385,19 @@ bufferLoadSubDword(
     llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,
     std::uint32_t RsrcHi, std::uint32_t VOffset, std::uint32_t SOffset,
     std::int32_t InstOffset) {
-  const int SOff = static_cast<int>(
-      displacedBufferSOffset(RsrcLo, RsrcHi, VOffset, SOffset,
-                             InstOffset) +
-      static_cast<std::uint32_t>(InstOffset));
+  // The instruction offset sits inside the swizzle together with vaddr, so it
+  // travels in the vector offset; only the displacement goes into soffset.
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
   T Val;
   if constexpr (sizeof(T) == 1)
     Val = static_cast<T>(__builtin_amdgcn_raw_buffer_load_b8(
-        Rsrc, static_cast<int>(VOffset), SOff, 0));
+        Rsrc, static_cast<int>(LaneOffset), SOff, 0));
   else
     Val = static_cast<T>(__builtin_amdgcn_raw_buffer_load_b16(
-        Rsrc, static_cast<int>(VOffset), SOff, 0));
+        Rsrc, static_cast<int>(LaneOffset), SOff, 0));
   luthier::writeReg<std::uint32_t>(
       Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));
 }
@@ -387,17 +408,19 @@ bufferStoreSubDword(
     std::uint32_t Value, __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,
     std::uint32_t RsrcHi, std::uint32_t VOffset, std::uint32_t SOffset,
     std::int32_t InstOffset) {
-  const int SOff = static_cast<int>(
-      displacedBufferSOffset(RsrcLo, RsrcHi, VOffset, SOffset,
-                             InstOffset) +
-      static_cast<std::uint32_t>(InstOffset));
+  // The instruction offset sits inside the swizzle together with vaddr, so it
+  // travels in the vector offset; only the displacement goes into soffset.
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
   if constexpr (sizeof(T) == 1)
     __builtin_amdgcn_raw_buffer_store_b8(static_cast<unsigned char>(Value),
-                                         Rsrc, static_cast<int>(VOffset), SOff,
+                                         Rsrc, static_cast<int>(LaneOffset), SOff,
                                          0);
   else
     __builtin_amdgcn_raw_buffer_store_b16(static_cast<unsigned short>(Value),
-                                          Rsrc, static_cast<int>(VOffset),
+                                          Rsrc, static_cast<int>(LaneOffset),
                                           SOff, 0);
 }
 

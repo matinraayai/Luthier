@@ -2567,7 +2567,13 @@ computeInitialEntryKernelSVAInfo(const llvm::MachineFunction &KernelMF,
                   "IPLiveness not fully discovered; forcing all "
                   "implicit args on for kernel '"
                << KernelMF.getName() << "'\n");
-    Info.RequestedKernelArguments.insert(IMPLICIT_ARG_BUFFER);
+    for (std::underlying_type_t<ScalarValueArgument> I =
+             SCALAR_VALUE_ARGUMENT_FIRST;
+         I <= SCALAR_VALUE_ARGUMENT_LAST; ++I) {
+      auto SA = static_cast<ScalarValueArgument>(I);
+      if (SA != WAVEFRONT_PRIVATE_SEGMENT_BUFFER && SA != FLAT_SCRATCH)
+        Info.RequestedKernelArguments.insert(SA);
+    }
     for (auto Attr : {amdgpu::hsamd::ValueKind::HiddenHostcallBuffer,
                       amdgpu::hsamd::ValueKind::HiddenHeapV1,
                       amdgpu::hsamd::ValueKind::HiddenMultiGridSyncArg,

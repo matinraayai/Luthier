@@ -328,6 +328,74 @@ static std::shared_ptr<StateValueArrayStorage> findFixedStateValueArrayStorage(
         StateValueArrayFixedVGPRLocation);
 }
 
+/// Collects up to \p NumRegs registers of class \p RC that lie outside the
+/// application's launch budget and are available for instrumentation in every
+/// function of \p Functions.
+static void collectRegistersOutsideAppBudget(
+    llvm::ArrayRef<llvm::MachineFunction *> Functions,
+    const llvm::TargetRegisterClass &RC, unsigned int NumRegs,
+    llvm::SmallVectorImpl<llvm::MCRegister> &Regs) {
+  if (NumRegs == 0)
+    return;
+  for (llvm::MCRegister Reg : RC) {
+    bool IsFree = llvm::all_of(Functions, [&](llvm::MachineFunction *MF) {
+      return !isAppOwnedGPR(*MF, Reg) &&
+             isAvailableForInstrumentation(*MF, Reg);
+    });
+    if (IsFree) {
+      Regs.push_back(Reg);
+      if (Regs.size() == NumRegs)
+        return;
+    }
+  }
+}
+
+/// \brief Tries to find a fixed location for the state value array made up
+/// only of registers outside the application's launch budget
+/// \details Used when the call graph is not fully discovered.
+static std::shared_ptr<StateValueArrayStorage>
+findFixedStateValueArrayStorageOutsideAppBudget(
+    llvm::ArrayRef<llvm::MachineFunction *> RelatedFunctions,
+    llvm::ArrayRef<StateValueArrayStorage::StorageKind> SupportedStorage,
+    int MaxAGPRsUsedByAllStorage, int MaxSGPRsUsedByAllStorage) {
+  llvm::SmallVector<llvm::MCRegister, 1> VGPRs;
+  llvm::SmallVector<llvm::MCRegister, 2> AGPRs;
+  llvm::SmallVector<llvm::MCRegister, 3> SGPRs;
+  collectRegistersOutsideAppBudget(
+      RelatedFunctions, llvm::AMDGPU::VGPR_32RegClass, 1, VGPRs);
+  collectRegistersOutsideAppBudget(RelatedFunctions,
+                                   llvm::AMDGPU::AGPR_32RegClass,
+                                   MaxAGPRsUsedByAllStorage, AGPRs);
+  collectRegistersOutsideAppBudget(RelatedFunctions,
+                                   llvm::AMDGPU::SGPR_32RegClass,
+                                   MaxSGPRsUsedByAllStorage, SGPRs);
+
+  for (const auto &StorageScheme : SupportedStorage) {
+    int NumVGPRsUsedByStorage =
+        StateValueArrayStorage::getNumVGPRsUsed(StorageScheme);
+    int NumAGPRsUsedByStorage =
+        StateValueArrayStorage::getNumAGPRsUsed(StorageScheme);
+    int NumSGPRsUsedByStorage =
+        StateValueArrayStorage::getNumSGPRsUsed(StorageScheme);
+    if (NumVGPRsUsedByStorage + NumAGPRsUsedByStorage +
+            NumSGPRsUsedByStorage ==
+        0)
+      continue;
+    if (NumVGPRsUsedByStorage <= VGPRs.size() &&
+        NumAGPRsUsedByStorage <= AGPRs.size() &&
+        NumSGPRsUsedByStorage <= SGPRs.size()) {
+      auto Out = StateValueArrayStorage::createSVAStorage(VGPRs, AGPRs, SGPRs,
+                                                          StorageScheme);
+      if (auto Err = Out.takeError()) {
+        llvm::consumeError(std::move(Err));
+        return nullptr;
+      }
+      return std::move(*Out);
+    }
+  }
+  return nullptr;
+}
+
 static std::shared_ptr<StateValueArrayStorage> findStateValueArrayStorageAtMI(
     const llvm::MachineFunction &MF,
     llvm::ArrayRef<StateValueArrayStorage::StorageKind> SupportedStorage,
@@ -467,10 +535,18 @@ llvm::Error SVStorageAndLoadLocations::calculate(
       MaxNumSGPRsUsedByAllStorage = MaxNumSGPRsUsedByStorage;
   }
 
-  // Try to find a fixed location to store the state value array
-  auto StateValueFixedLocation = findFixedStateValueArrayStorage(
-      MFs, SupportedStorage, MaxNumAGPRsUsedByAllStorage,
-      MaxNumSGPRsUsedByAllStorage);
+  // Try to find a fixed location to store the state value array. If the
+  // call graph is not fully discovered, the location must lie outside the
+  // initial execution point's register budget, so that functions lifted into
+  // other modules agree on it; otherwise, fall back to scavenging.
+  std::shared_ptr<StateValueArrayStorage> StateValueFixedLocation =
+      IPLiveness.isFullyDiscovered()
+          ? findFixedStateValueArrayStorage(MFs, SupportedStorage,
+                                            MaxNumAGPRsUsedByAllStorage,
+                                            MaxNumSGPRsUsedByAllStorage)
+          : findFixedStateValueArrayStorageOutsideAppBudget(
+                MFs, SupportedStorage, MaxNumAGPRsUsedByAllStorage,
+                MaxNumSGPRsUsedByAllStorage);
 
   if (StateValueFixedLocation != nullptr) {
     // If a fixed location was found, then all MBB intervals inside all MFs

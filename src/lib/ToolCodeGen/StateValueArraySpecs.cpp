@@ -20,6 +20,7 @@
 #include "luthier/ToolCodeGen/StateValueArraySpecs.h"
 #include "luthier/ToolCodeGen/AMDGPUPreloadValueMapping.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
+#include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
 #include <AMDGPU.h>
 #include <AMDGPUTargetMachine.h>
@@ -230,7 +231,9 @@ StateValueArraySpecsAnalysis::run(Prototype &IP,
       TargetMAM.getResult<InitialEntryPointAnalysis>(TargetModule)
           .getInitialEntryPoint()
           .isKernel();
-  if (!IsInitialEntryPointKernel) {
+  bool IsFullyDiscovered =
+      IPAM.getResult<IPPredicatedLivenessAnalysis>(IP).isFullyDiscovered();
+  if (!IsInitialEntryPointKernel || !IsFullyDiscovered) {
     for (std::underlying_type_t<ScalarValueArgument> I =
              SCALAR_VALUE_ARGUMENT_FIRST;
          I <= SCALAR_VALUE_ARGUMENT_LAST; ++I)
