@@ -584,9 +584,16 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
             MIB.addReg(ExecReg, llvm::RegState::Implicit);
         };
 
+        // \c $scc is saved after every other register to ensure a free
+        // \c SReg_32 is available for its copy.
         for (const PreservedReg &P : Preserved)
-          emitPreserveCopy(EntryMBB, EntryInsertPt, P, P.ActiveSaveVReg,
-                           /*Restore=*/false, /*UnderFlippedExec=*/false);
+          if (P.PhysReg != llvm::AMDGPU::SCC)
+            emitPreserveCopy(EntryMBB, EntryInsertPt, P, P.ActiveSaveVReg,
+                             /*Restore=*/false, /*UnderFlippedExec=*/false);
+        for (const PreservedReg &P : Preserved)
+          if (P.PhysReg == llvm::AMDGPU::SCC)
+            emitPreserveCopy(EntryMBB, EntryInsertPt, P, P.ActiveSaveVReg,
+                             /*Restore=*/false, /*UnderFlippedExec=*/false);
         if (AnyWholeWave) {
           emitExecMaskFlip(EntryMBB, EntryInsertPt);
           for (const PreservedReg &P : Preserved)
@@ -610,7 +617,9 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
                                  /*Restore=*/true, /*UnderFlippedExec=*/true);
             emitExecMaskFlip(MBB, FirstTerm);
           }
-          for (const PreservedReg &P : Preserved) {
+          // \c $scc is restored before every other register, mirroring the
+          // entry block.
+          auto emitRestore = [&](const PreservedReg &P) {
             emitPreserveCopy(MBB, FirstTerm, P, P.ActiveSaveVReg,
                              /*Restore=*/true, /*UnderFlippedExec=*/false);
             // Add implicit use of $physreg on the terminator so the live-out
@@ -619,7 +628,13 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
               FirstTerm->addOperand(llvm::MachineOperand::CreateReg(
                   P.PhysReg, /*isDef=*/false, /*isImp=*/true));
             }
-          }
+          };
+          for (const PreservedReg &P : Preserved)
+            if (P.PhysReg == llvm::AMDGPU::SCC)
+              emitRestore(P);
+          for (const PreservedReg &P : Preserved)
+            if (P.PhysReg != llvm::AMDGPU::SCC)
+              emitRestore(P);
         }
         Changed |= !Preserved.empty();
       } // end for each PATCHPOINT MI in reverse
