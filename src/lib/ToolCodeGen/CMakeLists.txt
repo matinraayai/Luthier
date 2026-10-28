@@ -49,10 +49,8 @@ foreach (_DEVICE_TARGET IN LISTS LuthierPatchPCUsagesPass_DEVICE_TARGETS)
             PRIVATE
             ${LLVM_INCLUDE_DIRS}
             "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
-            "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
-            "$<TARGET_PROPERTY:LuthierAMDGPU,INTERFACE_INCLUDE_DIRECTORIES>")
-    add_dependencies(${_DEVICE_TARGET} LuthierAMDGPU)
-    target_link_libraries(${_DEVICE_TARGET} PUBLIC LuthierAMDGPU)
+            "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+    target_link_libraries(${_DEVICE_TARGET} PRIVATE LuthierAMDGPU)
 endforeach ()
 
 
@@ -89,7 +87,7 @@ foreach (_DEVICE_TARGET IN LISTS LuthierRebaseAppScratchAccessesPass_DEVICE_TARG
             "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
             "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
             "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include/luthier/AMDGPU>")
-    add_dependencies(${_DEVICE_TARGET} LuthierAMDGPU)
+    target_link_libraries(${_DEVICE_TARGET} PRIVATE LuthierAMDGPU)
 endforeach ()
 
 add_library(LuthierToolCodeGen OBJECT
