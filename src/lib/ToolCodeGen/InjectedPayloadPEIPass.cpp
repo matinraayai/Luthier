@@ -110,6 +110,20 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   }
   const llvm::MachineInstr *TargetMI = IPIP->at(F);
 
+  // Wait on every outstanding memory operation before the payload touches any
+  // register. Every payload needs this, including the ones that skip the
+  // prologue below for not using the SVA.
+  // FIXME: Look at the outstanding waitcnt operations instead of a blanket wait
+  {
+    llvm::MachineBasicBlock &EntryMBB = MF.front();
+    const llvm::AMDGPU::IsaVersion IV =
+        llvm::AMDGPU::getIsaVersion(ST.getCPU());
+    (void)llvm::BuildMI(EntryMBB, EntryMBB.SkipPHIsAndLabels(EntryMBB.begin()),
+                        llvm::DebugLoc(), TII->get(llvm::AMDGPU::S_WAITCNT))
+        .addImm(llvm::AMDGPU::encodeWaitcnt(IV, /*Vmcnt=*/0, /*Expcnt=*/0,
+                                            /*Lgkmcnt=*/0));
+  }
+
   const auto &IPAMProxy =
       MFAM.getResult<PrototypeAnalysisManagerMachineFunctionProxy>(
           MF);
@@ -226,26 +240,24 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   llvm::LivePhysRegs LiveAtTargetMI(TargetTRI);
   if (IPCFG.contains(TargetMBB)) {
     const PredicatedMachineBasicBlock &TargetPMBB = IPCFG.at(TargetMBB);
-    // Boundary seed: both partitions unioned across all successors.
-    for (const PredicatedMachineBasicBlock &Succ : TargetPMBB.successors()) {
-      if (const llvm::LivePhysRegs *SL =
-              IPLiveness->getPMBBActiveLiveIns(Succ))
-        for (llvm::MCPhysReg R : *SL)
-          LiveAtTargetMI.addReg(R);
-      if (const llvm::LivePhysRegs *SL =
-              IPLiveness->getPMBBInactiveLiveIns(Succ))
-        for (llvm::MCPhysReg R : *SL)
-          LiveAtTargetMI.addReg(R);
-    }
+    // Boundary seed: both partitions of the PMBB's live-outs.
+    if (const llvm::LivePhysRegs *LO =
+            IPLiveness->getPMBBActiveLiveOuts(TargetPMBB))
+      for (llvm::MCPhysReg R : *LO)
+        LiveAtTargetMI.addReg(R);
+    if (const llvm::LivePhysRegs *LO =
+            IPLiveness->getPMBBInactiveLiveOuts(TargetPMBB))
+      for (llvm::MCPhysReg R : *LO)
+        LiveAtTargetMI.addReg(R);
     // Backward walk of the Active partition to the target MI. Every MI
     // steps Active — even inside a vector MBB, since we're modelling
     // just the Active partition here; the Inactive partition is preserved
     // implicitly by the payload's inability to touch off-lane values.
     for (auto MIt = TargetMBB.rbegin(), MEnd = TargetMBB.rend();
          MIt != MEnd; ++MIt) {
+      LiveAtTargetMI.stepBackward(*MIt);
       if (&*MIt == TargetMI)
         break;
-      LiveAtTargetMI.stepBackward(*MIt);
     }
   }
 
@@ -362,7 +374,7 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   if (!UsesSVA) {
     LLVM_DEBUG(luthier::dbgs()
                << F.getName() << " doesn't use the SVA; skipping PEI.\n");
-    return llvm::PreservedAnalyses::all();
+    return llvm::PreservedAnalyses::none();
   }
 
   if (!SVAVGPR) {
@@ -416,15 +428,6 @@ InjectedPayloadPEIPass::run(llvm::MachineFunction &MF,
   };
 
   declareSVALiveIn(EntryMBB);
-
-  // Wait on every outstanding memory operation before the prologue touches
-  // any register.
-  // FIXME: Look at the outstanding waitcnt operations instead of a blanket wait
-  const llvm::AMDGPU::IsaVersion IV = llvm::AMDGPU::getIsaVersion(ST.getCPU());
-  (void)llvm::BuildMI(EntryMBB, EntryInsertPt, llvm::DebugLoc(),
-                      TII->get(llvm::AMDGPU::S_WAITCNT))
-      .addImm(llvm::AMDGPU::encodeWaitcnt(IV, /*Vmcnt=*/0, /*Expcnt=*/0,
-                                          /*Lgkmcnt=*/0));
 
   // If the SVS isn't already a free VGPR, load the SVA into the SVA VGPR.
   if (StateValueStorage.requiresLoadAndStoreBeforeUse()) {

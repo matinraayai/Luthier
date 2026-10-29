@@ -28,6 +28,7 @@
 #include "luthier/Common/ErrorCheck.h"
 #include "luthier/Common/GenericLuthierError.h"
 #include "luthier/ToolCodeGen/EntryPoint.h"
+#include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/IPPredicatedCFG.h"
 #include "luthier/ToolCodeGen/IPPredicatedLivenessPass.h"
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
@@ -653,9 +654,13 @@ llvm::Error PatchPCUsagesPass::emitEntryPointSeed(
   llvm::Type *I64Ty = llvm::Type::getInt64Ty(Ctx);
   llvm::StructType *EntryTy = llvm::StructType::get(Ctx, {I64Ty, I64Ty});
 
-  // Walk the target module for every Function whose entry instruction
-  // carries a trace address — those are the codegen-time-discovered
-  // entry points.
+  // Walk the target module for every Function code discovery recorded an
+  // entry point for — those are the codegen-time-discovered entry points,
+  // a call's return-site continuation included.
+  // Kernels are left out: their entry point is a kernel descriptor, which is
+  // never the target of a jump. Code of the kernel that turns out to be
+  // reachable again is lifted as a device function of its own and seeded
+  // then.
   //
   // The seed's HandleC needs to end up as the address of the trace function's
   // definition in the linked object. Naming a target-module Function directly
@@ -678,10 +683,11 @@ llvm::Error PatchPCUsagesPass::emitEntryPointSeed(
   for (llvm::Function &F : TM) {
     if (F.isDeclaration() || F.empty())
       continue;
-    auto TraceAddr = getIRTraceAddr(&F.getEntryBlock().front());
-    if (!TraceAddr)
+    std::optional<EntryPoint> FnEP = getFunctionEntryPoint(F);
+    if (!FnEP || FnEP->isKernel())
       continue;
-    llvm::Constant *TraceC = llvm::ConstantInt::get(I64Ty, *TraceAddr);
+    llvm::Constant *TraceC =
+        llvm::ConstantInt::get(I64Ty, FnEP->getRawAddress());
     llvm::FunctionCallee IDecl = IModule.getOrInsertFunction(
         F.getName(), F.getFunctionType());
     // getOrInsertFunction returns a bitcast-wrapped Constant when the module
@@ -1486,6 +1492,7 @@ llvm::Error rewriteIfRelevant(RunContext &RC, llvm::MachineInstr &MI) {
     rewriteGetPC(MI, *TraceAddr);
     return llvm::Error::success();
   case llvm::AMDGPU::S_SETPC_B64:
+  case llvm::AMDGPU::S_SETPC_B64_return:
     return rewriteSetPC(RC, MI);
   case llvm::AMDGPU::S_SWAPPC_B64:
     return rewriteSwapPC(RC, MI, *TraceAddr);

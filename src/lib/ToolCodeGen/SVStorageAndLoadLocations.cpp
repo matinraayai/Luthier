@@ -72,24 +72,20 @@ void computePerMILiveBefore(
     llvm::DenseMap<const llvm::MachineInstr *,
                    std::unique_ptr<llvm::LivePhysRegs>> &LiveBefore) {
   // At the block-out boundary, both partitions are seeded with the union
-  // of every successor's Active + Inactive live-ins — control flow may
-  // converge from paths whose EXEC-on/off partitions have swapped.
+  // of the PMBB's Active + Inactive live-outs — control flow may converge
+  // from paths whose EXEC-on/off partitions have swapped. The live-outs are
+  // not re-derived from the successors' live-ins, which would lose the seed a
+  // partially-discovered CFG puts on its exits.
   llvm::LivePhysRegs ActiveLive(TRI);
   llvm::LivePhysRegs InactiveLive(TRI);
-  for (const PredicatedMachineBasicBlock &Succ : PMBB.successors()) {
-    if (const llvm::LivePhysRegs *SuccLive =
-            IPLiveness.getPMBBActiveLiveIns(Succ)) {
-      for (llvm::MCPhysReg R : *SuccLive) {
-        ActiveLive.addReg(R);
-        InactiveLive.addReg(R);
-      }
-    }
-    if (const llvm::LivePhysRegs *SuccLive =
-            IPLiveness.getPMBBInactiveLiveIns(Succ)) {
-      for (llvm::MCPhysReg R : *SuccLive) {
-        ActiveLive.addReg(R);
-        InactiveLive.addReg(R);
-      }
+  for (const llvm::LivePhysRegs *LiveOut :
+       {IPLiveness.getPMBBActiveLiveOuts(PMBB),
+        IPLiveness.getPMBBInactiveLiveOuts(PMBB)}) {
+    if (!LiveOut)
+      continue;
+    for (llvm::MCPhysReg R : *LiveOut) {
+      ActiveLive.addReg(R);
+      InactiveLive.addReg(R);
     }
   }
   const bool IsVector = luthier::isVectorMBB(MBB);

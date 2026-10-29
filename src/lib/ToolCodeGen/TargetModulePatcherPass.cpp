@@ -1636,8 +1636,8 @@ static bool isDeadAndTakeableAt(const llvm::MachineFunction &MF,
 ///      the caller brackets the injection with the SVS's long-jump save.
 ///
 /// "Dead" is \c isDeadAndTakeableAt : \c LivePhysRegs seeded from the
-/// enclosing MBB's live-outs (populated upstream via
-/// \c IPPredicatedLiveness / \c IPPredCFG ) and stepped backward to \p MI ,
+/// enclosing PMBB's live-outs in \c IPPredicatedLiveness and stepped
+/// backward to \p MI ,
 /// with \c luthier::isReservedForApp standing in for \c MRI.isReserved so
 /// registers above the application's launch budget stay eligible.
 ///
@@ -1656,7 +1656,9 @@ static bool isDeadAndTakeableAt(const llvm::MachineFunction &MF,
 /// \c SCCSave must additionally not overlap the picked \c Pair.
 static llvm::Expected<ScavengedPatchpointRegs>
 scavengeSGPRsAtSite(const llvm::MachineInstr &MI,
-                    const SVStorageAndLoadLocations &SVLocations) {
+                    const SVStorageAndLoadLocations &SVLocations,
+                    const IPPredicatedCFG &IPCFG,
+                    const IPPredicatedLiveness &IPLiveness) {
   const llvm::MachineFunction &MF = *MI.getMF();
   const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
   const auto &TRI = *ST.getRegisterInfo();
@@ -1673,9 +1675,24 @@ scavengeSGPRsAtSite(const llvm::MachineInstr &MI,
   if (Out.SVS)
     Out.SVS->getAllStorageRegisters(SVAReserved);
 
-  // Live-at-MI: start from MBB live-outs and walk backward to \p MI.
+  // Live-at-MI: start from MBB live-outs and walk backward to \p MI. The
+  // live-outs come from the PMBB rather than from the successors' live-ins
+  // whenever the IPCFG knows the block: a block whose edges are unresolved
+  // (e.g. one ending in the indirect jump into a device function) has no
+  // successors to take them from, and only the PMBB's live-out carries the
+  // seed liveness puts on such exits.
   llvm::LivePhysRegs Live(TRI);
-  Live.addLiveOuts(MBB);
+  if (IPCFG.contains(MBB)) {
+    const PredicatedMachineBasicBlock &PMBB = IPCFG.at(MBB);
+    for (const llvm::LivePhysRegs *LiveOut :
+         {IPLiveness.getPMBBActiveLiveOuts(PMBB),
+          IPLiveness.getPMBBInactiveLiveOuts(PMBB)})
+      if (LiveOut)
+        for (llvm::MCPhysReg R : *LiveOut)
+          Live.addReg(R);
+  } else {
+    Live.addLiveOuts(MBB);
+  }
   for (auto It = MBB.rbegin(); It != MBB.rend() && &*It != &MI; ++It)
     Live.stepBackward(*It);
 
@@ -3910,7 +3927,8 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
       ScavengedByPayload;
   for (const auto &[InjectedPayloadFunc, InsertionPointMI] :
        IPIP.payload_mi()) {
-    auto ScavOrErr = scavengeSGPRsAtSite(*InsertionPointMI, SVLocations);
+    auto ScavOrErr =
+        scavengeSGPRsAtSite(*InsertionPointMI, SVLocations, IPCFG, IPLiveness);
     if (!ScavOrErr) {
       Ctx.emitError(llvm::toString(ScavOrErr.takeError()));
       return llvm::PreservedAnalyses::none();

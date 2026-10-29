@@ -164,7 +164,8 @@ IPPredicatedLivenessAnalysis::run(
   // allocatable GPR pool. An "exit PMBB" here is any PMBB that has no
   // successors in the CFG — since the CFG is inter-procedural, function
   // exit blocks only end up here when their callee chain is incomplete or
-  // they have no callee chain at all (true return blocks).
+  // they have no callee chain at all (true return blocks) — or that has
+  // unresolved edges, whose seed is unioned with its resolved successors.
   //
   // The seed must live on the live-OUT side, not on the PMBB's recorded
   // live-in: the fixed-point loop recomputes the per-PMBB live-out from
@@ -181,7 +182,10 @@ IPPredicatedLivenessAnalysis::run(
                    std::unique_ptr<llvm::LivePhysRegs>>
         PerMFAllocSet;
     for (PredicatedMachineBasicBlock &PMBB : CFG) {
-      if (PMBB.succs_begin() != PMBB.succs_end())
+      // A PMBB with unresolved edges is an exit as well: whatever those edges
+      // reach is not in the CFG, so its resolved successors alone do not
+      // describe what is live out of it.
+      if (PMBB.succs_begin() != PMBB.succs_end() && !PMBB.hasUnresolvedEdges())
         continue;
       const llvm::MachineFunction *MF = PMBB.getMBB().getParent();
       auto &SetPtr = PerMFAllocSet[MF];
@@ -200,11 +204,23 @@ IPPredicatedLivenessAnalysis::run(
   // are settled, so we iterate in POST-order of the forward CFG (a.k.a.
   // reverse of reverse-post-order). LLVM's ReversePostOrderTraversal lets
   // us materialise this once and reuse it across fixed-point iterations.
+  //
+  // The traversal starts at the CFG's single entry, so it misses the PMBBs no
+  // edge reaches from there: a call's return-site function is entered through
+  // a materialized return address rather than an edge. Those are appended so
+  // the fixed-point loop computes their liveness too instead of leaving it
+  // empty; the loop runs until nothing changes, so where they sit in the order
+  // only affects how fast it converges.
   llvm::SmallVector<PredicatedMachineBasicBlock *, 16> POOrder;
   {
     llvm::ReversePostOrderTraversal<IPPredicatedCFG *> RPOT(&CFG);
     POOrder.assign(RPOT.begin(), RPOT.end());
     std::reverse(POOrder.begin(), POOrder.end());
+    llvm::SmallPtrSet<const PredicatedMachineBasicBlock *, 16> Visited(
+        POOrder.begin(), POOrder.end());
+    for (PredicatedMachineBasicBlock &PMBB : CFG)
+      if (!Visited.contains(&PMBB))
+        POOrder.push_back(&PMBB);
   }
 
   // ---- Backward dataflow until fixed point -----------------------------
@@ -271,14 +287,11 @@ IPPredicatedLivenessAnalysis::run(
   // CFG would look as though nothing were live past it instead of the
   // function's whole allocatable pool.
   //
-  // Walk every PMBB in the CFG rather than \c POOrder . \c POOrder is an
-  // RPO traversal from the single \c InitialEntryPointAttr entry, so it
-  // omits PMBBs in lifted functions that no CFG edge reaches (a call's
+  // Walk every PMBB in the CFG. \c POOrder covers them all as well, but only
+  // because the PMBBs no CFG edge reaches from the entry (a call's
   // return-site function is entered via a materialized return address, not
-  // an edge). Those keep empty live-ins because the fixed-point loop never
-  // visits them, but their live-outs are still well defined — an
-  // \c ExitSeed entry for a successor-less block among them is exactly the
-  // conservative answer a consumer needs.
+  // an edge) were appended to it; walking the CFG itself does not depend on
+  // that.
   for (PredicatedMachineBasicBlock &PMBB : CFG) {
     auto ActiveOut = std::make_unique<llvm::LivePhysRegs>(TRI);
     auto InactiveOut = std::make_unique<llvm::LivePhysRegs>(TRI);
