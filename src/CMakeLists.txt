@@ -9,10 +9,6 @@ find_package(hip REQUIRED CONFIG)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-find_package(rocprofiler-sdk REQUIRED CONFIG)
-
-find_package(hsa-runtime64 REQUIRED CONFIG)
-
 find_package(LLVM REQUIRED CONFIG)
 
 find_package(Clang REQUIRED CONFIG)
@@ -66,11 +62,19 @@ if (NOT IS_DIRECTORY ${LUTHIER_LLVM_SRC_DIR})
     luthier_fetch_llvm_src(${LLVM_INCLUDE_DIRS} LUTHIER_LLVM_SRC_DIR)
 endif ()
 
-# Get the include directory of hsa-runtime64
-get_target_property(hsa-runtime64_INCLUDE_DIRS hsa-runtime64::hsa-runtime64 INTERFACE_INCLUDE_DIRECTORIES)
+if (NOT EXISTS "${LUTHIER_HSA_INCLUDE_DIR}/hsa/hsa.h")
+    message(FATAL_ERROR
+            "hsa/hsa.h was not found in LUTHIER_HSA_INCLUDE_DIR "
+            "(\"${LUTHIER_HSA_INCLUDE_DIR}\").")
+endif ()
+set(hsa-runtime64_INCLUDE_DIRS ${LUTHIER_HSA_INCLUDE_DIR})
 
-# Get the include directories of rocprofiler-sdk
-set(rocprofiler-sdk_INCLUDE_DIRS "$<TARGET_PROPERTY:rocprofiler-sdk::rocprofiler-sdk,INTERFACE_INCLUDE_DIRECTORIES>")
+if (NOT EXISTS "${LUTHIER_ROCPROFILER_SDK_INCLUDE_DIR}/rocprofiler-sdk/rocprofiler.h")
+    message(FATAL_ERROR
+            "rocprofiler-sdk/rocprofiler.h was not found in LUTHIER_ROCPROFILER_SDK_INCLUDE_DIR "
+            "(\"${LUTHIER_ROCPROFILER_SDK_INCLUDE_DIR}\").")
+endif ()
+set(rocprofiler-sdk_INCLUDE_DIRS ${LUTHIER_ROCPROFILER_SDK_INCLUDE_DIR})
 
 # Get the include directories of hip::host
 set(hip_INCLUDE_DIRS "$<TARGET_PROPERTY:hip::host,INTERFACE_INCLUDE_DIRECTORIES>")
@@ -88,6 +92,8 @@ add_subdirectory(bin)
 add_subdirectory(lib)
 
 if (${LUTHIER_BUILD_UNIT_TESTS})
+    find_package(rocprofiler-sdk REQUIRED CONFIG)
+    find_package(hsa-runtime64 REQUIRED CONFIG)
     add_subdirectory(test)
 endif ()
 
