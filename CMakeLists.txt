@@ -20,6 +20,8 @@ option(LUTHIER_BUILD_LATEX_DOCS "Builds Luthier documentation with Doxygen in PD
 option(LUTHIER_BUILD_HTML_DOCS "Builds Luthier documentation with Doxygen in HTML format" OFF)
 option(LUTHIER_ENABLE_SPIRV "Enables embedding an AMD-flavored SPIRV slice inside offload bundles" ON)
 set(LUTHIER_LLVM_SRC_DIR "" CACHE STRING "Path to the source code of the ROCm LLVM project used to build Luthier")
+set(LUTHIER_HSA_INCLUDE_DIR "" CACHE PATH "Path to the directory that contains the HSA headers")
+set(LUTHIER_ROCPROFILER_SDK_INCLUDE_DIR "" CACHE PATH "Path to the directory that contains the rocprofiler-sdk headers")
 # ======================================================================================================================
 
 # Append the modules
