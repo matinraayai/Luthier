@@ -98,14 +98,15 @@ static llvm::Error disassembleTrace(
       break;
     }
 
-    uint64_t EntryPointHostAddr =
-        CurrentDeviceAddress -
-        reinterpret_cast<uint64_t>(AllocDesc.getDeviceAllocation().data()) +
+    const auto AllocDeviceBaseAddr =
         reinterpret_cast<uint64_t>(AllocDesc.getDeviceAllocation().data());
+    const auto AllocHostBaseAddr =
+        reinterpret_cast<uint64_t>(AllocDesc.getHostAllocation().data());
     size_t SegmentSize = AllocDesc.getSize();
 
-    uint64_t CurrentHostAddr = EntryPointHostAddr;
-    uint64_t SegmentHostEndAddr = EntryPointHostAddr + SegmentSize;
+    uint64_t CurrentHostAddr =
+        CurrentDeviceAddress - AllocDeviceBaseAddr + AllocHostBaseAddr;
+    uint64_t SegmentHostEndAddr = AllocHostBaseAddr + SegmentSize;
 
     while (!WasTraceTermInstrEncountered && !StoppedByOverlap &&
            CurrentHostAddr < SegmentHostEndAddr) {
