@@ -1714,8 +1714,6 @@ llvm::PreservedAnalyses CodeDiscoveryPass::run(Prototype &IP,
   LLVM_DEBUG(luthier::dbgs()
                  << "[CodeDiscoveryPass] Running code discovery pass\n";);
 
-  // Code discovery only writes the target module, so it goes through that
-  // module's own managers.
   llvm::ModuleAnalysisManager &TargetMAM =
       IPAM.getResult<TargetModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
