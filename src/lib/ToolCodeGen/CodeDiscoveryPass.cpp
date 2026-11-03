@@ -1708,16 +1708,14 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
 
 llvm::PreservedAnalyses CodeDiscoveryPass::run(Prototype &IP,
                                                PrototypeAnalysisManager &IPAM) {
+  LLVM_DEBUG(luthier::dbgs()
+               << "[CodeDiscoveryPass] Running code discovery pass\n";);
   llvm::Module &TargetModule = IP.getTargetModule();
   llvm::LLVMContext &Ctx = TargetModule.getContext();
-
-  LLVM_DEBUG(luthier::dbgs()
-                 << "[CodeDiscoveryPass] Running code discovery pass\n";);
 
   llvm::ModuleAnalysisManager &TargetMAM =
       IPAM.getResult<TargetModuleAnalysisManagerPrototypeProxy>(IP)
           .getManager();
-
   llvm::MachineModuleInfo &TargetMMI =
       TargetMAM.getResult<llvm::MachineModuleAnalysis>(TargetModule).getMMI();
   auto &TM =
