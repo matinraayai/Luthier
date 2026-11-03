@@ -1923,7 +1923,7 @@ llvm::PreservedAnalyses CodeDiscoveryPass::run(Prototype &IP,
 
     const llvm::TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
     for (llvm::MachineInstr *TraceTermMI : TraceTermInstructions) {
-      /// If a terminator is a call, then the instruction after the call is
+      /// If a terminator is a call, then the instruction after the call might
       /// reachable by a jump instruction later down the line. Add it to the
       /// list of unvisited entry points if it is a trace instruction
       if (TraceTermMI->isCall()) {
