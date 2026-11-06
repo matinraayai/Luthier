@@ -37,14 +37,6 @@
 
 namespace luthier {
 
-void setTargetRegisterBudget(llvm::Function &F, unsigned NumSGPRs,
-                             unsigned NumVGPRs) {
-  F.removeFnAttr(AppNumSGPRsAttribute);
-  F.removeFnAttr(AppNumVGPRsAttribute);
-  F.addFnAttr(AppNumSGPRsAttribute, llvm::formatv("{0}", NumSGPRs).str());
-  F.addFnAttr(AppNumVGPRsAttribute, llvm::formatv("{0}", NumVGPRs).str());
-}
-
 TargetRegisterBudget getTargetRegisterBudget(const llvm::MachineFunction &MF) {
   const llvm::Function &F = MF.getFunction();
   const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
@@ -52,22 +44,11 @@ TargetRegisterBudget getTargetRegisterBudget(const llvm::MachineFunction &MF) {
   const unsigned MaxSGPRs = ST.getAddressableNumSGPRs();
   const unsigned MaxVGPRs = ST.getAddressableNumVGPRs(0);
 
-  // Prefer the launch budget CodeDiscoveryPass lifted from the kernel
-  // descriptor. Fall back to the backend's allocation cap, then to the
-  // subtarget maximum, so functions that never went through code discovery
-  // (hand-written MIR in lit tests, for instance) still get a sane answer.
-  auto readBudget = [&F](const char *Preferred, const char *Fallback,
-                         unsigned Max) -> unsigned {
-    if (F.hasFnAttribute(Preferred))
-      return F.getFnAttributeAsParsedInteger(Preferred, Max);
-    return F.getFnAttributeAsParsedInteger(Fallback, Max);
-  };
-
   TargetRegisterBudget Budget;
-  Budget.NumSGPRs = std::min<unsigned>(
-      readBudget(AppNumSGPRsAttribute, "amdgpu-num-sgpr", MaxSGPRs), MaxSGPRs);
-  Budget.NumVGPRs = std::min<unsigned>(
-      readBudget(AppNumVGPRsAttribute, "amdgpu-num-vgpr", MaxVGPRs), MaxVGPRs);
+  Budget.NumSGPRs =
+      F.getFnAttributeAsParsedInteger("amdgpu.kd.num-sgpr", MaxSGPRs);
+  Budget.NumVGPRs =
+      F.getFnAttributeAsParsedInteger("amdgpu.kd.num-vgpr", MaxVGPRs);
   // A wave gets as many AGPRs as VGPRs on the subtargets that have them.
   Budget.NumAGPRs = ST.hasMAIInsts() ? Budget.NumVGPRs : 0;
   return Budget;

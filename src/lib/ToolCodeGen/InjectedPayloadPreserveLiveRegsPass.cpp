@@ -304,33 +304,29 @@ InjectedPayloadPreserveLiveRegsPass::run(Prototype &IP,
           };
           const auto &PST = MF->getSubtarget<llvm::GCNSubtarget>();
           auto [MaxV, MaxA] = PST.getMaxNumVectorRegs(PF);
-          luthier::dbgs()
-              << "    payload budget: amdgpu-num-vgpr=" << attr("amdgpu-num-vgpr")
-              << " amdgpu-num-sgpr=" << attr("amdgpu-num-sgpr")
-              << " getMaxNumVectorRegs=(vgpr " << MaxV << ", agpr " << MaxA
-              << ") maxSGPRs=" << PST.getMaxNumSGPRs(PF)
-              << "  preserveCount=" << Preserve.size() << "\n";
+          luthier::dbgs() << "    payload budget: amdgpu-num-vgpr="
+                          << attr("amdgpu.kd.num-vgpr")
+                          << " amdgpu-num-sgpr=" << attr("amdgpu.kd.num-sgpr")
+                          << " getMaxNumVectorRegs=(vgpr " << MaxV << ", agpr "
+                          << MaxA << ") maxSGPRs=" << PST.getMaxNumSGPRs(PF)
+                          << "  preserveCount=" << Preserve.size() << "\n";
           // Does the payload know what the app actually launched with? These
           // are what addAppOwnedRegisters/getTargetRegisterBudget read to
           // decide which registers hold application state.
           const llvm::Function &TF = TMF.getFunction();
           luthier::dbgs()
-              << "      payload app-budget attrs: " << AppNumVGPRsAttribute
-              << "=" << attr(AppNumVGPRsAttribute) << " "
-              << AppNumSGPRsAttribute << "=" << attr(AppNumSGPRsAttribute)
+              << "      payload app-budget attrs: "
               << " waves-per-eu=" << attr("amdgpu-waves-per-eu") << "\n";
           auto tattr = [&TF](const char *N) {
             return TF.hasFnAttribute(N)
                        ? TF.getFnAttribute(N).getValueAsString().str()
                        : std::string("<none>");
           };
-          luthier::dbgs()
-              << "      target '" << TF.getName()
-              << "' attrs: amdgpu-num-vgpr=" << tattr("amdgpu-num-vgpr")
-              << " amdgpu-num-sgpr=" << tattr("amdgpu-num-sgpr") << " "
-              << AppNumVGPRsAttribute << "=" << tattr(AppNumVGPRsAttribute)
-              << " " << AppNumSGPRsAttribute << "="
-              << tattr(AppNumSGPRsAttribute) << "\n";
+          luthier::dbgs() << "      target '" << TF.getName()
+                          << "' attrs: amdgpu-num-vgpr="
+                          << tattr("amdgpu.kd.num-vgpr")
+                          << " amdgpu-num-sgpr=" << tattr("amdgpu.kd.num-sgpr")
+                          << "\n";
         });
 
         // Advance the walk past the PATCHPOINT itself so that a later

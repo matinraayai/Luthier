@@ -1644,7 +1644,7 @@ TraceFunctionTranslator::getStandardDeviceFunctionType() const {
     return F.getFunctionType();
   const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
   /// The translator only exists once \c initRegFileLayouts has validated
-  /// non-zero \c amdgpu-num-sgpr / \c amdgpu-num-vgpr, so the static call
+  /// non-zero \c amdgpu.kd.num-sgpr / \c amdgpu.kd.num-vgpr, so the static call
   /// here is infallible for any well-formed instance.
   return llvm::cantFail(computeStandardDeviceFunctionType(
       F.getContext(), ST, F.getFnAttributeAsParsedInteger("amdgpu.kd.num-sgpr"),
@@ -1656,9 +1656,9 @@ TraceFunctionTranslator::computeStandardDeviceFunctionType(
     llvm::LLVMContext &Ctx, const llvm::GCNSubtarget &ST, unsigned NumSGPRs,
     unsigned NumVGPRs) {
   if (NumSGPRs == 0)
-    return LUTHIER_MAKE_GENERIC_ERROR("amdgpu-num-sgpr must be non-zero.");
+    return LUTHIER_MAKE_GENERIC_ERROR("amdgpu.kd.num-sgpr must be non-zero.");
   if (NumVGPRs == 0)
-    return LUTHIER_MAKE_GENERIC_ERROR("amdgpu-num-vgpr must be non-zero.");
+    return LUTHIER_MAKE_GENERIC_ERROR("amdgpu.kd.num-vgpr must be non-zero.");
 
   llvm::SmallVector<llvm::MCRegister> ArgOrder;
   getRegisterFileArgOrder(ST, ArgOrder);

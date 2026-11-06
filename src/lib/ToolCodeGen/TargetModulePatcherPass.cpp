@@ -3573,24 +3573,6 @@ llvm::Error moveIModuleIntoTarget(llvm::Module &IModule,
   return llvm::Error::success();
 }
 
-/// Strip the `amdgpu-num-vgpr` and `amdgpu-num-sgpr` attributes from every
-/// function in \p TargetModule. These were set by CodeDiscoveryPass based
-/// on the original (pre-instrumentation) code-object's register usage,
-/// but are no longer accurate after our instrumentation extends the
-/// register footprint. Leaving them present would mislead the LLVM
-/// AMDGPU backend's register-pressure heuristics on the next codegen
-/// pass over the target.
-void stripStaleNumRegsAttrs(llvm::Module &TargetModule) {
-  LLVM_DEBUG(luthier::dbgs()
-             << "[TargetModulePatcherPass] stripStaleNumRegsAttrs "
-                "over "
-             << TargetModule.size() << " function(s)\n");
-  for (llvm::Function &F : TargetModule.functions()) {
-    F.removeFnAttr("amdgpu-num-vgpr");
-    F.removeFnAttr("amdgpu-num-sgpr");
-  }
-}
-
 /// Walk every non-indirect branch in \p MF, sum byte sizes via
 /// \c TII.getInstSizeInBytes to estimate per-MBB layout offsets, and
 /// report any branch whose target lies beyond \c s_branch's signed
@@ -3824,13 +3806,6 @@ TargetModulePatcherPass::run(Prototype &IP, PrototypeAnalysisManager &IPAM) {
     Ctx.emitError(llvm::toString(std::move(Err)));
     return llvm::PreservedAnalyses::none();
   }
-
-  // Step 2: Strip stale num-{vgpr,sgpr} attrs — CodeDiscoveryPass set
-  // these from the original code object, and they're wrong now that
-  // we've inlined payloads + cloned helpers.
-  LLVM_DEBUG(luthier::dbgs() << "[TargetModulePatcherPass] === Phase B.2: "
-                                "stripStaleNumRegsAttrs ===\n");
-  stripStaleNumRegsAttrs(TargetModule);
 
   // Step 3: Outline every injected payload behind an SI_CALL at its
   // target PATCHPOINT. Ordering:

@@ -55,14 +55,6 @@ class MachineFunction;
 
 namespace luthier {
 
-/// Attribute holding the number of SGPRs the application's wavefront was
-/// launched with, as lifted from the kernel descriptor.
-inline constexpr const char *AppNumSGPRsAttribute = "luthier-app-num-sgpr";
-
-/// Attribute holding the number of VGPRs the application's wavefront was
-/// launched with, as lifted from the kernel descriptor.
-inline constexpr const char *AppNumVGPRsAttribute = "luthier-app-num-vgpr";
-
 /// The GPR budget the application's wavefront was launched with. Registers
 /// at or above these counts physically exist on the device but were not
 /// allocated to the wave, so they hold no application state and are free for
@@ -75,13 +67,6 @@ struct TargetRegisterBudget {
   /// Application-owned AGPRs, zero on subtargets without them.
   unsigned NumAGPRs = 0;
 };
-
-/// Records \p NumSGPRs / \p NumVGPRs on \p F as the application's launch
-/// budget. Called by \c CodeDiscoveryPass for every lifted target-module
-/// function; the values survive any later rewrite of \c amdgpu-num-sgpr /
-/// \c amdgpu-num-vgpr.
-void setTargetRegisterBudget(llvm::Function &F, unsigned NumSGPRs,
-                             unsigned NumVGPRs);
 
 /// \return the application launch budget recorded on \p MF 's function,
 /// clamped to what \p MF 's subtarget can address. Falls back to the
