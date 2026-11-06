@@ -59,38 +59,50 @@
 
 namespace luthier {
 
-static llvm::cl::opt<bool> LuthierMaxNumRegsAttrs(
-    "luthier-max-num-regs-attrs", llvm::cl::init(true),
-    llvm::cl::desc(
-        "Override amdgpu-num-sgpr/amdgpu-num-vgpr on every lifted "
-        "target-module function with the subtarget's addressable maximums, "
-        "to allow instrumented kernels to use the whole SGPR/VGPR "
-        "file."));
+static inline llvm::Expected<const llvm::amdhsa::kernel_descriptor_t *>
+getKDOnHost(const llvm::amdhsa::kernel_descriptor_t &KDOnDevice,
+            const MemoryAllocationAccessor &SegAccessor) {
+  /// Get the memory allocation associated with the kernel descriptor
+  auto KDLoadAddr = reinterpret_cast<uint64_t>(&KDOnDevice);
+  auto SegmentOrErr = SegAccessor.getAllocationDescriptor(KDLoadAddr);
+  LUTHIER_RETURN_ON_ERROR(SegmentOrErr.takeError());
 
-/// Overwrite \c amdgpu-num-sgpr and \c amdgpu-num-vgpr on \p F with the
-/// subtarget's addressable maximums when \c LuthierMaxNumRegsAttrs is
-/// enabled.
-///
-/// This only widens the AMDGPU backend's allocation *cap* so instrumentation
-/// can allocate past the application's original budget. The budget itself
-/// stays recorded in \c luthier-app-num-sgpr / \c luthier-app-num-vgpr (see
-/// \c luthier::setTargetRegisterBudget ) and is never removed, so downstream
-/// target-module passes can still tell which registers the wave actually
-/// owns instead of inferring it from \c MachineRegisterInfo::isReserved .
-static void applyMaxNumRegsAttrsIfEnabled(llvm::Function &F,
-                                          const llvm::GCNSubtarget &ST) {
-  if (!LuthierMaxNumRegsAttrs)
-    return;
-  unsigned MaxSGPRs = ST.getAddressableNumSGPRs();
-  unsigned MaxVGPRs = ST.getAddressableNumVGPRs(0);
-  F.removeFnAttr("amdgpu-num-sgpr");
-  F.removeFnAttr("amdgpu-num-vgpr");
-  F.addFnAttr("amdgpu-num-sgpr", llvm::formatv("{0}", MaxSGPRs).str());
-  F.addFnAttr("amdgpu-num-vgpr", llvm::formatv("{0}", MaxVGPRs).str());
-  LLVM_DEBUG(luthier::dbgs()
-             << "[CodeDiscoveryPass] applyMaxNumRegsAttrsIfEnabled MF='"
-             << F.getName() << "': amdgpu-num-sgpr=" << MaxSGPRs
-             << ", amdgpu-num-vgpr=" << MaxVGPRs << "\n");
+  if (SegmentOrErr->empty())
+    return LUTHIER_MAKE_GENERIC_ERROR(
+        llvm::formatv("Failed to find the memory allocation descriptor "
+                      "associated with KD {0:x}.",
+                      KDLoadAddr));
+
+  uint64_t KDLoadOffset =
+      KDLoadAddr -
+      reinterpret_cast<uint64_t>(SegmentOrErr->getDeviceAllocation().data());
+  return reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
+      &SegmentOrErr->getHostAllocation()[KDLoadOffset]);
+}
+
+static inline unsigned int
+getStaticVGPRCountFromKD(const llvm::amdhsa::kernel_descriptor_t &KD,
+                         const llvm::GCNSubtarget &ST) {
+  uint32_t GranulatedWorkitemVGPRCount = AMDHSA_BITS_GET(
+      KD.compute_pgm_rsrc1,
+      llvm::amdhsa::COMPUTE_PGM_RSRC1_GRANULATED_WORKITEM_VGPR_COUNT);
+  uint32_t NextFreeVGPR =
+      (GranulatedWorkitemVGPRCount + 1) * ST.getVGPREncodingGranule();
+  return NextFreeVGPR;
+}
+
+static inline unsigned int
+getSGPRCountFromKD(const llvm::amdhsa::kernel_descriptor_t &KD,
+                   const llvm::GCNSubtarget &ST) {
+
+  if (!llvm::AMDGPU::isGFX10Plus(ST)) {
+    uint32_t GranulatedWavefrontSGPRCount = AMDHSA_BITS_GET(
+        KD.compute_pgm_rsrc1,
+        llvm::amdhsa::COMPUTE_PGM_RSRC1_GRANULATED_WAVEFRONT_SGPR_COUNT);
+    return (GranulatedWavefrontSGPRCount + 1) * ST.getSGPREncodingGranule();
+  } else {
+    return ST.getAddressableNumSGPRs() + 2;
+  }
 }
 
 static inline llvm::Error
@@ -100,12 +112,8 @@ parseKDRsrc1(const llvm::amdhsa::kernel_descriptor_t &KD,
   /// GRANULATED_WORKITEM_VGPR_COUNT is automatically calculated via the
   /// resource usage analysis pass, but we add its count as an attribute
   /// to the function for later use
-  uint32_t GranulatedWorkitemVGPRCount = AMDHSA_BITS_GET(
-      KD.compute_pgm_rsrc1,
-      llvm::amdhsa::COMPUTE_PGM_RSRC1_GRANULATED_WORKITEM_VGPR_COUNT);
-  uint32_t NextFreeVGPR =
-      (GranulatedWorkitemVGPRCount + 1) * ST.getVGPREncodingGranule();
-  F.addFnAttr("amdgpu-num-vgpr", llvm::formatv("{0}", NextFreeVGPR).str());
+  F.addFnAttr("amdgpu.kd.num-vgpr",
+              llvm::formatv("{0}", getStaticVGPRCountFromKD(KD, ST)).str());
   /// PRIORITY is set by the CP at dispatch time
 
   /// FLOAT_ROUND_MODE_32, FLOAT_ROUND_MODE_16_64 fields are set to
@@ -756,6 +764,9 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
       KDLoadAddr -
       reinterpret_cast<uint64_t>(SegmentOrErr->getDeviceAllocation().data());
 
+  const llvm::amdhsa::kernel_descriptor_t *KDOnHost{nullptr};
+  LUTHIER_RETURN_ON_ERROR(getKDOnHost(KD, SegAccessor).moveInto(KDOnHost));
+
   std::optional<object::AMDGCNKernelDescSymbolRef> KDSymbolIfPresent{
       std::nullopt};
 
@@ -798,38 +809,11 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
     KernelName = llvm::formatv("kernel-{0:x}", KDLoadAddr);
   }
 
-  auto &KDOnHost = *reinterpret_cast<const llvm::amdhsa::kernel_descriptor_t *>(
-      &SegmentOrErr->getHostAllocation()[KDLoadOffset]);
-
   /// Kernel's return type is always void.
-  ///
-  /// We do not attempt to recover the original high-level kernel
-  /// prototype from the metadata; the raised LLVM IR has to translate
-  /// low-level argument-buffer loads, not "read from the i-th IR arg"
-  /// (e.g. \c s_load_dword \c s[4:5], \c s[4:5], \c 0x0 raises to a
-  /// memory load, regardless of how the source language declared the
-  /// arg). A kernel hand-written in assembly may also interleave
-  /// explicit and implicit arguments in ways that don't fit the LLVM
-  /// "explicit first, then implicit" convention.
-  ///
-  /// When \c KD.kernarg_size is non-zero, we synthesize a single
-  /// \c byref([KD.kernarg_size x i8]) parameter so the AsmPrinter
-  /// emits a matching \c kernarg_size in the relifted KD.
-  /// \c AMDGPUSubtarget::getKernArgSegmentSize is driven by
-  /// \c getExplicitKernArgSize, which walks \c F.args() and only
-  /// consults \c byref types / param-align; there is no attribute-based
-  /// override. An empty arg list would produce \c kernarg_size=0 in
-  /// the emitted KD, and a kernel that loads from \c s[0:1]+offset
-  /// would read garbage at dispatch. A single opaque byref-array arg
-  /// has the right total byte count without implying any layout on
-  /// the kernel body, which still reads via raw \c s_load instructions.
-  /// When \c KD.kernarg_size is zero we keep the arg list empty so
-  /// the lifted IR signature matches the source: no kernarg buffer
-  /// means no IR param.
   llvm::Type *const ReturnType = llvm::Type::getVoidTy(LLVMContext);
 
   llvm::SmallVector<llvm::Type *, 1> ParamTypes;
-  if (KDOnHost.kernarg_size != 0)
+  if (KDOnHost->kernarg_size != 0)
     ParamTypes.push_back(
         llvm::PointerType::get(LLVMContext, llvm::AMDGPUAS::CONSTANT_ADDRESS));
   llvm::FunctionType *FunctionType =
@@ -852,9 +836,9 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   /// AsmPrinter. Use 8-byte alignment to match the HSA kernarg buffer
   /// alignment requirement (\c hsa_kernel_dispatch_packet_t's
   /// \c kernarg_address is 8-byte-aligned by the runtime).
-  if (KDOnHost.kernarg_size != 0) {
+  if (KDOnHost->kernarg_size != 0) {
     llvm::ArrayType *KernArgBufTy = llvm::ArrayType::get(
-        llvm::Type::getInt8Ty(LLVMContext), KDOnHost.kernarg_size);
+        llvm::Type::getInt8Ty(LLVMContext), KDOnHost->kernarg_size);
     llvm::AttrBuilder AB(LLVMContext);
     AB.addByRefAttr(KernArgBufTy);
     AB.addAlignmentAttr(llvm::Align(8));
@@ -862,13 +846,13 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   }
 
   F->addFnAttr("amdgpu-lds-size",
-               std::to_string(KDOnHost.group_segment_fixed_size));
+               std::to_string(KDOnHost->group_segment_fixed_size));
 
   /// Lift Rsrc1-Rsrc2; Rsrc3 is mostly automatically computed so we don't
   /// lift it
-  LUTHIER_RETURN_ON_ERROR(parseKDRsrc1(KDOnHost, TM, *F));
-  LUTHIER_RETURN_ON_ERROR(parseKDRsrc2(KDOnHost, TM, *F));
-  LUTHIER_RETURN_ON_ERROR(parseKDRsrc3(KDOnHost, TM, *F));
+  LUTHIER_RETURN_ON_ERROR(parseKDRsrc1(*KDOnHost, TM, *F));
+  LUTHIER_RETURN_ON_ERROR(parseKDRsrc2(*KDOnHost, TM, *F));
+  LUTHIER_RETURN_ON_ERROR(parseKDRsrc3(*KDOnHost, TM, *F));
 
   /// Stamp the kernel_code_properties-derived `amdgpu-no-*` attrs BEFORE
   /// the MF is constructed. SIMachineFunctionInfo's GCNUserSGPRUsageInfo
@@ -876,7 +860,7 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   /// missing this pre-MF write would leave UserSGPRInfo with all the
   /// default-enabled user-SGPR slots set even when the original KD had
   /// those bits cleared.
-  LUTHIER_RETURN_ON_ERROR(parseKDKernelCodeAttrs(KDOnHost, TM, *F));
+  LUTHIER_RETURN_ON_ERROR(parseKDKernelCodeAttrs(*KDOnHost, TM, *F));
 
   // Populate the MFI ==========================================================
 
@@ -884,7 +868,7 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
       FAM.getResult<llvm::MachineFunctionAnalysis>(*F).getMF();
 
   /// Parse the kernel code field of the kernel
-  LUTHIER_RETURN_ON_ERROR(parseKDKernelCode(KDOnHost, TM, MF));
+  LUTHIER_RETURN_ON_ERROR(parseKDKernelCode(*KDOnHost, TM, MF));
 
   auto *MFI = MF.getInfo<llvm::SIMachineFunctionInfo>();
   auto &ST = TM.getSubtarget<llvm::GCNSubtarget>(*F);
@@ -895,7 +879,7 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   /// kernarg loads (using the captured offset/length attributes).
   if (ST.hasKernargPreload()) {
     unsigned PreloadLength = AMDHSA_BITS_GET(
-        KDOnHost.kernarg_preload, llvm::amdhsa::KERNARG_PRELOAD_SPEC_LENGTH);
+        KDOnHost->kernarg_preload, llvm::amdhsa::KERNARG_PRELOAD_SPEC_LENGTH);
     /// Tracks the preload count in \c GCNUserSGPRUsageInfo (so the re-emitted
     /// KD carries the right preload length).
     MFI->getUserSGPRInfo().allocKernargPreloadSGPRs(PreloadLength);
@@ -927,7 +911,7 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
     F->addFnAttr(
         "amdgpu.kd.kernarg_preload_offset",
         llvm::formatv(
-            "{0}", AMDHSA_BITS_GET(KDOnHost.kernarg_preload,
+            "{0}", AMDHSA_BITS_GET(KDOnHost->kernarg_preload,
                                    llvm::amdhsa::KERNARG_PRELOAD_SPEC_OFFSET))
             .str());
   }
@@ -984,7 +968,7 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   /// HSA order right after the workgroup IDs. Its KD bit maps directly to the
   /// backend's \c hasWorkGroupInfo() (AsmPrinter sets TGID_SIZE_EN from it).
   if (AMDHSA_BITS_GET(
-          KDOnHost.compute_pgm_rsrc2,
+          KDOnHost->compute_pgm_rsrc2,
           llvm::amdhsa::COMPUTE_PGM_RSRC2_ENABLE_SGPR_WORKGROUP_INFO))
     MFI->addWorkGroupInfo();
 
@@ -1013,27 +997,8 @@ initKernelEntryPointFunction(const llvm::amdhsa::kernel_descriptor_t &KD,
   /// GRANULATED_WAVEFRONT_SGPR_COUNT is automatically calculated via the
   /// resouce usage analysis pass, but we add its count as an attribute
   /// to the function for later use
-  uint32_t NextFreeSGPR = [&] {
-    if (!llvm::AMDGPU::isGFX10Plus(ST)) {
-      uint32_t GranulatedWavefrontSGPRCount = AMDHSA_BITS_GET(
-          KD.compute_pgm_rsrc1,
-          llvm::amdhsa::COMPUTE_PGM_RSRC1_GRANULATED_WAVEFRONT_SGPR_COUNT);
-      return (GranulatedWavefrontSGPRCount + 1) * ST.getSGPREncodingGranule();
-    } else {
-      return ST.getAddressableNumSGPRs() + 2;
-    }
-  }();
-  F->addFnAttr("amdgpu-num-sgpr", llvm::formatv("{0}", NextFreeSGPR).str());
-
-  /// Record the wave's launch budget separately from the backend's
-  /// allocation cap. \c applyMaxNumRegsAttrsIfEnabled may widen
-  /// \c amdgpu-num-* below so instrumentation can allocate past what the
-  /// application asked for; these attributes keep the original numbers so
-  /// liveness and register scavenging can tell which registers the wave
-  /// actually owns.
-  setTargetRegisterBudget(*F, NextFreeSGPR,
-                          F->getFnAttributeAsParsedInteger(
-                              "amdgpu-num-vgpr", ST.getAddressableNumVGPRs(0)));
+  F->addFnAttr("amdgpu.kd.num-sgpr",
+               llvm::formatv("{0}", getSGPRCountFromKD(KD, ST)).str());
 
   return std::make_pair(std::ref(MF), KDSymbolIfPresent);
 }
@@ -1043,9 +1008,10 @@ llvm::Expected<std::pair<llvm::MachineFunction &,
 initLiftedDeviceFunctionEntry(uint64_t DeviceEntryPointAddr,
                               const MemoryAllocationAccessor &SegAccessor,
                               llvm::Module &TargetModule,
-                              const llvm::Function &InitialExecutionPoint,
+                              unsigned NumVGPRs,
+                              unsigned NumSGPRs,
                               llvm::FunctionAnalysisManager &FAM,
-                              llvm::FunctionType *DevFuncTy) {
+                              llvm::FunctionType &DevFuncTy) {
   auto SegmentOrErr = SegAccessor.getAllocationDescriptor(DeviceEntryPointAddr);
   LUTHIER_RETURN_ON_ERROR(SegmentOrErr.takeError());
   if (SegmentOrErr->empty())
@@ -1088,46 +1054,11 @@ initLiftedDeviceFunctionEntry(uint64_t DeviceEntryPointAddr,
     FuncName = llvm::formatv("x{0:x}", DeviceEntryPointAddr);
   }
 
-  assert(DevFuncTy != nullptr &&
-         "device function prototype has not been initialized");
-
   llvm::Function *F = llvm::Function::Create(
-      DevFuncTy, llvm::GlobalValue::PrivateLinkage, FuncName, TargetModule);
+      &DevFuncTy, llvm::GlobalValue::PrivateLinkage, FuncName, TargetModule);
   F->setCallingConv(llvm::CallingConv::C);
-  // Pin the entry against downstream DCE. These \c xNN discovered
-  // entries are legitimate re-entry points into the kernel (each names
-  // a partial entry at offset \c NN into the original kernel), but
-  // they carry \c PrivateLinkage and — after \c TargetModulePatcherPass
-  // moves the tool-side helpers into the target module and later
-  // module-level DCE runs — nothing in the module IR is left pointing
-  // at them, so \c GlobalDCE would drop the MF wholesale. That
-  // silently strips every \c SI_CALL its PATCHPOINTs got lowered to
-  // (along with each call's \c PostInstrSymbol \c luthier_call_ret_N
-  // ContSym), while the corresponding payloads' Case-B return
-  // trampolines still reference those ContSyms — MC then errors out
-  // with "Undefined temporary symbol \c .Lluthier_call_retN" for the
-  // now-orphaned trampolines. Anchoring the function in
-  // \c @llvm.compiler.used keeps its MF around through DCE so its
-  // \c SI_CALL and \c ContSym label emissions survive.
-  llvm::appendToCompilerUsed(TargetModule, {F});
-  /// Inherit \c amdgpu-num-vgpr / \c amdgpu-num-sgpr from the initial
-  /// execution point handle
-  assert(InitialExecutionPoint.getCallingConv() ==
-             llvm::CallingConv::AMDGPU_KERNEL &&
-         "initial execution point is not a kernel");
-  unsigned NumVGPRs =
-      InitialExecutionPoint.getFnAttributeAsParsedInteger("amdgpu-num-vgpr");
-  unsigned NumSGPRs =
-      InitialExecutionPoint.getFnAttributeAsParsedInteger("amdgpu-num-sgpr");
-  F->addFnAttr("amdgpu-num-vgpr", llvm::formatv("{0}", NumVGPRs).str());
-  F->addFnAttr("amdgpu-num-sgpr", llvm::formatv("{0}", NumSGPRs).str());
-  /// The launch budget is a property of the dispatch, so a device function
-  /// reached from this entry point inherits the kernel's.
-  setTargetRegisterBudget(*F,
-                          InitialExecutionPoint.getFnAttributeAsParsedInteger(
-                              AppNumSGPRsAttribute, NumSGPRs),
-                          InitialExecutionPoint.getFnAttributeAsParsedInteger(
-                              AppNumVGPRsAttribute, NumVGPRs));
+  F->addFnAttr("amdgpu.kd.num-vgpr", llvm::formatv("{0}", NumVGPRs).str());
+  F->addFnAttr("amdgpu.kd.num-sgpr", llvm::formatv("{0}", NumSGPRs).str());
 
   llvm::MachineFunction &MF =
       FAM.getResult<llvm::MachineFunctionAnalysis>(*F).getMF();
@@ -1682,11 +1613,6 @@ populateMF(const InstructionTraces &MFTrace, llvm::MachineFunction &MF,
     NewEntry->addSuccessor(OriginalEntry);
   }
 
-  /// Optionally widen the per-function SGPR/VGPR budget attrs to the
-  /// subtarget's addressable maximums
-  applyMaxNumRegsAttrsIfEnabled(MF.getFunction(),
-                                MF.getSubtarget<llvm::GCNSubtarget>());
-
   /// Freeze the set of reserved register because we will not do any register
   /// allocations here
   MF.getRegInfo().freezeReservedRegs();
@@ -1741,48 +1667,40 @@ llvm::PreservedAnalyses CodeDiscoveryPass::run(Prototype &IP,
   const llvm::amdhsa::kernel_descriptor_t &InitialExecutionPoint =
       TargetMAM.getResult<InitialExecutionPointAnalysis>(TargetModule)
           .getInitialExecutionPoint();
-  /// Initialize the handle for the initial execution point (i.e. the entry
-  /// point used to launch the currently running/about to be launched
-  /// shared/kernel)
-  auto InitialExecPointMFAndSymbol = initKernelEntryPointFunction(
-      InitialExecutionPoint, SegAccessor, TargetModule, TM, FAM);
-  if (llvm::Error Err = InitialExecPointMFAndSymbol.takeError()) {
+  /// Create a dummy function and get its subtarget for VGPR and SGPR count
+  /// calculation + device function prototype calculation
+  llvm::Function *DummyF = llvm::Function::Create(
+      llvm::FunctionType::get(llvm::Type::getVoidTy(Ctx), {}),
+      llvm::GlobalValue::WeakAnyLinkage, "", TargetModule);
+
+  auto &ST = TM.getSubtarget<llvm::GCNSubtarget>(*DummyF);
+
+  const llvm::amdhsa::kernel_descriptor_t *KDOnHost{nullptr};
+  if (llvm::Error Err =
+          getKDOnHost(InitialExecutionPoint, SegAccessor).moveInto(KDOnHost)) {
     Ctx.emitError(llvm::toString(std::move(Err)));
-    /// initKernelEntryPointFunction may have created a partial entry-point
-    /// Function/MF in the module before failing, so nothing is preserved.
-    return llvm::PreservedAnalyses::none();
+    return llvm::PreservedAnalyses::all();
+  }
+      ;
+
+  unsigned int NumSGPR = getSGPRCountFromKD(InitialExecutionPoint, ST);
+  unsigned int NumVGPR = getStaticVGPRCountFromKD(InitialExecutionPoint, ST);
+
+  llvm::Expected<llvm::FunctionType *> DeviceFuncPrototypeOrErr =
+      TraceFunctionTranslator::computeStandardDeviceFunctionType(
+          Ctx, ST, NumSGPR, NumVGPR);
+  if (llvm::Error Err = DeviceFuncPrototypeOrErr.takeError()) {
+    Ctx.emitError(llvm::toString(std::move(Err)));
+    return llvm::PreservedAnalyses::all();
   }
 
-  InitialExecPointMFAndSymbol->first.getFunction().addFnAttr(
-      InitialExecutionPointAttr);
-
-  applyMaxNumRegsAttrsIfEnabled(
-      InitialExecPointMFAndSymbol->first.getFunction(),
-      InitialExecPointMFAndSymbol->first.getSubtarget<llvm::GCNSubtarget>());
+  DummyF->removeFromParent();
 
   /// Start of the code discovery loop
 
   llvm::SmallDenseSet<EntryPoint> UnvisitedPointsOfEntry{InitialEntryPoint};
 
   llvm::SmallDenseSet<EntryPoint> VisitedPointsOfEntry{};
-
-  /// Prototype of the device functions, computed up front via the stateless
-  /// TraceFunctionTranslator factory so we don't construct (and re-construct) a
-  /// translator over the initial entry-point MF before the worklist loop.
-  const llvm::MachineFunction &InitialExecPointMF =
-      InitialExecPointMFAndSymbol->first;
-  const llvm::Function &InitialExecPointFn = InitialExecPointMF.getFunction();
-  llvm::Expected<llvm::FunctionType *> DeviceFuncPrototypeOrErr =
-      TraceFunctionTranslator::computeStandardDeviceFunctionType(
-          Ctx, InitialExecPointMF.getSubtarget<llvm::GCNSubtarget>(),
-          InitialExecPointFn.getFnAttributeAsParsedInteger("amdgpu-num-sgpr"),
-          InitialExecPointFn.getFnAttributeAsParsedInteger("amdgpu-num-vgpr"));
-  if (llvm::Error Err = DeviceFuncPrototypeOrErr.takeError()) {
-    Ctx.emitError(llvm::toString(std::move(Err)));
-    /// The initial entry-point Function was already attributed above
-    /// (InitialExecutionPointAttr), so the module is already mutated.
-    return llvm::PreservedAnalyses::none();
-  }
 
   /// Collected across iterations. For each S_CALL_B64 encountered, the MI
   /// initially has a raw 16-bit signed displacement (\c MO_Immediate) as
@@ -1809,25 +1727,23 @@ llvm::PreservedAnalyses CodeDiscoveryPass::run(Prototype &IP,
     /// Initialize the function handle associated with the entry point
     const auto *KDOnDevice = CurrentEntryPoint.getKernelDescriptor();
 
-    auto MFAndFuncSymRefOrErr = [&]() -> decltype(InitialExecPointMFAndSymbol) {
+    auto MFAndFuncSymRefOrErr =
+        [&]() -> llvm::Expected<
+                  std::pair<llvm::MachineFunction &,
+                            std::optional<object::AMDGCNElfSymbolRef>>> {
       if (KDOnDevice) {
-        if (KDOnDevice != &InitialExecutionPoint)
-          return LUTHIER_MAKE_GENERIC_ERROR(
-              "Initial execution point does not "
-              "match the kernel initial entry point");
-        return *InitialExecPointMFAndSymbol;
+        return initKernelEntryPointFunction(InitialExecutionPoint, SegAccessor,
+                                            TargetModule, TM, FAM);
       } else {
         return initLiftedDeviceFunctionEntry(
             CurrentEntryPoint.getEntryPointAddress(), SegAccessor, TargetModule,
-            InitialExecPointMFAndSymbol->first.getFunction(), FAM,
-            *DeviceFuncPrototypeOrErr);
+            NumVGPR, NumSGPR, FAM, **DeviceFuncPrototypeOrErr);
       }
     }();
 
     if (!MFAndFuncSymRefOrErr) {
       Ctx.emitError(llvm::toString(MFAndFuncSymRefOrErr.takeError()));
-      /// Prior iterations and initLiftedDeviceFunctionEntry may have already
-      /// created Functions/MFs in the module, so nothing is preserved.
+      /// Prior iterations may have already a function so preserve nothing
       return llvm::PreservedAnalyses::none();
     }
     [[maybe_unused]] auto [MF, FuncSymRef] = *MFAndFuncSymRefOrErr;
