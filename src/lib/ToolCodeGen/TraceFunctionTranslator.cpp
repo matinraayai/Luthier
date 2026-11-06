@@ -1309,14 +1309,14 @@ llvm::Error TraceFunctionTranslator::initRegFileLayouts() {
   const llvm::Function &F = MF.getFunction();
   const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
 
-  unsigned NumSGPRs = F.getFnAttributeAsParsedInteger("amdgpu-num-sgpr");
-  unsigned NumVGPRs = F.getFnAttributeAsParsedInteger("amdgpu-num-vgpr");
+  unsigned NumSGPRs = F.getFnAttributeAsParsedInteger("amdgpu.kd.num-sgpr");
+  unsigned NumVGPRs = F.getFnAttributeAsParsedInteger("amdgpu.kd.num-vgpr");
 
   if (NumSGPRs == 0) {
-    return LUTHIER_MAKE_GENERIC_ERROR("amdgpu-num-sgpr must be non-zero.");
+    return LUTHIER_MAKE_GENERIC_ERROR("amdgpu.kd.num-sgpr must be non-zero.");
   }
   if (NumVGPRs == 0) {
-    return LUTHIER_MAKE_GENERIC_ERROR("amdgpu-num-vgpr must be a non-zero.");
+    return LUTHIER_MAKE_GENERIC_ERROR("amdgpu.kd.num-vgpr must be a non-zero.");
   }
 
   getRegisterFileArgOrder(ST, FunctionCallArgOrder);
@@ -1647,8 +1647,8 @@ TraceFunctionTranslator::getStandardDeviceFunctionType() const {
   /// non-zero \c amdgpu-num-sgpr / \c amdgpu-num-vgpr, so the static call
   /// here is infallible for any well-formed instance.
   return llvm::cantFail(computeStandardDeviceFunctionType(
-      F.getContext(), ST, F.getFnAttributeAsParsedInteger("amdgpu-num-sgpr"),
-      F.getFnAttributeAsParsedInteger("amdgpu-num-vgpr")));
+      F.getContext(), ST, F.getFnAttributeAsParsedInteger("amdgpu.kd.num-sgpr"),
+      F.getFnAttributeAsParsedInteger("amdgpu.kd.num-vgpr")));
 }
 
 llvm::Expected<llvm::FunctionType *>
