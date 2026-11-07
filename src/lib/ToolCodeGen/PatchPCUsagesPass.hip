@@ -88,20 +88,20 @@ struct EntryPointTraceFunctionEntry {
 
 
 /// Runtime resolver table the \c patchRegMulti fallback path walks.
-__attribute__((device, used))
+__attribute__((device))
 EntryPointTraceFunctionEntry * EntryPointToTraceFunctionAddrMap;
 
-__attribute__((device, used))
+__attribute__((device))
 std::uint32_t EntryPointToTraceFunctionAddrMapSize;
 
-__attribute__((device, used))
+__attribute__((device))
 std::uint32_t EntryPointToTraceFunctionAddrMapMaxSize;
 
 /// Wave-uniform spinlock. Zero when free, one when held. The
 /// \c patchRegMulti fallback holds it across the entire read-then-
 /// hostcall region so the host callback can grow the table in place
 /// without racing concurrent readers.
-__attribute__((device, used))
+__attribute__((device))
 std::uint32_t EntryPointToTraceFunctionAddrMapLock;
 
 
@@ -109,11 +109,11 @@ std::uint32_t EntryPointToTraceFunctionAddrMapLock;
 /// entry count. Used to initialize the \c EntryPointToTraceFunctionAddrMap
 /// value at load time. Only emitted when the initial entry point is a
 /// kernel.
-__attribute__((device, used, constant))
+__attribute__((device, constant))
 const EntryPointTraceFunctionEntry *
     EntryPointToTraceFunctionAddrMapSeed{nullptr};
 
-__attribute__((device, used, constant))
+__attribute__((device, constant))
 std::uint32_t
     EntryPointToTraceFunctionAddrMapSeedSize =
         0;
@@ -1560,11 +1560,7 @@ PatchPCUsagesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   if (InstrsToRewrite.empty())
     return llvm::PreservedAnalyses::all();
 
-  // Splice the pass's device-side payloads (patchRegSingle, patchRegMulti,
-  // and the EntryPointToTraceFunctionAddrMap globals) into the prototype's
-  // instrumentation module. Their `llvm::Function*` and `GlobalVariable*`
-  // handles are what every subsequent shadow-handle lookup below expects
-  // to find in the IModule.
+  /// Link the instrumentation logic with the IModule
   const llvm::TargetMachine &TM =
       IMAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI().getTarget();
   std::string CPU(TM.getTargetCPU());
