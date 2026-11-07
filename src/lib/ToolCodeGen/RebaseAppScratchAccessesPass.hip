@@ -21,8 +21,8 @@
 #include "luthier/Intrinsic/Intrinsics.h"
 #include "luthier/Intrinsic/ScalarValueArgument.h"
 
-#include <hsa/hsa.h>
 #include <SIInstrInfo.h>
+#include <hsa/hsa.h>
 
 #ifndef __HIP_DEVICE_COMPILE__
 #include "luthier/Common/ErrorCheck.h"
@@ -40,13 +40,12 @@
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Module.h>
-#include <llvm/IR/Module.h>
 #include <llvm/Linker/Linker.h>
-#include <llvm/Transforms/Utils/ModuleUtils.h>
 #include <llvm/Support/Debug.h>
 #include <llvm/Support/FormatVariadic.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/TargetParser/SubtargetFeature.h>
+#include <llvm/Transforms/Utils/ModuleUtils.h>
 #endif // __HIP_DEVICE_COMPILE__
 
 #undef DEBUG_TYPE
@@ -195,7 +194,6 @@ displacedBufferSOffset(std::uint32_t RsrcLo, std::uint32_t RsrcHi,
   return SOffset;
 }
 
-
 // Vector types for multi-dword inline asm operands.
 using v2u32 = std::uint32_t __attribute__((ext_vector_type(2)));
 using v3u32 = std::uint32_t __attribute__((ext_vector_type(3)));
@@ -208,556 +206,1313 @@ using v4u32 = std::uint32_t __attribute__((ext_vector_type(4)));
 //===----------------------------------------------------------------------===//
 
 #if defined(__GFX12__) || defined(__GFX13__)
-#define MN_SCRATCH_LOAD_B32  "scratch_load_b32"
-#define MN_SCRATCH_LOAD_B64  "scratch_load_b64"
-#define MN_SCRATCH_LOAD_B96  "scratch_load_b96"
+#define MN_SCRATCH_LOAD_B32 "scratch_load_b32"
+#define MN_SCRATCH_LOAD_B64 "scratch_load_b64"
+#define MN_SCRATCH_LOAD_B96 "scratch_load_b96"
 #define MN_SCRATCH_LOAD_B128 "scratch_load_b128"
-#define MN_SCRATCH_LOAD_U8   "scratch_load_u8"
-#define MN_SCRATCH_LOAD_I8   "scratch_load_i8"
-#define MN_SCRATCH_LOAD_U16  "scratch_load_u16"
-#define MN_SCRATCH_LOAD_I16  "scratch_load_i16"
-#define MN_SCRATCH_STORE_B32  "scratch_store_b32"
-#define MN_SCRATCH_STORE_B64  "scratch_store_b64"
-#define MN_SCRATCH_STORE_B96  "scratch_store_b96"
+#define MN_SCRATCH_LOAD_U8 "scratch_load_u8"
+#define MN_SCRATCH_LOAD_I8 "scratch_load_i8"
+#define MN_SCRATCH_LOAD_U16 "scratch_load_u16"
+#define MN_SCRATCH_LOAD_I16 "scratch_load_i16"
+#define MN_SCRATCH_STORE_B32 "scratch_store_b32"
+#define MN_SCRATCH_STORE_B64 "scratch_store_b64"
+#define MN_SCRATCH_STORE_B96 "scratch_store_b96"
 #define MN_SCRATCH_STORE_B128 "scratch_store_b128"
-#define MN_SCRATCH_STORE_B8   "scratch_store_b8"
-#define MN_SCRATCH_STORE_B16  "scratch_store_b16"
-#define MN_FLAT_LOAD_B32  "flat_load_b32"
-#define MN_FLAT_LOAD_B64  "flat_load_b64"
-#define MN_FLAT_LOAD_B96  "flat_load_b96"
+#define MN_SCRATCH_STORE_B8 "scratch_store_b8"
+#define MN_SCRATCH_STORE_B16 "scratch_store_b16"
+#define MN_FLAT_LOAD_B32 "flat_load_b32"
+#define MN_FLAT_LOAD_B64 "flat_load_b64"
+#define MN_FLAT_LOAD_B96 "flat_load_b96"
 #define MN_FLAT_LOAD_B128 "flat_load_b128"
-#define MN_FLAT_LOAD_U8   "flat_load_u8"
-#define MN_FLAT_LOAD_I8   "flat_load_i8"
-#define MN_FLAT_LOAD_U16  "flat_load_u16"
-#define MN_FLAT_LOAD_I16  "flat_load_i16"
-#define MN_FLAT_STORE_B32  "flat_store_b32"
-#define MN_FLAT_STORE_B64  "flat_store_b64"
-#define MN_FLAT_STORE_B96  "flat_store_b96"
+#define MN_FLAT_LOAD_U8 "flat_load_u8"
+#define MN_FLAT_LOAD_I8 "flat_load_i8"
+#define MN_FLAT_LOAD_U16 "flat_load_u16"
+#define MN_FLAT_LOAD_I16 "flat_load_i16"
+#define MN_FLAT_STORE_B32 "flat_store_b32"
+#define MN_FLAT_STORE_B64 "flat_store_b64"
+#define MN_FLAT_STORE_B96 "flat_store_b96"
 #define MN_FLAT_STORE_B128 "flat_store_b128"
-#define MN_FLAT_STORE_B8   "flat_store_b8"
-#define MN_FLAT_STORE_B16  "flat_store_b16"
+#define MN_FLAT_STORE_B8 "flat_store_b8"
+#define MN_FLAT_STORE_B16 "flat_store_b16"
 #else
-#define MN_SCRATCH_LOAD_B32  "scratch_load_dword"
-#define MN_SCRATCH_LOAD_B64  "scratch_load_dwordx2"
-#define MN_SCRATCH_LOAD_B96  "scratch_load_dwordx3"
+#define MN_SCRATCH_LOAD_B32 "scratch_load_dword"
+#define MN_SCRATCH_LOAD_B64 "scratch_load_dwordx2"
+#define MN_SCRATCH_LOAD_B96 "scratch_load_dwordx3"
 #define MN_SCRATCH_LOAD_B128 "scratch_load_dwordx4"
-#define MN_SCRATCH_LOAD_U8   "scratch_load_ubyte"
-#define MN_SCRATCH_LOAD_I8   "scratch_load_sbyte"
-#define MN_SCRATCH_LOAD_U16  "scratch_load_ushort"
-#define MN_SCRATCH_LOAD_I16  "scratch_load_sshort"
-#define MN_SCRATCH_STORE_B32  "scratch_store_dword"
-#define MN_SCRATCH_STORE_B64  "scratch_store_dwordx2"
-#define MN_SCRATCH_STORE_B96  "scratch_store_dwordx3"
+#define MN_SCRATCH_LOAD_U8 "scratch_load_ubyte"
+#define MN_SCRATCH_LOAD_I8 "scratch_load_sbyte"
+#define MN_SCRATCH_LOAD_U16 "scratch_load_ushort"
+#define MN_SCRATCH_LOAD_I16 "scratch_load_sshort"
+#define MN_SCRATCH_STORE_B32 "scratch_store_dword"
+#define MN_SCRATCH_STORE_B64 "scratch_store_dwordx2"
+#define MN_SCRATCH_STORE_B96 "scratch_store_dwordx3"
 #define MN_SCRATCH_STORE_B128 "scratch_store_dwordx4"
-#define MN_SCRATCH_STORE_B8   "scratch_store_byte"
-#define MN_SCRATCH_STORE_B16  "scratch_store_short"
-#define MN_FLAT_LOAD_B32  "flat_load_dword"
-#define MN_FLAT_LOAD_B64  "flat_load_dwordx2"
-#define MN_FLAT_LOAD_B96  "flat_load_dwordx3"
+#define MN_SCRATCH_STORE_B8 "scratch_store_byte"
+#define MN_SCRATCH_STORE_B16 "scratch_store_short"
+#define MN_FLAT_LOAD_B32 "flat_load_dword"
+#define MN_FLAT_LOAD_B64 "flat_load_dwordx2"
+#define MN_FLAT_LOAD_B96 "flat_load_dwordx3"
 #define MN_FLAT_LOAD_B128 "flat_load_dwordx4"
-#define MN_FLAT_LOAD_U8   "flat_load_ubyte"
-#define MN_FLAT_LOAD_I8   "flat_load_sbyte"
-#define MN_FLAT_LOAD_U16  "flat_load_ushort"
-#define MN_FLAT_LOAD_I16  "flat_load_sshort"
-#define MN_FLAT_STORE_B32  "flat_store_dword"
-#define MN_FLAT_STORE_B64  "flat_store_dwordx2"
-#define MN_FLAT_STORE_B96  "flat_store_dwordx3"
+#define MN_FLAT_LOAD_U8 "flat_load_ubyte"
+#define MN_FLAT_LOAD_I8 "flat_load_sbyte"
+#define MN_FLAT_LOAD_U16 "flat_load_ushort"
+#define MN_FLAT_LOAD_I16 "flat_load_sshort"
+#define MN_FLAT_STORE_B32 "flat_store_dword"
+#define MN_FLAT_STORE_B64 "flat_store_dwordx2"
+#define MN_FLAT_STORE_B96 "flat_store_dwordx3"
 #define MN_FLAT_STORE_B128 "flat_store_dwordx4"
-#define MN_FLAT_STORE_B8   "flat_store_byte"
-#define MN_FLAT_STORE_B16  "flat_store_short"
+#define MN_FLAT_STORE_B8 "flat_store_byte"
+#define MN_FLAT_STORE_B16 "flat_store_short"
 #endif
 
-//===----------------------------------------------------------------------===//
-// Hook-generation helper macros
-//===----------------------------------------------------------------------===//
-
-// clang-format off
-
-#define PP_CAT_(A, B) A##B
-#define PP_CAT(A, B) PP_CAT_(A, B)
-
-#define LOAD_TYPE_1 std::uint32_t
-#define LOAD_TYPE_2 v2u32
-#define LOAD_TYPE_3 v3u32
-#define LOAD_TYPE_4 v4u32
-
-#define DST_PARAMS_1 llvm::MCRegister D0,
-#define DST_PARAMS_2 llvm::MCRegister D0, llvm::MCRegister D1,
-#define DST_PARAMS_3 llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
-#define DST_PARAMS_4 llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2, llvm::MCRegister D3,
-
-#define SRC_PARAMS_1 std::uint32_t V0,
-#define SRC_PARAMS_2 std::uint32_t V0, std::uint32_t V1,
-#define SRC_PARAMS_3 std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
-#define SRC_PARAMS_4 std::uint32_t V0, std::uint32_t V1, std::uint32_t V2, std::uint32_t V3,
-
-#define WRITEBACK_1 luthier::writeReg<std::uint32_t>(D0, Result);
-#define WRITEBACK_2                                                            \
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);                             \
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
-#define WRITEBACK_3                                                            \
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);                             \
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);                             \
-  luthier::writeReg<std::uint32_t>(D2, Result[2]);
-#define WRITEBACK_4                                                            \
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);                             \
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);                             \
-  luthier::writeReg<std::uint32_t>(D2, Result[2]);                             \
-  luthier::writeReg<std::uint32_t>(D3, Result[3]);
-
-#define PACK_1 std::uint32_t Data = V0;
-#define PACK_2 v2u32 Data = {V0, V1};
-#define PACK_3 v3u32 Data = {V0, V1, V2};
-#define PACK_4 v4u32 Data = {V0, V1, V2, V3};
-
-//===----------------------------------------------------------------------===//
-// Scratch hook macros
-//===----------------------------------------------------------------------===//
-
-#define DEFINE_SCRATCH_LOAD_VADDR(NAME, MN, N)                                 \
-  __attribute__((device, used)) void NAME(                                     \
-      PP_CAT(DST_PARAMS_, N)                                                   \
-      std::uint32_t VAddr, std::int32_t InstOffset) {                          \
-    const std::uint32_t DV =                                                   \
-        VAddr + static_cast<std::uint32_t>(InstOffset) +                       \
-        instrumentationReserve();                                              \
-    PP_CAT(LOAD_TYPE_, N) Result;                                              \
-    asm volatile(MN " %0, %1, off" : "=v"(Result) : "v"(DV));                 \
-    PP_CAT(WRITEBACK_, N)                                                      \
-  }
-
-#define DEFINE_SCRATCH_STORE_VADDR(NAME, MN, N)                                \
-  __attribute__((device, used)) void NAME(                                     \
-      PP_CAT(SRC_PARAMS_, N)                                                   \
-      std::uint32_t VAddr, std::int32_t InstOffset) {                          \
-    const std::uint32_t DV =                                                   \
-        VAddr + static_cast<std::uint32_t>(InstOffset) +                       \
-        instrumentationReserve();                                              \
-    PP_CAT(PACK_, N)                                                           \
-    asm volatile(MN " %0, %1, off" : : "v"(Data), "v"(DV));                   \
-  }
-
-#define DEFINE_SCRATCH_LOAD_SADDR(NAME, MN, N)                                 \
-  __attribute__((device, used)) void NAME(                                     \
-      PP_CAT(DST_PARAMS_, N)                                                   \
-      std::uint32_t SAddr, std::int32_t InstOffset) {                          \
-    const std::uint32_t DS =                                                   \
-        SAddr + static_cast<std::uint32_t>(InstOffset) +                       \
-        instrumentationReserve();                                              \
-    PP_CAT(LOAD_TYPE_, N) Result;                                              \
-    asm volatile(MN " %0, off, %1" : "=v"(Result) : "s"(DS));                 \
-    PP_CAT(WRITEBACK_, N)                                                      \
-  }
-
-#define DEFINE_SCRATCH_STORE_SADDR(NAME, MN, N)                                \
-  __attribute__((device, used)) void NAME(                                     \
-      PP_CAT(SRC_PARAMS_, N)                                                   \
-      std::uint32_t SAddr, std::int32_t InstOffset) {                          \
-    const std::uint32_t DS =                                                   \
-        SAddr + static_cast<std::uint32_t>(InstOffset) +                       \
-        instrumentationReserve();                                              \
-    PP_CAT(PACK_, N)                                                           \
-    asm volatile(MN " %0, off, %1" : : "v"(Data), "s"(DS));                   \
-  }
-
-#define DEFINE_SCRATCH_LOAD_ST(NAME, MN, N)                                    \
-  __attribute__((device, used)) void NAME(                                     \
-      PP_CAT(DST_PARAMS_, N)                                                   \
-      std::int32_t InstOffset) {                                               \
-    const std::uint32_t S =                                                    \
-        static_cast<std::uint32_t>(InstOffset) +                               \
-        instrumentationReserve();                                              \
-    PP_CAT(LOAD_TYPE_, N) Result;                                              \
-    asm volatile(MN " %0, off, %1" : "=v"(Result) : "s"(S));                  \
-    PP_CAT(WRITEBACK_, N)                                                      \
-  }
-
-#define DEFINE_SCRATCH_STORE_ST(NAME, MN, N)                                   \
-  __attribute__((device, used)) void NAME(                                     \
-      PP_CAT(SRC_PARAMS_, N)                                                   \
-      std::int32_t InstOffset) {                                               \
-    const std::uint32_t S =                                                    \
-        static_cast<std::uint32_t>(InstOffset) +                               \
-        instrumentationReserve();                                              \
-    PP_CAT(PACK_, N)                                                           \
-    asm volatile(MN " %0, off, %1" : : "v"(Data), "s"(S));                    \
-  }
-
-#define DEFINE_SCRATCH_LOAD_SVS(NAME, MN, N)                                   \
-  __attribute__((device, used)) void NAME(                                     \
-      PP_CAT(DST_PARAMS_, N)                                                   \
-      std::uint32_t VAddr, std::uint32_t SAddr,                                \
-      std::int32_t InstOffset) {                                               \
-    const std::uint32_t DS =                                                   \
-        SAddr + static_cast<std::uint32_t>(InstOffset) +                       \
-        instrumentationReserve();                                              \
-    PP_CAT(LOAD_TYPE_, N) Result;                                              \
-    asm volatile(MN " %0, %1, %2" : "=v"(Result) : "v"(VAddr), "s"(DS));      \
-    PP_CAT(WRITEBACK_, N)                                                      \
-  }
-
-#define DEFINE_SCRATCH_STORE_SVS(NAME, MN, N)                                  \
-  __attribute__((device, used)) void NAME(                                     \
-      PP_CAT(SRC_PARAMS_, N)                                                   \
-      std::uint32_t VAddr, std::uint32_t SAddr,                                \
-      std::int32_t InstOffset) {                                               \
-    const std::uint32_t DS =                                                   \
-        SAddr + static_cast<std::uint32_t>(InstOffset) +                       \
-        instrumentationReserve();                                              \
-    PP_CAT(PACK_, N)                                                           \
-    asm volatile(MN " %0, %1, %2" : : "v"(Data), "v"(VAddr), "s"(DS));        \
-  }
-
-//===----------------------------------------------------------------------===//
-// Flat hook macros
-//===----------------------------------------------------------------------===//
-
-#define DEFINE_FLAT_LOAD(NAME, FLAT_MN, N)                                     \
-  __attribute__((device, used)) void NAME(                                     \
-      PP_CAT(DST_PARAMS_, N)                                                   \
-      std::uint64_t Addr, std::int32_t InstOffset) {                           \
-    const std::uint64_t FlatAddr =                                             \
-        Addr + static_cast<std::uint64_t>(                                     \
-                   static_cast<std::int64_t>(InstOffset));                     \
-    PP_CAT(LOAD_TYPE_, N) Result;                                              \
-    if (__builtin_amdgcn_is_private(                                           \
-            reinterpret_cast<const void *>(FlatAddr))) {                        \
-      const std::uint32_t Off = displacedPrivateOffsetOf(                      \
-          reinterpret_cast<const void *>(FlatAddr));                            \
-      for (unsigned I = 0; I != N; ++I)                                        \
-        reinterpret_cast<std::uint32_t *>(&Result)[I] =                        \
-            *(Private<std::uint32_t> *)(Off + 4 * I);                          \
-    } else {                                                                   \
-      asm volatile(FLAT_MN " %0, %1" : "=v"(Result) : "v"(FlatAddr));         \
-    }                                                                          \
-    PP_CAT(WRITEBACK_, N)                                                      \
-  }
-
-#define DEFINE_FLAT_STORE(NAME, FLAT_MN, N)                                    \
-  __attribute__((device, used)) void NAME(                                     \
-      PP_CAT(SRC_PARAMS_, N)                                                   \
-      std::uint64_t Addr, std::int32_t InstOffset) {                           \
-    const std::uint64_t FlatAddr =                                             \
-        Addr + static_cast<std::uint64_t>(                                     \
-                   static_cast<std::int64_t>(InstOffset));                     \
-    PP_CAT(PACK_, N)                                                           \
-    if (__builtin_amdgcn_is_private(                                           \
-            reinterpret_cast<const void *>(FlatAddr))) {                        \
-      const std::uint32_t Off = displacedPrivateOffsetOf(                      \
-          reinterpret_cast<const void *>(FlatAddr));                            \
-      for (unsigned I = 0; I != N; ++I)                                        \
-        *(Private<std::uint32_t> *)(Off + 4 * I) =                             \
-            reinterpret_cast<const std::uint32_t *>(&Data)[I];                 \
-    } else {                                                                   \
-      asm volatile(FLAT_MN " %0, %1" : : "v"(Data), "v"(FlatAddr));           \
-    }                                                                          \
-  }
-
-#define DEFINE_FLAT_SUBLOAD(NAME, FLAT_MN, T)                                  \
-  __attribute__((device, used)) void NAME(                                     \
-      llvm::MCRegister Dst,                                                    \
-      std::uint64_t Addr, std::int32_t InstOffset) {                           \
-    const std::uint64_t FlatAddr =                                             \
-        Addr + static_cast<std::uint64_t>(                                     \
-                   static_cast<std::int64_t>(InstOffset));                     \
-    std::uint32_t Result;                                                      \
-    if (__builtin_amdgcn_is_private(                                           \
-            reinterpret_cast<const void *>(FlatAddr))) {                        \
-      const std::uint32_t Off = displacedPrivateOffsetOf(                      \
-          reinterpret_cast<const void *>(FlatAddr));                            \
-      Result = static_cast<std::uint32_t>(                                     \
-          static_cast<std::int32_t>(*(Private<T> *)(Off)));                    \
-    } else {                                                                   \
-      asm volatile(FLAT_MN " %0, %1" : "=v"(Result) : "v"(FlatAddr));         \
-    }                                                                          \
-    luthier::writeReg<std::uint32_t>(Dst, Result);                             \
-  }
-
-#define DEFINE_FLAT_SUBSTORE(NAME, FLAT_MN, T)                                 \
-  __attribute__((device, used)) void NAME(                                     \
-      std::uint32_t Value,                                                     \
-      std::uint64_t Addr, std::int32_t InstOffset) {                           \
-    const std::uint64_t FlatAddr =                                             \
-        Addr + static_cast<std::uint64_t>(                                     \
-                   static_cast<std::int64_t>(InstOffset));                     \
-    if (__builtin_amdgcn_is_private(                                           \
-            reinterpret_cast<const void *>(FlatAddr))) {                        \
-      const std::uint32_t Off = displacedPrivateOffsetOf(                      \
-          reinterpret_cast<const void *>(FlatAddr));                            \
-      *(Private<T> *)(Off) = static_cast<T>(Value);                            \
-    } else {                                                                   \
-      asm volatile(FLAT_MN " %0, %1" : : "v"(static_cast<T>(Value)),          \
-                   "v"(FlatAddr));                                             \
-    }                                                                          \
-  }
-
-//===----------------------------------------------------------------------===//
-// Buffer hook macros
-//===----------------------------------------------------------------------===//
-
-#define DEFINE_BUFFER_LOAD_OFFEN(NAME, N)                                      \
-  __attribute__((device, used)) void NAME(                                     \
-      PP_CAT(DST_PARAMS_, N)                                                   \
-      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
-      std::uint32_t RsrcHi, std::uint32_t VOffset,                            \
-      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
-    const int SOff =                                                           \
-        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
-    const std::uint32_t LaneOffset =                                           \
-        VOffset + static_cast<std::uint32_t>(InstOffset);                      \
-    std::uint32_t V[4] = {0, 0, 0, 0};                                        \
-    for (unsigned I = 0; I != static_cast<unsigned>(N); ++I)                   \
-      V[I] = __builtin_amdgcn_raw_buffer_load_b32(                            \
-          Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);               \
-    PP_CAT(WRITEBACK_ARRAY_, N)                                                \
-  }
-
-#define DEFINE_BUFFER_STORE_OFFEN(NAME, N)                                     \
-  __attribute__((device, used)) void NAME(                                     \
-      SRC_PARAMS_4                                                             \
-      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
-      std::uint32_t RsrcHi, std::uint32_t VOffset,                            \
-      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
-    const int SOff =                                                           \
-        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
-    const std::uint32_t LaneOffset =                                           \
-        VOffset + static_cast<std::uint32_t>(InstOffset);                      \
-    const std::uint32_t V[4] = {V0, V1, V2, V3};                              \
-    for (unsigned I = 0; I != static_cast<unsigned>(N); ++I)                   \
-      __builtin_amdgcn_raw_buffer_store_b32(                                   \
-          V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);         \
-  }
-
-#define DEFINE_BUFFER_LOAD_OFFSET(NAME, N)                                     \
-  __attribute__((device, used)) void NAME(                                     \
-      PP_CAT(DST_PARAMS_, N)                                                   \
-      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
-      std::uint32_t RsrcHi,                                                    \
-      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
-    const int SOff =                                                           \
-        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
-    const std::uint32_t LaneOffset =                                           \
-        static_cast<std::uint32_t>(InstOffset);                                \
-    std::uint32_t V[4] = {0, 0, 0, 0};                                        \
-    for (unsigned I = 0; I != static_cast<unsigned>(N); ++I)                   \
-      V[I] = __builtin_amdgcn_raw_buffer_load_b32(                            \
-          Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);               \
-    PP_CAT(WRITEBACK_ARRAY_, N)                                                \
-  }
-
-#define DEFINE_BUFFER_STORE_OFFSET(NAME, N)                                    \
-  __attribute__((device, used)) void NAME(                                     \
-      SRC_PARAMS_4                                                             \
-      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
-      std::uint32_t RsrcHi,                                                    \
-      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
-    const int SOff =                                                           \
-        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
-    const std::uint32_t LaneOffset =                                           \
-        static_cast<std::uint32_t>(InstOffset);                                \
-    const std::uint32_t V[4] = {V0, V1, V2, V3};                              \
-    for (unsigned I = 0; I != static_cast<unsigned>(N); ++I)                   \
-      __builtin_amdgcn_raw_buffer_store_b32(                                   \
-          V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);         \
-  }
-
-#define DEFINE_BUFFER_SUBLOAD_OFFEN(NAME, BUILTIN)                             \
-  __attribute__((device, used)) void NAME(                                     \
-      llvm::MCRegister Dst,                                                    \
-      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
-      std::uint32_t RsrcHi, std::uint32_t VOffset,                            \
-      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
-    const int SOff =                                                           \
-        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
-    const std::uint32_t LaneOffset =                                           \
-        VOffset + static_cast<std::uint32_t>(InstOffset);                      \
-    const auto Val = BUILTIN(Rsrc, static_cast<int>(LaneOffset), SOff, 0);     \
-    luthier::writeReg<std::uint32_t>(                                          \
-        Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));      \
-  }
-
-#define DEFINE_BUFFER_SUBSTORE_OFFEN(NAME, BUILTIN, CAST)                      \
-  __attribute__((device, used)) void NAME(                                     \
-      std::uint32_t Value,                                                     \
-      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
-      std::uint32_t RsrcHi, std::uint32_t VOffset,                            \
-      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
-    const int SOff =                                                           \
-        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
-    const std::uint32_t LaneOffset =                                           \
-        VOffset + static_cast<std::uint32_t>(InstOffset);                      \
-    BUILTIN(static_cast<CAST>(Value), Rsrc,                                    \
-            static_cast<int>(LaneOffset), SOff, 0);                            \
-  }
-
-#define DEFINE_BUFFER_SUBLOAD_OFFSET(NAME, BUILTIN)                            \
-  __attribute__((device, used)) void NAME(                                     \
-      llvm::MCRegister Dst,                                                    \
-      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
-      std::uint32_t RsrcHi,                                                    \
-      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
-    const int SOff =                                                           \
-        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
-    const std::uint32_t LaneOffset =                                           \
-        static_cast<std::uint32_t>(InstOffset);                                \
-    const auto Val = BUILTIN(Rsrc, static_cast<int>(LaneOffset), SOff, 0);     \
-    luthier::writeReg<std::uint32_t>(                                          \
-        Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));      \
-  }
-
-#define DEFINE_BUFFER_SUBSTORE_OFFSET(NAME, BUILTIN, CAST)                     \
-  __attribute__((device, used)) void NAME(                                     \
-      std::uint32_t Value,                                                     \
-      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
-      std::uint32_t RsrcHi,                                                    \
-      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
-    const int SOff =                                                           \
-        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
-    const std::uint32_t LaneOffset =                                           \
-        static_cast<std::uint32_t>(InstOffset);                                \
-    BUILTIN(static_cast<CAST>(Value), Rsrc,                                    \
-            static_cast<int>(LaneOffset), SOff, 0);                            \
-  }
-
-#define WRITEBACK_ARRAY_1 luthier::writeReg<std::uint32_t>(D0, V[0]);
-#define WRITEBACK_ARRAY_2                                                      \
-  luthier::writeReg<std::uint32_t>(D0, V[0]);                                  \
-  luthier::writeReg<std::uint32_t>(D1, V[1]);
-#define WRITEBACK_ARRAY_3                                                      \
-  luthier::writeReg<std::uint32_t>(D0, V[0]);                                  \
-  luthier::writeReg<std::uint32_t>(D1, V[1]);                                  \
-  luthier::writeReg<std::uint32_t>(D2, V[2]);
-#define WRITEBACK_ARRAY_4                                                      \
-  luthier::writeReg<std::uint32_t>(D0, V[0]);                                  \
-  luthier::writeReg<std::uint32_t>(D1, V[1]);                                  \
-  luthier::writeReg<std::uint32_t>(D2, V[2]);                                  \
-  luthier::writeReg<std::uint32_t>(D3, V[3]);
-
-//===----------------------------------------------------------------------===//
-// Hook instantiations
-//===----------------------------------------------------------------------===//
-
 namespace luthier::payloads {
+__attribute__((device, used)) void
+scratchLoadB32Vaddr(llvm::MCRegister D0, std::uint32_t VAddr,
+                    std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_B32 " %0, %1, off" : "=v"(Result) : "v"(DV));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
 
-// ---- Scratch loads ----
-DEFINE_SCRATCH_LOAD_VADDR(scratchLoadB32Vaddr, MN_SCRATCH_LOAD_B32, 1)
-DEFINE_SCRATCH_LOAD_SADDR(scratchLoadB32Saddr, MN_SCRATCH_LOAD_B32, 1)
-DEFINE_SCRATCH_LOAD_ST(scratchLoadB32St, MN_SCRATCH_LOAD_B32, 1)
-DEFINE_SCRATCH_LOAD_SVS(scratchLoadB32Svs, MN_SCRATCH_LOAD_B32, 1)
-DEFINE_SCRATCH_LOAD_VADDR(scratchLoadB64Vaddr, MN_SCRATCH_LOAD_B64, 2)
-DEFINE_SCRATCH_LOAD_SADDR(scratchLoadB64Saddr, MN_SCRATCH_LOAD_B64, 2)
-DEFINE_SCRATCH_LOAD_ST(scratchLoadB64St, MN_SCRATCH_LOAD_B64, 2)
-DEFINE_SCRATCH_LOAD_SVS(scratchLoadB64Svs, MN_SCRATCH_LOAD_B64, 2)
-DEFINE_SCRATCH_LOAD_VADDR(scratchLoadB96Vaddr, MN_SCRATCH_LOAD_B96, 3)
-DEFINE_SCRATCH_LOAD_SADDR(scratchLoadB96Saddr, MN_SCRATCH_LOAD_B96, 3)
-DEFINE_SCRATCH_LOAD_ST(scratchLoadB96St, MN_SCRATCH_LOAD_B96, 3)
-DEFINE_SCRATCH_LOAD_SVS(scratchLoadB96Svs, MN_SCRATCH_LOAD_B96, 3)
-DEFINE_SCRATCH_LOAD_VADDR(scratchLoadB128Vaddr, MN_SCRATCH_LOAD_B128, 4)
-DEFINE_SCRATCH_LOAD_SADDR(scratchLoadB128Saddr, MN_SCRATCH_LOAD_B128, 4)
-DEFINE_SCRATCH_LOAD_ST(scratchLoadB128St, MN_SCRATCH_LOAD_B128, 4)
-DEFINE_SCRATCH_LOAD_SVS(scratchLoadB128Svs, MN_SCRATCH_LOAD_B128, 4)
-DEFINE_SCRATCH_LOAD_VADDR(scratchLoadU8Vaddr, MN_SCRATCH_LOAD_U8, 1)
-DEFINE_SCRATCH_LOAD_SADDR(scratchLoadU8Saddr, MN_SCRATCH_LOAD_U8, 1)
-DEFINE_SCRATCH_LOAD_ST(scratchLoadU8St, MN_SCRATCH_LOAD_U8, 1)
-DEFINE_SCRATCH_LOAD_SVS(scratchLoadU8Svs, MN_SCRATCH_LOAD_U8, 1)
-DEFINE_SCRATCH_LOAD_VADDR(scratchLoadI8Vaddr, MN_SCRATCH_LOAD_I8, 1)
-DEFINE_SCRATCH_LOAD_SADDR(scratchLoadI8Saddr, MN_SCRATCH_LOAD_I8, 1)
-DEFINE_SCRATCH_LOAD_ST(scratchLoadI8St, MN_SCRATCH_LOAD_I8, 1)
-DEFINE_SCRATCH_LOAD_SVS(scratchLoadI8Svs, MN_SCRATCH_LOAD_I8, 1)
-DEFINE_SCRATCH_LOAD_VADDR(scratchLoadU16Vaddr, MN_SCRATCH_LOAD_U16, 1)
-DEFINE_SCRATCH_LOAD_SADDR(scratchLoadU16Saddr, MN_SCRATCH_LOAD_U16, 1)
-DEFINE_SCRATCH_LOAD_ST(scratchLoadU16St, MN_SCRATCH_LOAD_U16, 1)
-DEFINE_SCRATCH_LOAD_SVS(scratchLoadU16Svs, MN_SCRATCH_LOAD_U16, 1)
-DEFINE_SCRATCH_LOAD_VADDR(scratchLoadI16Vaddr, MN_SCRATCH_LOAD_I16, 1)
-DEFINE_SCRATCH_LOAD_SADDR(scratchLoadI16Saddr, MN_SCRATCH_LOAD_I16, 1)
-DEFINE_SCRATCH_LOAD_ST(scratchLoadI16St, MN_SCRATCH_LOAD_I16, 1)
-DEFINE_SCRATCH_LOAD_SVS(scratchLoadI16Svs, MN_SCRATCH_LOAD_I16, 1)
+__attribute__((device, used)) void
+scratchLoadB32Saddr(llvm::MCRegister D0, std::uint32_t SAddr,
+                    std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_B32 " %0, off, %1" : "=v"(Result) : "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
 
-// ---- Scratch stores ----
-DEFINE_SCRATCH_STORE_VADDR(scratchStoreB32Vaddr, MN_SCRATCH_STORE_B32, 1)
-DEFINE_SCRATCH_STORE_SADDR(scratchStoreB32Saddr, MN_SCRATCH_STORE_B32, 1)
-DEFINE_SCRATCH_STORE_ST(scratchStoreB32St, MN_SCRATCH_STORE_B32, 1)
-DEFINE_SCRATCH_STORE_SVS(scratchStoreB32Svs, MN_SCRATCH_STORE_B32, 1)
-DEFINE_SCRATCH_STORE_VADDR(scratchStoreB64Vaddr, MN_SCRATCH_STORE_B64, 2)
-DEFINE_SCRATCH_STORE_SADDR(scratchStoreB64Saddr, MN_SCRATCH_STORE_B64, 2)
-DEFINE_SCRATCH_STORE_ST(scratchStoreB64St, MN_SCRATCH_STORE_B64, 2)
-DEFINE_SCRATCH_STORE_SVS(scratchStoreB64Svs, MN_SCRATCH_STORE_B64, 2)
-DEFINE_SCRATCH_STORE_VADDR(scratchStoreB96Vaddr, MN_SCRATCH_STORE_B96, 3)
-DEFINE_SCRATCH_STORE_SADDR(scratchStoreB96Saddr, MN_SCRATCH_STORE_B96, 3)
-DEFINE_SCRATCH_STORE_ST(scratchStoreB96St, MN_SCRATCH_STORE_B96, 3)
-DEFINE_SCRATCH_STORE_SVS(scratchStoreB96Svs, MN_SCRATCH_STORE_B96, 3)
-DEFINE_SCRATCH_STORE_VADDR(scratchStoreB128Vaddr, MN_SCRATCH_STORE_B128, 4)
-DEFINE_SCRATCH_STORE_SADDR(scratchStoreB128Saddr, MN_SCRATCH_STORE_B128, 4)
-DEFINE_SCRATCH_STORE_ST(scratchStoreB128St, MN_SCRATCH_STORE_B128, 4)
-DEFINE_SCRATCH_STORE_SVS(scratchStoreB128Svs, MN_SCRATCH_STORE_B128, 4)
-DEFINE_SCRATCH_STORE_VADDR(scratchStoreB8Vaddr, MN_SCRATCH_STORE_B8, 1)
-DEFINE_SCRATCH_STORE_SADDR(scratchStoreB8Saddr, MN_SCRATCH_STORE_B8, 1)
-DEFINE_SCRATCH_STORE_ST(scratchStoreB8St, MN_SCRATCH_STORE_B8, 1)
-DEFINE_SCRATCH_STORE_SVS(scratchStoreB8Svs, MN_SCRATCH_STORE_B8, 1)
-DEFINE_SCRATCH_STORE_VADDR(scratchStoreB16Vaddr, MN_SCRATCH_STORE_B16, 1)
-DEFINE_SCRATCH_STORE_SADDR(scratchStoreB16Saddr, MN_SCRATCH_STORE_B16, 1)
-DEFINE_SCRATCH_STORE_ST(scratchStoreB16St, MN_SCRATCH_STORE_B16, 1)
-DEFINE_SCRATCH_STORE_SVS(scratchStoreB16Svs, MN_SCRATCH_STORE_B16, 1)
+__attribute__((device, used)) void scratchLoadB32St(llvm::MCRegister D0,
+                                                    std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_B32 " %0, off, %1" : "=v"(Result) : "s"(S));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
 
-// ---- Flat dword loads ----
-DEFINE_FLAT_LOAD(flatLoadB32, MN_FLAT_LOAD_B32, 1)
-DEFINE_FLAT_LOAD(flatLoadB64, MN_FLAT_LOAD_B64, 2)
-DEFINE_FLAT_LOAD(flatLoadB96, MN_FLAT_LOAD_B96, 3)
-DEFINE_FLAT_LOAD(flatLoadB128, MN_FLAT_LOAD_B128, 4)
+__attribute__((device, used)) void scratchLoadB32Svs(llvm::MCRegister D0,
+                                                     std::uint32_t VAddr,
+                                                     std::uint32_t SAddr,
+                                                     std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_B32 " %0, %1, %2"
+               : "=v"(Result)
+               : "v"(VAddr), "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
 
-// ---- Flat dword stores ----
-DEFINE_FLAT_STORE(flatStoreB32, MN_FLAT_STORE_B32, 1)
-DEFINE_FLAT_STORE(flatStoreB64, MN_FLAT_STORE_B64, 2)
-DEFINE_FLAT_STORE(flatStoreB96, MN_FLAT_STORE_B96, 3)
-DEFINE_FLAT_STORE(flatStoreB128, MN_FLAT_STORE_B128, 4)
+__attribute__((device, used)) void
+scratchLoadB64Vaddr(llvm::MCRegister D0, llvm::MCRegister D1,
+                    std::uint32_t VAddr, std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v2u32 Result;
+  asm volatile(MN_SCRATCH_LOAD_B64 " %0, %1, off" : "=v"(Result) : "v"(DV));
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+}
 
-// ---- Flat sub-dword loads ----
-DEFINE_FLAT_SUBLOAD(flatLoadU8, MN_FLAT_LOAD_U8, std::uint8_t)
-DEFINE_FLAT_SUBLOAD(flatLoadI8, MN_FLAT_LOAD_I8, std::int8_t)
-DEFINE_FLAT_SUBLOAD(flatLoadU16, MN_FLAT_LOAD_U16, std::uint16_t)
-DEFINE_FLAT_SUBLOAD(flatLoadI16, MN_FLAT_LOAD_I16, std::int16_t)
+__attribute__((device, used)) void
+scratchLoadB64Saddr(llvm::MCRegister D0, llvm::MCRegister D1,
+                    std::uint32_t SAddr, std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v2u32 Result;
+  asm volatile(MN_SCRATCH_LOAD_B64 " %0, off, %1" : "=v"(Result) : "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+}
 
-// ---- Flat sub-dword stores ----
-DEFINE_FLAT_SUBSTORE(flatStoreB8, MN_FLAT_STORE_B8, std::uint8_t)
-DEFINE_FLAT_SUBSTORE(flatStoreB16, MN_FLAT_STORE_B16, std::uint16_t)
+__attribute__((device, used)) void scratchLoadB64St(llvm::MCRegister D0,
+                                                    llvm::MCRegister D1,
+                                                    std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v2u32 Result;
+  asm volatile(MN_SCRATCH_LOAD_B64 " %0, off, %1" : "=v"(Result) : "s"(S));
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+}
 
-// ---- Buffer dword loads ----
-DEFINE_BUFFER_LOAD_OFFSET(bufferLoadB32Offset, 1)
-DEFINE_BUFFER_LOAD_OFFEN(bufferLoadB32Offen, 1)
-DEFINE_BUFFER_LOAD_OFFSET(bufferLoadB64Offset, 2)
-DEFINE_BUFFER_LOAD_OFFEN(bufferLoadB64Offen, 2)
-DEFINE_BUFFER_LOAD_OFFSET(bufferLoadB96Offset, 3)
-DEFINE_BUFFER_LOAD_OFFEN(bufferLoadB96Offen, 3)
-DEFINE_BUFFER_LOAD_OFFSET(bufferLoadB128Offset, 4)
-DEFINE_BUFFER_LOAD_OFFEN(bufferLoadB128Offen, 4)
+__attribute__((device, used)) void
+scratchLoadB64Svs(llvm::MCRegister D0, llvm::MCRegister D1, std::uint32_t VAddr,
+                  std::uint32_t SAddr, std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v2u32 Result;
+  asm volatile(MN_SCRATCH_LOAD_B64 " %0, %1, %2"
+               : "=v"(Result)
+               : "v"(VAddr), "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+}
 
-// ---- Buffer dword stores ----
-DEFINE_BUFFER_STORE_OFFSET(bufferStoreB32Offset, 1)
-DEFINE_BUFFER_STORE_OFFEN(bufferStoreB32Offen, 1)
-DEFINE_BUFFER_STORE_OFFSET(bufferStoreB64Offset, 2)
-DEFINE_BUFFER_STORE_OFFEN(bufferStoreB64Offen, 2)
-DEFINE_BUFFER_STORE_OFFSET(bufferStoreB96Offset, 3)
-DEFINE_BUFFER_STORE_OFFEN(bufferStoreB96Offen, 3)
-DEFINE_BUFFER_STORE_OFFSET(bufferStoreB128Offset, 4)
-DEFINE_BUFFER_STORE_OFFEN(bufferStoreB128Offen, 4)
+__attribute__((device, used)) void
+scratchLoadB96Vaddr(llvm::MCRegister D0, llvm::MCRegister D1,
+                    llvm::MCRegister D2, std::uint32_t VAddr,
+                    std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v3u32 Result;
+  asm volatile(MN_SCRATCH_LOAD_B96 " %0, %1, off" : "=v"(Result) : "v"(DV));
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+}
 
-// ---- Buffer sub-dword loads ----
-DEFINE_BUFFER_SUBLOAD_OFFSET(bufferLoadU8Offset, __builtin_amdgcn_raw_buffer_load_b8)
-DEFINE_BUFFER_SUBLOAD_OFFEN(bufferLoadU8Offen, __builtin_amdgcn_raw_buffer_load_b8)
-DEFINE_BUFFER_SUBLOAD_OFFSET(bufferLoadI8Offset, __builtin_amdgcn_raw_buffer_load_b8)
-DEFINE_BUFFER_SUBLOAD_OFFEN(bufferLoadI8Offen, __builtin_amdgcn_raw_buffer_load_b8)
-DEFINE_BUFFER_SUBLOAD_OFFSET(bufferLoadU16Offset, __builtin_amdgcn_raw_buffer_load_b16)
-DEFINE_BUFFER_SUBLOAD_OFFEN(bufferLoadU16Offen, __builtin_amdgcn_raw_buffer_load_b16)
-DEFINE_BUFFER_SUBLOAD_OFFSET(bufferLoadI16Offset, __builtin_amdgcn_raw_buffer_load_b16)
-DEFINE_BUFFER_SUBLOAD_OFFEN(bufferLoadI16Offen, __builtin_amdgcn_raw_buffer_load_b16)
+__attribute__((device, used)) void
+scratchLoadB96Saddr(llvm::MCRegister D0, llvm::MCRegister D1,
+                    llvm::MCRegister D2, std::uint32_t SAddr,
+                    std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v3u32 Result;
+  asm volatile(MN_SCRATCH_LOAD_B96 " %0, off, %1" : "=v"(Result) : "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+}
 
-// ---- Buffer sub-dword stores ----
-DEFINE_BUFFER_SUBSTORE_OFFSET(bufferStoreB8Offset, __builtin_amdgcn_raw_buffer_store_b8, unsigned char)
-DEFINE_BUFFER_SUBSTORE_OFFEN(bufferStoreB8Offen, __builtin_amdgcn_raw_buffer_store_b8, unsigned char)
-DEFINE_BUFFER_SUBSTORE_OFFSET(bufferStoreB16Offset, __builtin_amdgcn_raw_buffer_store_b16, unsigned short)
-DEFINE_BUFFER_SUBSTORE_OFFEN(bufferStoreB16Offen, __builtin_amdgcn_raw_buffer_store_b16, unsigned short)
+__attribute__((device, used)) void scratchLoadB96St(llvm::MCRegister D0,
+                                                    llvm::MCRegister D1,
+                                                    llvm::MCRegister D2,
+                                                    std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v3u32 Result;
+  asm volatile(MN_SCRATCH_LOAD_B96 " %0, off, %1" : "=v"(Result) : "s"(S));
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+}
 
-// clang-format on
+__attribute__((device, used)) void
+scratchLoadB96Svs(llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
+                  std::uint32_t VAddr, std::uint32_t SAddr,
+                  std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v3u32 Result;
+  asm volatile(MN_SCRATCH_LOAD_B96 " %0, %1, %2"
+               : "=v"(Result)
+               : "v"(VAddr), "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+}
+
+__attribute__((device, used)) void
+scratchLoadB128Vaddr(llvm::MCRegister D0, llvm::MCRegister D1,
+                     llvm::MCRegister D2, llvm::MCRegister D3,
+                     std::uint32_t VAddr, std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v4u32 Result;
+  asm volatile(MN_SCRATCH_LOAD_B128 " %0, %1, off" : "=v"(Result) : "v"(DV));
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+  luthier::writeReg<std::uint32_t>(D3, Result[3]);
+}
+
+__attribute__((device, used)) void
+scratchLoadB128Saddr(llvm::MCRegister D0, llvm::MCRegister D1,
+                     llvm::MCRegister D2, llvm::MCRegister D3,
+                     std::uint32_t SAddr, std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v4u32 Result;
+  asm volatile(MN_SCRATCH_LOAD_B128 " %0, off, %1" : "=v"(Result) : "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+  luthier::writeReg<std::uint32_t>(D3, Result[3]);
+}
+
+__attribute__((device, used)) void
+scratchLoadB128St(llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
+                  llvm::MCRegister D3, std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v4u32 Result;
+  asm volatile(MN_SCRATCH_LOAD_B128 " %0, off, %1" : "=v"(Result) : "s"(S));
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+  luthier::writeReg<std::uint32_t>(D3, Result[3]);
+}
+
+__attribute__((device, used)) void
+scratchLoadB128Svs(llvm::MCRegister D0, llvm::MCRegister D1,
+                   llvm::MCRegister D2, llvm::MCRegister D3,
+                   std::uint32_t VAddr, std::uint32_t SAddr,
+                   std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v4u32 Result;
+  asm volatile(MN_SCRATCH_LOAD_B128 " %0, %1, %2"
+               : "=v"(Result)
+               : "v"(VAddr), "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+  luthier::writeReg<std::uint32_t>(D3, Result[3]);
+}
+
+__attribute__((device, used)) void scratchLoadU8Vaddr(llvm::MCRegister D0,
+                                                      std::uint32_t VAddr,
+                                                      std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_U8 " %0, %1, off" : "=v"(Result) : "v"(DV));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void scratchLoadU8Saddr(llvm::MCRegister D0,
+                                                      std::uint32_t SAddr,
+                                                      std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_U8 " %0, off, %1" : "=v"(Result) : "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void scratchLoadU8St(llvm::MCRegister D0,
+                                                   std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_U8 " %0, off, %1" : "=v"(Result) : "s"(S));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void scratchLoadU8Svs(llvm::MCRegister D0,
+                                                    std::uint32_t VAddr,
+                                                    std::uint32_t SAddr,
+                                                    std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_U8 " %0, %1, %2"
+               : "=v"(Result)
+               : "v"(VAddr), "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void scratchLoadI8Vaddr(llvm::MCRegister D0,
+                                                      std::uint32_t VAddr,
+                                                      std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_I8 " %0, %1, off" : "=v"(Result) : "v"(DV));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void scratchLoadI8Saddr(llvm::MCRegister D0,
+                                                      std::uint32_t SAddr,
+                                                      std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_I8 " %0, off, %1" : "=v"(Result) : "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void scratchLoadI8St(llvm::MCRegister D0,
+                                                   std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_I8 " %0, off, %1" : "=v"(Result) : "s"(S));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void scratchLoadI8Svs(llvm::MCRegister D0,
+                                                    std::uint32_t VAddr,
+                                                    std::uint32_t SAddr,
+                                                    std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_I8 " %0, %1, %2"
+               : "=v"(Result)
+               : "v"(VAddr), "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void
+scratchLoadU16Vaddr(llvm::MCRegister D0, std::uint32_t VAddr,
+                    std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_U16 " %0, %1, off" : "=v"(Result) : "v"(DV));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void
+scratchLoadU16Saddr(llvm::MCRegister D0, std::uint32_t SAddr,
+                    std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_U16 " %0, off, %1" : "=v"(Result) : "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void scratchLoadU16St(llvm::MCRegister D0,
+                                                    std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_U16 " %0, off, %1" : "=v"(Result) : "s"(S));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void scratchLoadU16Svs(llvm::MCRegister D0,
+                                                     std::uint32_t VAddr,
+                                                     std::uint32_t SAddr,
+                                                     std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_U16 " %0, %1, %2"
+               : "=v"(Result)
+               : "v"(VAddr), "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void
+scratchLoadI16Vaddr(llvm::MCRegister D0, std::uint32_t VAddr,
+                    std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_I16 " %0, %1, off" : "=v"(Result) : "v"(DV));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void
+scratchLoadI16Saddr(llvm::MCRegister D0, std::uint32_t SAddr,
+                    std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_I16 " %0, off, %1" : "=v"(Result) : "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void scratchLoadI16St(llvm::MCRegister D0,
+                                                    std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_I16 " %0, off, %1" : "=v"(Result) : "s"(S));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void scratchLoadI16Svs(llvm::MCRegister D0,
+                                                     std::uint32_t VAddr,
+                                                     std::uint32_t SAddr,
+                                                     std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Result;
+  asm volatile(MN_SCRATCH_LOAD_I16 " %0, %1, %2"
+               : "=v"(Result)
+               : "v"(VAddr), "s"(DS));
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void
+scratchStoreB32Vaddr(std::uint32_t V0, std::uint32_t VAddr,
+                     std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Data = V0;
+  asm volatile(MN_SCRATCH_STORE_B32 " %0, %1, off" : : "v"(Data), "v"(DV));
+}
+
+__attribute__((device, used)) void
+scratchStoreB32Saddr(std::uint32_t V0, std::uint32_t SAddr,
+                     std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Data = V0;
+  asm volatile(MN_SCRATCH_STORE_B32 " %0, off, %1" : : "v"(Data), "s"(DS));
+}
+
+__attribute__((device, used)) void scratchStoreB32St(std::uint32_t V0,
+                                                     std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Data = V0;
+  asm volatile(MN_SCRATCH_STORE_B32 " %0, off, %1" : : "v"(Data), "s"(S));
+}
+
+__attribute__((device, used)) void scratchStoreB32Svs(std::uint32_t V0,
+                                                      std::uint32_t VAddr,
+                                                      std::uint32_t SAddr,
+                                                      std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Data = V0;
+  asm volatile(MN_SCRATCH_STORE_B32 " %0, %1, %2"
+               :
+               : "v"(Data), "v"(VAddr), "s"(DS));
+}
+
+__attribute__((device, used)) void
+scratchStoreB64Vaddr(std::uint32_t V0, std::uint32_t V1, std::uint32_t VAddr,
+                     std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v2u32 Data = {V0, V1};
+  asm volatile(MN_SCRATCH_STORE_B64 " %0, %1, off" : : "v"(Data), "v"(DV));
+}
+
+__attribute__((device, used)) void
+scratchStoreB64Saddr(std::uint32_t V0, std::uint32_t V1, std::uint32_t SAddr,
+                     std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v2u32 Data = {V0, V1};
+  asm volatile(MN_SCRATCH_STORE_B64 " %0, off, %1" : : "v"(Data), "s"(DS));
+}
+
+__attribute__((device, used)) void
+scratchStoreB64St(std::uint32_t V0, std::uint32_t V1, std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v2u32 Data = {V0, V1};
+  asm volatile(MN_SCRATCH_STORE_B64 " %0, off, %1" : : "v"(Data), "s"(S));
+}
+
+__attribute__((device, used)) void
+scratchStoreB64Svs(std::uint32_t V0, std::uint32_t V1, std::uint32_t VAddr,
+                   std::uint32_t SAddr, std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v2u32 Data = {V0, V1};
+  asm volatile(MN_SCRATCH_STORE_B64 " %0, %1, %2"
+               :
+               : "v"(Data), "v"(VAddr), "s"(DS));
+}
+
+__attribute__((device, used)) void
+scratchStoreB96Vaddr(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
+                     std::uint32_t VAddr, std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v3u32 Data = {V0, V1, V2};
+  asm volatile(MN_SCRATCH_STORE_B96 " %0, %1, off" : : "v"(Data), "v"(DV));
+}
+
+__attribute__((device, used)) void
+scratchStoreB96Saddr(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
+                     std::uint32_t SAddr, std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v3u32 Data = {V0, V1, V2};
+  asm volatile(MN_SCRATCH_STORE_B96 " %0, off, %1" : : "v"(Data), "s"(DS));
+}
+
+__attribute__((device, used)) void scratchStoreB96St(std::uint32_t V0,
+                                                     std::uint32_t V1,
+                                                     std::uint32_t V2,
+                                                     std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v3u32 Data = {V0, V1, V2};
+  asm volatile(MN_SCRATCH_STORE_B96 " %0, off, %1" : : "v"(Data), "s"(S));
+}
+
+__attribute__((device, used)) void
+scratchStoreB96Svs(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
+                   std::uint32_t VAddr, std::uint32_t SAddr,
+                   std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v3u32 Data = {V0, V1, V2};
+  asm volatile(MN_SCRATCH_STORE_B96 " %0, %1, %2"
+               :
+               : "v"(Data), "v"(VAddr), "s"(DS));
+}
+
+__attribute__((device, used)) void
+scratchStoreB128Vaddr(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
+                      std::uint32_t V3, std::uint32_t VAddr,
+                      std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v4u32 Data = {V0, V1, V2, V3};
+  asm volatile(MN_SCRATCH_STORE_B128 " %0, %1, off" : : "v"(Data), "v"(DV));
+}
+
+__attribute__((device, used)) void
+scratchStoreB128Saddr(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
+                      std::uint32_t V3, std::uint32_t SAddr,
+                      std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v4u32 Data = {V0, V1, V2, V3};
+  asm volatile(MN_SCRATCH_STORE_B128 " %0, off, %1" : : "v"(Data), "s"(DS));
+}
+
+__attribute__((device, used)) void
+scratchStoreB128St(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
+                   std::uint32_t V3, std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v4u32 Data = {V0, V1, V2, V3};
+  asm volatile(MN_SCRATCH_STORE_B128 " %0, off, %1" : : "v"(Data), "s"(S));
+}
+
+__attribute__((device, used)) void
+scratchStoreB128Svs(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
+                    std::uint32_t V3, std::uint32_t VAddr, std::uint32_t SAddr,
+                    std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  v4u32 Data = {V0, V1, V2, V3};
+  asm volatile(MN_SCRATCH_STORE_B128 " %0, %1, %2"
+               :
+               : "v"(Data), "v"(VAddr), "s"(DS));
+}
+
+__attribute__((device, used)) void
+scratchStoreB8Vaddr(std::uint32_t V0, std::uint32_t VAddr,
+                    std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Data = V0;
+  asm volatile(MN_SCRATCH_STORE_B8 " %0, %1, off" : : "v"(Data), "v"(DV));
+}
+
+__attribute__((device, used)) void
+scratchStoreB8Saddr(std::uint32_t V0, std::uint32_t SAddr,
+                    std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Data = V0;
+  asm volatile(MN_SCRATCH_STORE_B8 " %0, off, %1" : : "v"(Data), "s"(DS));
+}
+
+__attribute__((device, used)) void scratchStoreB8St(std::uint32_t V0,
+                                                    std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Data = V0;
+  asm volatile(MN_SCRATCH_STORE_B8 " %0, off, %1" : : "v"(Data), "s"(S));
+}
+
+__attribute__((device, used)) void scratchStoreB8Svs(std::uint32_t V0,
+                                                     std::uint32_t VAddr,
+                                                     std::uint32_t SAddr,
+                                                     std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Data = V0;
+  asm volatile(MN_SCRATCH_STORE_B8 " %0, %1, %2"
+               :
+               : "v"(Data), "v"(VAddr), "s"(DS));
+}
+
+__attribute__((device, used)) void
+scratchStoreB16Vaddr(std::uint32_t V0, std::uint32_t VAddr,
+                     std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Data = V0;
+  asm volatile(MN_SCRATCH_STORE_B16 " %0, %1, off" : : "v"(Data), "v"(DV));
+}
+
+__attribute__((device, used)) void
+scratchStoreB16Saddr(std::uint32_t V0, std::uint32_t SAddr,
+                     std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Data = V0;
+  asm volatile(MN_SCRATCH_STORE_B16 " %0, off, %1" : : "v"(Data), "s"(DS));
+}
+
+__attribute__((device, used)) void scratchStoreB16St(std::uint32_t V0,
+                                                     std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Data = V0;
+  asm volatile(MN_SCRATCH_STORE_B16 " %0, off, %1" : : "v"(Data), "s"(S));
+}
+
+__attribute__((device, used)) void scratchStoreB16Svs(std::uint32_t V0,
+                                                      std::uint32_t VAddr,
+                                                      std::uint32_t SAddr,
+                                                      std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  std::uint32_t Data = V0;
+  asm volatile(MN_SCRATCH_STORE_B16 " %0, %1, %2"
+               :
+               : "v"(Data), "v"(VAddr), "s"(DS));
+}
+
+__attribute__((device, used)) void
+flatLoadB32(llvm::MCRegister D0, std::uint64_t Addr, std::int32_t InstOffset) {
+  const std::uint64_t FlatAddr =
+      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
+  std::uint32_t Result;
+  if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
+    const std::uint32_t Off =
+        displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
+    for (unsigned I = 0; I != 1; ++I)
+      reinterpret_cast<std::uint32_t *>(&Result)[I] =
+          *(Private<std::uint32_t> *)(Off + 4 * I);
+  } else {
+    asm volatile(MN_FLAT_LOAD_B32 " %0, %1" : "=v"(Result) : "v"(FlatAddr));
+  }
+  luthier::writeReg<std::uint32_t>(D0, Result);
+}
+
+__attribute__((device, used)) void flatLoadB64(llvm::MCRegister D0,
+                                               llvm::MCRegister D1,
+                                               std::uint64_t Addr,
+                                               std::int32_t InstOffset) {
+  const std::uint64_t FlatAddr =
+      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
+  v2u32 Result;
+  if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
+    const std::uint32_t Off =
+        displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
+    for (unsigned I = 0; I != 2; ++I)
+      reinterpret_cast<std::uint32_t *>(&Result)[I] =
+          *(Private<std::uint32_t> *)(Off + 4 * I);
+  } else {
+    asm volatile(MN_FLAT_LOAD_B64 " %0, %1" : "=v"(Result) : "v"(FlatAddr));
+  }
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+}
+
+__attribute__((device, used)) void
+flatLoadB96(llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
+            std::uint64_t Addr, std::int32_t InstOffset) {
+  const std::uint64_t FlatAddr =
+      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
+  v3u32 Result;
+  if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
+    const std::uint32_t Off =
+        displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
+    for (unsigned I = 0; I != 3; ++I)
+      reinterpret_cast<std::uint32_t *>(&Result)[I] =
+          *(Private<std::uint32_t> *)(Off + 4 * I);
+  } else {
+    asm volatile(MN_FLAT_LOAD_B96 " %0, %1" : "=v"(Result) : "v"(FlatAddr));
+  }
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+}
+
+__attribute__((device, used)) void
+flatLoadB128(llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
+             llvm::MCRegister D3, std::uint64_t Addr, std::int32_t InstOffset) {
+  const std::uint64_t FlatAddr =
+      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
+  v4u32 Result;
+  if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
+    const std::uint32_t Off =
+        displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
+    for (unsigned I = 0; I != 4; ++I)
+      reinterpret_cast<std::uint32_t *>(&Result)[I] =
+          *(Private<std::uint32_t> *)(Off + 4 * I);
+  } else {
+    asm volatile(MN_FLAT_LOAD_B128 " %0, %1" : "=v"(Result) : "v"(FlatAddr));
+  }
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+  luthier::writeReg<std::uint32_t>(D3, Result[3]);
+}
+
+__attribute__((device, used)) void
+flatStoreB32(std::uint32_t V0, std::uint64_t Addr, std::int32_t InstOffset) {
+  const std::uint64_t FlatAddr =
+      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
+  std::uint32_t Data = V0;
+  if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
+    const std::uint32_t Off =
+        displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
+    for (unsigned I = 0; I != 1; ++I)
+      *(Private<std::uint32_t> *)(Off + 4 * I) =
+          reinterpret_cast<const std::uint32_t *>(&Data)[I];
+  } else {
+    asm volatile(MN_FLAT_STORE_B32 " %0, %1" : : "v"(Data), "v"(FlatAddr));
+  }
+}
+
+__attribute__((device, used)) void flatStoreB64(std::uint32_t V0,
+                                                std::uint32_t V1,
+                                                std::uint64_t Addr,
+                                                std::int32_t InstOffset) {
+  const std::uint64_t FlatAddr =
+      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
+  v2u32 Data = {V0, V1};
+  if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
+    const std::uint32_t Off =
+        displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
+    for (unsigned I = 0; I != 2; ++I)
+      *(Private<std::uint32_t> *)(Off + 4 * I) =
+          reinterpret_cast<const std::uint32_t *>(&Data)[I];
+  } else {
+    asm volatile(MN_FLAT_STORE_B64 " %0, %1" : : "v"(Data), "v"(FlatAddr));
+  }
+}
+
+__attribute__((device, used)) void
+flatStoreB96(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
+             std::uint64_t Addr, std::int32_t InstOffset) {
+  const std::uint64_t FlatAddr =
+      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
+  v3u32 Data = {V0, V1, V2};
+  if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
+    const std::uint32_t Off =
+        displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
+    for (unsigned I = 0; I != 3; ++I)
+      *(Private<std::uint32_t> *)(Off + 4 * I) =
+          reinterpret_cast<const std::uint32_t *>(&Data)[I];
+  } else {
+    asm volatile(MN_FLAT_STORE_B96 " %0, %1" : : "v"(Data), "v"(FlatAddr));
+  }
+}
+
+__attribute__((device, used)) void
+flatStoreB128(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
+              std::uint32_t V3, std::uint64_t Addr, std::int32_t InstOffset) {
+  const std::uint64_t FlatAddr =
+      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
+  v4u32 Data = {V0, V1, V2, V3};
+  if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
+    const std::uint32_t Off =
+        displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
+    for (unsigned I = 0; I != 4; ++I)
+      *(Private<std::uint32_t> *)(Off + 4 * I) =
+          reinterpret_cast<const std::uint32_t *>(&Data)[I];
+  } else {
+    asm volatile(MN_FLAT_STORE_B128 " %0, %1" : : "v"(Data), "v"(FlatAddr));
+  }
+}
+
+__attribute__((device, used)) void
+flatLoadU8(llvm::MCRegister Dst, std::uint64_t Addr, std::int32_t InstOffset) {
+  const std::uint64_t FlatAddr =
+      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
+  std::uint32_t Result;
+  if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
+    const std::uint32_t Off =
+        displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
+    Result = static_cast<std::uint32_t>(
+        static_cast<std::int32_t>(*(Private<std::uint8_t> *)(Off)));
+  } else {
+    asm volatile(MN_FLAT_LOAD_U8 " %0, %1" : "=v"(Result) : "v"(FlatAddr));
+  }
+  luthier::writeReg<std::uint32_t>(Dst, Result);
+}
+
+__attribute__((device, used)) void
+flatLoadI8(llvm::MCRegister Dst, std::uint64_t Addr, std::int32_t InstOffset) {
+  const std::uint64_t FlatAddr =
+      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
+  std::uint32_t Result;
+  if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
+    const std::uint32_t Off =
+        displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
+    Result = static_cast<std::uint32_t>(
+        static_cast<std::int32_t>(*(Private<std::int8_t> *)(Off)));
+  } else {
+    asm volatile(MN_FLAT_LOAD_I8 " %0, %1" : "=v"(Result) : "v"(FlatAddr));
+  }
+  luthier::writeReg<std::uint32_t>(Dst, Result);
+}
+
+__attribute__((device, used)) void
+flatLoadU16(llvm::MCRegister Dst, std::uint64_t Addr, std::int32_t InstOffset) {
+  const std::uint64_t FlatAddr =
+      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
+  std::uint32_t Result;
+  if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
+    const std::uint32_t Off =
+        displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
+    Result = static_cast<std::uint32_t>(
+        static_cast<std::int32_t>(*(Private<std::uint16_t> *)(Off)));
+  } else {
+    asm volatile(MN_FLAT_LOAD_U16 " %0, %1" : "=v"(Result) : "v"(FlatAddr));
+  }
+  luthier::writeReg<std::uint32_t>(Dst, Result);
+}
+
+__attribute__((device, used)) void
+flatLoadI16(llvm::MCRegister Dst, std::uint64_t Addr, std::int32_t InstOffset) {
+  const std::uint64_t FlatAddr =
+      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
+  std::uint32_t Result;
+  if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
+    const std::uint32_t Off =
+        displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
+    Result = static_cast<std::uint32_t>(
+        static_cast<std::int32_t>(*(Private<std::int16_t> *)(Off)));
+  } else {
+    asm volatile(MN_FLAT_LOAD_I16 " %0, %1" : "=v"(Result) : "v"(FlatAddr));
+  }
+  luthier::writeReg<std::uint32_t>(Dst, Result);
+}
+
+__attribute__((device, used)) void
+flatStoreB8(std::uint32_t Value, std::uint64_t Addr, std::int32_t InstOffset) {
+  const std::uint64_t FlatAddr =
+      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
+  if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
+    const std::uint32_t Off =
+        displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
+    *(Private<std::uint8_t> *)(Off) = static_cast<std::uint8_t>(Value);
+  } else {
+    asm volatile(MN_FLAT_STORE_B8 " %0, %1"
+                 :
+                 : "v"(static_cast<std::uint8_t>(Value)), "v"(FlatAddr));
+  }
+}
+
+__attribute__((device, used)) void
+flatStoreB16(std::uint32_t Value, std::uint64_t Addr, std::int32_t InstOffset) {
+  const std::uint64_t FlatAddr =
+      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
+  if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
+    const std::uint32_t Off =
+        displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
+    *(Private<std::uint16_t> *)(Off) = static_cast<std::uint16_t>(Value);
+  } else {
+    asm volatile(MN_FLAT_STORE_B16 " %0, %1"
+                 :
+                 : "v"(static_cast<std::uint16_t>(Value)), "v"(FlatAddr));
+  }
+}
+
+__attribute__((device, used)) void
+bufferLoadB32Offset(llvm::MCRegister D0, __amdgpu_buffer_rsrc_t Rsrc,
+                    std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                    std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  std::uint32_t V[4] = {0, 0, 0, 0};
+  for (unsigned I = 0; I != static_cast<unsigned>(1); ++I)
+    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
+        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+  luthier::writeReg<std::uint32_t>(D0, V[0]);
+}
+
+__attribute__((device, used)) void
+bufferLoadB32Offen(llvm::MCRegister D0, __amdgpu_buffer_rsrc_t Rsrc,
+                   std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                   std::uint32_t VOffset, std::uint32_t SOffset,
+                   std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  std::uint32_t V[4] = {0, 0, 0, 0};
+  for (unsigned I = 0; I != static_cast<unsigned>(1); ++I)
+    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
+        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+  luthier::writeReg<std::uint32_t>(D0, V[0]);
+}
+
+__attribute__((device, used)) void
+bufferLoadB64Offset(llvm::MCRegister D0, llvm::MCRegister D1,
+                    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,
+                    std::uint32_t RsrcHi, std::uint32_t SOffset,
+                    std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  std::uint32_t V[4] = {0, 0, 0, 0};
+  for (unsigned I = 0; I != static_cast<unsigned>(2); ++I)
+    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
+        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+  luthier::writeReg<std::uint32_t>(D0, V[0]);
+  luthier::writeReg<std::uint32_t>(D1, V[1]);
+}
+
+__attribute__((device, used)) void
+bufferLoadB64Offen(llvm::MCRegister D0, llvm::MCRegister D1,
+                   __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,
+                   std::uint32_t RsrcHi, std::uint32_t VOffset,
+                   std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  std::uint32_t V[4] = {0, 0, 0, 0};
+  for (unsigned I = 0; I != static_cast<unsigned>(2); ++I)
+    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
+        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+  luthier::writeReg<std::uint32_t>(D0, V[0]);
+  luthier::writeReg<std::uint32_t>(D1, V[1]);
+}
+
+__attribute__((device, used)) void
+bufferLoadB96Offset(llvm::MCRegister D0, llvm::MCRegister D1,
+                    llvm::MCRegister D2, __amdgpu_buffer_rsrc_t Rsrc,
+                    std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                    std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  std::uint32_t V[4] = {0, 0, 0, 0};
+  for (unsigned I = 0; I != static_cast<unsigned>(3); ++I)
+    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
+        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+  luthier::writeReg<std::uint32_t>(D0, V[0]);
+  luthier::writeReg<std::uint32_t>(D1, V[1]);
+  luthier::writeReg<std::uint32_t>(D2, V[2]);
+}
+
+__attribute__((device, used)) void bufferLoadB96Offen(
+    llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
+    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+    std::uint32_t VOffset, std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  std::uint32_t V[4] = {0, 0, 0, 0};
+  for (unsigned I = 0; I != static_cast<unsigned>(3); ++I)
+    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
+        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+  luthier::writeReg<std::uint32_t>(D0, V[0]);
+  luthier::writeReg<std::uint32_t>(D1, V[1]);
+  luthier::writeReg<std::uint32_t>(D2, V[2]);
+}
+
+__attribute__((device, used)) void bufferLoadB128Offset(
+    llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
+    llvm::MCRegister D3, __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,
+    std::uint32_t RsrcHi, std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  std::uint32_t V[4] = {0, 0, 0, 0};
+  for (unsigned I = 0; I != static_cast<unsigned>(4); ++I)
+    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
+        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+  luthier::writeReg<std::uint32_t>(D0, V[0]);
+  luthier::writeReg<std::uint32_t>(D1, V[1]);
+  luthier::writeReg<std::uint32_t>(D2, V[2]);
+  luthier::writeReg<std::uint32_t>(D3, V[3]);
+}
+
+__attribute__((device, used)) void
+bufferLoadB128Offen(llvm::MCRegister D0, llvm::MCRegister D1,
+                    llvm::MCRegister D2, llvm::MCRegister D3,
+                    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,
+                    std::uint32_t RsrcHi, std::uint32_t VOffset,
+                    std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  std::uint32_t V[4] = {0, 0, 0, 0};
+  for (unsigned I = 0; I != static_cast<unsigned>(4); ++I)
+    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
+        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+  luthier::writeReg<std::uint32_t>(D0, V[0]);
+  luthier::writeReg<std::uint32_t>(D1, V[1]);
+  luthier::writeReg<std::uint32_t>(D2, V[2]);
+  luthier::writeReg<std::uint32_t>(D3, V[3]);
+}
+
+__attribute__((device, used)) void
+bufferStoreB32Offset(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
+                     std::uint32_t V3, __amdgpu_buffer_rsrc_t Rsrc,
+                     std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                     std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  const std::uint32_t V[4] = {V0, V1, V2, V3};
+  for (unsigned I = 0; I != static_cast<unsigned>(1); ++I)
+    __builtin_amdgcn_raw_buffer_store_b32(
+        V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+}
+
+__attribute__((device, used)) void bufferStoreB32Offen(
+    std::uint32_t V0, std::uint32_t V1, std::uint32_t V2, std::uint32_t V3,
+    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+    std::uint32_t VOffset, std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  const std::uint32_t V[4] = {V0, V1, V2, V3};
+  for (unsigned I = 0; I != static_cast<unsigned>(1); ++I)
+    __builtin_amdgcn_raw_buffer_store_b32(
+        V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+}
+
+__attribute__((device, used)) void
+bufferStoreB64Offset(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
+                     std::uint32_t V3, __amdgpu_buffer_rsrc_t Rsrc,
+                     std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                     std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  const std::uint32_t V[4] = {V0, V1, V2, V3};
+  for (unsigned I = 0; I != static_cast<unsigned>(2); ++I)
+    __builtin_amdgcn_raw_buffer_store_b32(
+        V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+}
+
+__attribute__((device, used)) void bufferStoreB64Offen(
+    std::uint32_t V0, std::uint32_t V1, std::uint32_t V2, std::uint32_t V3,
+    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+    std::uint32_t VOffset, std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  const std::uint32_t V[4] = {V0, V1, V2, V3};
+  for (unsigned I = 0; I != static_cast<unsigned>(2); ++I)
+    __builtin_amdgcn_raw_buffer_store_b32(
+        V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+}
+
+__attribute__((device, used)) void
+bufferStoreB96Offset(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
+                     std::uint32_t V3, __amdgpu_buffer_rsrc_t Rsrc,
+                     std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                     std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  const std::uint32_t V[4] = {V0, V1, V2, V3};
+  for (unsigned I = 0; I != static_cast<unsigned>(3); ++I)
+    __builtin_amdgcn_raw_buffer_store_b32(
+        V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+}
+
+__attribute__((device, used)) void bufferStoreB96Offen(
+    std::uint32_t V0, std::uint32_t V1, std::uint32_t V2, std::uint32_t V3,
+    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+    std::uint32_t VOffset, std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  const std::uint32_t V[4] = {V0, V1, V2, V3};
+  for (unsigned I = 0; I != static_cast<unsigned>(3); ++I)
+    __builtin_amdgcn_raw_buffer_store_b32(
+        V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+}
+
+__attribute__((device, used)) void
+bufferStoreB128Offset(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
+                      std::uint32_t V3, __amdgpu_buffer_rsrc_t Rsrc,
+                      std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                      std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  const std::uint32_t V[4] = {V0, V1, V2, V3};
+  for (unsigned I = 0; I != static_cast<unsigned>(4); ++I)
+    __builtin_amdgcn_raw_buffer_store_b32(
+        V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+}
+
+__attribute__((device, used)) void bufferStoreB128Offen(
+    std::uint32_t V0, std::uint32_t V1, std::uint32_t V2, std::uint32_t V3,
+    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+    std::uint32_t VOffset, std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  const std::uint32_t V[4] = {V0, V1, V2, V3};
+  for (unsigned I = 0; I != static_cast<unsigned>(4); ++I)
+    __builtin_amdgcn_raw_buffer_store_b32(
+        V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+}
+
+__attribute__((device, used)) void
+bufferLoadU8Offset(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
+                   std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                   std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  const auto Val = __builtin_amdgcn_raw_buffer_load_b8(
+      Rsrc, static_cast<int>(LaneOffset), SOff, 0);
+  luthier::writeReg<std::uint32_t>(
+      Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));
+}
+
+__attribute__((device, used)) void
+bufferLoadU8Offen(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
+                  std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                  std::uint32_t VOffset, std::uint32_t SOffset,
+                  std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  const auto Val = __builtin_amdgcn_raw_buffer_load_b8(
+      Rsrc, static_cast<int>(LaneOffset), SOff, 0);
+  luthier::writeReg<std::uint32_t>(
+      Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));
+}
+
+__attribute__((device, used)) void
+bufferLoadI8Offset(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
+                   std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                   std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  const auto Val = __builtin_amdgcn_raw_buffer_load_b8(
+      Rsrc, static_cast<int>(LaneOffset), SOff, 0);
+  luthier::writeReg<std::uint32_t>(
+      Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));
+}
+
+__attribute__((device, used)) void
+bufferLoadI8Offen(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
+                  std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                  std::uint32_t VOffset, std::uint32_t SOffset,
+                  std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  const auto Val = __builtin_amdgcn_raw_buffer_load_b8(
+      Rsrc, static_cast<int>(LaneOffset), SOff, 0);
+  luthier::writeReg<std::uint32_t>(
+      Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));
+}
+
+__attribute__((device, used)) void
+bufferLoadU16Offset(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
+                    std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                    std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  const auto Val = __builtin_amdgcn_raw_buffer_load_b16(
+      Rsrc, static_cast<int>(LaneOffset), SOff, 0);
+  luthier::writeReg<std::uint32_t>(
+      Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));
+}
+
+__attribute__((device, used)) void
+bufferLoadU16Offen(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
+                   std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                   std::uint32_t VOffset, std::uint32_t SOffset,
+                   std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  const auto Val = __builtin_amdgcn_raw_buffer_load_b16(
+      Rsrc, static_cast<int>(LaneOffset), SOff, 0);
+  luthier::writeReg<std::uint32_t>(
+      Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));
+}
+
+__attribute__((device, used)) void
+bufferLoadI16Offset(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
+                    std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                    std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  const auto Val = __builtin_amdgcn_raw_buffer_load_b16(
+      Rsrc, static_cast<int>(LaneOffset), SOff, 0);
+  luthier::writeReg<std::uint32_t>(
+      Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));
+}
+
+__attribute__((device, used)) void
+bufferLoadI16Offen(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
+                   std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                   std::uint32_t VOffset, std::uint32_t SOffset,
+                   std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  const auto Val = __builtin_amdgcn_raw_buffer_load_b16(
+      Rsrc, static_cast<int>(LaneOffset), SOff, 0);
+  luthier::writeReg<std::uint32_t>(
+      Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));
+}
+
+__attribute__((device, used)) void
+bufferStoreB8Offset(std::uint32_t Value, __amdgpu_buffer_rsrc_t Rsrc,
+                    std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                    std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  __builtin_amdgcn_raw_buffer_store_b8(static_cast<unsigned char>(Value), Rsrc,
+                                       static_cast<int>(LaneOffset), SOff, 0);
+}
+
+__attribute__((device, used)) void
+bufferStoreB8Offen(std::uint32_t Value, __amdgpu_buffer_rsrc_t Rsrc,
+                   std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                   std::uint32_t VOffset, std::uint32_t SOffset,
+                   std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  __builtin_amdgcn_raw_buffer_store_b8(static_cast<unsigned char>(Value), Rsrc,
+                                       static_cast<int>(LaneOffset), SOff, 0);
+}
+
+__attribute__((device, used)) void
+bufferStoreB16Offset(std::uint32_t Value, __amdgpu_buffer_rsrc_t Rsrc,
+                     std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                     std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  __builtin_amdgcn_raw_buffer_store_b16(static_cast<unsigned short>(Value),
+                                        Rsrc, static_cast<int>(LaneOffset),
+                                        SOff, 0);
+}
+
+__attribute__((device, used)) void
+bufferStoreB16Offen(std::uint32_t Value, __amdgpu_buffer_rsrc_t Rsrc,
+                    std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                    std::uint32_t VOffset, std::uint32_t SOffset,
+                    std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  __builtin_amdgcn_raw_buffer_store_b16(static_cast<unsigned short>(Value),
+                                        Rsrc, static_cast<int>(LaneOffset),
+                                        SOff, 0);
+}
 
 } // namespace luthier::payloads
 
@@ -815,8 +1570,7 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
     for (llvm::MachineBasicBlock &MBB : MF) {
       for (llvm::MachineInstr &MI : MBB) {
         if (TII.isFLATScratch(MI) ||
-            (TII.isFLAT(MI) && !TII.isFLATGlobal(MI)) ||
-            TII.isMUBUF(MI))
+            (TII.isFLAT(MI) && !TII.isFLATGlobal(MI)) || TII.isMUBUF(MI))
           Worklist.push_back(&MI);
       }
     }
@@ -829,9 +1583,9 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   /// Names of every payload the linked module contributed.
   ///
   /// Each payload is `__attribute__((used))`, which is what makes the device
-  /// compile emit it into the bundle at all --- nothing in that translation unit
-  /// calls it. The flip side is that the linked module pins all of them via
-  /// `llvm.compiler.used`, so their out-of-line bodies survive into
+  /// compile emit it into the bundle at all --- nothing in that translation
+  /// unit calls it. The flip side is that the linked module pins all of them
+  /// via `llvm.compiler.used`, so their out-of-line bodies survive into
   /// `ProcessIntrinsicsAtIRLevelPass`, which rejects them: a payload names the
   /// register it writes back through its own parameter, and the intrinsic
   /// lowering needs a literal. `createInjectedPayload` force-inlines the
@@ -898,559 +1652,649 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
     const auto &TII = *ST.getInstrInfo();
     const auto &TRI = *ST.getRegisterInfo();
 
-        // Cache-policy bits are a performance hint on private memory --- it is
-        // wave-private and coherent with nothing --- so they are dropped on the
-        // scratch path. On the flat and buffer paths the access may be global,
-        // where they are not droppable, and the re-issued access has no way to
-        // spell them: the buffer builtins take a compile-time-constant aux
-        // operand and a plain pointer dereference carries no policy at all.
-        const int64_t CPol = namedImmOr0(*MI, llvm::AMDGPU::OpName::cpol);
-        if (CPol != 0 && !TII.isFLATScratch(*MI)) {
-          Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-              "RebaseAppScratchAccessesPass: '{0}' in '{1}' carries cache "
-              "policy {2}, which the re-issued access cannot reproduce.",
-              TII.getName(MI->getOpcode()), MF.getName(), CPol));
-          break;
-        }
+    // Cache-policy bits are a performance hint on private memory --- it is
+    // wave-private and coherent with nothing --- so they are dropped on the
+    // scratch path. On the flat and buffer paths the access may be global,
+    // where they are not droppable, and the re-issued access has no way to
+    // spell them: the buffer builtins take a compile-time-constant aux
+    // operand and a plain pointer dereference carries no policy at all.
+    const int64_t CPol = namedImmOr0(*MI, llvm::AMDGPU::OpName::cpol);
+    if (CPol != 0 && !TII.isFLATScratch(*MI)) {
+      Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "RebaseAppScratchAccessesPass: '{0}' in '{1}' carries cache "
+          "policy {2}, which the re-issued access cannot reproduce.",
+          TII.getName(MI->getOpcode()), MF.getName(), CPol));
+      break;
+    }
 
-        const int64_t InstOffset =
-            namedImmOr0(*MI, llvm::AMDGPU::OpName::offset);
-        const llvm::MachineOperand *VAddr =
-            findNamedOp(*MI, llvm::AMDGPU::OpName::vaddr);
-        const llvm::MachineOperand *SAddr =
-            findNamedOp(*MI, llvm::AMDGPU::OpName::saddr);
-        const llvm::MachineOperand *SOffset =
-            findNamedOp(*MI, llvm::AMDGPU::OpName::soffset);
-        const llvm::MachineOperand *SRsrc =
-            findNamedOp(*MI, llvm::AMDGPU::OpName::srsrc);
-        const llvm::MachineOperand *Data =
-            findNamedOp(*MI, llvm::AMDGPU::OpName::vdst);
-        if (!Data)
-          Data = findNamedOp(*MI, llvm::AMDGPU::OpName::vdata);
-        if (!Data || !Data->isReg() || !Data->getReg()) {
-          Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-              "RebaseAppScratchAccessesPass: '{0}' in '{1}' has no data "
-              "register operand to re-issue through.",
-              TII.getName(MI->getOpcode()), MF.getName()));
-          break;
-        }
+    const int64_t InstOffset = namedImmOr0(*MI, llvm::AMDGPU::OpName::offset);
+    const llvm::MachineOperand *VAddr =
+        findNamedOp(*MI, llvm::AMDGPU::OpName::vaddr);
+    const llvm::MachineOperand *SAddr =
+        findNamedOp(*MI, llvm::AMDGPU::OpName::saddr);
+    const llvm::MachineOperand *SOffset =
+        findNamedOp(*MI, llvm::AMDGPU::OpName::soffset);
+    const llvm::MachineOperand *SRsrc =
+        findNamedOp(*MI, llvm::AMDGPU::OpName::srsrc);
+    const llvm::MachineOperand *Data =
+        findNamedOp(*MI, llvm::AMDGPU::OpName::vdst);
+    if (!Data)
+      Data = findNamedOp(*MI, llvm::AMDGPU::OpName::vdata);
+    if (!Data || !Data->isReg() || !Data->getReg()) {
+      Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+          "RebaseAppScratchAccessesPass: '{0}' in '{1}' has no data "
+          "register operand to re-issue through.",
+          TII.getName(MI->getOpcode()), MF.getName()));
+      break;
+    }
 
-        auto addrArg = [&](const llvm::MachineOperand *Op,
-                           llvm::Type *Ty) -> PayloadArg {
-          if (!Op)
-            return constI32(0);
-          if (Op->isImm())
-            return llvm::ConstantInt::get(Ty, Op->getImm());
-          if (!Op->isReg() || !Op->getReg())
-            return constI32(0);
-          return RegArg{Op->getReg().asMCReg(), Ty};
-        };
+    auto addrArg = [&](const llvm::MachineOperand *Op,
+                       llvm::Type *Ty) -> PayloadArg {
+      if (!Op)
+        return constI32(0);
+      if (Op->isImm())
+        return llvm::ConstantInt::get(Ty, Op->getImm());
+      if (!Op->isReg() || !Op->getReg())
+        return constI32(0);
+      return RegArg{Op->getReg().asMCReg(), Ty};
+    };
 
-        const llvm::MCRegister DataReg = Data->getReg().asMCReg();
-        auto channel = [&](unsigned I, unsigned N) -> llvm::MCRegister {
-          if (N <= 1)
-            return DataReg;
-          return TRI.getSubReg(DataReg,
-                               llvm::SIRegisterInfo::getSubRegFromChannel(I));
-        };
+    const llvm::MCRegister DataReg = Data->getReg().asMCReg();
+    auto channel = [&](unsigned I, unsigned N) -> llvm::MCRegister {
+      if (N <= 1)
+        return DataReg;
+      return TRI.getSubReg(DataReg,
+                           llvm::SIRegisterInfo::getSubRegFromChannel(I));
+    };
 
-        llvm::SmallVector<PayloadArg, 10> Args;
+    llvm::SmallVector<PayloadArg, 10> Args;
 
-        auto loadData = [&](unsigned N) {
-          for (unsigned I = 0; I < N; ++I)
-            Args.push_back(constI32(channel(I, N).id()));
-        };
-        auto storeData = [&](unsigned N) {
-          for (unsigned I = 0; I < N; ++I)
-            Args.push_back(PayloadArg{RegArg{channel(I, N), I32}});
-        };
-        auto subLoadData = [&]() { Args.push_back(constI32(DataReg.id())); };
-        auto subStoreData = [&]() {
-          Args.push_back(PayloadArg{RegArg{DataReg, I32}});
-        };
-        auto bufferStoreData = [&](unsigned N) {
-          for (unsigned I = 0; I < 4; ++I) {
-            if (I >= N) {
-              Args.push_back(constI32(0));
-              continue;
-            }
-            Args.push_back(PayloadArg{RegArg{channel(I, N), I32}});
-          }
-        };
-
-        auto scratchVaddr = [&]() {
-          Args.push_back(RegArg{VAddr->getReg().asMCReg(), I32});
-          Args.push_back(constI32(InstOffset));
-        };
-        auto scratchSaddr = [&]() {
-          Args.push_back(RegArg{SAddr->getReg().asMCReg(), I32});
-          Args.push_back(constI32(InstOffset));
-        };
-        auto scratchSt = [&]() {
-          Args.push_back(constI32(InstOffset));
-        };
-        auto scratchSvs = [&]() {
-          Args.push_back(RegArg{VAddr->getReg().asMCReg(), I32});
-          Args.push_back(RegArg{SAddr->getReg().asMCReg(), I32});
-          Args.push_back(constI32(InstOffset));
-        };
-
-        auto flatAddr = [&]() {
-          Args.push_back(addrArg(VAddr, I64));
-          Args.push_back(constI32(InstOffset));
-        };
-
-        auto bufferOffen = [&]() {
-          const llvm::MCRegister Rsrc = SRsrc->getReg().asMCReg();
-          Args.push_back(RegArg{Rsrc, RsrcTy});
-          Args.push_back(
-              RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub0), I32});
-          Args.push_back(
-              RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub1), I32});
-          Args.push_back(addrArg(VAddr, I32));
-          Args.push_back(addrArg(SOffset, I32));
-          Args.push_back(constI32(InstOffset));
-        };
-        auto bufferOffset = [&]() {
-          const llvm::MCRegister Rsrc = SRsrc->getReg().asMCReg();
-          Args.push_back(RegArg{Rsrc, RsrcTy});
-          Args.push_back(
-              RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub0), I32});
-          Args.push_back(
-              RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub1), I32});
-          Args.push_back(addrArg(SOffset, I32));
-          Args.push_back(constI32(InstOffset));
-        };
-
-        llvm::Expected<llvm::Function *> HookOrErr =
-            llvm::make_error<llvm::StringError>(
-                "unreachable", llvm::inconvertibleErrorCode());
-
-        switch (MI->getOpcode()) {
-        // ---- Scratch loads ----
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORD:
-          loadData(1); scratchVaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadB32Vaddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR:
-          loadData(1); scratchSaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadB32Saddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORD_ST:
-          loadData(1); scratchSt();
-          HookOrErr = hookFor(&Payloads::scratchLoadB32St);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORD_SVS:
-          loadData(1); scratchSvs();
-          HookOrErr = hookFor(&Payloads::scratchLoadB32Svs);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX2:
-          loadData(2); scratchVaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadB64Vaddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX2_SADDR:
-          loadData(2); scratchSaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadB64Saddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX2_ST:
-          loadData(2); scratchSt();
-          HookOrErr = hookFor(&Payloads::scratchLoadB64St);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX2_SVS:
-          loadData(2); scratchSvs();
-          HookOrErr = hookFor(&Payloads::scratchLoadB64Svs);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX3:
-          loadData(3); scratchVaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadB96Vaddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX3_SADDR:
-          loadData(3); scratchSaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadB96Saddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX3_ST:
-          loadData(3); scratchSt();
-          HookOrErr = hookFor(&Payloads::scratchLoadB96St);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX3_SVS:
-          loadData(3); scratchSvs();
-          HookOrErr = hookFor(&Payloads::scratchLoadB96Svs);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX4:
-          loadData(4); scratchVaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadB128Vaddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX4_SADDR:
-          loadData(4); scratchSaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadB128Saddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX4_ST:
-          loadData(4); scratchSt();
-          HookOrErr = hookFor(&Payloads::scratchLoadB128St);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX4_SVS:
-          loadData(4); scratchSvs();
-          HookOrErr = hookFor(&Payloads::scratchLoadB128Svs);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_UBYTE:
-          subLoadData(); scratchVaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadU8Vaddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_UBYTE_SADDR:
-          subLoadData(); scratchSaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadU8Saddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_UBYTE_ST:
-          subLoadData(); scratchSt();
-          HookOrErr = hookFor(&Payloads::scratchLoadU8St);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_UBYTE_SVS:
-          subLoadData(); scratchSvs();
-          HookOrErr = hookFor(&Payloads::scratchLoadU8Svs);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_SBYTE:
-          subLoadData(); scratchVaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadI8Vaddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_SBYTE_SADDR:
-          subLoadData(); scratchSaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadI8Saddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_SBYTE_ST:
-          subLoadData(); scratchSt();
-          HookOrErr = hookFor(&Payloads::scratchLoadI8St);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_SBYTE_SVS:
-          subLoadData(); scratchSvs();
-          HookOrErr = hookFor(&Payloads::scratchLoadI8Svs);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_USHORT:
-          subLoadData(); scratchVaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadU16Vaddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_USHORT_SADDR:
-          subLoadData(); scratchSaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadU16Saddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_USHORT_ST:
-          subLoadData(); scratchSt();
-          HookOrErr = hookFor(&Payloads::scratchLoadU16St);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_USHORT_SVS:
-          subLoadData(); scratchSvs();
-          HookOrErr = hookFor(&Payloads::scratchLoadU16Svs);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_SSHORT:
-          subLoadData(); scratchVaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadI16Vaddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_SSHORT_SADDR:
-          subLoadData(); scratchSaddr();
-          HookOrErr = hookFor(&Payloads::scratchLoadI16Saddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_SSHORT_ST:
-          subLoadData(); scratchSt();
-          HookOrErr = hookFor(&Payloads::scratchLoadI16St);
-          break;
-        case llvm::AMDGPU::SCRATCH_LOAD_SSHORT_SVS:
-          subLoadData(); scratchSvs();
-          HookOrErr = hookFor(&Payloads::scratchLoadI16Svs);
-          break;
-        // ---- Scratch stores ----
-        case llvm::AMDGPU::SCRATCH_STORE_DWORD:
-          storeData(1); scratchVaddr();
-          HookOrErr = hookFor(&Payloads::scratchStoreB32Vaddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR:
-          storeData(1); scratchSaddr();
-          HookOrErr = hookFor(&Payloads::scratchStoreB32Saddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORD_ST:
-          storeData(1); scratchSt();
-          HookOrErr = hookFor(&Payloads::scratchStoreB32St);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORD_SVS:
-          storeData(1); scratchSvs();
-          HookOrErr = hookFor(&Payloads::scratchStoreB32Svs);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORDX2:
-          storeData(2); scratchVaddr();
-          HookOrErr = hookFor(&Payloads::scratchStoreB64Vaddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORDX2_SADDR:
-          storeData(2); scratchSaddr();
-          HookOrErr = hookFor(&Payloads::scratchStoreB64Saddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORDX2_ST:
-          storeData(2); scratchSt();
-          HookOrErr = hookFor(&Payloads::scratchStoreB64St);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORDX2_SVS:
-          storeData(2); scratchSvs();
-          HookOrErr = hookFor(&Payloads::scratchStoreB64Svs);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORDX3:
-          storeData(3); scratchVaddr();
-          HookOrErr = hookFor(&Payloads::scratchStoreB96Vaddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORDX3_SADDR:
-          storeData(3); scratchSaddr();
-          HookOrErr = hookFor(&Payloads::scratchStoreB96Saddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORDX3_ST:
-          storeData(3); scratchSt();
-          HookOrErr = hookFor(&Payloads::scratchStoreB96St);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORDX3_SVS:
-          storeData(3); scratchSvs();
-          HookOrErr = hookFor(&Payloads::scratchStoreB96Svs);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORDX4:
-          storeData(4); scratchVaddr();
-          HookOrErr = hookFor(&Payloads::scratchStoreB128Vaddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORDX4_SADDR:
-          storeData(4); scratchSaddr();
-          HookOrErr = hookFor(&Payloads::scratchStoreB128Saddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORDX4_ST:
-          storeData(4); scratchSt();
-          HookOrErr = hookFor(&Payloads::scratchStoreB128St);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_DWORDX4_SVS:
-          storeData(4); scratchSvs();
-          HookOrErr = hookFor(&Payloads::scratchStoreB128Svs);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_BYTE:
-          subStoreData(); scratchVaddr();
-          HookOrErr = hookFor(&Payloads::scratchStoreB8Vaddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_BYTE_SADDR:
-          subStoreData(); scratchSaddr();
-          HookOrErr = hookFor(&Payloads::scratchStoreB8Saddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_BYTE_ST:
-          subStoreData(); scratchSt();
-          HookOrErr = hookFor(&Payloads::scratchStoreB8St);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_BYTE_SVS:
-          subStoreData(); scratchSvs();
-          HookOrErr = hookFor(&Payloads::scratchStoreB8Svs);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_SHORT:
-          subStoreData(); scratchVaddr();
-          HookOrErr = hookFor(&Payloads::scratchStoreB16Vaddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_SHORT_SADDR:
-          subStoreData(); scratchSaddr();
-          HookOrErr = hookFor(&Payloads::scratchStoreB16Saddr);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_SHORT_ST:
-          subStoreData(); scratchSt();
-          HookOrErr = hookFor(&Payloads::scratchStoreB16St);
-          break;
-        case llvm::AMDGPU::SCRATCH_STORE_SHORT_SVS:
-          subStoreData(); scratchSvs();
-          HookOrErr = hookFor(&Payloads::scratchStoreB16Svs);
-          break;
-        // ---- Flat loads ----
-        case llvm::AMDGPU::FLAT_LOAD_DWORD:
-          loadData(1); flatAddr();
-          HookOrErr = hookFor(&Payloads::flatLoadB32);
-          break;
-        case llvm::AMDGPU::FLAT_LOAD_DWORDX2:
-          loadData(2); flatAddr();
-          HookOrErr = hookFor(&Payloads::flatLoadB64);
-          break;
-        case llvm::AMDGPU::FLAT_LOAD_DWORDX3:
-          loadData(3); flatAddr();
-          HookOrErr = hookFor(&Payloads::flatLoadB96);
-          break;
-        case llvm::AMDGPU::FLAT_LOAD_DWORDX4:
-          loadData(4); flatAddr();
-          HookOrErr = hookFor(&Payloads::flatLoadB128);
-          break;
-        case llvm::AMDGPU::FLAT_LOAD_UBYTE:
-          subLoadData(); flatAddr();
-          HookOrErr = hookFor(&Payloads::flatLoadU8);
-          break;
-        case llvm::AMDGPU::FLAT_LOAD_SBYTE:
-          subLoadData(); flatAddr();
-          HookOrErr = hookFor(&Payloads::flatLoadI8);
-          break;
-        case llvm::AMDGPU::FLAT_LOAD_USHORT:
-          subLoadData(); flatAddr();
-          HookOrErr = hookFor(&Payloads::flatLoadU16);
-          break;
-        case llvm::AMDGPU::FLAT_LOAD_SSHORT:
-          subLoadData(); flatAddr();
-          HookOrErr = hookFor(&Payloads::flatLoadI16);
-          break;
-        // ---- Flat stores ----
-        case llvm::AMDGPU::FLAT_STORE_DWORD:
-          storeData(1); flatAddr();
-          HookOrErr = hookFor(&Payloads::flatStoreB32);
-          break;
-        case llvm::AMDGPU::FLAT_STORE_DWORDX2:
-          storeData(2); flatAddr();
-          HookOrErr = hookFor(&Payloads::flatStoreB64);
-          break;
-        case llvm::AMDGPU::FLAT_STORE_DWORDX3:
-          storeData(3); flatAddr();
-          HookOrErr = hookFor(&Payloads::flatStoreB96);
-          break;
-        case llvm::AMDGPU::FLAT_STORE_DWORDX4:
-          storeData(4); flatAddr();
-          HookOrErr = hookFor(&Payloads::flatStoreB128);
-          break;
-        case llvm::AMDGPU::FLAT_STORE_BYTE:
-          subStoreData(); flatAddr();
-          HookOrErr = hookFor(&Payloads::flatStoreB8);
-          break;
-        case llvm::AMDGPU::FLAT_STORE_SHORT:
-          subStoreData(); flatAddr();
-          HookOrErr = hookFor(&Payloads::flatStoreB16);
-          break;
-        // ---- Buffer loads (OFFEN) ----
-        case llvm::AMDGPU::BUFFER_LOAD_DWORD_OFFEN:
-          loadData(1); bufferOffen();
-          HookOrErr = hookFor(&Payloads::bufferLoadB32Offen);
-          break;
-        case llvm::AMDGPU::BUFFER_LOAD_DWORDX2_OFFEN:
-          loadData(2); bufferOffen();
-          HookOrErr = hookFor(&Payloads::bufferLoadB64Offen);
-          break;
-        case llvm::AMDGPU::BUFFER_LOAD_DWORDX3_OFFEN:
-          loadData(3); bufferOffen();
-          HookOrErr = hookFor(&Payloads::bufferLoadB96Offen);
-          break;
-        case llvm::AMDGPU::BUFFER_LOAD_DWORDX4_OFFEN:
-          loadData(4); bufferOffen();
-          HookOrErr = hookFor(&Payloads::bufferLoadB128Offen);
-          break;
-        case llvm::AMDGPU::BUFFER_LOAD_UBYTE_OFFEN:
-          subLoadData(); bufferOffen();
-          HookOrErr = hookFor(&Payloads::bufferLoadU8Offen);
-          break;
-        case llvm::AMDGPU::BUFFER_LOAD_SBYTE_OFFEN:
-          subLoadData(); bufferOffen();
-          HookOrErr = hookFor(&Payloads::bufferLoadI8Offen);
-          break;
-        case llvm::AMDGPU::BUFFER_LOAD_USHORT_OFFEN:
-          subLoadData(); bufferOffen();
-          HookOrErr = hookFor(&Payloads::bufferLoadU16Offen);
-          break;
-        case llvm::AMDGPU::BUFFER_LOAD_SSHORT_OFFEN:
-          subLoadData(); bufferOffen();
-          HookOrErr = hookFor(&Payloads::bufferLoadI16Offen);
-          break;
-        // ---- Buffer loads (OFFSET) ----
-        case llvm::AMDGPU::BUFFER_LOAD_DWORD_OFFSET:
-          loadData(1); bufferOffset();
-          HookOrErr = hookFor(&Payloads::bufferLoadB32Offset);
-          break;
-        case llvm::AMDGPU::BUFFER_LOAD_DWORDX2_OFFSET:
-          loadData(2); bufferOffset();
-          HookOrErr = hookFor(&Payloads::bufferLoadB64Offset);
-          break;
-        case llvm::AMDGPU::BUFFER_LOAD_DWORDX3_OFFSET:
-          loadData(3); bufferOffset();
-          HookOrErr = hookFor(&Payloads::bufferLoadB96Offset);
-          break;
-        case llvm::AMDGPU::BUFFER_LOAD_DWORDX4_OFFSET:
-          loadData(4); bufferOffset();
-          HookOrErr = hookFor(&Payloads::bufferLoadB128Offset);
-          break;
-        case llvm::AMDGPU::BUFFER_LOAD_UBYTE_OFFSET:
-          subLoadData(); bufferOffset();
-          HookOrErr = hookFor(&Payloads::bufferLoadU8Offset);
-          break;
-        case llvm::AMDGPU::BUFFER_LOAD_SBYTE_OFFSET:
-          subLoadData(); bufferOffset();
-          HookOrErr = hookFor(&Payloads::bufferLoadI8Offset);
-          break;
-        case llvm::AMDGPU::BUFFER_LOAD_USHORT_OFFSET:
-          subLoadData(); bufferOffset();
-          HookOrErr = hookFor(&Payloads::bufferLoadU16Offset);
-          break;
-        case llvm::AMDGPU::BUFFER_LOAD_SSHORT_OFFSET:
-          subLoadData(); bufferOffset();
-          HookOrErr = hookFor(&Payloads::bufferLoadI16Offset);
-          break;
-        // ---- Buffer stores (OFFEN) ----
-        case llvm::AMDGPU::BUFFER_STORE_DWORD_OFFEN:
-          bufferStoreData(1); bufferOffen();
-          HookOrErr = hookFor(&Payloads::bufferStoreB32Offen);
-          break;
-        case llvm::AMDGPU::BUFFER_STORE_DWORDX2_OFFEN:
-          bufferStoreData(2); bufferOffen();
-          HookOrErr = hookFor(&Payloads::bufferStoreB64Offen);
-          break;
-        case llvm::AMDGPU::BUFFER_STORE_DWORDX3_OFFEN:
-          bufferStoreData(3); bufferOffen();
-          HookOrErr = hookFor(&Payloads::bufferStoreB96Offen);
-          break;
-        case llvm::AMDGPU::BUFFER_STORE_DWORDX4_OFFEN:
-          bufferStoreData(4); bufferOffen();
-          HookOrErr = hookFor(&Payloads::bufferStoreB128Offen);
-          break;
-        case llvm::AMDGPU::BUFFER_STORE_BYTE_OFFEN:
-          subStoreData(); bufferOffen();
-          HookOrErr = hookFor(&Payloads::bufferStoreB8Offen);
-          break;
-        case llvm::AMDGPU::BUFFER_STORE_SHORT_OFFEN:
-          subStoreData(); bufferOffen();
-          HookOrErr = hookFor(&Payloads::bufferStoreB16Offen);
-          break;
-        // ---- Buffer stores (OFFSET) ----
-        case llvm::AMDGPU::BUFFER_STORE_DWORD_OFFSET:
-          bufferStoreData(1); bufferOffset();
-          HookOrErr = hookFor(&Payloads::bufferStoreB32Offset);
-          break;
-        case llvm::AMDGPU::BUFFER_STORE_DWORDX2_OFFSET:
-          bufferStoreData(2); bufferOffset();
-          HookOrErr = hookFor(&Payloads::bufferStoreB64Offset);
-          break;
-        case llvm::AMDGPU::BUFFER_STORE_DWORDX3_OFFSET:
-          bufferStoreData(3); bufferOffset();
-          HookOrErr = hookFor(&Payloads::bufferStoreB96Offset);
-          break;
-        case llvm::AMDGPU::BUFFER_STORE_DWORDX4_OFFSET:
-          bufferStoreData(4); bufferOffset();
-          HookOrErr = hookFor(&Payloads::bufferStoreB128Offset);
-          break;
-        case llvm::AMDGPU::BUFFER_STORE_BYTE_OFFSET:
-          subStoreData(); bufferOffset();
-          HookOrErr = hookFor(&Payloads::bufferStoreB8Offset);
-          break;
-        case llvm::AMDGPU::BUFFER_STORE_SHORT_OFFSET:
-          subStoreData(); bufferOffset();
-          HookOrErr = hookFor(&Payloads::bufferStoreB16Offset);
-          break;
-        default:
-          if (TII.isFLATScratch(MI)) {
-            Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-                "RebaseAppScratchAccessesPass: '{0}' in '{1}' addresses the "
-                "wavefront's private segment but is not a form this pass knows "
-                "how to re-issue. Add a payload for it in "
-                "RebaseAppScratchAccessesPass.hip.",
-                TII.getName(MI.getOpcode()), MF.getName()));
-            break;
-          }
+    auto loadData = [&](unsigned N) {
+      for (unsigned I = 0; I < N; ++I)
+        Args.push_back(constI32(channel(I, N).id()));
+    };
+    auto storeData = [&](unsigned N) {
+      for (unsigned I = 0; I < N; ++I)
+        Args.push_back(PayloadArg{RegArg{channel(I, N), I32}});
+    };
+    auto subLoadData = [&]() { Args.push_back(constI32(DataReg.id())); };
+    auto subStoreData = [&]() {
+      Args.push_back(PayloadArg{RegArg{DataReg, I32}});
+    };
+    auto bufferStoreData = [&](unsigned N) {
+      for (unsigned I = 0; I < 4; ++I) {
+        if (I >= N) {
+          Args.push_back(constI32(0));
           continue;
         }
+        Args.push_back(PayloadArg{RegArg{channel(I, N), I32}});
+      }
+    };
 
-        if (!HookOrErr) {
-          Err = HookOrErr.takeError();
-          break;
-        }
-        auto PayloadOrErr =
-            P.createInjectedPayload(**HookOrErr, MI, IFAM, Args);
-        if (!PayloadOrErr) {
-          Err = PayloadOrErr.takeError();
-          break;
-        }
-        ToErase.push_back(&MI);
+    auto scratchVaddr = [&]() {
+      Args.push_back(RegArg{VAddr->getReg().asMCReg(), I32});
+      Args.push_back(constI32(InstOffset));
+    };
+    auto scratchSaddr = [&]() {
+      Args.push_back(RegArg{SAddr->getReg().asMCReg(), I32});
+      Args.push_back(constI32(InstOffset));
+    };
+    auto scratchSt = [&]() { Args.push_back(constI32(InstOffset)); };
+    auto scratchSvs = [&]() {
+      Args.push_back(RegArg{VAddr->getReg().asMCReg(), I32});
+      Args.push_back(RegArg{SAddr->getReg().asMCReg(), I32});
+      Args.push_back(constI32(InstOffset));
+    };
+
+    auto flatAddr = [&]() {
+      Args.push_back(addrArg(VAddr, I64));
+      Args.push_back(constI32(InstOffset));
+    };
+
+    auto bufferOffen = [&]() {
+      const llvm::MCRegister Rsrc = SRsrc->getReg().asMCReg();
+      Args.push_back(RegArg{Rsrc, RsrcTy});
+      Args.push_back(RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub0), I32});
+      Args.push_back(RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub1), I32});
+      Args.push_back(addrArg(VAddr, I32));
+      Args.push_back(addrArg(SOffset, I32));
+      Args.push_back(constI32(InstOffset));
+    };
+    auto bufferOffset = [&]() {
+      const llvm::MCRegister Rsrc = SRsrc->getReg().asMCReg();
+      Args.push_back(RegArg{Rsrc, RsrcTy});
+      Args.push_back(RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub0), I32});
+      Args.push_back(RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub1), I32});
+      Args.push_back(addrArg(SOffset, I32));
+      Args.push_back(constI32(InstOffset));
+    };
+
+    llvm::Expected<llvm::Function *> HookOrErr =
+        llvm::make_error<llvm::StringError>("unreachable",
+                                            llvm::inconvertibleErrorCode());
+
+    switch (MI->getOpcode()) {
+    // ---- Scratch loads ----
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORD:
+      loadData(1);
+      scratchVaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadB32Vaddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR:
+      loadData(1);
+      scratchSaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadB32Saddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORD_ST:
+      loadData(1);
+      scratchSt();
+      HookOrErr = hookFor(&Payloads::scratchLoadB32St);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORD_SVS:
+      loadData(1);
+      scratchSvs();
+      HookOrErr = hookFor(&Payloads::scratchLoadB32Svs);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORDX2:
+      loadData(2);
+      scratchVaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadB64Vaddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORDX2_SADDR:
+      loadData(2);
+      scratchSaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadB64Saddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORDX2_ST:
+      loadData(2);
+      scratchSt();
+      HookOrErr = hookFor(&Payloads::scratchLoadB64St);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORDX2_SVS:
+      loadData(2);
+      scratchSvs();
+      HookOrErr = hookFor(&Payloads::scratchLoadB64Svs);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORDX3:
+      loadData(3);
+      scratchVaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadB96Vaddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORDX3_SADDR:
+      loadData(3);
+      scratchSaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadB96Saddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORDX3_ST:
+      loadData(3);
+      scratchSt();
+      HookOrErr = hookFor(&Payloads::scratchLoadB96St);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORDX3_SVS:
+      loadData(3);
+      scratchSvs();
+      HookOrErr = hookFor(&Payloads::scratchLoadB96Svs);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORDX4:
+      loadData(4);
+      scratchVaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadB128Vaddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORDX4_SADDR:
+      loadData(4);
+      scratchSaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadB128Saddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORDX4_ST:
+      loadData(4);
+      scratchSt();
+      HookOrErr = hookFor(&Payloads::scratchLoadB128St);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_DWORDX4_SVS:
+      loadData(4);
+      scratchSvs();
+      HookOrErr = hookFor(&Payloads::scratchLoadB128Svs);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_UBYTE:
+      subLoadData();
+      scratchVaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadU8Vaddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_UBYTE_SADDR:
+      subLoadData();
+      scratchSaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadU8Saddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_UBYTE_ST:
+      subLoadData();
+      scratchSt();
+      HookOrErr = hookFor(&Payloads::scratchLoadU8St);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_UBYTE_SVS:
+      subLoadData();
+      scratchSvs();
+      HookOrErr = hookFor(&Payloads::scratchLoadU8Svs);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_SBYTE:
+      subLoadData();
+      scratchVaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadI8Vaddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_SBYTE_SADDR:
+      subLoadData();
+      scratchSaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadI8Saddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_SBYTE_ST:
+      subLoadData();
+      scratchSt();
+      HookOrErr = hookFor(&Payloads::scratchLoadI8St);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_SBYTE_SVS:
+      subLoadData();
+      scratchSvs();
+      HookOrErr = hookFor(&Payloads::scratchLoadI8Svs);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_USHORT:
+      subLoadData();
+      scratchVaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadU16Vaddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_USHORT_SADDR:
+      subLoadData();
+      scratchSaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadU16Saddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_USHORT_ST:
+      subLoadData();
+      scratchSt();
+      HookOrErr = hookFor(&Payloads::scratchLoadU16St);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_USHORT_SVS:
+      subLoadData();
+      scratchSvs();
+      HookOrErr = hookFor(&Payloads::scratchLoadU16Svs);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_SSHORT:
+      subLoadData();
+      scratchVaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadI16Vaddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_SSHORT_SADDR:
+      subLoadData();
+      scratchSaddr();
+      HookOrErr = hookFor(&Payloads::scratchLoadI16Saddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_SSHORT_ST:
+      subLoadData();
+      scratchSt();
+      HookOrErr = hookFor(&Payloads::scratchLoadI16St);
+      break;
+    case llvm::AMDGPU::SCRATCH_LOAD_SSHORT_SVS:
+      subLoadData();
+      scratchSvs();
+      HookOrErr = hookFor(&Payloads::scratchLoadI16Svs);
+      break;
+    // ---- Scratch stores ----
+    case llvm::AMDGPU::SCRATCH_STORE_DWORD:
+      storeData(1);
+      scratchVaddr();
+      HookOrErr = hookFor(&Payloads::scratchStoreB32Vaddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR:
+      storeData(1);
+      scratchSaddr();
+      HookOrErr = hookFor(&Payloads::scratchStoreB32Saddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORD_ST:
+      storeData(1);
+      scratchSt();
+      HookOrErr = hookFor(&Payloads::scratchStoreB32St);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORD_SVS:
+      storeData(1);
+      scratchSvs();
+      HookOrErr = hookFor(&Payloads::scratchStoreB32Svs);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORDX2:
+      storeData(2);
+      scratchVaddr();
+      HookOrErr = hookFor(&Payloads::scratchStoreB64Vaddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORDX2_SADDR:
+      storeData(2);
+      scratchSaddr();
+      HookOrErr = hookFor(&Payloads::scratchStoreB64Saddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORDX2_ST:
+      storeData(2);
+      scratchSt();
+      HookOrErr = hookFor(&Payloads::scratchStoreB64St);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORDX2_SVS:
+      storeData(2);
+      scratchSvs();
+      HookOrErr = hookFor(&Payloads::scratchStoreB64Svs);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORDX3:
+      storeData(3);
+      scratchVaddr();
+      HookOrErr = hookFor(&Payloads::scratchStoreB96Vaddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORDX3_SADDR:
+      storeData(3);
+      scratchSaddr();
+      HookOrErr = hookFor(&Payloads::scratchStoreB96Saddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORDX3_ST:
+      storeData(3);
+      scratchSt();
+      HookOrErr = hookFor(&Payloads::scratchStoreB96St);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORDX3_SVS:
+      storeData(3);
+      scratchSvs();
+      HookOrErr = hookFor(&Payloads::scratchStoreB96Svs);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORDX4:
+      storeData(4);
+      scratchVaddr();
+      HookOrErr = hookFor(&Payloads::scratchStoreB128Vaddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORDX4_SADDR:
+      storeData(4);
+      scratchSaddr();
+      HookOrErr = hookFor(&Payloads::scratchStoreB128Saddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORDX4_ST:
+      storeData(4);
+      scratchSt();
+      HookOrErr = hookFor(&Payloads::scratchStoreB128St);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_DWORDX4_SVS:
+      storeData(4);
+      scratchSvs();
+      HookOrErr = hookFor(&Payloads::scratchStoreB128Svs);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_BYTE:
+      subStoreData();
+      scratchVaddr();
+      HookOrErr = hookFor(&Payloads::scratchStoreB8Vaddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_BYTE_SADDR:
+      subStoreData();
+      scratchSaddr();
+      HookOrErr = hookFor(&Payloads::scratchStoreB8Saddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_BYTE_ST:
+      subStoreData();
+      scratchSt();
+      HookOrErr = hookFor(&Payloads::scratchStoreB8St);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_BYTE_SVS:
+      subStoreData();
+      scratchSvs();
+      HookOrErr = hookFor(&Payloads::scratchStoreB8Svs);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_SHORT:
+      subStoreData();
+      scratchVaddr();
+      HookOrErr = hookFor(&Payloads::scratchStoreB16Vaddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_SHORT_SADDR:
+      subStoreData();
+      scratchSaddr();
+      HookOrErr = hookFor(&Payloads::scratchStoreB16Saddr);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_SHORT_ST:
+      subStoreData();
+      scratchSt();
+      HookOrErr = hookFor(&Payloads::scratchStoreB16St);
+      break;
+    case llvm::AMDGPU::SCRATCH_STORE_SHORT_SVS:
+      subStoreData();
+      scratchSvs();
+      HookOrErr = hookFor(&Payloads::scratchStoreB16Svs);
+      break;
+    // ---- Flat loads ----
+    case llvm::AMDGPU::FLAT_LOAD_DWORD:
+      loadData(1);
+      flatAddr();
+      HookOrErr = hookFor(&Payloads::flatLoadB32);
+      break;
+    case llvm::AMDGPU::FLAT_LOAD_DWORDX2:
+      loadData(2);
+      flatAddr();
+      HookOrErr = hookFor(&Payloads::flatLoadB64);
+      break;
+    case llvm::AMDGPU::FLAT_LOAD_DWORDX3:
+      loadData(3);
+      flatAddr();
+      HookOrErr = hookFor(&Payloads::flatLoadB96);
+      break;
+    case llvm::AMDGPU::FLAT_LOAD_DWORDX4:
+      loadData(4);
+      flatAddr();
+      HookOrErr = hookFor(&Payloads::flatLoadB128);
+      break;
+    case llvm::AMDGPU::FLAT_LOAD_UBYTE:
+      subLoadData();
+      flatAddr();
+      HookOrErr = hookFor(&Payloads::flatLoadU8);
+      break;
+    case llvm::AMDGPU::FLAT_LOAD_SBYTE:
+      subLoadData();
+      flatAddr();
+      HookOrErr = hookFor(&Payloads::flatLoadI8);
+      break;
+    case llvm::AMDGPU::FLAT_LOAD_USHORT:
+      subLoadData();
+      flatAddr();
+      HookOrErr = hookFor(&Payloads::flatLoadU16);
+      break;
+    case llvm::AMDGPU::FLAT_LOAD_SSHORT:
+      subLoadData();
+      flatAddr();
+      HookOrErr = hookFor(&Payloads::flatLoadI16);
+      break;
+    // ---- Flat stores ----
+    case llvm::AMDGPU::FLAT_STORE_DWORD:
+      storeData(1);
+      flatAddr();
+      HookOrErr = hookFor(&Payloads::flatStoreB32);
+      break;
+    case llvm::AMDGPU::FLAT_STORE_DWORDX2:
+      storeData(2);
+      flatAddr();
+      HookOrErr = hookFor(&Payloads::flatStoreB64);
+      break;
+    case llvm::AMDGPU::FLAT_STORE_DWORDX3:
+      storeData(3);
+      flatAddr();
+      HookOrErr = hookFor(&Payloads::flatStoreB96);
+      break;
+    case llvm::AMDGPU::FLAT_STORE_DWORDX4:
+      storeData(4);
+      flatAddr();
+      HookOrErr = hookFor(&Payloads::flatStoreB128);
+      break;
+    case llvm::AMDGPU::FLAT_STORE_BYTE:
+      subStoreData();
+      flatAddr();
+      HookOrErr = hookFor(&Payloads::flatStoreB8);
+      break;
+    case llvm::AMDGPU::FLAT_STORE_SHORT:
+      subStoreData();
+      flatAddr();
+      HookOrErr = hookFor(&Payloads::flatStoreB16);
+      break;
+    // ---- Buffer loads (OFFEN) ----
+    case llvm::AMDGPU::BUFFER_LOAD_DWORD_OFFEN:
+      loadData(1);
+      bufferOffen();
+      HookOrErr = hookFor(&Payloads::bufferLoadB32Offen);
+      break;
+    case llvm::AMDGPU::BUFFER_LOAD_DWORDX2_OFFEN:
+      loadData(2);
+      bufferOffen();
+      HookOrErr = hookFor(&Payloads::bufferLoadB64Offen);
+      break;
+    case llvm::AMDGPU::BUFFER_LOAD_DWORDX3_OFFEN:
+      loadData(3);
+      bufferOffen();
+      HookOrErr = hookFor(&Payloads::bufferLoadB96Offen);
+      break;
+    case llvm::AMDGPU::BUFFER_LOAD_DWORDX4_OFFEN:
+      loadData(4);
+      bufferOffen();
+      HookOrErr = hookFor(&Payloads::bufferLoadB128Offen);
+      break;
+    case llvm::AMDGPU::BUFFER_LOAD_UBYTE_OFFEN:
+      subLoadData();
+      bufferOffen();
+      HookOrErr = hookFor(&Payloads::bufferLoadU8Offen);
+      break;
+    case llvm::AMDGPU::BUFFER_LOAD_SBYTE_OFFEN:
+      subLoadData();
+      bufferOffen();
+      HookOrErr = hookFor(&Payloads::bufferLoadI8Offen);
+      break;
+    case llvm::AMDGPU::BUFFER_LOAD_USHORT_OFFEN:
+      subLoadData();
+      bufferOffen();
+      HookOrErr = hookFor(&Payloads::bufferLoadU16Offen);
+      break;
+    case llvm::AMDGPU::BUFFER_LOAD_SSHORT_OFFEN:
+      subLoadData();
+      bufferOffen();
+      HookOrErr = hookFor(&Payloads::bufferLoadI16Offen);
+      break;
+    // ---- Buffer loads (OFFSET) ----
+    case llvm::AMDGPU::BUFFER_LOAD_DWORD_OFFSET:
+      loadData(1);
+      bufferOffset();
+      HookOrErr = hookFor(&Payloads::bufferLoadB32Offset);
+      break;
+    case llvm::AMDGPU::BUFFER_LOAD_DWORDX2_OFFSET:
+      loadData(2);
+      bufferOffset();
+      HookOrErr = hookFor(&Payloads::bufferLoadB64Offset);
+      break;
+    case llvm::AMDGPU::BUFFER_LOAD_DWORDX3_OFFSET:
+      loadData(3);
+      bufferOffset();
+      HookOrErr = hookFor(&Payloads::bufferLoadB96Offset);
+      break;
+    case llvm::AMDGPU::BUFFER_LOAD_DWORDX4_OFFSET:
+      loadData(4);
+      bufferOffset();
+      HookOrErr = hookFor(&Payloads::bufferLoadB128Offset);
+      break;
+    case llvm::AMDGPU::BUFFER_LOAD_UBYTE_OFFSET:
+      subLoadData();
+      bufferOffset();
+      HookOrErr = hookFor(&Payloads::bufferLoadU8Offset);
+      break;
+    case llvm::AMDGPU::BUFFER_LOAD_SBYTE_OFFSET:
+      subLoadData();
+      bufferOffset();
+      HookOrErr = hookFor(&Payloads::bufferLoadI8Offset);
+      break;
+    case llvm::AMDGPU::BUFFER_LOAD_USHORT_OFFSET:
+      subLoadData();
+      bufferOffset();
+      HookOrErr = hookFor(&Payloads::bufferLoadU16Offset);
+      break;
+    case llvm::AMDGPU::BUFFER_LOAD_SSHORT_OFFSET:
+      subLoadData();
+      bufferOffset();
+      HookOrErr = hookFor(&Payloads::bufferLoadI16Offset);
+      break;
+    // ---- Buffer stores (OFFEN) ----
+    case llvm::AMDGPU::BUFFER_STORE_DWORD_OFFEN:
+      bufferStoreData(1);
+      bufferOffen();
+      HookOrErr = hookFor(&Payloads::bufferStoreB32Offen);
+      break;
+    case llvm::AMDGPU::BUFFER_STORE_DWORDX2_OFFEN:
+      bufferStoreData(2);
+      bufferOffen();
+      HookOrErr = hookFor(&Payloads::bufferStoreB64Offen);
+      break;
+    case llvm::AMDGPU::BUFFER_STORE_DWORDX3_OFFEN:
+      bufferStoreData(3);
+      bufferOffen();
+      HookOrErr = hookFor(&Payloads::bufferStoreB96Offen);
+      break;
+    case llvm::AMDGPU::BUFFER_STORE_DWORDX4_OFFEN:
+      bufferStoreData(4);
+      bufferOffen();
+      HookOrErr = hookFor(&Payloads::bufferStoreB128Offen);
+      break;
+    case llvm::AMDGPU::BUFFER_STORE_BYTE_OFFEN:
+      subStoreData();
+      bufferOffen();
+      HookOrErr = hookFor(&Payloads::bufferStoreB8Offen);
+      break;
+    case llvm::AMDGPU::BUFFER_STORE_SHORT_OFFEN:
+      subStoreData();
+      bufferOffen();
+      HookOrErr = hookFor(&Payloads::bufferStoreB16Offen);
+      break;
+    // ---- Buffer stores (OFFSET) ----
+    case llvm::AMDGPU::BUFFER_STORE_DWORD_OFFSET:
+      bufferStoreData(1);
+      bufferOffset();
+      HookOrErr = hookFor(&Payloads::bufferStoreB32Offset);
+      break;
+    case llvm::AMDGPU::BUFFER_STORE_DWORDX2_OFFSET:
+      bufferStoreData(2);
+      bufferOffset();
+      HookOrErr = hookFor(&Payloads::bufferStoreB64Offset);
+      break;
+    case llvm::AMDGPU::BUFFER_STORE_DWORDX3_OFFSET:
+      bufferStoreData(3);
+      bufferOffset();
+      HookOrErr = hookFor(&Payloads::bufferStoreB96Offset);
+      break;
+    case llvm::AMDGPU::BUFFER_STORE_DWORDX4_OFFSET:
+      bufferStoreData(4);
+      bufferOffset();
+      HookOrErr = hookFor(&Payloads::bufferStoreB128Offset);
+      break;
+    case llvm::AMDGPU::BUFFER_STORE_BYTE_OFFSET:
+      subStoreData();
+      bufferOffset();
+      HookOrErr = hookFor(&Payloads::bufferStoreB8Offset);
+      break;
+    case llvm::AMDGPU::BUFFER_STORE_SHORT_OFFSET:
+      subStoreData();
+      bufferOffset();
+      HookOrErr = hookFor(&Payloads::bufferStoreB16Offset);
+      break;
+    default:
+      if (TII.isFLATScratch(*MI)) {
+        Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+            "RebaseAppScratchAccessesPass: '{0}' in '{1}' addresses the "
+            "wavefront's private segment but is not a form this pass knows "
+            "how to re-issue. Add a payload for it in "
+            "RebaseAppScratchAccessesPass.hip.",
+            TII.getName(MI->getOpcode()), MF.getName()));
+        break;
+      }
+      continue;
+    }
+
+    if (!HookOrErr) {
+      Err = HookOrErr.takeError();
+      break;
+    }
+    auto PayloadOrErr = P.createInjectedPayload(**HookOrErr, *MI, IFAM, Args);
+    if (!PayloadOrErr) {
+      Err = PayloadOrErr.takeError();
+      break;
+    }
+    ToErase.push_back(MI);
   }
 
   if (Err) {
