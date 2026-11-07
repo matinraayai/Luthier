@@ -78,30 +78,21 @@
 //===----------------------------------------------------------------------===//
 
 
-/// One entry of the \c EntryPointToTraceFunctionAddrMap
-/// table: a trace function's entry point address and its associated
-/// LLVM \c Function's handle address in the loaded tool module.
-struct EntryPointTraceFunctionEntry {
-  uint64_t TraceAddr;
-  uint64_t FnHandleAddr;
-};
-
-
 /// Runtime resolver table the \c patchRegMulti fallback path walks.
-__attribute__((device))
-EntryPointTraceFunctionEntry * EntryPointToTraceFunctionAddrMap;
+__attribute__((managed))
+luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry * EntryPointToTraceFunctionAddrMap;
 
-__attribute__((device))
+__attribute__((managed))
 std::uint32_t EntryPointToTraceFunctionAddrMapSize;
 
-__attribute__((device))
+__attribute__((managed))
 std::uint32_t EntryPointToTraceFunctionAddrMapMaxSize;
 
 /// Wave-uniform spinlock. Zero when free, one when held. The
 /// \c patchRegMulti fallback holds it across the entire read-then-
 /// hostcall region so the host callback can grow the table in place
 /// without racing concurrent readers.
-__attribute__((device))
+__attribute__((managed))
 std::uint32_t EntryPointToTraceFunctionAddrMapLock;
 
 
@@ -110,7 +101,7 @@ std::uint32_t EntryPointToTraceFunctionAddrMapLock;
 /// value at load time. Only emitted when the initial entry point is a
 /// kernel.
 __attribute__((device, constant))
-const EntryPointTraceFunctionEntry *
+const luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry *
     EntryPointToTraceFunctionAddrMapSeed{nullptr};
 
 __attribute__((device, constant))
@@ -171,7 +162,7 @@ void initEntryPointToTraceFunctionAddrMap() {
       // Grow to \c Needed + 5-entry slack so subsequent extends /
       // host-callback appends have headroom.
       const std::uint32_t NewCapacity = Needed + 5u;
-      auto NewBuf = static_cast<EntryPointTraceFunctionEntry *>(malloc(sizeof(EntryPointTraceFunctionEntry) * NewCapacity));
+      auto NewBuf = static_cast<luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry *>(malloc(sizeof(luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry) * NewCapacity));
       for (std::uint32_t I = 0; I < OldSize; ++I)
         NewBuf[I] = EntryPointToTraceFunctionAddrMap[I];
       // Deliberately do NOT free the old buffer here. This constructor does
@@ -209,7 +200,7 @@ void initEntryPointToTraceFunctionAddrMap() {
   // + 5, so the host callback can append 5 more entries before it has to
   // reallocate.
   const std::uint32_t Capacity = SeedN + 5u;
-  auto *Buf = static_cast<EntryPointTraceFunctionEntry *>(malloc(sizeof(EntryPointTraceFunctionEntry) * Capacity));
+  auto *Buf = static_cast<luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry *>(malloc(sizeof(luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry) * Capacity));
   // Copy the constant-AS seed entries into the freshly-allocated runtime
   // table. Ordering matches the seed exactly.
   for (std::uint32_t I = 0; I < SeedN; ++I)
@@ -406,34 +397,34 @@ __attribute__((device, used)) void patchRegMulti(
 
 // Force emission of each specialization.
 template __attribute__((device, used)) void
-patchRegMulti<EntryPointTraceFunctionEntry>(llvm::MCRegister, std::uint64_t,
-                                  EntryPointTraceFunctionEntry);
+patchRegMulti<luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry>(llvm::MCRegister, std::uint64_t,
+                                  luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry);
 template __attribute__((device, used)) void
 patchRegMulti<
-    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry>(
-    llvm::MCRegister, std::uint64_t, EntryPointTraceFunctionEntry,
-    EntryPointTraceFunctionEntry);
+    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry, luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry>(
+    llvm::MCRegister, std::uint64_t, luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry,
+    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry);
 template __attribute__((device, used)) void
 patchRegMulti<
-    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry,
-    EntryPointTraceFunctionEntry>(
-    llvm::MCRegister, std::uint64_t, EntryPointTraceFunctionEntry,
-    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry);
+    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry, luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry,
+    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry>(
+    llvm::MCRegister, std::uint64_t, luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry,
+    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry, luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry);
 template __attribute__((device, used)) void
 patchRegMulti<
-    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry,
-    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry>(
-    llvm::MCRegister, std::uint64_t, EntryPointTraceFunctionEntry,
-    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry,
-    EntryPointTraceFunctionEntry);
+    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry, luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry,
+    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry, luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry>(
+    llvm::MCRegister, std::uint64_t, luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry,
+    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry, luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry,
+    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry);
 template __attribute__((device, used)) void
 patchRegMulti<
-    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry,
-    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry,
-    EntryPointTraceFunctionEntry>(
-    llvm::MCRegister, std::uint64_t, EntryPointTraceFunctionEntry,
-    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry,
-    EntryPointTraceFunctionEntry, EntryPointTraceFunctionEntry);
+    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry, luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry,
+    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry, luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry,
+    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry>(
+    llvm::MCRegister, std::uint64_t, luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry,
+    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry, luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry,
+    luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry, luthier::PatchPCUsagesPass::EntryPointTraceFunctionEntry);
 
 } // namespace
 

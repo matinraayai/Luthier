@@ -46,6 +46,8 @@
 #include "luthier/ToolCodeGen/IntrinsicProcessorsAnalysis.h"
 #include "luthier/ToolCodeGen/MemoryAllocationAccessor.h"
 #include "luthier/ToolCodeGen/ParentPrototypeAnalysis.h"
+#include "luthier/ToolCodeGen/PatchPCUsagesPass.h"
+#include "luthier/ToolCodeGen/PreviouslyDiscoveredEntryPointsAnalysis.h"
 #include "luthier/ToolCodeGen/Prototype.h"
 #include "luthier/ToolCodeGen/PrototypeCallGraph.h"
 #include "luthier/ToolCodeGen/ToolDeviceCodeParser.h"
@@ -183,11 +185,6 @@ class InstrumentationPipelineTrait {
             return;
           }
 
-          struct EntryPointTraceFunctionEntry {
-            uint64_t TraceAddr;
-            uint64_t FnHandleAddr;
-          };
-
           auto DevRead = [&](uint64_t DevAddr, void *HostBuf, size_t Bytes) {
             return Core.template callFunction<hsa_memory_copy>(
                 HostBuf, reinterpret_cast<void *>(DevAddr), Bytes);
@@ -209,8 +206,9 @@ class InstrumentationPipelineTrait {
                                  "on-device map metadata\n";
               return false;
             }
-            const uint64_t EntryStride = sizeof(EntryPointTraceFunctionEntry);
-            EntryPointTraceFunctionEntry Entry{};
+            const uint64_t EntryStride =
+                sizeof(PatchPCUsagesPass::EntryPointTraceFunctionEntry);
+            PatchPCUsagesPass::EntryPointTraceFunctionEntry Entry{};
             for (uint32_t I = 0; I < Size; ++I) {
               if (DevRead(MapPtr + I * EntryStride, &Entry, EntryStride) !=
                   HSA_STATUS_SUCCESS) {
@@ -240,12 +238,23 @@ class InstrumentationPipelineTrait {
             return;
           }
 
+          /// The table globals are __managed__, so the host can read them
+          /// directly.
+          /// TODO: Fix the reads above as well.
+          const auto *MapPtr = *reinterpret_cast<
+              const PatchPCUsagesPass::EntryPointTraceFunctionEntry *const *>(
+              MapPtrLocation);
+          const auto MapSize =
+              *reinterpret_cast<const std::uint32_t *>(MapSizeLocation);
+          llvm::ArrayRef<PatchPCUsagesPass::EntryPointTraceFunctionEntry>
+              PreviouslyDiscovered(MapPtr, MapSize);
+
           // Run the instrumentation pipeline over the device function starting
           // at CalleeAddr. Same TargetMachine / segment context as the
           // dispatch's enclosing kernel.
           std::unique_ptr<llvm::MemoryBuffer> ObjBuf;
           if (auto E = T.runInstrumentationPipelineForDeviceFunction(
-                            *EnclosingKD, CalleeAddr)
+                            *EnclosingKD, CalleeAddr, PreviouslyDiscovered)
                            .moveInto(ObjBuf)) {
             luthier::errs()
                 << "[InstrCountTool] callback: pipeline failed for 0x"
@@ -435,7 +444,8 @@ public:
   runInstrumentationPipelineForDispatch(
       const llvm::amdhsa::kernel_descriptor_t &KD,
       llvm::OptimizationLevel Level = llvm::OptimizationLevel::O3) {
-    return runInstrumentationPipelineImpl(KD, luthier::EntryPoint(KD), Level);
+    return runInstrumentationPipelineImpl(KD, luthier::EntryPoint(KD), {},
+                                          Level);
   }
 
   /// Assemble and run the instrumentation pipeline for a device function
@@ -455,9 +465,12 @@ public:
   runInstrumentationPipelineForDeviceFunction(
       const llvm::amdhsa::kernel_descriptor_t &EnclosingKD,
       uint64_t DevFuncAddr,
+      llvm::ArrayRef<PatchPCUsagesPass::EntryPointTraceFunctionEntry>
+          PreviouslyDiscovered = {},
       llvm::OptimizationLevel Level = llvm::OptimizationLevel::O3) {
-    return runInstrumentationPipelineImpl(
-        EnclosingKD, luthier::EntryPoint(DevFuncAddr), Level);
+    return runInstrumentationPipelineImpl(EnclosingKD,
+                                          luthier::EntryPoint(DevFuncAddr),
+                                          PreviouslyDiscovered, Level);
   }
 
 private:
@@ -471,7 +484,10 @@ private:
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>>
   runInstrumentationPipelineImpl(
       const llvm::amdhsa::kernel_descriptor_t &TargetMachineKD,
-      const luthier::EntryPoint &InitialEP, llvm::OptimizationLevel Level) {
+      const luthier::EntryPoint &InitialEP,
+      llvm::ArrayRef<PatchPCUsagesPass::EntryPointTraceFunctionEntry>
+          PreviouslyDiscovered,
+      llvm::OptimizationLevel Level) {
     Derived &D = derived();
 
     std::unique_ptr<llvm::TargetMachine> TM;
@@ -572,6 +588,16 @@ private:
     // between them.
     registerInstrumentationAnalyses(MMI, TargetMAM, TargetMFAM);
     registerInstrumentationAnalyses(MMI, IMAM, IMFAM);
+
+    llvm::SmallVector<PreviouslyDiscoveredEntryPointsAnalysis::EntryType>
+        PrevDiscoveredVec(PreviouslyDiscovered.begin(),
+                          PreviouslyDiscovered.end());
+    TargetMAM.registerPass(
+        [PD = std::move(PrevDiscoveredVec)]() mutable {
+          return PreviouslyDiscoveredEntryPointsAnalysis(
+              llvm::ArrayRef<PreviouslyDiscoveredEntryPointsAnalysis::EntryType>(
+                  PD));
+        });
 
     // Intrinsic lowering resolves each luthier:: intrinsic through this
     // registry, which the tool owns.

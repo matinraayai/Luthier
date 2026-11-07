@@ -39,6 +39,13 @@ class PrototypeCallGraph;
 class PatchPCUsagesPass
     : public llvm::RequiredPassInfoMixin<PatchPCUsagesPass> {
 public:
+  /// One entry of the \c EntryPointToTraceFunctionAddrMap
+  /// table: a trace function's entry point address and its associated
+  /// LLVM \c Function's handle address in the loaded tool module.
+  struct EntryPointTraceFunctionEntry {
+    uint64_t TraceAddr;
+    uint64_t FnHandleAddr;
+  };
 
   /// Signature of the host callback. Matches the argument layout the AMD
   /// hostcall \c FUNCTION_CALL service uses: \p Out is a 2-word out

@@ -23,6 +23,7 @@
 #include "luthier/ToolCodeGen/EntryPoint.h"
 #include "luthier/ToolCodeGen/FunctionAnnotations.h"
 #include "luthier/ToolCodeGen/InitialEntryPointAnalysis.h"
+#include "luthier/ToolCodeGen/PreviouslyDiscoveredEntryPointsAnalysis.h"
 #include "luthier/ToolCodeGen/InitialExecutionPointAnalysis.h"
 #include "luthier/ToolCodeGen/InstructionTracesAnalysis.h"
 #include "luthier/ToolCodeGen/MIRConvenience.h"
@@ -1700,7 +1701,15 @@ llvm::PreservedAnalyses CodeDiscoveryPass::run(Prototype &IP,
 
   llvm::SmallDenseSet<EntryPoint> UnvisitedPointsOfEntry{InitialEntryPoint};
 
+  /// Add any entry points already visited by prior pipeline runs.
   llvm::SmallDenseSet<EntryPoint> VisitedPointsOfEntry{};
+  {
+    const auto &PrevDiscovered =
+        TargetMAM.getResult<PreviouslyDiscoveredEntryPointsAnalysis>(
+            TargetModule);
+    for (const auto &[Addr, _] : PrevDiscovered)
+      VisitedPointsOfEntry.insert(EntryPoint{Addr});
+  }
 
   /// Collected across iterations. For each S_CALL_B64 encountered, the MI
   /// initially has a raw 16-bit signed displacement (\c MO_Immediate) as

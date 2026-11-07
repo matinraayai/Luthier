@@ -119,6 +119,7 @@ add_library(LuthierToolCodeGen OBJECT
         InjectedPayloadSideEffectsAnalysis.cpp
         InitialEntryPointAnalysis.cpp
         InitialExecutionPointAnalysis.cpp
+        PreviouslyDiscoveredEntryPointsAnalysis.cpp
         Metadata.cpp
         TraceFunctionTranslator.cpp
         TraceFunctionTranslationAnalysis.cpp
