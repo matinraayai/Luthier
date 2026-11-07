@@ -1462,6 +1462,22 @@ llvm::Error rewriteAddPC(RunContext &RC, llvm::MachineInstr &MI,
   return llvm::Error::success();
 }
 
+bool needsPCRewrite(const llvm::MachineInstr &MI) {
+  if (!getMITraceAddr(MI))
+    return false;
+  switch (MI.getOpcode()) {
+  case llvm::AMDGPU::S_GETPC_B64:
+  case llvm::AMDGPU::S_SETPC_B64:
+  case llvm::AMDGPU::S_SETPC_B64_return:
+  case llvm::AMDGPU::S_SWAPPC_B64:
+  case llvm::AMDGPU::S_CALL_B64:
+  case llvm::AMDGPU::S_ADD_PC_I64:
+    return true;
+  default:
+    return false;
+  }
+}
+
 /// Dispatch on `MI`'s opcode. Returns `llvm::Error::success()` for
 /// instructions the pass does not touch.
 llvm::Error rewriteIfRelevant(RunContext &RC, llvm::MachineInstr &MI) {
@@ -1528,6 +1544,21 @@ PatchPCUsagesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
     return Mutated ? llvm::PreservedAnalyses::none()
                    : llvm::PreservedAnalyses::all();
   };
+
+  /// Collect every instruction that needs PC-usage rewriting
+  llvm::SmallVector<llvm::MachineInstr *, 16> InstrsToRewrite;
+  P.forEachTargetMF(PAM, [&](llvm::MachineFunction &MF) {
+    for (llvm::MachineBasicBlock &MBB : MF) {
+      for (llvm::MachineInstr &MI : MBB) {
+        if (needsPCRewrite(MI))
+          InstrsToRewrite.push_back(&MI);
+      }
+    }
+  });
+
+  /// If there aren't any instructions to patch return early
+  if (InstrsToRewrite.empty())
+    return llvm::PreservedAnalyses::all();
 
   // Splice the pass's device-side payloads (patchRegSingle, patchRegMulti,
   // and the EntryPointToTraceFunctionAddrMap globals) into the prototype's
@@ -1634,21 +1665,10 @@ PatchPCUsagesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   // specialization is exercised by a single-callee patch site, so that path is
   // untested here.
 
-  llvm::Error WalkErr = llvm::Error::success();
-  P.forEachTargetMF(PAM, [&](llvm::MachineFunction &MF) {
-    if (WalkErr)
-      return;
-    for (llvm::MachineBasicBlock &MBB : MF) {
-      for (llvm::MachineInstr &MI : llvm::make_early_inc_range(MBB)) {
-        if (auto Err = rewriteIfRelevant(RC, MI)) {
-          WalkErr = std::move(Err);
-          return;
-        }
-      }
-    }
-  });
-  if (WalkErr)
-    return EmitAndReturn(std::move(WalkErr), /*Mutated=*/true);
+  for (llvm::MachineInstr *MI : InstrsToRewrite) {
+    if (auto Err = rewriteIfRelevant(RC, *MI))
+      return EmitAndReturn(std::move(Err), /*Mutated=*/true);
+  }
 
   // Trigger a re-translation of every mutated target MF: the pinned
   // \c TraceFunctionTranslationAnalysis lives in the target-side
