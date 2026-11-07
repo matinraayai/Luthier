@@ -1210,6 +1210,8 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
           }
           recordOverwrittenRegs(WritePhysRegSlots, MBB, MIBuilder);
         }
+        MI.eraseFromParent();
+        Changed = true;
       } else if (isReadSVA) {
         // The SA enum is passed as the immediate operand (ArgVec[1]);
         // ArgVec[0] is the regdef output.
@@ -1221,24 +1223,22 @@ bool IntrinsicMIRLoweringPass::processMachineFunction(
           Ctx.emitError(llvm::toString(std::move(Err)));
           return Changed;
         }
+        MI.eraseFromParent();
+        Changed = true;
       } else {
         std::optional<IntrinsicProcessor> Processor =
             IntrinsicsProcessors.getProcessorIfRegistered(IntrinsicName);
-        if (!Processor.has_value()) {
-          Ctx.emitError(llvm::toString(LUTHIER_MAKE_GENERIC_ERROR(
-              llvm::formatv("Intrinsic processor for {0} was not found in the "
-                            "intrinsic processors.",
-                            IntrinsicName))));
-          return Changed;
-        }
-        if (auto Err = Processor->MIRProcessor(MF, ArgVec, MIBuilder,
-                                               VirtRegBuilder)) {
-          Ctx.emitError(llvm::toString(std::move(Err)));
-          return Changed;
+        if (Processor.has_value()) {
+          if (auto Err = Processor->MIRProcessor(MF, ArgVec, MIBuilder,
+                                                 VirtRegBuilder)) {
+            Ctx.emitError(llvm::toString(std::move(Err)));
+            return Changed;
+          }
+          MI.eraseFromParent();
+          Changed = true;
         }
       }
-      MI.eraseFromParent();
-      Changed = true;
+      /// If no processor is found, treat it as normal inline assembly.
     }
 
     // Emit physical register restore COPYs at each return block. Done once
