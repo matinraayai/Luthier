@@ -195,400 +195,569 @@ displacedBufferSOffset(std::uint32_t RsrcLo, std::uint32_t RsrcHi,
   return SOffset;
 }
 
-/// Deposit \p N dwords into the destination registers the erased load defined.
-/// Slots at or past \p N hold a null register and are never touched.
-template <unsigned N>
-__attribute__((device)) inline void
-writeDwords(llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
-            llvm::MCRegister D3, const std::uint32_t (&V)[4]) {
-  luthier::writeReg<std::uint32_t>(D0, V[0]);
-  if constexpr (N > 1)
-    luthier::writeReg<std::uint32_t>(D1, V[1]);
-  if constexpr (N > 2)
-    luthier::writeReg<std::uint32_t>(D2, V[2]);
-  if constexpr (N > 3)
-    luthier::writeReg<std::uint32_t>(D3, V[3]);
-}
+
+// Vector types for multi-dword inline asm operands.
+using v2u32 = std::uint32_t __attribute__((ext_vector_type(2)));
+using v3u32 = std::uint32_t __attribute__((ext_vector_type(3)));
+using v4u32 = std::uint32_t __attribute__((ext_vector_type(4)));
 
 } // namespace
 
+//===----------------------------------------------------------------------===//
+// ISA mnemonic macros
+//===----------------------------------------------------------------------===//
+
+#if defined(__GFX12__) || defined(__GFX13__)
+#define MN_SCRATCH_LOAD_B32  "scratch_load_b32"
+#define MN_SCRATCH_LOAD_B64  "scratch_load_b64"
+#define MN_SCRATCH_LOAD_B96  "scratch_load_b96"
+#define MN_SCRATCH_LOAD_B128 "scratch_load_b128"
+#define MN_SCRATCH_LOAD_U8   "scratch_load_u8"
+#define MN_SCRATCH_LOAD_I8   "scratch_load_i8"
+#define MN_SCRATCH_LOAD_U16  "scratch_load_u16"
+#define MN_SCRATCH_LOAD_I16  "scratch_load_i16"
+#define MN_SCRATCH_STORE_B32  "scratch_store_b32"
+#define MN_SCRATCH_STORE_B64  "scratch_store_b64"
+#define MN_SCRATCH_STORE_B96  "scratch_store_b96"
+#define MN_SCRATCH_STORE_B128 "scratch_store_b128"
+#define MN_SCRATCH_STORE_B8   "scratch_store_b8"
+#define MN_SCRATCH_STORE_B16  "scratch_store_b16"
+#define MN_FLAT_LOAD_B32  "flat_load_b32"
+#define MN_FLAT_LOAD_B64  "flat_load_b64"
+#define MN_FLAT_LOAD_B96  "flat_load_b96"
+#define MN_FLAT_LOAD_B128 "flat_load_b128"
+#define MN_FLAT_LOAD_U8   "flat_load_u8"
+#define MN_FLAT_LOAD_I8   "flat_load_i8"
+#define MN_FLAT_LOAD_U16  "flat_load_u16"
+#define MN_FLAT_LOAD_I16  "flat_load_i16"
+#define MN_FLAT_STORE_B32  "flat_store_b32"
+#define MN_FLAT_STORE_B64  "flat_store_b64"
+#define MN_FLAT_STORE_B96  "flat_store_b96"
+#define MN_FLAT_STORE_B128 "flat_store_b128"
+#define MN_FLAT_STORE_B8   "flat_store_b8"
+#define MN_FLAT_STORE_B16  "flat_store_b16"
+#else
+#define MN_SCRATCH_LOAD_B32  "scratch_load_dword"
+#define MN_SCRATCH_LOAD_B64  "scratch_load_dwordx2"
+#define MN_SCRATCH_LOAD_B96  "scratch_load_dwordx3"
+#define MN_SCRATCH_LOAD_B128 "scratch_load_dwordx4"
+#define MN_SCRATCH_LOAD_U8   "scratch_load_ubyte"
+#define MN_SCRATCH_LOAD_I8   "scratch_load_sbyte"
+#define MN_SCRATCH_LOAD_U16  "scratch_load_ushort"
+#define MN_SCRATCH_LOAD_I16  "scratch_load_sshort"
+#define MN_SCRATCH_STORE_B32  "scratch_store_dword"
+#define MN_SCRATCH_STORE_B64  "scratch_store_dwordx2"
+#define MN_SCRATCH_STORE_B96  "scratch_store_dwordx3"
+#define MN_SCRATCH_STORE_B128 "scratch_store_dwordx4"
+#define MN_SCRATCH_STORE_B8   "scratch_store_byte"
+#define MN_SCRATCH_STORE_B16  "scratch_store_short"
+#define MN_FLAT_LOAD_B32  "flat_load_dword"
+#define MN_FLAT_LOAD_B64  "flat_load_dwordx2"
+#define MN_FLAT_LOAD_B96  "flat_load_dwordx3"
+#define MN_FLAT_LOAD_B128 "flat_load_dwordx4"
+#define MN_FLAT_LOAD_U8   "flat_load_ubyte"
+#define MN_FLAT_LOAD_I8   "flat_load_sbyte"
+#define MN_FLAT_LOAD_U16  "flat_load_ushort"
+#define MN_FLAT_LOAD_I16  "flat_load_sshort"
+#define MN_FLAT_STORE_B32  "flat_store_dword"
+#define MN_FLAT_STORE_B64  "flat_store_dwordx2"
+#define MN_FLAT_STORE_B96  "flat_store_dwordx3"
+#define MN_FLAT_STORE_B128 "flat_store_dwordx4"
+#define MN_FLAT_STORE_B8   "flat_store_byte"
+#define MN_FLAT_STORE_B16  "flat_store_short"
+#endif
+
+//===----------------------------------------------------------------------===//
+// Hook-generation helper macros
+//===----------------------------------------------------------------------===//
+
+// clang-format off
+
+#define PP_CAT_(A, B) A##B
+#define PP_CAT(A, B) PP_CAT_(A, B)
+
+#define LOAD_TYPE_1 std::uint32_t
+#define LOAD_TYPE_2 v2u32
+#define LOAD_TYPE_3 v3u32
+#define LOAD_TYPE_4 v4u32
+
+#define DST_PARAMS_1 llvm::MCRegister D0,
+#define DST_PARAMS_2 llvm::MCRegister D0, llvm::MCRegister D1,
+#define DST_PARAMS_3 llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
+#define DST_PARAMS_4 llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2, llvm::MCRegister D3,
+
+#define SRC_PARAMS_1 std::uint32_t V0,
+#define SRC_PARAMS_2 std::uint32_t V0, std::uint32_t V1,
+#define SRC_PARAMS_3 std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
+#define SRC_PARAMS_4 std::uint32_t V0, std::uint32_t V1, std::uint32_t V2, std::uint32_t V3,
+
+#define WRITEBACK_1 luthier::writeReg<std::uint32_t>(D0, Result);
+#define WRITEBACK_2                                                            \
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);                             \
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+#define WRITEBACK_3                                                            \
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);                             \
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);                             \
+  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+#define WRITEBACK_4                                                            \
+  luthier::writeReg<std::uint32_t>(D0, Result[0]);                             \
+  luthier::writeReg<std::uint32_t>(D1, Result[1]);                             \
+  luthier::writeReg<std::uint32_t>(D2, Result[2]);                             \
+  luthier::writeReg<std::uint32_t>(D3, Result[3]);
+
+#define PACK_1 std::uint32_t Data = V0;
+#define PACK_2 v2u32 Data = {V0, V1};
+#define PACK_3 v3u32 Data = {V0, V1, V2};
+#define PACK_4 v4u32 Data = {V0, V1, V2, V3};
+
+//===----------------------------------------------------------------------===//
+// Scratch hook macros
+//===----------------------------------------------------------------------===//
+
+#define DEFINE_SCRATCH_LOAD_VADDR(NAME, MN, N)                                 \
+  __attribute__((device, used)) void NAME(                                     \
+      PP_CAT(DST_PARAMS_, N)                                                   \
+      std::uint32_t VAddr, std::int32_t InstOffset) {                          \
+    const std::uint32_t DV =                                                   \
+        VAddr + static_cast<std::uint32_t>(InstOffset) +                       \
+        instrumentationReserve();                                              \
+    PP_CAT(LOAD_TYPE_, N) Result;                                              \
+    asm volatile(MN " %0, %1, off" : "=v"(Result) : "v"(DV));                 \
+    PP_CAT(WRITEBACK_, N)                                                      \
+  }
+
+#define DEFINE_SCRATCH_STORE_VADDR(NAME, MN, N)                                \
+  __attribute__((device, used)) void NAME(                                     \
+      PP_CAT(SRC_PARAMS_, N)                                                   \
+      std::uint32_t VAddr, std::int32_t InstOffset) {                          \
+    const std::uint32_t DV =                                                   \
+        VAddr + static_cast<std::uint32_t>(InstOffset) +                       \
+        instrumentationReserve();                                              \
+    PP_CAT(PACK_, N)                                                           \
+    asm volatile(MN " %0, %1, off" : : "v"(Data), "v"(DV));                   \
+  }
+
+#define DEFINE_SCRATCH_LOAD_SADDR(NAME, MN, N)                                 \
+  __attribute__((device, used)) void NAME(                                     \
+      PP_CAT(DST_PARAMS_, N)                                                   \
+      std::uint32_t SAddr, std::int32_t InstOffset) {                          \
+    const std::uint32_t DS =                                                   \
+        SAddr + static_cast<std::uint32_t>(InstOffset) +                       \
+        instrumentationReserve();                                              \
+    PP_CAT(LOAD_TYPE_, N) Result;                                              \
+    asm volatile(MN " %0, off, %1" : "=v"(Result) : "s"(DS));                 \
+    PP_CAT(WRITEBACK_, N)                                                      \
+  }
+
+#define DEFINE_SCRATCH_STORE_SADDR(NAME, MN, N)                                \
+  __attribute__((device, used)) void NAME(                                     \
+      PP_CAT(SRC_PARAMS_, N)                                                   \
+      std::uint32_t SAddr, std::int32_t InstOffset) {                          \
+    const std::uint32_t DS =                                                   \
+        SAddr + static_cast<std::uint32_t>(InstOffset) +                       \
+        instrumentationReserve();                                              \
+    PP_CAT(PACK_, N)                                                           \
+    asm volatile(MN " %0, off, %1" : : "v"(Data), "s"(DS));                   \
+  }
+
+#define DEFINE_SCRATCH_LOAD_ST(NAME, MN, N)                                    \
+  __attribute__((device, used)) void NAME(                                     \
+      PP_CAT(DST_PARAMS_, N)                                                   \
+      std::int32_t InstOffset) {                                               \
+    const std::uint32_t S =                                                    \
+        static_cast<std::uint32_t>(InstOffset) +                               \
+        instrumentationReserve();                                              \
+    PP_CAT(LOAD_TYPE_, N) Result;                                              \
+    asm volatile(MN " %0, off, %1" : "=v"(Result) : "s"(S));                  \
+    PP_CAT(WRITEBACK_, N)                                                      \
+  }
+
+#define DEFINE_SCRATCH_STORE_ST(NAME, MN, N)                                   \
+  __attribute__((device, used)) void NAME(                                     \
+      PP_CAT(SRC_PARAMS_, N)                                                   \
+      std::int32_t InstOffset) {                                               \
+    const std::uint32_t S =                                                    \
+        static_cast<std::uint32_t>(InstOffset) +                               \
+        instrumentationReserve();                                              \
+    PP_CAT(PACK_, N)                                                           \
+    asm volatile(MN " %0, off, %1" : : "v"(Data), "s"(S));                    \
+  }
+
+#define DEFINE_SCRATCH_LOAD_SVS(NAME, MN, N)                                   \
+  __attribute__((device, used)) void NAME(                                     \
+      PP_CAT(DST_PARAMS_, N)                                                   \
+      std::uint32_t VAddr, std::uint32_t SAddr,                                \
+      std::int32_t InstOffset) {                                               \
+    const std::uint32_t DS =                                                   \
+        SAddr + static_cast<std::uint32_t>(InstOffset) +                       \
+        instrumentationReserve();                                              \
+    PP_CAT(LOAD_TYPE_, N) Result;                                              \
+    asm volatile(MN " %0, %1, %2" : "=v"(Result) : "v"(VAddr), "s"(DS));      \
+    PP_CAT(WRITEBACK_, N)                                                      \
+  }
+
+#define DEFINE_SCRATCH_STORE_SVS(NAME, MN, N)                                  \
+  __attribute__((device, used)) void NAME(                                     \
+      PP_CAT(SRC_PARAMS_, N)                                                   \
+      std::uint32_t VAddr, std::uint32_t SAddr,                                \
+      std::int32_t InstOffset) {                                               \
+    const std::uint32_t DS =                                                   \
+        SAddr + static_cast<std::uint32_t>(InstOffset) +                       \
+        instrumentationReserve();                                              \
+    PP_CAT(PACK_, N)                                                           \
+    asm volatile(MN " %0, %1, %2" : : "v"(Data), "v"(VAddr), "s"(DS));        \
+  }
+
+//===----------------------------------------------------------------------===//
+// Flat hook macros
+//===----------------------------------------------------------------------===//
+
+#define DEFINE_FLAT_LOAD(NAME, FLAT_MN, N)                                     \
+  __attribute__((device, used)) void NAME(                                     \
+      PP_CAT(DST_PARAMS_, N)                                                   \
+      std::uint64_t Addr, std::int32_t InstOffset) {                           \
+    const std::uint64_t FlatAddr =                                             \
+        Addr + static_cast<std::uint64_t>(                                     \
+                   static_cast<std::int64_t>(InstOffset));                     \
+    PP_CAT(LOAD_TYPE_, N) Result;                                              \
+    if (__builtin_amdgcn_is_private(                                           \
+            reinterpret_cast<const void *>(FlatAddr))) {                        \
+      const std::uint32_t Off = displacedPrivateOffsetOf(                      \
+          reinterpret_cast<const void *>(FlatAddr));                            \
+      for (unsigned I = 0; I != N; ++I)                                        \
+        reinterpret_cast<std::uint32_t *>(&Result)[I] =                        \
+            *(Private<std::uint32_t> *)(Off + 4 * I);                          \
+    } else {                                                                   \
+      asm volatile(FLAT_MN " %0, %1" : "=v"(Result) : "v"(FlatAddr));         \
+    }                                                                          \
+    PP_CAT(WRITEBACK_, N)                                                      \
+  }
+
+#define DEFINE_FLAT_STORE(NAME, FLAT_MN, N)                                    \
+  __attribute__((device, used)) void NAME(                                     \
+      PP_CAT(SRC_PARAMS_, N)                                                   \
+      std::uint64_t Addr, std::int32_t InstOffset) {                           \
+    const std::uint64_t FlatAddr =                                             \
+        Addr + static_cast<std::uint64_t>(                                     \
+                   static_cast<std::int64_t>(InstOffset));                     \
+    PP_CAT(PACK_, N)                                                           \
+    if (__builtin_amdgcn_is_private(                                           \
+            reinterpret_cast<const void *>(FlatAddr))) {                        \
+      const std::uint32_t Off = displacedPrivateOffsetOf(                      \
+          reinterpret_cast<const void *>(FlatAddr));                            \
+      for (unsigned I = 0; I != N; ++I)                                        \
+        *(Private<std::uint32_t> *)(Off + 4 * I) =                             \
+            reinterpret_cast<const std::uint32_t *>(&Data)[I];                 \
+    } else {                                                                   \
+      asm volatile(FLAT_MN " %0, %1" : : "v"(Data), "v"(FlatAddr));           \
+    }                                                                          \
+  }
+
+#define DEFINE_FLAT_SUBLOAD(NAME, FLAT_MN, T)                                  \
+  __attribute__((device, used)) void NAME(                                     \
+      llvm::MCRegister Dst,                                                    \
+      std::uint64_t Addr, std::int32_t InstOffset) {                           \
+    const std::uint64_t FlatAddr =                                             \
+        Addr + static_cast<std::uint64_t>(                                     \
+                   static_cast<std::int64_t>(InstOffset));                     \
+    std::uint32_t Result;                                                      \
+    if (__builtin_amdgcn_is_private(                                           \
+            reinterpret_cast<const void *>(FlatAddr))) {                        \
+      const std::uint32_t Off = displacedPrivateOffsetOf(                      \
+          reinterpret_cast<const void *>(FlatAddr));                            \
+      Result = static_cast<std::uint32_t>(                                     \
+          static_cast<std::int32_t>(*(Private<T> *)(Off)));                    \
+    } else {                                                                   \
+      asm volatile(FLAT_MN " %0, %1" : "=v"(Result) : "v"(FlatAddr));         \
+    }                                                                          \
+    luthier::writeReg<std::uint32_t>(Dst, Result);                             \
+  }
+
+#define DEFINE_FLAT_SUBSTORE(NAME, FLAT_MN, T)                                 \
+  __attribute__((device, used)) void NAME(                                     \
+      std::uint32_t Value,                                                     \
+      std::uint64_t Addr, std::int32_t InstOffset) {                           \
+    const std::uint64_t FlatAddr =                                             \
+        Addr + static_cast<std::uint64_t>(                                     \
+                   static_cast<std::int64_t>(InstOffset));                     \
+    if (__builtin_amdgcn_is_private(                                           \
+            reinterpret_cast<const void *>(FlatAddr))) {                        \
+      const std::uint32_t Off = displacedPrivateOffsetOf(                      \
+          reinterpret_cast<const void *>(FlatAddr));                            \
+      *(Private<T> *)(Off) = static_cast<T>(Value);                            \
+    } else {                                                                   \
+      asm volatile(FLAT_MN " %0, %1" : : "v"(static_cast<T>(Value)),          \
+                   "v"(FlatAddr));                                             \
+    }                                                                          \
+  }
+
+//===----------------------------------------------------------------------===//
+// Buffer hook macros
+//===----------------------------------------------------------------------===//
+
+#define DEFINE_BUFFER_LOAD_OFFEN(NAME, N)                                      \
+  __attribute__((device, used)) void NAME(                                     \
+      PP_CAT(DST_PARAMS_, N)                                                   \
+      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
+      std::uint32_t RsrcHi, std::uint32_t VOffset,                            \
+      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
+    const int SOff =                                                           \
+        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
+    const std::uint32_t LaneOffset =                                           \
+        VOffset + static_cast<std::uint32_t>(InstOffset);                      \
+    std::uint32_t V[4] = {0, 0, 0, 0};                                        \
+    for (unsigned I = 0; I != static_cast<unsigned>(N); ++I)                   \
+      V[I] = __builtin_amdgcn_raw_buffer_load_b32(                            \
+          Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);               \
+    PP_CAT(WRITEBACK_ARRAY_, N)                                                \
+  }
+
+#define DEFINE_BUFFER_STORE_OFFEN(NAME, N)                                     \
+  __attribute__((device, used)) void NAME(                                     \
+      SRC_PARAMS_4                                                             \
+      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
+      std::uint32_t RsrcHi, std::uint32_t VOffset,                            \
+      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
+    const int SOff =                                                           \
+        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
+    const std::uint32_t LaneOffset =                                           \
+        VOffset + static_cast<std::uint32_t>(InstOffset);                      \
+    const std::uint32_t V[4] = {V0, V1, V2, V3};                              \
+    for (unsigned I = 0; I != static_cast<unsigned>(N); ++I)                   \
+      __builtin_amdgcn_raw_buffer_store_b32(                                   \
+          V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);         \
+  }
+
+#define DEFINE_BUFFER_LOAD_OFFSET(NAME, N)                                     \
+  __attribute__((device, used)) void NAME(                                     \
+      PP_CAT(DST_PARAMS_, N)                                                   \
+      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
+      std::uint32_t RsrcHi,                                                    \
+      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
+    const int SOff =                                                           \
+        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
+    const std::uint32_t LaneOffset =                                           \
+        static_cast<std::uint32_t>(InstOffset);                                \
+    std::uint32_t V[4] = {0, 0, 0, 0};                                        \
+    for (unsigned I = 0; I != static_cast<unsigned>(N); ++I)                   \
+      V[I] = __builtin_amdgcn_raw_buffer_load_b32(                            \
+          Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);               \
+    PP_CAT(WRITEBACK_ARRAY_, N)                                                \
+  }
+
+#define DEFINE_BUFFER_STORE_OFFSET(NAME, N)                                    \
+  __attribute__((device, used)) void NAME(                                     \
+      SRC_PARAMS_4                                                             \
+      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
+      std::uint32_t RsrcHi,                                                    \
+      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
+    const int SOff =                                                           \
+        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
+    const std::uint32_t LaneOffset =                                           \
+        static_cast<std::uint32_t>(InstOffset);                                \
+    const std::uint32_t V[4] = {V0, V1, V2, V3};                              \
+    for (unsigned I = 0; I != static_cast<unsigned>(N); ++I)                   \
+      __builtin_amdgcn_raw_buffer_store_b32(                                   \
+          V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);         \
+  }
+
+#define DEFINE_BUFFER_SUBLOAD_OFFEN(NAME, BUILTIN)                             \
+  __attribute__((device, used)) void NAME(                                     \
+      llvm::MCRegister Dst,                                                    \
+      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
+      std::uint32_t RsrcHi, std::uint32_t VOffset,                            \
+      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
+    const int SOff =                                                           \
+        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
+    const std::uint32_t LaneOffset =                                           \
+        VOffset + static_cast<std::uint32_t>(InstOffset);                      \
+    const auto Val = BUILTIN(Rsrc, static_cast<int>(LaneOffset), SOff, 0);     \
+    luthier::writeReg<std::uint32_t>(                                          \
+        Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));      \
+  }
+
+#define DEFINE_BUFFER_SUBSTORE_OFFEN(NAME, BUILTIN, CAST)                      \
+  __attribute__((device, used)) void NAME(                                     \
+      std::uint32_t Value,                                                     \
+      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
+      std::uint32_t RsrcHi, std::uint32_t VOffset,                            \
+      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
+    const int SOff =                                                           \
+        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
+    const std::uint32_t LaneOffset =                                           \
+        VOffset + static_cast<std::uint32_t>(InstOffset);                      \
+    BUILTIN(static_cast<CAST>(Value), Rsrc,                                    \
+            static_cast<int>(LaneOffset), SOff, 0);                            \
+  }
+
+#define DEFINE_BUFFER_SUBLOAD_OFFSET(NAME, BUILTIN)                            \
+  __attribute__((device, used)) void NAME(                                     \
+      llvm::MCRegister Dst,                                                    \
+      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
+      std::uint32_t RsrcHi,                                                    \
+      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
+    const int SOff =                                                           \
+        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
+    const std::uint32_t LaneOffset =                                           \
+        static_cast<std::uint32_t>(InstOffset);                                \
+    const auto Val = BUILTIN(Rsrc, static_cast<int>(LaneOffset), SOff, 0);     \
+    luthier::writeReg<std::uint32_t>(                                          \
+        Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));      \
+  }
+
+#define DEFINE_BUFFER_SUBSTORE_OFFSET(NAME, BUILTIN, CAST)                     \
+  __attribute__((device, used)) void NAME(                                     \
+      std::uint32_t Value,                                                     \
+      __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,                      \
+      std::uint32_t RsrcHi,                                                    \
+      std::uint32_t SOffset, std::int32_t InstOffset) {                        \
+    const int SOff =                                                           \
+        static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));     \
+    const std::uint32_t LaneOffset =                                           \
+        static_cast<std::uint32_t>(InstOffset);                                \
+    BUILTIN(static_cast<CAST>(Value), Rsrc,                                    \
+            static_cast<int>(LaneOffset), SOff, 0);                            \
+  }
+
+#define WRITEBACK_ARRAY_1 luthier::writeReg<std::uint32_t>(D0, V[0]);
+#define WRITEBACK_ARRAY_2                                                      \
+  luthier::writeReg<std::uint32_t>(D0, V[0]);                                  \
+  luthier::writeReg<std::uint32_t>(D1, V[1]);
+#define WRITEBACK_ARRAY_3                                                      \
+  luthier::writeReg<std::uint32_t>(D0, V[0]);                                  \
+  luthier::writeReg<std::uint32_t>(D1, V[1]);                                  \
+  luthier::writeReg<std::uint32_t>(D2, V[2]);
+#define WRITEBACK_ARRAY_4                                                      \
+  luthier::writeReg<std::uint32_t>(D0, V[0]);                                  \
+  luthier::writeReg<std::uint32_t>(D1, V[1]);                                  \
+  luthier::writeReg<std::uint32_t>(D2, V[2]);                                  \
+  luthier::writeReg<std::uint32_t>(D3, V[3]);
+
+//===----------------------------------------------------------------------===//
+// Hook instantiations
+//===----------------------------------------------------------------------===//
+
 namespace luthier::payloads {
 
-//===----------------------------------------------------------------------===//
-// Device payloads — flat scratch
-//===----------------------------------------------------------------------===//
+// ---- Scratch loads ----
+DEFINE_SCRATCH_LOAD_VADDR(scratchLoadB32Vaddr, MN_SCRATCH_LOAD_B32, 1)
+DEFINE_SCRATCH_LOAD_SADDR(scratchLoadB32Saddr, MN_SCRATCH_LOAD_B32, 1)
+DEFINE_SCRATCH_LOAD_ST(scratchLoadB32St, MN_SCRATCH_LOAD_B32, 1)
+DEFINE_SCRATCH_LOAD_SVS(scratchLoadB32Svs, MN_SCRATCH_LOAD_B32, 1)
+DEFINE_SCRATCH_LOAD_VADDR(scratchLoadB64Vaddr, MN_SCRATCH_LOAD_B64, 2)
+DEFINE_SCRATCH_LOAD_SADDR(scratchLoadB64Saddr, MN_SCRATCH_LOAD_B64, 2)
+DEFINE_SCRATCH_LOAD_ST(scratchLoadB64St, MN_SCRATCH_LOAD_B64, 2)
+DEFINE_SCRATCH_LOAD_SVS(scratchLoadB64Svs, MN_SCRATCH_LOAD_B64, 2)
+DEFINE_SCRATCH_LOAD_VADDR(scratchLoadB96Vaddr, MN_SCRATCH_LOAD_B96, 3)
+DEFINE_SCRATCH_LOAD_SADDR(scratchLoadB96Saddr, MN_SCRATCH_LOAD_B96, 3)
+DEFINE_SCRATCH_LOAD_ST(scratchLoadB96St, MN_SCRATCH_LOAD_B96, 3)
+DEFINE_SCRATCH_LOAD_SVS(scratchLoadB96Svs, MN_SCRATCH_LOAD_B96, 3)
+DEFINE_SCRATCH_LOAD_VADDR(scratchLoadB128Vaddr, MN_SCRATCH_LOAD_B128, 4)
+DEFINE_SCRATCH_LOAD_SADDR(scratchLoadB128Saddr, MN_SCRATCH_LOAD_B128, 4)
+DEFINE_SCRATCH_LOAD_ST(scratchLoadB128St, MN_SCRATCH_LOAD_B128, 4)
+DEFINE_SCRATCH_LOAD_SVS(scratchLoadB128Svs, MN_SCRATCH_LOAD_B128, 4)
+DEFINE_SCRATCH_LOAD_VADDR(scratchLoadU8Vaddr, MN_SCRATCH_LOAD_U8, 1)
+DEFINE_SCRATCH_LOAD_SADDR(scratchLoadU8Saddr, MN_SCRATCH_LOAD_U8, 1)
+DEFINE_SCRATCH_LOAD_ST(scratchLoadU8St, MN_SCRATCH_LOAD_U8, 1)
+DEFINE_SCRATCH_LOAD_SVS(scratchLoadU8Svs, MN_SCRATCH_LOAD_U8, 1)
+DEFINE_SCRATCH_LOAD_VADDR(scratchLoadI8Vaddr, MN_SCRATCH_LOAD_I8, 1)
+DEFINE_SCRATCH_LOAD_SADDR(scratchLoadI8Saddr, MN_SCRATCH_LOAD_I8, 1)
+DEFINE_SCRATCH_LOAD_ST(scratchLoadI8St, MN_SCRATCH_LOAD_I8, 1)
+DEFINE_SCRATCH_LOAD_SVS(scratchLoadI8Svs, MN_SCRATCH_LOAD_I8, 1)
+DEFINE_SCRATCH_LOAD_VADDR(scratchLoadU16Vaddr, MN_SCRATCH_LOAD_U16, 1)
+DEFINE_SCRATCH_LOAD_SADDR(scratchLoadU16Saddr, MN_SCRATCH_LOAD_U16, 1)
+DEFINE_SCRATCH_LOAD_ST(scratchLoadU16St, MN_SCRATCH_LOAD_U16, 1)
+DEFINE_SCRATCH_LOAD_SVS(scratchLoadU16Svs, MN_SCRATCH_LOAD_U16, 1)
+DEFINE_SCRATCH_LOAD_VADDR(scratchLoadI16Vaddr, MN_SCRATCH_LOAD_I16, 1)
+DEFINE_SCRATCH_LOAD_SADDR(scratchLoadI16Saddr, MN_SCRATCH_LOAD_I16, 1)
+DEFINE_SCRATCH_LOAD_ST(scratchLoadI16St, MN_SCRATCH_LOAD_I16, 1)
+DEFINE_SCRATCH_LOAD_SVS(scratchLoadI16Svs, MN_SCRATCH_LOAD_I16, 1)
 
-template <unsigned N>
-__attribute__((device, used)) void
-scratchLoadDwords(
-    llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
-    llvm::MCRegister D3, std::uint32_t VOffset, std::uint32_t SOffset,
-    std::int32_t InstOffset) {
-  const std::uint32_t Off =
-      displacedPrivateOffset(VOffset, SOffset, InstOffset);
-  std::uint32_t V[4] = {0, 0, 0, 0};
-  for (unsigned I = 0; I != N; ++I)
-    V[I] = *(Private<std::uint32_t> *)(Off + 4 * I);
-  writeDwords<N>(D0, D1, D2, D3, V);
-}
+// ---- Scratch stores ----
+DEFINE_SCRATCH_STORE_VADDR(scratchStoreB32Vaddr, MN_SCRATCH_STORE_B32, 1)
+DEFINE_SCRATCH_STORE_SADDR(scratchStoreB32Saddr, MN_SCRATCH_STORE_B32, 1)
+DEFINE_SCRATCH_STORE_ST(scratchStoreB32St, MN_SCRATCH_STORE_B32, 1)
+DEFINE_SCRATCH_STORE_SVS(scratchStoreB32Svs, MN_SCRATCH_STORE_B32, 1)
+DEFINE_SCRATCH_STORE_VADDR(scratchStoreB64Vaddr, MN_SCRATCH_STORE_B64, 2)
+DEFINE_SCRATCH_STORE_SADDR(scratchStoreB64Saddr, MN_SCRATCH_STORE_B64, 2)
+DEFINE_SCRATCH_STORE_ST(scratchStoreB64St, MN_SCRATCH_STORE_B64, 2)
+DEFINE_SCRATCH_STORE_SVS(scratchStoreB64Svs, MN_SCRATCH_STORE_B64, 2)
+DEFINE_SCRATCH_STORE_VADDR(scratchStoreB96Vaddr, MN_SCRATCH_STORE_B96, 3)
+DEFINE_SCRATCH_STORE_SADDR(scratchStoreB96Saddr, MN_SCRATCH_STORE_B96, 3)
+DEFINE_SCRATCH_STORE_ST(scratchStoreB96St, MN_SCRATCH_STORE_B96, 3)
+DEFINE_SCRATCH_STORE_SVS(scratchStoreB96Svs, MN_SCRATCH_STORE_B96, 3)
+DEFINE_SCRATCH_STORE_VADDR(scratchStoreB128Vaddr, MN_SCRATCH_STORE_B128, 4)
+DEFINE_SCRATCH_STORE_SADDR(scratchStoreB128Saddr, MN_SCRATCH_STORE_B128, 4)
+DEFINE_SCRATCH_STORE_ST(scratchStoreB128St, MN_SCRATCH_STORE_B128, 4)
+DEFINE_SCRATCH_STORE_SVS(scratchStoreB128Svs, MN_SCRATCH_STORE_B128, 4)
+DEFINE_SCRATCH_STORE_VADDR(scratchStoreB8Vaddr, MN_SCRATCH_STORE_B8, 1)
+DEFINE_SCRATCH_STORE_SADDR(scratchStoreB8Saddr, MN_SCRATCH_STORE_B8, 1)
+DEFINE_SCRATCH_STORE_ST(scratchStoreB8St, MN_SCRATCH_STORE_B8, 1)
+DEFINE_SCRATCH_STORE_SVS(scratchStoreB8Svs, MN_SCRATCH_STORE_B8, 1)
+DEFINE_SCRATCH_STORE_VADDR(scratchStoreB16Vaddr, MN_SCRATCH_STORE_B16, 1)
+DEFINE_SCRATCH_STORE_SADDR(scratchStoreB16Saddr, MN_SCRATCH_STORE_B16, 1)
+DEFINE_SCRATCH_STORE_ST(scratchStoreB16St, MN_SCRATCH_STORE_B16, 1)
+DEFINE_SCRATCH_STORE_SVS(scratchStoreB16Svs, MN_SCRATCH_STORE_B16, 1)
 
-template <unsigned N>
-__attribute__((device, used)) void
-scratchStoreDwords(
-    std::uint32_t V0, std::uint32_t V1, std::uint32_t V2, std::uint32_t V3,
-    std::uint32_t VOffset, std::uint32_t SOffset, std::int32_t InstOffset) {
-  const std::uint32_t Off =
-      displacedPrivateOffset(VOffset, SOffset, InstOffset);
-  const std::uint32_t V[4] = {V0, V1, V2, V3};
-  for (unsigned I = 0; I != N; ++I)
-    *(Private<std::uint32_t> *)(Off + 4 * I) = V[I];
-}
+// ---- Flat dword loads ----
+DEFINE_FLAT_LOAD(flatLoadB32, MN_FLAT_LOAD_B32, 1)
+DEFINE_FLAT_LOAD(flatLoadB64, MN_FLAT_LOAD_B64, 2)
+DEFINE_FLAT_LOAD(flatLoadB96, MN_FLAT_LOAD_B96, 3)
+DEFINE_FLAT_LOAD(flatLoadB128, MN_FLAT_LOAD_B128, 4)
 
-template <typename T>
-__attribute__((device, used)) void
-scratchLoadSubDword(
-    llvm::MCRegister Dst, std::uint32_t VOffset, std::uint32_t SOffset,
-    std::int32_t InstOffset) {
-  const std::uint32_t Off =
-      displacedPrivateOffset(VOffset, SOffset, InstOffset);
-  // The cast to std::int32_t before std::uint32_t is what sign-extends the
-  // signed widths, matching SCRATCH_LOAD_SBYTE / _SSHORT.
-  luthier::writeReg<std::uint32_t>(
-      Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(
-               *(Private<T> *)(Off))));
-}
+// ---- Flat dword stores ----
+DEFINE_FLAT_STORE(flatStoreB32, MN_FLAT_STORE_B32, 1)
+DEFINE_FLAT_STORE(flatStoreB64, MN_FLAT_STORE_B64, 2)
+DEFINE_FLAT_STORE(flatStoreB96, MN_FLAT_STORE_B96, 3)
+DEFINE_FLAT_STORE(flatStoreB128, MN_FLAT_STORE_B128, 4)
 
-template <typename T>
-__attribute__((device, used)) void
-scratchStoreSubDword(
-    std::uint32_t Value, std::uint32_t VOffset, std::uint32_t SOffset,
-    std::int32_t InstOffset) {
-  const std::uint32_t Off =
-      displacedPrivateOffset(VOffset, SOffset, InstOffset);
-  *(Private<T> *)(Off) = static_cast<T>(Value);
-}
+// ---- Flat sub-dword loads ----
+DEFINE_FLAT_SUBLOAD(flatLoadU8, MN_FLAT_LOAD_U8, std::uint8_t)
+DEFINE_FLAT_SUBLOAD(flatLoadI8, MN_FLAT_LOAD_I8, std::int8_t)
+DEFINE_FLAT_SUBLOAD(flatLoadU16, MN_FLAT_LOAD_U16, std::uint16_t)
+DEFINE_FLAT_SUBLOAD(flatLoadI16, MN_FLAT_LOAD_I16, std::int16_t)
 
-//===----------------------------------------------------------------------===//
-// Device payloads — flat
-//===----------------------------------------------------------------------===//
+// ---- Flat sub-dword stores ----
+DEFINE_FLAT_SUBSTORE(flatStoreB8, MN_FLAT_STORE_B8, std::uint8_t)
+DEFINE_FLAT_SUBSTORE(flatStoreB16, MN_FLAT_STORE_B16, std::uint16_t)
 
-template <unsigned N>
-__attribute__((device, used)) void
-flatLoadDwords(
-    llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
-    llvm::MCRegister D3, std::uint64_t Addr, std::int32_t InstOffset) {
-  auto *G = reinterpret_cast<std::uint32_t *>(
-      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset)));
-  std::uint32_t V[4] = {0, 0, 0, 0};
-  if (__builtin_amdgcn_is_private(static_cast<const void *>(G))) {
-    const std::uint32_t Off = displacedPrivateOffsetOf(G);
-    for (unsigned I = 0; I != N; ++I)
-      V[I] = *(Private<std::uint32_t> *)(Off + 4 * I);
-  } else {
-    for (unsigned I = 0; I != N; ++I)
-      V[I] = G[I];
-  }
-  writeDwords<N>(D0, D1, D2, D3, V);
-}
+// ---- Buffer dword loads ----
+DEFINE_BUFFER_LOAD_OFFSET(bufferLoadB32Offset, 1)
+DEFINE_BUFFER_LOAD_OFFEN(bufferLoadB32Offen, 1)
+DEFINE_BUFFER_LOAD_OFFSET(bufferLoadB64Offset, 2)
+DEFINE_BUFFER_LOAD_OFFEN(bufferLoadB64Offen, 2)
+DEFINE_BUFFER_LOAD_OFFSET(bufferLoadB96Offset, 3)
+DEFINE_BUFFER_LOAD_OFFEN(bufferLoadB96Offen, 3)
+DEFINE_BUFFER_LOAD_OFFSET(bufferLoadB128Offset, 4)
+DEFINE_BUFFER_LOAD_OFFEN(bufferLoadB128Offen, 4)
 
-template <unsigned N>
-__attribute__((device, used)) void
-flatStoreDwords(
-    std::uint32_t V0, std::uint32_t V1, std::uint32_t V2, std::uint32_t V3,
-    std::uint64_t Addr, std::int32_t InstOffset) {
-  auto *G = reinterpret_cast<std::uint32_t *>(
-      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset)));
-  const std::uint32_t V[4] = {V0, V1, V2, V3};
-  if (__builtin_amdgcn_is_private(static_cast<const void *>(G))) {
-    const std::uint32_t Off = displacedPrivateOffsetOf(G);
-    for (unsigned I = 0; I != N; ++I)
-      *(Private<std::uint32_t> *)(Off + 4 * I) = V[I];
-  } else {
-    for (unsigned I = 0; I != N; ++I)
-      G[I] = V[I];
-  }
-}
+// ---- Buffer dword stores ----
+DEFINE_BUFFER_STORE_OFFSET(bufferStoreB32Offset, 1)
+DEFINE_BUFFER_STORE_OFFEN(bufferStoreB32Offen, 1)
+DEFINE_BUFFER_STORE_OFFSET(bufferStoreB64Offset, 2)
+DEFINE_BUFFER_STORE_OFFEN(bufferStoreB64Offen, 2)
+DEFINE_BUFFER_STORE_OFFSET(bufferStoreB96Offset, 3)
+DEFINE_BUFFER_STORE_OFFEN(bufferStoreB96Offen, 3)
+DEFINE_BUFFER_STORE_OFFSET(bufferStoreB128Offset, 4)
+DEFINE_BUFFER_STORE_OFFEN(bufferStoreB128Offen, 4)
 
-template <typename T>
-__attribute__((device, used)) void
-flatLoadSubDword(
-    llvm::MCRegister Dst, std::uint64_t Addr, std::int32_t InstOffset) {
-  auto *G = reinterpret_cast<T *>(
-      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset)));
-  T Val;
-  if (__builtin_amdgcn_is_private(static_cast<const void *>(G)))
-    Val = *(Private<T> *)(displacedPrivateOffsetOf(G));
-  else
-    Val = *G;
-  luthier::writeReg<std::uint32_t>(
-      Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));
-}
+// ---- Buffer sub-dword loads ----
+DEFINE_BUFFER_SUBLOAD_OFFSET(bufferLoadU8Offset, __builtin_amdgcn_raw_buffer_load_b8)
+DEFINE_BUFFER_SUBLOAD_OFFEN(bufferLoadU8Offen, __builtin_amdgcn_raw_buffer_load_b8)
+DEFINE_BUFFER_SUBLOAD_OFFSET(bufferLoadI8Offset, __builtin_amdgcn_raw_buffer_load_b8)
+DEFINE_BUFFER_SUBLOAD_OFFEN(bufferLoadI8Offen, __builtin_amdgcn_raw_buffer_load_b8)
+DEFINE_BUFFER_SUBLOAD_OFFSET(bufferLoadU16Offset, __builtin_amdgcn_raw_buffer_load_b16)
+DEFINE_BUFFER_SUBLOAD_OFFEN(bufferLoadU16Offen, __builtin_amdgcn_raw_buffer_load_b16)
+DEFINE_BUFFER_SUBLOAD_OFFSET(bufferLoadI16Offset, __builtin_amdgcn_raw_buffer_load_b16)
+DEFINE_BUFFER_SUBLOAD_OFFEN(bufferLoadI16Offen, __builtin_amdgcn_raw_buffer_load_b16)
 
-template <typename T>
-__attribute__((device, used)) void
-flatStoreSubDword(
-    std::uint32_t Value, std::uint64_t Addr, std::int32_t InstOffset) {
-  auto *G = reinterpret_cast<T *>(
-      Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset)));
-  if (__builtin_amdgcn_is_private(static_cast<const void *>(G)))
-    *(Private<T> *)(displacedPrivateOffsetOf(G)) =
-        static_cast<T>(Value);
-  else
-    *G = static_cast<T>(Value);
-}
+// ---- Buffer sub-dword stores ----
+DEFINE_BUFFER_SUBSTORE_OFFSET(bufferStoreB8Offset, __builtin_amdgcn_raw_buffer_store_b8, unsigned char)
+DEFINE_BUFFER_SUBSTORE_OFFEN(bufferStoreB8Offen, __builtin_amdgcn_raw_buffer_store_b8, unsigned char)
+DEFINE_BUFFER_SUBSTORE_OFFSET(bufferStoreB16Offset, __builtin_amdgcn_raw_buffer_store_b16, unsigned short)
+DEFINE_BUFFER_SUBSTORE_OFFEN(bufferStoreB16Offen, __builtin_amdgcn_raw_buffer_store_b16, unsigned short)
 
-//===----------------------------------------------------------------------===//
-// Device payloads — buffer
-//===----------------------------------------------------------------------===//
-
-template <unsigned N>
-__attribute__((device, used)) void
-bufferLoadDwords(
-    llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
-    llvm::MCRegister D3, __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,
-    std::uint32_t RsrcHi, std::uint32_t VOffset, std::uint32_t SOffset,
-    std::int32_t InstOffset) {
-  // The instruction offset sits inside the swizzle together with vaddr, so it
-  // travels in the vector offset; only the displacement goes into soffset.
-  const int SOff =
-      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
-  const std::uint32_t LaneOffset =
-      VOffset + static_cast<std::uint32_t>(InstOffset);
-  std::uint32_t V[4] = {0, 0, 0, 0};
-  for (unsigned I = 0; I != N; ++I)
-    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
-        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
-  writeDwords<N>(D0, D1, D2, D3, V);
-}
-
-template <unsigned N>
-__attribute__((device, used)) void
-bufferStoreDwords(
-    std::uint32_t V0, std::uint32_t V1, std::uint32_t V2, std::uint32_t V3,
-    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo, std::uint32_t RsrcHi,
-    std::uint32_t VOffset, std::uint32_t SOffset, std::int32_t InstOffset) {
-  // The instruction offset sits inside the swizzle together with vaddr, so it
-  // travels in the vector offset; only the displacement goes into soffset.
-  const int SOff =
-      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
-  const std::uint32_t LaneOffset =
-      VOffset + static_cast<std::uint32_t>(InstOffset);
-  const std::uint32_t V[4] = {V0, V1, V2, V3};
-  for (unsigned I = 0; I != N; ++I)
-    __builtin_amdgcn_raw_buffer_store_b32(
-        V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
-}
-
-template <typename T>
-__attribute__((device, used)) void
-bufferLoadSubDword(
-    llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,
-    std::uint32_t RsrcHi, std::uint32_t VOffset, std::uint32_t SOffset,
-    std::int32_t InstOffset) {
-  // The instruction offset sits inside the swizzle together with vaddr, so it
-  // travels in the vector offset; only the displacement goes into soffset.
-  const int SOff =
-      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
-  const std::uint32_t LaneOffset =
-      VOffset + static_cast<std::uint32_t>(InstOffset);
-  T Val;
-  if constexpr (sizeof(T) == 1)
-    Val = static_cast<T>(__builtin_amdgcn_raw_buffer_load_b8(
-        Rsrc, static_cast<int>(LaneOffset), SOff, 0));
-  else
-    Val = static_cast<T>(__builtin_amdgcn_raw_buffer_load_b16(
-        Rsrc, static_cast<int>(LaneOffset), SOff, 0));
-  luthier::writeReg<std::uint32_t>(
-      Dst, static_cast<std::uint32_t>(static_cast<std::int32_t>(Val)));
-}
-
-template <typename T>
-__attribute__((device, used)) void
-bufferStoreSubDword(
-    std::uint32_t Value, __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,
-    std::uint32_t RsrcHi, std::uint32_t VOffset, std::uint32_t SOffset,
-    std::int32_t InstOffset) {
-  // The instruction offset sits inside the swizzle together with vaddr, so it
-  // travels in the vector offset; only the displacement goes into soffset.
-  const int SOff =
-      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
-  const std::uint32_t LaneOffset =
-      VOffset + static_cast<std::uint32_t>(InstOffset);
-  if constexpr (sizeof(T) == 1)
-    __builtin_amdgcn_raw_buffer_store_b8(static_cast<unsigned char>(Value),
-                                         Rsrc, static_cast<int>(LaneOffset), SOff,
-                                         0);
-  else
-    __builtin_amdgcn_raw_buffer_store_b16(static_cast<unsigned short>(Value),
-                                          Rsrc, static_cast<int>(LaneOffset),
-                                          SOff, 0);
-}
-
-//===----------------------------------------------------------------------===//
-// Explicit instantiations
-//===----------------------------------------------------------------------===//
-//
-// Device pass only. On the host pass the plugin that synthesizes host handles
-// for `__device__` functions clones a template *specialization* when host code
-// takes its address --- which `hookFor` below does --- and an explicit
-// instantiation here would pre-empt that with a device-only definition the host
-// then cannot link against.
-#ifdef __HIP_DEVICE_COMPILE__
-//
-// Every payload the host side can reach through `lookupHandleName` has to be
-// emitted into this translation unit's offload bundle, which means naming each
-// instantiation here.
-
-template __attribute__((device, used)) void scratchLoadDwords<1>(
-    llvm::MCRegister, llvm::MCRegister, llvm::MCRegister, llvm::MCRegister,
-    std::uint32_t, std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void scratchLoadDwords<2>(
-    llvm::MCRegister, llvm::MCRegister, llvm::MCRegister, llvm::MCRegister,
-    std::uint32_t, std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void scratchLoadDwords<3>(
-    llvm::MCRegister, llvm::MCRegister, llvm::MCRegister, llvm::MCRegister,
-    std::uint32_t, std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void scratchLoadDwords<4>(
-    llvm::MCRegister, llvm::MCRegister, llvm::MCRegister, llvm::MCRegister,
-    std::uint32_t, std::uint32_t, std::int32_t);
-
-template __attribute__((device, used)) void scratchStoreDwords<1>(
-    std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void scratchStoreDwords<2>(
-    std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void scratchStoreDwords<3>(
-    std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void scratchStoreDwords<4>(
-    std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::int32_t);
-
-template __attribute__((device, used)) void
-scratchLoadSubDword<std::uint8_t>(
-    llvm::MCRegister, std::uint32_t, std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void
-scratchLoadSubDword<std::int8_t>(
-    llvm::MCRegister, std::uint32_t, std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void
-scratchLoadSubDword<std::uint16_t>(
-    llvm::MCRegister, std::uint32_t, std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void
-scratchLoadSubDword<std::int16_t>(
-    llvm::MCRegister, std::uint32_t, std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void
-scratchStoreSubDword<std::uint8_t>(
-    std::uint32_t, std::uint32_t, std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void
-scratchStoreSubDword<std::uint16_t>(
-    std::uint32_t, std::uint32_t, std::uint32_t, std::int32_t);
-
-template __attribute__((device, used)) void flatLoadDwords<1>(
-    llvm::MCRegister, llvm::MCRegister, llvm::MCRegister, llvm::MCRegister,
-    std::uint64_t, std::int32_t);
-template __attribute__((device, used)) void flatLoadDwords<2>(
-    llvm::MCRegister, llvm::MCRegister, llvm::MCRegister, llvm::MCRegister,
-    std::uint64_t, std::int32_t);
-template __attribute__((device, used)) void flatLoadDwords<3>(
-    llvm::MCRegister, llvm::MCRegister, llvm::MCRegister, llvm::MCRegister,
-    std::uint64_t, std::int32_t);
-template __attribute__((device, used)) void flatLoadDwords<4>(
-    llvm::MCRegister, llvm::MCRegister, llvm::MCRegister, llvm::MCRegister,
-    std::uint64_t, std::int32_t);
-
-template __attribute__((device, used)) void flatStoreDwords<1>(
-    std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, std::uint64_t,
-    std::int32_t);
-template __attribute__((device, used)) void flatStoreDwords<2>(
-    std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, std::uint64_t,
-    std::int32_t);
-template __attribute__((device, used)) void flatStoreDwords<3>(
-    std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, std::uint64_t,
-    std::int32_t);
-template __attribute__((device, used)) void flatStoreDwords<4>(
-    std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t, std::uint64_t,
-    std::int32_t);
-
-template __attribute__((device, used)) void
-flatLoadSubDword<std::uint8_t>(
-    llvm::MCRegister, std::uint64_t, std::int32_t);
-template __attribute__((device, used)) void
-flatLoadSubDword<std::int8_t>(
-    llvm::MCRegister, std::uint64_t, std::int32_t);
-template __attribute__((device, used)) void
-flatLoadSubDword<std::uint16_t>(
-    llvm::MCRegister, std::uint64_t, std::int32_t);
-template __attribute__((device, used)) void
-flatLoadSubDword<std::int16_t>(
-    llvm::MCRegister, std::uint64_t, std::int32_t);
-template __attribute__((device, used)) void
-flatStoreSubDword<std::uint8_t>(
-    std::uint32_t, std::uint64_t, std::int32_t);
-template __attribute__((device, used)) void
-flatStoreSubDword<std::uint16_t>(
-    std::uint32_t, std::uint64_t, std::int32_t);
-
-template __attribute__((device, used)) void bufferLoadDwords<1>(
-    llvm::MCRegister, llvm::MCRegister, llvm::MCRegister, llvm::MCRegister,
-    __amdgpu_buffer_rsrc_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void bufferLoadDwords<2>(
-    llvm::MCRegister, llvm::MCRegister, llvm::MCRegister, llvm::MCRegister,
-    __amdgpu_buffer_rsrc_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void bufferLoadDwords<3>(
-    llvm::MCRegister, llvm::MCRegister, llvm::MCRegister, llvm::MCRegister,
-    __amdgpu_buffer_rsrc_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void bufferLoadDwords<4>(
-    llvm::MCRegister, llvm::MCRegister, llvm::MCRegister, llvm::MCRegister,
-    __amdgpu_buffer_rsrc_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::int32_t);
-
-template __attribute__((device, used)) void bufferStoreDwords<1>(
-    std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    __amdgpu_buffer_rsrc_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void bufferStoreDwords<2>(
-    std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    __amdgpu_buffer_rsrc_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void bufferStoreDwords<3>(
-    std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    __amdgpu_buffer_rsrc_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void bufferStoreDwords<4>(
-    std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    __amdgpu_buffer_rsrc_t, std::uint32_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::int32_t);
-
-template __attribute__((device, used)) void
-bufferLoadSubDword<std::uint8_t>(
-    llvm::MCRegister, __amdgpu_buffer_rsrc_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void
-bufferLoadSubDword<std::int8_t>(
-    llvm::MCRegister, __amdgpu_buffer_rsrc_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void
-bufferLoadSubDword<std::uint16_t>(
-    llvm::MCRegister, __amdgpu_buffer_rsrc_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void
-bufferLoadSubDword<std::int16_t>(
-    llvm::MCRegister, __amdgpu_buffer_rsrc_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void
-bufferStoreSubDword<std::uint8_t>(
-    std::uint32_t, __amdgpu_buffer_rsrc_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::uint32_t, std::int32_t);
-template __attribute__((device, used)) void
-bufferStoreSubDword<std::uint16_t>(
-    std::uint32_t, __amdgpu_buffer_rsrc_t, std::uint32_t, std::uint32_t,
-    std::uint32_t, std::uint32_t, std::int32_t);
-
-#endif // __HIP_DEVICE_COMPILE__
+// clang-format on
 
 } // namespace luthier::payloads
 
@@ -603,79 +772,6 @@ namespace Payloads = luthier::payloads;
 namespace luthier {
 
 namespace {
-
-/// What an application memory instruction does, in the terms the payloads are
-/// written in.
-struct AccessDesc {
-  enum class Kind { Scratch, Flat, Buffer } Class;
-  bool IsStore{false};
-  /// Number of 32-bit words moved, 1..4. Zero means a sub-dword access, whose
-  /// width is \c SubDwordBytes .
-  unsigned NumDwords{0};
-  /// 1 or 2 when \c NumDwords is zero.
-  unsigned SubDwordBytes{0};
-  /// Whether a sub-dword load sign-extends into its 32-bit destination.
-  bool SignExtend{false};
-};
-
-/// Classify \p Name --- an AMDGPU opcode name such as
-/// <tt>SCRATCH_LOAD_DWORDX2_SADDR</tt> --- into an \c AccessDesc .
-///
-/// This reads the opcode's name rather than switching over several hundred
-/// enumerators. The width token is the same across every addressing form of a
-/// family, so one match covers all of \c _SADDR / \c _ST / \c _SVS / vaddr for
-/// flat scratch and \c _OFFEN / \c _OFFSET for buffers, and a family this pass
-/// has never seen (\c _D16_HI , \c _LDS , \c _FORMAT_ , ...) falls out as
-/// \c nullopt rather than being silently mis-widened.
-std::optional<AccessDesc> classifyByName(llvm::StringRef Name,
-                                         AccessDesc::Kind Class) {
-  AccessDesc D;
-  D.Class = Class;
-  llvm::StringRef Rest;
-  if (auto [Head, Tail] = Name.split("_LOAD_"); !Tail.empty()) {
-    (void)Head;
-    D.IsStore = false;
-    Rest = Tail;
-  } else if (auto [Head2, Tail2] = Name.split("_STORE_"); !Tail2.empty()) {
-    (void)Head2;
-    D.IsStore = true;
-    Rest = Tail2;
-  } else {
-    return std::nullopt;
-  }
-  // The width token runs to the next underscore; whatever follows is the
-  // addressing form, which the operand lookups below handle generically.
-  llvm::StringRef Width = Rest.take_until([](char C) { return C == '_'; });
-  if (Width == "DWORD")
-    D.NumDwords = 1;
-  else if (Width == "DWORDX2")
-    D.NumDwords = 2;
-  else if (Width == "DWORDX3")
-    D.NumDwords = 3;
-  else if (Width == "DWORDX4")
-    D.NumDwords = 4;
-  else if (Width == "UBYTE" || Width == "BYTE")
-    D.SubDwordBytes = 1;
-  else if (Width == "SBYTE") {
-    D.SubDwordBytes = 1;
-    D.SignExtend = true;
-  } else if (Width == "USHORT" || Width == "SHORT")
-    D.SubDwordBytes = 2;
-  else if (Width == "SSHORT") {
-    D.SubDwordBytes = 2;
-    D.SignExtend = true;
-  } else
-    return std::nullopt;
-
-  // Anything past the width token that is not a pure addressing-form suffix
-  // changes the semantics in a way the payloads do not model --- `_D16` and
-  // `_D16_HI` preserve the other half of the destination, `_LDS` writes LDS
-  // instead of a VGPR.
-  llvm::StringRef Suffix = Rest.drop_front(Width.size());
-  if (Suffix.contains("D16") || Suffix.contains("LDS"))
-    return std::nullopt;
-  return D;
-}
 
 /// \return the operand named \p Name of \p MI , or \c nullptr when the opcode
 /// has no such operand --- which is how the addressing forms differ.
@@ -704,9 +800,32 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   llvm::FunctionAnalysisManager &IFAM =
       PAM.getResult<IModuleFunctionAnalysisManagerPrototypeProxy>(P)
           .getManager();
+  llvm::ModuleAnalysisManager &IMAM =
+      PAM.getResult<IModuleAnalysisManagerPrototypeProxy>(P).getManager();
+  const llvm::TargetMachine &TM =
+      IMAM.getResult<llvm::MachineModuleAnalysis>(IModule).getMMI().getTarget();
 
-  // Linking the payload module in is not free, so hold it off until an
-  // application instruction that can reach the private segment turns up.
+  /// Collect a list of instructions that will potentially touch scratch
+  llvm::SmallVector<llvm::MachineInstr *, 16> Worklist;
+
+  P.forEachTargetMF(PAM, [&](llvm::MachineFunction &MF) {
+    const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
+    const auto &TII = *ST.getInstrInfo();
+
+    for (llvm::MachineBasicBlock &MBB : MF) {
+      for (llvm::MachineInstr &MI : MBB) {
+        if (TII.isFLATScratch(MI) ||
+            (TII.isFLAT(MI) && !TII.isFLATGlobal(MI)) ||
+            TII.isMUBUF(MI))
+          Worklist.push_back(&MI);
+      }
+    }
+  });
+
+  if (Worklist.empty())
+    return llvm::PreservedAnalyses::all();
+
+  // ── Link the payload module ──
   /// Names of every payload the linked module contributed.
   ///
   /// Each payload is `__attribute__((used))`, which is what makes the device
@@ -720,32 +839,17 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
   /// but the ones it does not use stay behind. So all of them get unpinned and
   /// erased once every payload has been built.
   llvm::SmallVector<std::string, 64> LinkedPayloadNames;
-
-  bool Linked = false;
-  // The subtarget comes from a target MachineFunction rather than from the
-  // instrumentation module's MachineModuleAnalysis: the two always agree (a
-  // heterogeneous prototype is not supported), and a standalone
-  // `luthier-llc -passes=` run does not register the IModule's module-level
-  // analysis-manager proxy.
-  const llvm::TargetMachine *TM = nullptr;
-  auto ensureLinked = [&]() -> llvm::Error {
-    if (Linked)
-      return llvm::Error::success();
-    assert(TM && "no target machine to pick a bitcode slice with");
-    llvm::SubtargetFeatures Features(TM->getTargetFeatureString());
+  {
+    llvm::SubtargetFeatures Features(TM.getTargetFeatureString());
     auto SubOrErr = OffloadParser->parseModule(
-        TM->getTargetTriple(), TM->getTargetCPU(), Features, Ctx);
-    LUTHIER_RETURN_ON_ERROR(SubOrErr.takeError());
+        TM.getTargetTriple(), TM.getTargetCPU(), Features, Ctx);
+    if (!SubOrErr) {
+      Ctx.emitError(llvm::toString(SubOrErr.takeError()));
+      return llvm::PreservedAnalyses::all();
+    }
     std::unique_ptr<llvm::Module> Sub = std::move(*SubOrErr);
     Sub->setTargetTriple(IModule.getTargetTriple());
     Sub->setDataLayout(IModule.getDataLayout());
-    // HIP gives a `__device__` function internal linkage, and `Linker` skips a
-    // locally-linked definition nothing else in the module already refers to
-    // (`ModuleLinker::linkIfNeeded`), so the payloads would be dropped on the
-    // floor. Promoting them is safe and precise: `llvm.used` /
-    // `llvm.compiler.used` is exactly the set the `used` attribute on each
-    // payload put there, and their names are namespace-qualified template
-    // specializations that cannot collide with the tool's own module.
     llvm::SmallVector<llvm::GlobalValue *, 64> Used;
     llvm::collectUsedGlobalVariables(*Sub, Used, /*CompilerUsed=*/false);
     llvm::collectUsedGlobalVariables(*Sub, Used, /*CompilerUsed=*/true);
@@ -757,18 +861,15 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
         F->setLinkage(llvm::GlobalValue::ExternalLinkage);
       LinkedPayloadNames.push_back(F->getName().str());
     }
-    if (llvm::Linker(IModule).linkInModule(std::move(Sub)))
-      return LUTHIER_MAKE_GENERIC_ERROR(
+    if (llvm::Linker(IModule).linkInModule(std::move(Sub))) {
+      Ctx.emitError(
           "RebaseAppScratchAccessesPass: failed to link the pass's device-side "
           "payload module into the prototype's instrumentation module.");
-    Linked = true;
-    return llvm::Error::success();
-  };
+      return llvm::PreservedAnalyses::all();
+    }
+  }
 
-
-  /// Resolve one of the payload hooks to its \c llvm::Function in the IModule.
   auto hookFor = [&](auto *HostHandle) -> llvm::Expected<llvm::Function *> {
-    LUTHIER_RETURN_ON_ERROR(ensureLinked());
     auto *F = OffloadParser->getLLVMHandle<llvm::Function>(IModule, HostHandle);
     if (!F || F->isDeclaration())
       return LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
@@ -778,174 +879,24 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
     return F;
   };
 
-  /// Pick the payload for \p D . The width is a template parameter on the
-  /// device side, so it has to be spelled out per case here.
-  auto selectHook = [&](const AccessDesc &D) -> llvm::Expected<llvm::Function *> {
-    switch (D.Class) {
-    case AccessDesc::Kind::Scratch:
-      if (D.NumDwords) {
-        switch (D.NumDwords) {
-        case 1:
-          return D.IsStore ? hookFor(&Payloads::scratchStoreDwords<1>)
-                           : hookFor(&Payloads::scratchLoadDwords<1>);
-        case 2:
-          return D.IsStore ? hookFor(&Payloads::scratchStoreDwords<2>)
-                           : hookFor(&Payloads::scratchLoadDwords<2>);
-        case 3:
-          return D.IsStore ? hookFor(&Payloads::scratchStoreDwords<3>)
-                           : hookFor(&Payloads::scratchLoadDwords<3>);
-        default:
-          return D.IsStore ? hookFor(&Payloads::scratchStoreDwords<4>)
-                           : hookFor(&Payloads::scratchLoadDwords<4>);
-        }
-      }
-      if (D.IsStore)
-        return D.SubDwordBytes == 1
-                   ? hookFor(&Payloads::scratchStoreSubDword<std::uint8_t>)
-                   : hookFor(&Payloads::scratchStoreSubDword<std::uint16_t>);
-      if (D.SubDwordBytes == 1)
-        return D.SignExtend
-                   ? hookFor(&Payloads::scratchLoadSubDword<std::int8_t>)
-                   : hookFor(&Payloads::scratchLoadSubDword<std::uint8_t>);
-      return D.SignExtend
-                 ? hookFor(&Payloads::scratchLoadSubDword<std::int16_t>)
-                 : hookFor(&Payloads::scratchLoadSubDword<std::uint16_t>);
-    case AccessDesc::Kind::Flat:
-      if (D.NumDwords) {
-        switch (D.NumDwords) {
-        case 1:
-          return D.IsStore ? hookFor(&Payloads::flatStoreDwords<1>)
-                           : hookFor(&Payloads::flatLoadDwords<1>);
-        case 2:
-          return D.IsStore ? hookFor(&Payloads::flatStoreDwords<2>)
-                           : hookFor(&Payloads::flatLoadDwords<2>);
-        case 3:
-          return D.IsStore ? hookFor(&Payloads::flatStoreDwords<3>)
-                           : hookFor(&Payloads::flatLoadDwords<3>);
-        default:
-          return D.IsStore ? hookFor(&Payloads::flatStoreDwords<4>)
-                           : hookFor(&Payloads::flatLoadDwords<4>);
-        }
-      }
-      if (D.IsStore)
-        return D.SubDwordBytes == 1
-                   ? hookFor(&Payloads::flatStoreSubDword<std::uint8_t>)
-                   : hookFor(&Payloads::flatStoreSubDword<std::uint16_t>);
-      if (D.SubDwordBytes == 1)
-        return D.SignExtend ? hookFor(&Payloads::flatLoadSubDword<std::int8_t>)
-                            : hookFor(&Payloads::flatLoadSubDword<std::uint8_t>);
-      return D.SignExtend
-                 ? hookFor(&Payloads::flatLoadSubDword<std::int16_t>)
-                 : hookFor(&Payloads::flatLoadSubDword<std::uint16_t>);
-    case AccessDesc::Kind::Buffer:
-      if (D.NumDwords) {
-        switch (D.NumDwords) {
-        case 1:
-          return D.IsStore ? hookFor(&Payloads::bufferStoreDwords<1>)
-                           : hookFor(&Payloads::bufferLoadDwords<1>);
-        case 2:
-          return D.IsStore ? hookFor(&Payloads::bufferStoreDwords<2>)
-                           : hookFor(&Payloads::bufferLoadDwords<2>);
-        case 3:
-          return D.IsStore ? hookFor(&Payloads::bufferStoreDwords<3>)
-                           : hookFor(&Payloads::bufferLoadDwords<3>);
-        default:
-          return D.IsStore ? hookFor(&Payloads::bufferStoreDwords<4>)
-                           : hookFor(&Payloads::bufferLoadDwords<4>);
-        }
-      }
-      if (D.IsStore)
-        return D.SubDwordBytes == 1
-                   ? hookFor(&Payloads::bufferStoreSubDword<std::uint8_t>)
-                   : hookFor(&Payloads::bufferStoreSubDword<std::uint16_t>);
-      if (D.SubDwordBytes == 1)
-        return D.SignExtend
-                   ? hookFor(&Payloads::bufferLoadSubDword<std::int8_t>)
-                   : hookFor(&Payloads::bufferLoadSubDword<std::uint8_t>);
-      return D.SignExtend
-                 ? hookFor(&Payloads::bufferLoadSubDword<std::int16_t>)
-                 : hookFor(&Payloads::bufferLoadSubDword<std::uint16_t>);
-    }
-    llvm_unreachable("unhandled access class");
-  };
-
   llvm::Type *I32 = llvm::Type::getInt32Ty(Ctx);
   llvm::Type *I64 = llvm::Type::getInt64Ty(Ctx);
-  /// The LLVM type behind HIP's \c __amdgpu_buffer_rsrc_t .
   llvm::Type *RsrcTy = llvm::PointerType::get(Ctx, 8);
   auto constI32 = [&](uint64_t V) -> PayloadArg {
     return llvm::ConstantInt::get(I32, V);
   };
 
+  // ── Pass 2: instrument each collected instruction ──
   llvm::Error Err = llvm::Error::success();
   llvm::SmallVector<llvm::MachineInstr *, 16> ToErase;
 
-  P.forEachTargetMF(PAM, [&](llvm::MachineFunction &MF) {
+  for (llvm::MachineInstr *MI : Worklist) {
     if (Err)
-      return;
+      break;
+    const llvm::MachineFunction &MF = *MI->getParent()->getParent();
     const auto &ST = MF.getSubtarget<llvm::GCNSubtarget>();
     const auto &TII = *ST.getInstrInfo();
     const auto &TRI = *ST.getRegisterInfo();
-    TM = &MF.getTarget();
-
-    for (llvm::MachineBasicBlock &MBB : MF) {
-      for (llvm::MachineInstr &MI : MBB) {
-        if (Err)
-          return;
-        std::optional<AccessDesc::Kind> Class;
-        if (TII.isFLATScratch(MI))
-          Class = AccessDesc::Kind::Scratch;
-        else if (TII.isFLAT(MI) && !TII.isFLATGlobal(MI))
-          Class = AccessDesc::Kind::Flat;
-        // A buffer access can only reach the private segment on a target whose
-        // stack *is* a buffer, i.e. one that still has a private segment
-        // buffer. On architected-flat-scratch parts (gfx940+, gfx11+, gfx12+)
-        // there is no such descriptor to query at all --- the wave gets
-        // FLAT_SCRATCH from hardware and scratch is reached through
-        // SCRATCH_*/FLAT --- and the same holds wherever
-        // `enableFlatScratch()` moves the stack onto SCRATCH_*. In both cases
-        // every MUBUF is global by construction, so it must be left alone.
-        //
-        // This is also what keeps the payload buildable there: the state value
-        // array only reserves lanes for WAVEFRONT_PRIVATE_SEGMENT_BUFFER under
-        // exactly this predicate (see `findLowestFreeLanes` in
-        // StateValueArraySpecs.cpp), so a buffer payload emitted on an
-        // architected-flat-scratch target would read a slot that has no lane
-        // assignment and fail to lower.
-        else if (TII.isMUBUF(MI) && !ST.hasArchitectedFlatScratch() &&
-                 !ST.enableFlatScratch())
-          Class = AccessDesc::Kind::Buffer;
-        if (!Class)
-          continue;
-
-        llvm::StringRef Name = TII.getName(MI.getOpcode());
-        std::optional<AccessDesc> D = classifyByName(Name, *Class);
-
-        if (!D && *Class != AccessDesc::Kind::Scratch) {
-          // A buffer access reaches scratch only through the application's
-          // scratch V#, which requires idxen == 0; and a flat atomic on private
-          // memory is not something the hardware supports, so LLVM expands
-          // private atomics into a load and a store rather than emitting one.
-          // Everything in these two classes that this pass does not recognize
-          // is therefore global by construction and needs no rebasing.
-          continue;
-        }
-        if (!D) {
-          Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-              "RebaseAppScratchAccessesPass: '{0}' in '{1}' addresses the "
-              "wavefront's private segment but is not a form this pass knows "
-              "how to re-issue. Add a payload for it in "
-              "RebaseAppScratchAccessesPass.hip.",
-              Name, MF.getName()));
-          return;
-        }
-        // A scratch buffer requires idxen == 0, so the indexed addressing forms
-        // are global by construction. The index is folded into `vaddr` rather
-        // than carried in an operand of its own, so the opcode's own name is
-        // what distinguishes them.
-        if (*Class == AccessDesc::Kind::Buffer &&
-            (Name.ends_with("_IDXEN") || Name.ends_with("_BOTHEN")))
-          continue;
 
         // Cache-policy bits are a performance hint on private memory --- it is
         // wave-private and coherent with nothing --- so they are dropped on the
@@ -953,42 +904,37 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
         // where they are not droppable, and the re-issued access has no way to
         // spell them: the buffer builtins take a compile-time-constant aux
         // operand and a plain pointer dereference carries no policy at all.
-        const int64_t CPol = namedImmOr0(MI, llvm::AMDGPU::OpName::cpol);
-        if (CPol != 0 && *Class != AccessDesc::Kind::Scratch) {
+        const int64_t CPol = namedImmOr0(*MI, llvm::AMDGPU::OpName::cpol);
+        if (CPol != 0 && !TII.isFLATScratch(*MI)) {
           Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
               "RebaseAppScratchAccessesPass: '{0}' in '{1}' carries cache "
               "policy {2}, which the re-issued access cannot reproduce.",
-              Name, MF.getName(), CPol));
-          return;
+              TII.getName(MI->getOpcode()), MF.getName(), CPol));
+          break;
         }
 
         const int64_t InstOffset =
-            namedImmOr0(MI, llvm::AMDGPU::OpName::offset);
+            namedImmOr0(*MI, llvm::AMDGPU::OpName::offset);
         const llvm::MachineOperand *VAddr =
-            findNamedOp(MI, llvm::AMDGPU::OpName::vaddr);
+            findNamedOp(*MI, llvm::AMDGPU::OpName::vaddr);
         const llvm::MachineOperand *SAddr =
-            findNamedOp(MI, llvm::AMDGPU::OpName::saddr);
+            findNamedOp(*MI, llvm::AMDGPU::OpName::saddr);
         const llvm::MachineOperand *SOffset =
-            findNamedOp(MI, llvm::AMDGPU::OpName::soffset);
+            findNamedOp(*MI, llvm::AMDGPU::OpName::soffset);
         const llvm::MachineOperand *SRsrc =
-            findNamedOp(MI, llvm::AMDGPU::OpName::srsrc);
-        // The data operand's name is not uniform across the three classes: a
-        // FLAT or SCRATCH load defines `vdst`, while a MUBUF load defines
-        // `vdata` --- the same name its store reads. Try both rather than
-        // keying off the direction.
+            findNamedOp(*MI, llvm::AMDGPU::OpName::srsrc);
         const llvm::MachineOperand *Data =
-            findNamedOp(MI, llvm::AMDGPU::OpName::vdst);
+            findNamedOp(*MI, llvm::AMDGPU::OpName::vdst);
         if (!Data)
-          Data = findNamedOp(MI, llvm::AMDGPU::OpName::vdata);
+          Data = findNamedOp(*MI, llvm::AMDGPU::OpName::vdata);
         if (!Data || !Data->isReg() || !Data->getReg()) {
           Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
               "RebaseAppScratchAccessesPass: '{0}' in '{1}' has no data "
               "register operand to re-issue through.",
-              Name, MF.getName()));
-          return;
+              TII.getName(MI->getOpcode()), MF.getName()));
+          break;
         }
 
-        /// An address operand that may be absent, an immediate, or a register.
         auto addrArg = [&](const llvm::MachineOperand *Op,
                            llvm::Type *Ty) -> PayloadArg {
           if (!Op)
@@ -1000,58 +946,63 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
           return RegArg{Op->getReg().asMCReg(), Ty};
         };
 
-        /// The \p I -th 32-bit channel of the data operand.
         const llvm::MCRegister DataReg = Data->getReg().asMCReg();
-        auto dataChannel = [&](unsigned I) -> llvm::MCRegister {
-          if (D->NumDwords <= 1)
+        auto channel = [&](unsigned I, unsigned N) -> llvm::MCRegister {
+          if (N <= 1)
             return DataReg;
           return TRI.getSubReg(DataReg,
                                llvm::SIRegisterInfo::getSubRegFromChannel(I));
         };
 
-        // Every payload takes its data operands first --- the destination
-        // register ids a load writes back into, or the 32-bit channel values a
-        // store reads --- and its address operands after. The dword payloads
-        // always take four data slots; slots past the access width are unused
-        // and get a null register.
         llvm::SmallVector<PayloadArg, 10> Args;
-        if (D->NumDwords) {
-          for (unsigned I = 0; I != 4; ++I) {
-            if (I >= D->NumDwords) {
+
+        auto loadData = [&](unsigned N) {
+          for (unsigned I = 0; I < N; ++I)
+            Args.push_back(constI32(channel(I, N).id()));
+        };
+        auto storeData = [&](unsigned N) {
+          for (unsigned I = 0; I < N; ++I)
+            Args.push_back(PayloadArg{RegArg{channel(I, N), I32}});
+        };
+        auto subLoadData = [&]() { Args.push_back(constI32(DataReg.id())); };
+        auto subStoreData = [&]() {
+          Args.push_back(PayloadArg{RegArg{DataReg, I32}});
+        };
+        auto bufferStoreData = [&](unsigned N) {
+          for (unsigned I = 0; I < 4; ++I) {
+            if (I >= N) {
               Args.push_back(constI32(0));
               continue;
             }
-            Args.push_back(D->IsStore
-                               ? PayloadArg{RegArg{dataChannel(I), I32}}
-                               : constI32(dataChannel(I).id()));
+            Args.push_back(PayloadArg{RegArg{channel(I, N), I32}});
           }
-        } else {
-          Args.push_back(D->IsStore ? PayloadArg{RegArg{DataReg, I32}}
-                                    : constI32(DataReg.id()));
-        }
+        };
 
-        switch (D->Class) {
-        case AccessDesc::Kind::Scratch:
-          Args.push_back(addrArg(VAddr, I32));
-          Args.push_back(addrArg(SAddr, I32));
+        auto scratchVaddr = [&]() {
+          Args.push_back(RegArg{VAddr->getReg().asMCReg(), I32});
           Args.push_back(constI32(InstOffset));
-          break;
-        case AccessDesc::Kind::Flat:
+        };
+        auto scratchSaddr = [&]() {
+          Args.push_back(RegArg{SAddr->getReg().asMCReg(), I32});
+          Args.push_back(constI32(InstOffset));
+        };
+        auto scratchSt = [&]() {
+          Args.push_back(constI32(InstOffset));
+        };
+        auto scratchSvs = [&]() {
+          Args.push_back(RegArg{VAddr->getReg().asMCReg(), I32});
+          Args.push_back(RegArg{SAddr->getReg().asMCReg(), I32});
+          Args.push_back(constI32(InstOffset));
+        };
+
+        auto flatAddr = [&]() {
           Args.push_back(addrArg(VAddr, I64));
           Args.push_back(constI32(InstOffset));
-          break;
-        case AccessDesc::Kind::Buffer: {
-          if (!SRsrc || !SRsrc->isReg() || !SRsrc->getReg()) {
-            Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
-                "RebaseAppScratchAccessesPass: '{0}' in '{1}' has no resource "
-                "descriptor operand.",
-                Name, MF.getName()));
-            return;
-          }
+        };
+
+        auto bufferOffen = [&]() {
           const llvm::MCRegister Rsrc = SRsrc->getReg().asMCReg();
           Args.push_back(RegArg{Rsrc, RsrcTy});
-          // Words 0 and 1 again, as plain integers: the runtime scratch test
-          // needs the V#'s 48-bit base and __amdgpu_buffer_rsrc_t is opaque.
           Args.push_back(
               RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub0), I32});
           Args.push_back(
@@ -1059,25 +1010,448 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
           Args.push_back(addrArg(VAddr, I32));
           Args.push_back(addrArg(SOffset, I32));
           Args.push_back(constI32(InstOffset));
+        };
+        auto bufferOffset = [&]() {
+          const llvm::MCRegister Rsrc = SRsrc->getReg().asMCReg();
+          Args.push_back(RegArg{Rsrc, RsrcTy});
+          Args.push_back(
+              RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub0), I32});
+          Args.push_back(
+              RegArg{TRI.getSubReg(Rsrc, llvm::AMDGPU::sub1), I32});
+          Args.push_back(addrArg(SOffset, I32));
+          Args.push_back(constI32(InstOffset));
+        };
+
+        llvm::Expected<llvm::Function *> HookOrErr =
+            llvm::make_error<llvm::StringError>(
+                "unreachable", llvm::inconvertibleErrorCode());
+
+        switch (MI->getOpcode()) {
+        // ---- Scratch loads ----
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORD:
+          loadData(1); scratchVaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadB32Vaddr);
           break;
-        }
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORD_SADDR:
+          loadData(1); scratchSaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadB32Saddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORD_ST:
+          loadData(1); scratchSt();
+          HookOrErr = hookFor(&Payloads::scratchLoadB32St);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORD_SVS:
+          loadData(1); scratchSvs();
+          HookOrErr = hookFor(&Payloads::scratchLoadB32Svs);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX2:
+          loadData(2); scratchVaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadB64Vaddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX2_SADDR:
+          loadData(2); scratchSaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadB64Saddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX2_ST:
+          loadData(2); scratchSt();
+          HookOrErr = hookFor(&Payloads::scratchLoadB64St);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX2_SVS:
+          loadData(2); scratchSvs();
+          HookOrErr = hookFor(&Payloads::scratchLoadB64Svs);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX3:
+          loadData(3); scratchVaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadB96Vaddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX3_SADDR:
+          loadData(3); scratchSaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadB96Saddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX3_ST:
+          loadData(3); scratchSt();
+          HookOrErr = hookFor(&Payloads::scratchLoadB96St);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX3_SVS:
+          loadData(3); scratchSvs();
+          HookOrErr = hookFor(&Payloads::scratchLoadB96Svs);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX4:
+          loadData(4); scratchVaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadB128Vaddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX4_SADDR:
+          loadData(4); scratchSaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadB128Saddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX4_ST:
+          loadData(4); scratchSt();
+          HookOrErr = hookFor(&Payloads::scratchLoadB128St);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_DWORDX4_SVS:
+          loadData(4); scratchSvs();
+          HookOrErr = hookFor(&Payloads::scratchLoadB128Svs);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_UBYTE:
+          subLoadData(); scratchVaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadU8Vaddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_UBYTE_SADDR:
+          subLoadData(); scratchSaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadU8Saddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_UBYTE_ST:
+          subLoadData(); scratchSt();
+          HookOrErr = hookFor(&Payloads::scratchLoadU8St);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_UBYTE_SVS:
+          subLoadData(); scratchSvs();
+          HookOrErr = hookFor(&Payloads::scratchLoadU8Svs);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_SBYTE:
+          subLoadData(); scratchVaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadI8Vaddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_SBYTE_SADDR:
+          subLoadData(); scratchSaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadI8Saddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_SBYTE_ST:
+          subLoadData(); scratchSt();
+          HookOrErr = hookFor(&Payloads::scratchLoadI8St);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_SBYTE_SVS:
+          subLoadData(); scratchSvs();
+          HookOrErr = hookFor(&Payloads::scratchLoadI8Svs);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_USHORT:
+          subLoadData(); scratchVaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadU16Vaddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_USHORT_SADDR:
+          subLoadData(); scratchSaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadU16Saddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_USHORT_ST:
+          subLoadData(); scratchSt();
+          HookOrErr = hookFor(&Payloads::scratchLoadU16St);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_USHORT_SVS:
+          subLoadData(); scratchSvs();
+          HookOrErr = hookFor(&Payloads::scratchLoadU16Svs);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_SSHORT:
+          subLoadData(); scratchVaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadI16Vaddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_SSHORT_SADDR:
+          subLoadData(); scratchSaddr();
+          HookOrErr = hookFor(&Payloads::scratchLoadI16Saddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_SSHORT_ST:
+          subLoadData(); scratchSt();
+          HookOrErr = hookFor(&Payloads::scratchLoadI16St);
+          break;
+        case llvm::AMDGPU::SCRATCH_LOAD_SSHORT_SVS:
+          subLoadData(); scratchSvs();
+          HookOrErr = hookFor(&Payloads::scratchLoadI16Svs);
+          break;
+        // ---- Scratch stores ----
+        case llvm::AMDGPU::SCRATCH_STORE_DWORD:
+          storeData(1); scratchVaddr();
+          HookOrErr = hookFor(&Payloads::scratchStoreB32Vaddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORD_SADDR:
+          storeData(1); scratchSaddr();
+          HookOrErr = hookFor(&Payloads::scratchStoreB32Saddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORD_ST:
+          storeData(1); scratchSt();
+          HookOrErr = hookFor(&Payloads::scratchStoreB32St);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORD_SVS:
+          storeData(1); scratchSvs();
+          HookOrErr = hookFor(&Payloads::scratchStoreB32Svs);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORDX2:
+          storeData(2); scratchVaddr();
+          HookOrErr = hookFor(&Payloads::scratchStoreB64Vaddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORDX2_SADDR:
+          storeData(2); scratchSaddr();
+          HookOrErr = hookFor(&Payloads::scratchStoreB64Saddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORDX2_ST:
+          storeData(2); scratchSt();
+          HookOrErr = hookFor(&Payloads::scratchStoreB64St);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORDX2_SVS:
+          storeData(2); scratchSvs();
+          HookOrErr = hookFor(&Payloads::scratchStoreB64Svs);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORDX3:
+          storeData(3); scratchVaddr();
+          HookOrErr = hookFor(&Payloads::scratchStoreB96Vaddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORDX3_SADDR:
+          storeData(3); scratchSaddr();
+          HookOrErr = hookFor(&Payloads::scratchStoreB96Saddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORDX3_ST:
+          storeData(3); scratchSt();
+          HookOrErr = hookFor(&Payloads::scratchStoreB96St);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORDX3_SVS:
+          storeData(3); scratchSvs();
+          HookOrErr = hookFor(&Payloads::scratchStoreB96Svs);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORDX4:
+          storeData(4); scratchVaddr();
+          HookOrErr = hookFor(&Payloads::scratchStoreB128Vaddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORDX4_SADDR:
+          storeData(4); scratchSaddr();
+          HookOrErr = hookFor(&Payloads::scratchStoreB128Saddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORDX4_ST:
+          storeData(4); scratchSt();
+          HookOrErr = hookFor(&Payloads::scratchStoreB128St);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_DWORDX4_SVS:
+          storeData(4); scratchSvs();
+          HookOrErr = hookFor(&Payloads::scratchStoreB128Svs);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_BYTE:
+          subStoreData(); scratchVaddr();
+          HookOrErr = hookFor(&Payloads::scratchStoreB8Vaddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_BYTE_SADDR:
+          subStoreData(); scratchSaddr();
+          HookOrErr = hookFor(&Payloads::scratchStoreB8Saddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_BYTE_ST:
+          subStoreData(); scratchSt();
+          HookOrErr = hookFor(&Payloads::scratchStoreB8St);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_BYTE_SVS:
+          subStoreData(); scratchSvs();
+          HookOrErr = hookFor(&Payloads::scratchStoreB8Svs);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_SHORT:
+          subStoreData(); scratchVaddr();
+          HookOrErr = hookFor(&Payloads::scratchStoreB16Vaddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_SHORT_SADDR:
+          subStoreData(); scratchSaddr();
+          HookOrErr = hookFor(&Payloads::scratchStoreB16Saddr);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_SHORT_ST:
+          subStoreData(); scratchSt();
+          HookOrErr = hookFor(&Payloads::scratchStoreB16St);
+          break;
+        case llvm::AMDGPU::SCRATCH_STORE_SHORT_SVS:
+          subStoreData(); scratchSvs();
+          HookOrErr = hookFor(&Payloads::scratchStoreB16Svs);
+          break;
+        // ---- Flat loads ----
+        case llvm::AMDGPU::FLAT_LOAD_DWORD:
+          loadData(1); flatAddr();
+          HookOrErr = hookFor(&Payloads::flatLoadB32);
+          break;
+        case llvm::AMDGPU::FLAT_LOAD_DWORDX2:
+          loadData(2); flatAddr();
+          HookOrErr = hookFor(&Payloads::flatLoadB64);
+          break;
+        case llvm::AMDGPU::FLAT_LOAD_DWORDX3:
+          loadData(3); flatAddr();
+          HookOrErr = hookFor(&Payloads::flatLoadB96);
+          break;
+        case llvm::AMDGPU::FLAT_LOAD_DWORDX4:
+          loadData(4); flatAddr();
+          HookOrErr = hookFor(&Payloads::flatLoadB128);
+          break;
+        case llvm::AMDGPU::FLAT_LOAD_UBYTE:
+          subLoadData(); flatAddr();
+          HookOrErr = hookFor(&Payloads::flatLoadU8);
+          break;
+        case llvm::AMDGPU::FLAT_LOAD_SBYTE:
+          subLoadData(); flatAddr();
+          HookOrErr = hookFor(&Payloads::flatLoadI8);
+          break;
+        case llvm::AMDGPU::FLAT_LOAD_USHORT:
+          subLoadData(); flatAddr();
+          HookOrErr = hookFor(&Payloads::flatLoadU16);
+          break;
+        case llvm::AMDGPU::FLAT_LOAD_SSHORT:
+          subLoadData(); flatAddr();
+          HookOrErr = hookFor(&Payloads::flatLoadI16);
+          break;
+        // ---- Flat stores ----
+        case llvm::AMDGPU::FLAT_STORE_DWORD:
+          storeData(1); flatAddr();
+          HookOrErr = hookFor(&Payloads::flatStoreB32);
+          break;
+        case llvm::AMDGPU::FLAT_STORE_DWORDX2:
+          storeData(2); flatAddr();
+          HookOrErr = hookFor(&Payloads::flatStoreB64);
+          break;
+        case llvm::AMDGPU::FLAT_STORE_DWORDX3:
+          storeData(3); flatAddr();
+          HookOrErr = hookFor(&Payloads::flatStoreB96);
+          break;
+        case llvm::AMDGPU::FLAT_STORE_DWORDX4:
+          storeData(4); flatAddr();
+          HookOrErr = hookFor(&Payloads::flatStoreB128);
+          break;
+        case llvm::AMDGPU::FLAT_STORE_BYTE:
+          subStoreData(); flatAddr();
+          HookOrErr = hookFor(&Payloads::flatStoreB8);
+          break;
+        case llvm::AMDGPU::FLAT_STORE_SHORT:
+          subStoreData(); flatAddr();
+          HookOrErr = hookFor(&Payloads::flatStoreB16);
+          break;
+        // ---- Buffer loads (OFFEN) ----
+        case llvm::AMDGPU::BUFFER_LOAD_DWORD_OFFEN:
+          loadData(1); bufferOffen();
+          HookOrErr = hookFor(&Payloads::bufferLoadB32Offen);
+          break;
+        case llvm::AMDGPU::BUFFER_LOAD_DWORDX2_OFFEN:
+          loadData(2); bufferOffen();
+          HookOrErr = hookFor(&Payloads::bufferLoadB64Offen);
+          break;
+        case llvm::AMDGPU::BUFFER_LOAD_DWORDX3_OFFEN:
+          loadData(3); bufferOffen();
+          HookOrErr = hookFor(&Payloads::bufferLoadB96Offen);
+          break;
+        case llvm::AMDGPU::BUFFER_LOAD_DWORDX4_OFFEN:
+          loadData(4); bufferOffen();
+          HookOrErr = hookFor(&Payloads::bufferLoadB128Offen);
+          break;
+        case llvm::AMDGPU::BUFFER_LOAD_UBYTE_OFFEN:
+          subLoadData(); bufferOffen();
+          HookOrErr = hookFor(&Payloads::bufferLoadU8Offen);
+          break;
+        case llvm::AMDGPU::BUFFER_LOAD_SBYTE_OFFEN:
+          subLoadData(); bufferOffen();
+          HookOrErr = hookFor(&Payloads::bufferLoadI8Offen);
+          break;
+        case llvm::AMDGPU::BUFFER_LOAD_USHORT_OFFEN:
+          subLoadData(); bufferOffen();
+          HookOrErr = hookFor(&Payloads::bufferLoadU16Offen);
+          break;
+        case llvm::AMDGPU::BUFFER_LOAD_SSHORT_OFFEN:
+          subLoadData(); bufferOffen();
+          HookOrErr = hookFor(&Payloads::bufferLoadI16Offen);
+          break;
+        // ---- Buffer loads (OFFSET) ----
+        case llvm::AMDGPU::BUFFER_LOAD_DWORD_OFFSET:
+          loadData(1); bufferOffset();
+          HookOrErr = hookFor(&Payloads::bufferLoadB32Offset);
+          break;
+        case llvm::AMDGPU::BUFFER_LOAD_DWORDX2_OFFSET:
+          loadData(2); bufferOffset();
+          HookOrErr = hookFor(&Payloads::bufferLoadB64Offset);
+          break;
+        case llvm::AMDGPU::BUFFER_LOAD_DWORDX3_OFFSET:
+          loadData(3); bufferOffset();
+          HookOrErr = hookFor(&Payloads::bufferLoadB96Offset);
+          break;
+        case llvm::AMDGPU::BUFFER_LOAD_DWORDX4_OFFSET:
+          loadData(4); bufferOffset();
+          HookOrErr = hookFor(&Payloads::bufferLoadB128Offset);
+          break;
+        case llvm::AMDGPU::BUFFER_LOAD_UBYTE_OFFSET:
+          subLoadData(); bufferOffset();
+          HookOrErr = hookFor(&Payloads::bufferLoadU8Offset);
+          break;
+        case llvm::AMDGPU::BUFFER_LOAD_SBYTE_OFFSET:
+          subLoadData(); bufferOffset();
+          HookOrErr = hookFor(&Payloads::bufferLoadI8Offset);
+          break;
+        case llvm::AMDGPU::BUFFER_LOAD_USHORT_OFFSET:
+          subLoadData(); bufferOffset();
+          HookOrErr = hookFor(&Payloads::bufferLoadU16Offset);
+          break;
+        case llvm::AMDGPU::BUFFER_LOAD_SSHORT_OFFSET:
+          subLoadData(); bufferOffset();
+          HookOrErr = hookFor(&Payloads::bufferLoadI16Offset);
+          break;
+        // ---- Buffer stores (OFFEN) ----
+        case llvm::AMDGPU::BUFFER_STORE_DWORD_OFFEN:
+          bufferStoreData(1); bufferOffen();
+          HookOrErr = hookFor(&Payloads::bufferStoreB32Offen);
+          break;
+        case llvm::AMDGPU::BUFFER_STORE_DWORDX2_OFFEN:
+          bufferStoreData(2); bufferOffen();
+          HookOrErr = hookFor(&Payloads::bufferStoreB64Offen);
+          break;
+        case llvm::AMDGPU::BUFFER_STORE_DWORDX3_OFFEN:
+          bufferStoreData(3); bufferOffen();
+          HookOrErr = hookFor(&Payloads::bufferStoreB96Offen);
+          break;
+        case llvm::AMDGPU::BUFFER_STORE_DWORDX4_OFFEN:
+          bufferStoreData(4); bufferOffen();
+          HookOrErr = hookFor(&Payloads::bufferStoreB128Offen);
+          break;
+        case llvm::AMDGPU::BUFFER_STORE_BYTE_OFFEN:
+          subStoreData(); bufferOffen();
+          HookOrErr = hookFor(&Payloads::bufferStoreB8Offen);
+          break;
+        case llvm::AMDGPU::BUFFER_STORE_SHORT_OFFEN:
+          subStoreData(); bufferOffen();
+          HookOrErr = hookFor(&Payloads::bufferStoreB16Offen);
+          break;
+        // ---- Buffer stores (OFFSET) ----
+        case llvm::AMDGPU::BUFFER_STORE_DWORD_OFFSET:
+          bufferStoreData(1); bufferOffset();
+          HookOrErr = hookFor(&Payloads::bufferStoreB32Offset);
+          break;
+        case llvm::AMDGPU::BUFFER_STORE_DWORDX2_OFFSET:
+          bufferStoreData(2); bufferOffset();
+          HookOrErr = hookFor(&Payloads::bufferStoreB64Offset);
+          break;
+        case llvm::AMDGPU::BUFFER_STORE_DWORDX3_OFFSET:
+          bufferStoreData(3); bufferOffset();
+          HookOrErr = hookFor(&Payloads::bufferStoreB96Offset);
+          break;
+        case llvm::AMDGPU::BUFFER_STORE_DWORDX4_OFFSET:
+          bufferStoreData(4); bufferOffset();
+          HookOrErr = hookFor(&Payloads::bufferStoreB128Offset);
+          break;
+        case llvm::AMDGPU::BUFFER_STORE_BYTE_OFFSET:
+          subStoreData(); bufferOffset();
+          HookOrErr = hookFor(&Payloads::bufferStoreB8Offset);
+          break;
+        case llvm::AMDGPU::BUFFER_STORE_SHORT_OFFSET:
+          subStoreData(); bufferOffset();
+          HookOrErr = hookFor(&Payloads::bufferStoreB16Offset);
+          break;
+        default:
+          if (TII.isFLATScratch(MI)) {
+            Err = LUTHIER_MAKE_GENERIC_ERROR(llvm::formatv(
+                "RebaseAppScratchAccessesPass: '{0}' in '{1}' addresses the "
+                "wavefront's private segment but is not a form this pass knows "
+                "how to re-issue. Add a payload for it in "
+                "RebaseAppScratchAccessesPass.hip.",
+                TII.getName(MI.getOpcode()), MF.getName()));
+            break;
+          }
+          continue;
         }
 
-        auto HookOrErr = selectHook(*D);
         if (!HookOrErr) {
           Err = HookOrErr.takeError();
-          return;
+          break;
         }
         auto PayloadOrErr =
             P.createInjectedPayload(**HookOrErr, MI, IFAM, Args);
         if (!PayloadOrErr) {
           Err = PayloadOrErr.takeError();
-          return;
+          break;
         }
         ToErase.push_back(&MI);
-      }
-    }
-  });
+  }
 
   if (Err) {
     Ctx.emitError(llvm::toString(std::move(Err)));
