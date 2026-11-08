@@ -199,6 +199,17 @@ using v2u32 = std::uint32_t __attribute__((ext_vector_type(2)));
 using v3u32 = std::uint32_t __attribute__((ext_vector_type(3)));
 using v4u32 = std::uint32_t __attribute__((ext_vector_type(4)));
 
+
+__attribute__((device)) inline void waitScratchLoad() {
+#if defined(__GFX12__) || defined(__GFX13__)
+  __builtin_amdgcn_s_wait_loadcnt(0);
+#elif defined(__GFX10__) || defined(__GFX11__)
+  __builtin_amdgcn_s_waitcnt(0x3F70);
+#else
+  __builtin_amdgcn_s_waitcnt(0x1F70);
+#endif
+}
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -267,35 +278,38 @@ using v4u32 = std::uint32_t __attribute__((ext_vector_type(4)));
 
 namespace luthier::payloads {
 __attribute__((device, used)) void
-scratchLoadB32Vaddr(llvm::MCRegister D0, std::uint32_t VAddr,
+scratchLoadB32Vaddr(llvm::MCRegister Dst, std::uint32_t VAddr,
                     std::int32_t InstOffset) {
   const std::uint32_t DV =
       VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_B32 " %0, %1, off" : "=v"(Result) : "v"(DV));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
 __attribute__((device, used)) void
-scratchLoadB32Saddr(llvm::MCRegister D0, std::uint32_t SAddr,
+scratchLoadB32Saddr(llvm::MCRegister Dst, std::uint32_t SAddr,
                     std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_B32 " %0, off, %1" : "=v"(Result) : "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadB32St(llvm::MCRegister D0,
+__attribute__((device, used)) void scratchLoadB32St(llvm::MCRegister Dst,
                                                     std::int32_t InstOffset) {
   const std::uint32_t S =
       static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_B32 " %0, off, %1" : "=v"(Result) : "s"(S));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadB32Svs(llvm::MCRegister D0,
+__attribute__((device, used)) void scratchLoadB32Svs(llvm::MCRegister Dst,
                                                      std::uint32_t VAddr,
                                                      std::uint32_t SAddr,
                                                      std::int32_t InstOffset) {
@@ -305,197 +319,181 @@ __attribute__((device, used)) void scratchLoadB32Svs(llvm::MCRegister D0,
   asm volatile(MN_SCRATCH_LOAD_B32 " %0, %1, %2"
                : "=v"(Result)
                : "v"(VAddr), "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
 __attribute__((device, used)) void
-scratchLoadB64Vaddr(llvm::MCRegister D0, llvm::MCRegister D1,
-                    std::uint32_t VAddr, std::int32_t InstOffset) {
+scratchLoadB64Vaddr(llvm::MCRegister Dst, std::uint32_t VAddr,
+                    std::int32_t InstOffset) {
   const std::uint32_t DV =
       VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   v2u32 Result;
   asm volatile(MN_SCRATCH_LOAD_B64 " %0, %1, off" : "=v"(Result) : "v"(DV));
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  waitScratchLoad();
+  luthier::writeReg<v2u32>(Dst, Result);
 }
 
 __attribute__((device, used)) void
-scratchLoadB64Saddr(llvm::MCRegister D0, llvm::MCRegister D1,
-                    std::uint32_t SAddr, std::int32_t InstOffset) {
+scratchLoadB64Saddr(llvm::MCRegister Dst, std::uint32_t SAddr,
+                    std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   v2u32 Result;
   asm volatile(MN_SCRATCH_LOAD_B64 " %0, off, %1" : "=v"(Result) : "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  waitScratchLoad();
+  luthier::writeReg<v2u32>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadB64St(llvm::MCRegister D0,
-                                                    llvm::MCRegister D1,
+__attribute__((device, used)) void scratchLoadB64St(llvm::MCRegister Dst,
                                                     std::int32_t InstOffset) {
   const std::uint32_t S =
       static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   v2u32 Result;
   asm volatile(MN_SCRATCH_LOAD_B64 " %0, off, %1" : "=v"(Result) : "s"(S));
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  waitScratchLoad();
+  luthier::writeReg<v2u32>(Dst, Result);
 }
 
-__attribute__((device, used)) void
-scratchLoadB64Svs(llvm::MCRegister D0, llvm::MCRegister D1, std::uint32_t VAddr,
-                  std::uint32_t SAddr, std::int32_t InstOffset) {
+__attribute__((device, used)) void scratchLoadB64Svs(llvm::MCRegister Dst,
+                                                     std::uint32_t VAddr,
+                                                     std::uint32_t SAddr,
+                                                     std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   v2u32 Result;
   asm volatile(MN_SCRATCH_LOAD_B64 " %0, %1, %2"
                : "=v"(Result)
                : "v"(VAddr), "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  waitScratchLoad();
+  luthier::writeReg<v2u32>(Dst, Result);
 }
 
 __attribute__((device, used)) void
-scratchLoadB96Vaddr(llvm::MCRegister D0, llvm::MCRegister D1,
-                    llvm::MCRegister D2, std::uint32_t VAddr,
+scratchLoadB96Vaddr(llvm::MCRegister Dst, std::uint32_t VAddr,
                     std::int32_t InstOffset) {
   const std::uint32_t DV =
       VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   v3u32 Result;
   asm volatile(MN_SCRATCH_LOAD_B96 " %0, %1, off" : "=v"(Result) : "v"(DV));
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
-  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+  waitScratchLoad();
+  luthier::writeReg<v3u32>(Dst, Result);
 }
 
 __attribute__((device, used)) void
-scratchLoadB96Saddr(llvm::MCRegister D0, llvm::MCRegister D1,
-                    llvm::MCRegister D2, std::uint32_t SAddr,
+scratchLoadB96Saddr(llvm::MCRegister Dst, std::uint32_t SAddr,
                     std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   v3u32 Result;
   asm volatile(MN_SCRATCH_LOAD_B96 " %0, off, %1" : "=v"(Result) : "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
-  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+  waitScratchLoad();
+  luthier::writeReg<v3u32>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadB96St(llvm::MCRegister D0,
-                                                    llvm::MCRegister D1,
-                                                    llvm::MCRegister D2,
+__attribute__((device, used)) void scratchLoadB96St(llvm::MCRegister Dst,
                                                     std::int32_t InstOffset) {
   const std::uint32_t S =
       static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   v3u32 Result;
   asm volatile(MN_SCRATCH_LOAD_B96 " %0, off, %1" : "=v"(Result) : "s"(S));
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
-  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+  waitScratchLoad();
+  luthier::writeReg<v3u32>(Dst, Result);
 }
 
-__attribute__((device, used)) void
-scratchLoadB96Svs(llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
-                  std::uint32_t VAddr, std::uint32_t SAddr,
-                  std::int32_t InstOffset) {
+__attribute__((device, used)) void scratchLoadB96Svs(llvm::MCRegister Dst,
+                                                     std::uint32_t VAddr,
+                                                     std::uint32_t SAddr,
+                                                     std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   v3u32 Result;
   asm volatile(MN_SCRATCH_LOAD_B96 " %0, %1, %2"
                : "=v"(Result)
                : "v"(VAddr), "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
-  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+  waitScratchLoad();
+  luthier::writeReg<v3u32>(Dst, Result);
 }
 
 __attribute__((device, used)) void
-scratchLoadB128Vaddr(llvm::MCRegister D0, llvm::MCRegister D1,
-                     llvm::MCRegister D2, llvm::MCRegister D3,
-                     std::uint32_t VAddr, std::int32_t InstOffset) {
+scratchLoadB128Vaddr(llvm::MCRegister Dst, std::uint32_t VAddr,
+                     std::int32_t InstOffset) {
   const std::uint32_t DV =
       VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   v4u32 Result;
   asm volatile(MN_SCRATCH_LOAD_B128 " %0, %1, off" : "=v"(Result) : "v"(DV));
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
-  luthier::writeReg<std::uint32_t>(D2, Result[2]);
-  luthier::writeReg<std::uint32_t>(D3, Result[3]);
+  waitScratchLoad();
+  luthier::writeReg<v4u32>(Dst, Result);
 }
 
 __attribute__((device, used)) void
-scratchLoadB128Saddr(llvm::MCRegister D0, llvm::MCRegister D1,
-                     llvm::MCRegister D2, llvm::MCRegister D3,
-                     std::uint32_t SAddr, std::int32_t InstOffset) {
+scratchLoadB128Saddr(llvm::MCRegister Dst, std::uint32_t SAddr,
+                     std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   v4u32 Result;
   asm volatile(MN_SCRATCH_LOAD_B128 " %0, off, %1" : "=v"(Result) : "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
-  luthier::writeReg<std::uint32_t>(D2, Result[2]);
-  luthier::writeReg<std::uint32_t>(D3, Result[3]);
+  waitScratchLoad();
+  luthier::writeReg<v4u32>(Dst, Result);
 }
 
-__attribute__((device, used)) void
-scratchLoadB128St(llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
-                  llvm::MCRegister D3, std::int32_t InstOffset) {
+__attribute__((device, used)) void scratchLoadB128St(llvm::MCRegister Dst,
+                                                     std::int32_t InstOffset) {
   const std::uint32_t S =
       static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   v4u32 Result;
   asm volatile(MN_SCRATCH_LOAD_B128 " %0, off, %1" : "=v"(Result) : "s"(S));
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
-  luthier::writeReg<std::uint32_t>(D2, Result[2]);
-  luthier::writeReg<std::uint32_t>(D3, Result[3]);
+  waitScratchLoad();
+  luthier::writeReg<v4u32>(Dst, Result);
 }
 
-__attribute__((device, used)) void
-scratchLoadB128Svs(llvm::MCRegister D0, llvm::MCRegister D1,
-                   llvm::MCRegister D2, llvm::MCRegister D3,
-                   std::uint32_t VAddr, std::uint32_t SAddr,
-                   std::int32_t InstOffset) {
+__attribute__((device, used)) void scratchLoadB128Svs(llvm::MCRegister Dst,
+                                                      std::uint32_t VAddr,
+                                                      std::uint32_t SAddr,
+                                                      std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   v4u32 Result;
   asm volatile(MN_SCRATCH_LOAD_B128 " %0, %1, %2"
                : "=v"(Result)
                : "v"(VAddr), "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
-  luthier::writeReg<std::uint32_t>(D2, Result[2]);
-  luthier::writeReg<std::uint32_t>(D3, Result[3]);
+  waitScratchLoad();
+  luthier::writeReg<v4u32>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadU8Vaddr(llvm::MCRegister D0,
+__attribute__((device, used)) void scratchLoadU8Vaddr(llvm::MCRegister Dst,
                                                       std::uint32_t VAddr,
                                                       std::int32_t InstOffset) {
   const std::uint32_t DV =
       VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_U8 " %0, %1, off" : "=v"(Result) : "v"(DV));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadU8Saddr(llvm::MCRegister D0,
+__attribute__((device, used)) void scratchLoadU8Saddr(llvm::MCRegister Dst,
                                                       std::uint32_t SAddr,
                                                       std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_U8 " %0, off, %1" : "=v"(Result) : "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadU8St(llvm::MCRegister D0,
+__attribute__((device, used)) void scratchLoadU8St(llvm::MCRegister Dst,
                                                    std::int32_t InstOffset) {
   const std::uint32_t S =
       static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_U8 " %0, off, %1" : "=v"(Result) : "s"(S));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadU8Svs(llvm::MCRegister D0,
+__attribute__((device, used)) void scratchLoadU8Svs(llvm::MCRegister Dst,
                                                     std::uint32_t VAddr,
                                                     std::uint32_t SAddr,
                                                     std::int32_t InstOffset) {
@@ -505,39 +503,43 @@ __attribute__((device, used)) void scratchLoadU8Svs(llvm::MCRegister D0,
   asm volatile(MN_SCRATCH_LOAD_U8 " %0, %1, %2"
                : "=v"(Result)
                : "v"(VAddr), "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadI8Vaddr(llvm::MCRegister D0,
+__attribute__((device, used)) void scratchLoadI8Vaddr(llvm::MCRegister Dst,
                                                       std::uint32_t VAddr,
                                                       std::int32_t InstOffset) {
   const std::uint32_t DV =
       VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_I8 " %0, %1, off" : "=v"(Result) : "v"(DV));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadI8Saddr(llvm::MCRegister D0,
+__attribute__((device, used)) void scratchLoadI8Saddr(llvm::MCRegister Dst,
                                                       std::uint32_t SAddr,
                                                       std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_I8 " %0, off, %1" : "=v"(Result) : "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadI8St(llvm::MCRegister D0,
+__attribute__((device, used)) void scratchLoadI8St(llvm::MCRegister Dst,
                                                    std::int32_t InstOffset) {
   const std::uint32_t S =
       static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_I8 " %0, off, %1" : "=v"(Result) : "s"(S));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadI8Svs(llvm::MCRegister D0,
+__attribute__((device, used)) void scratchLoadI8Svs(llvm::MCRegister Dst,
                                                     std::uint32_t VAddr,
                                                     std::uint32_t SAddr,
                                                     std::int32_t InstOffset) {
@@ -547,39 +549,43 @@ __attribute__((device, used)) void scratchLoadI8Svs(llvm::MCRegister D0,
   asm volatile(MN_SCRATCH_LOAD_I8 " %0, %1, %2"
                : "=v"(Result)
                : "v"(VAddr), "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
 __attribute__((device, used)) void
-scratchLoadU16Vaddr(llvm::MCRegister D0, std::uint32_t VAddr,
+scratchLoadU16Vaddr(llvm::MCRegister Dst, std::uint32_t VAddr,
                     std::int32_t InstOffset) {
   const std::uint32_t DV =
       VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_U16 " %0, %1, off" : "=v"(Result) : "v"(DV));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
 __attribute__((device, used)) void
-scratchLoadU16Saddr(llvm::MCRegister D0, std::uint32_t SAddr,
+scratchLoadU16Saddr(llvm::MCRegister Dst, std::uint32_t SAddr,
                     std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_U16 " %0, off, %1" : "=v"(Result) : "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadU16St(llvm::MCRegister D0,
+__attribute__((device, used)) void scratchLoadU16St(llvm::MCRegister Dst,
                                                     std::int32_t InstOffset) {
   const std::uint32_t S =
       static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_U16 " %0, off, %1" : "=v"(Result) : "s"(S));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadU16Svs(llvm::MCRegister D0,
+__attribute__((device, used)) void scratchLoadU16Svs(llvm::MCRegister Dst,
                                                      std::uint32_t VAddr,
                                                      std::uint32_t SAddr,
                                                      std::int32_t InstOffset) {
@@ -589,39 +595,43 @@ __attribute__((device, used)) void scratchLoadU16Svs(llvm::MCRegister D0,
   asm volatile(MN_SCRATCH_LOAD_U16 " %0, %1, %2"
                : "=v"(Result)
                : "v"(VAddr), "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
 __attribute__((device, used)) void
-scratchLoadI16Vaddr(llvm::MCRegister D0, std::uint32_t VAddr,
+scratchLoadI16Vaddr(llvm::MCRegister Dst, std::uint32_t VAddr,
                     std::int32_t InstOffset) {
   const std::uint32_t DV =
       VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_I16 " %0, %1, off" : "=v"(Result) : "v"(DV));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
 __attribute__((device, used)) void
-scratchLoadI16Saddr(llvm::MCRegister D0, std::uint32_t SAddr,
+scratchLoadI16Saddr(llvm::MCRegister Dst, std::uint32_t SAddr,
                     std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_I16 " %0, off, %1" : "=v"(Result) : "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadI16St(llvm::MCRegister D0,
+__attribute__((device, used)) void scratchLoadI16St(llvm::MCRegister Dst,
                                                     std::int32_t InstOffset) {
   const std::uint32_t S =
       static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
   std::uint32_t Result;
   asm volatile(MN_SCRATCH_LOAD_I16 " %0, off, %1" : "=v"(Result) : "s"(S));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
-__attribute__((device, used)) void scratchLoadI16Svs(llvm::MCRegister D0,
+__attribute__((device, used)) void scratchLoadI16Svs(llvm::MCRegister Dst,
                                                      std::uint32_t VAddr,
                                                      std::uint32_t SAddr,
                                                      std::int32_t InstOffset) {
@@ -631,7 +641,8 @@ __attribute__((device, used)) void scratchLoadI16Svs(llvm::MCRegister D0,
   asm volatile(MN_SCRATCH_LOAD_I16 " %0, %1, %2"
                : "=v"(Result)
                : "v"(VAddr), "s"(DS));
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  waitScratchLoad();
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
 __attribute__((device, used)) void
@@ -656,8 +667,7 @@ __attribute__((device, used)) void scratchStoreB32St(std::uint32_t V0,
                                                      std::int32_t InstOffset) {
   const std::uint32_t S =
       static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  std::uint32_t Data = V0;
-  asm volatile(MN_SCRATCH_STORE_B32 " %0, off, %1" : : "v"(Data), "s"(S));
+  asm volatile(MN_SCRATCH_STORE_B32 " %0, off, %1" : : "v"(V0), "s"(S));
 }
 
 __attribute__((device, used)) void scratchStoreB32Svs(std::uint32_t V0,
@@ -666,128 +676,104 @@ __attribute__((device, used)) void scratchStoreB32Svs(std::uint32_t V0,
                                                       std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  std::uint32_t Data = V0;
   asm volatile(MN_SCRATCH_STORE_B32 " %0, %1, %2"
                :
-               : "v"(Data), "v"(VAddr), "s"(DS));
+               : "v"(V0), "v"(VAddr), "s"(DS));
 }
 
 __attribute__((device, used)) void
-scratchStoreB64Vaddr(std::uint32_t V0, std::uint32_t V1, std::uint32_t VAddr,
-                     std::int32_t InstOffset) {
+scratchStoreB64Vaddr(v2u32 Src, std::uint32_t VAddr, std::int32_t InstOffset) {
   const std::uint32_t DV =
       VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  v2u32 Data = {V0, V1};
-  asm volatile(MN_SCRATCH_STORE_B64 " %0, %1, off" : : "v"(Data), "v"(DV));
+  asm volatile(MN_SCRATCH_STORE_B64 " %0, %1, off" : : "v"(Src), "v"(DV));
 }
 
 __attribute__((device, used)) void
-scratchStoreB64Saddr(std::uint32_t V0, std::uint32_t V1, std::uint32_t SAddr,
-                     std::int32_t InstOffset) {
+scratchStoreB64Saddr(v2u32 Src, std::uint32_t SAddr, std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  v2u32 Data = {V0, V1};
-  asm volatile(MN_SCRATCH_STORE_B64 " %0, off, %1" : : "v"(Data), "s"(DS));
+  asm volatile(MN_SCRATCH_STORE_B64 " %0, off, %1" : : "v"(Src), "s"(DS));
 }
 
-__attribute__((device, used)) void
-scratchStoreB64St(std::uint32_t V0, std::uint32_t V1, std::int32_t InstOffset) {
-  const std::uint32_t S =
-      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  v2u32 Data = {V0, V1};
-  asm volatile(MN_SCRATCH_STORE_B64 " %0, off, %1" : : "v"(Data), "s"(S));
-}
-
-__attribute__((device, used)) void
-scratchStoreB64Svs(std::uint32_t V0, std::uint32_t V1, std::uint32_t VAddr,
-                   std::uint32_t SAddr, std::int32_t InstOffset) {
-  const std::uint32_t DS =
-      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  v2u32 Data = {V0, V1};
-  asm volatile(MN_SCRATCH_STORE_B64 " %0, %1, %2"
-               :
-               : "v"(Data), "v"(VAddr), "s"(DS));
-}
-
-__attribute__((device, used)) void
-scratchStoreB96Vaddr(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
-                     std::uint32_t VAddr, std::int32_t InstOffset) {
-  const std::uint32_t DV =
-      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  v3u32 Data = {V0, V1, V2};
-  asm volatile(MN_SCRATCH_STORE_B96 " %0, %1, off" : : "v"(Data), "v"(DV));
-}
-
-__attribute__((device, used)) void
-scratchStoreB96Saddr(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
-                     std::uint32_t SAddr, std::int32_t InstOffset) {
-  const std::uint32_t DS =
-      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  v3u32 Data = {V0, V1, V2};
-  asm volatile(MN_SCRATCH_STORE_B96 " %0, off, %1" : : "v"(Data), "s"(DS));
-}
-
-__attribute__((device, used)) void scratchStoreB96St(std::uint32_t V0,
-                                                     std::uint32_t V1,
-                                                     std::uint32_t V2,
+__attribute__((device, used)) void scratchStoreB64St(v2u32 Src,
                                                      std::int32_t InstOffset) {
   const std::uint32_t S =
       static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  v3u32 Data = {V0, V1, V2};
-  asm volatile(MN_SCRATCH_STORE_B96 " %0, off, %1" : : "v"(Data), "s"(S));
+  asm volatile(MN_SCRATCH_STORE_B64 " %0, off, %1" : : "v"(Src), "s"(S));
 }
 
-__attribute__((device, used)) void
-scratchStoreB96Svs(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
-                   std::uint32_t VAddr, std::uint32_t SAddr,
-                   std::int32_t InstOffset) {
+__attribute__((device, used)) void scratchStoreB64Svs(v2u32 Src,
+                                                      std::uint32_t VAddr,
+                                                      std::uint32_t SAddr,
+                                                      std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  v3u32 Data = {V0, V1, V2};
-  asm volatile(MN_SCRATCH_STORE_B96 " %0, %1, %2"
+  asm volatile(MN_SCRATCH_STORE_B64 " %0, %1, %2"
                :
-               : "v"(Data), "v"(VAddr), "s"(DS));
+               : "v"(Src), "v"(VAddr), "s"(DS));
 }
 
 __attribute__((device, used)) void
-scratchStoreB128Vaddr(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
-                      std::uint32_t V3, std::uint32_t VAddr,
-                      std::int32_t InstOffset) {
+scratchStoreB96Vaddr(v3u32 Src, std::uint32_t VAddr, std::int32_t InstOffset) {
   const std::uint32_t DV =
       VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  v4u32 Data = {V0, V1, V2, V3};
-  asm volatile(MN_SCRATCH_STORE_B128 " %0, %1, off" : : "v"(Data), "v"(DV));
+  asm volatile(MN_SCRATCH_STORE_B96 " %0, %1, off" : : "v"(Src), "v"(DV));
 }
 
 __attribute__((device, used)) void
-scratchStoreB128Saddr(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
-                      std::uint32_t V3, std::uint32_t SAddr,
-                      std::int32_t InstOffset) {
+scratchStoreB96Saddr(v3u32 Src, std::uint32_t SAddr, std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  v4u32 Data = {V0, V1, V2, V3};
-  asm volatile(MN_SCRATCH_STORE_B128 " %0, off, %1" : : "v"(Data), "s"(DS));
+  asm volatile(MN_SCRATCH_STORE_B96 " %0, off, %1" : : "v"(Src), "s"(DS));
 }
 
-__attribute__((device, used)) void
-scratchStoreB128St(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
-                   std::uint32_t V3, std::int32_t InstOffset) {
+__attribute__((device, used)) void scratchStoreB96St(v3u32 Src,
+                                                     std::int32_t InstOffset) {
   const std::uint32_t S =
       static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  v4u32 Data = {V0, V1, V2, V3};
-  asm volatile(MN_SCRATCH_STORE_B128 " %0, off, %1" : : "v"(Data), "s"(S));
+  asm volatile(MN_SCRATCH_STORE_B96 " %0, off, %1" : : "v"(Src), "s"(S));
+}
+
+__attribute__((device, used)) void scratchStoreB96Svs(v3u32 Src,
+                                                      std::uint32_t VAddr,
+                                                      std::uint32_t SAddr,
+                                                      std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  asm volatile(MN_SCRATCH_STORE_B96 " %0, %1, %2"
+               :
+               : "v"(Src), "v"(VAddr), "s"(DS));
 }
 
 __attribute__((device, used)) void
-scratchStoreB128Svs(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
-                    std::uint32_t V3, std::uint32_t VAddr, std::uint32_t SAddr,
+scratchStoreB128Vaddr(v4u32 Src, std::uint32_t VAddr, std::int32_t InstOffset) {
+  const std::uint32_t DV =
+      VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  asm volatile(MN_SCRATCH_STORE_B128 " %0, %1, off" : : "v"(Src), "v"(DV));
+}
+
+__attribute__((device, used)) void
+scratchStoreB128Saddr(v4u32 Src, std::uint32_t SAddr, std::int32_t InstOffset) {
+  const std::uint32_t DS =
+      SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  asm volatile(MN_SCRATCH_STORE_B128 " %0, off, %1" : : "v"(Src), "s"(DS));
+}
+
+__attribute__((device, used)) void scratchStoreB128St(v4u32 Src,
+                                                      std::int32_t InstOffset) {
+  const std::uint32_t S =
+      static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
+  asm volatile(MN_SCRATCH_STORE_B128 " %0, off, %1" : : "v"(Src), "s"(S));
+}
+
+__attribute__((device, used)) void
+scratchStoreB128Svs(v4u32 Src, std::uint32_t VAddr, std::uint32_t SAddr,
                     std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  v4u32 Data = {V0, V1, V2, V3};
   asm volatile(MN_SCRATCH_STORE_B128 " %0, %1, %2"
                :
-               : "v"(Data), "v"(VAddr), "s"(DS));
+               : "v"(Src), "v"(VAddr), "s"(DS));
 }
 
 __attribute__((device, used)) void
@@ -795,8 +781,7 @@ scratchStoreB8Vaddr(std::uint32_t V0, std::uint32_t VAddr,
                     std::int32_t InstOffset) {
   const std::uint32_t DV =
       VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  std::uint32_t Data = V0;
-  asm volatile(MN_SCRATCH_STORE_B8 " %0, %1, off" : : "v"(Data), "v"(DV));
+  asm volatile(MN_SCRATCH_STORE_B8 " %0, %1, off" : : "v"(V0), "v"(DV));
 }
 
 __attribute__((device, used)) void
@@ -804,16 +789,14 @@ scratchStoreB8Saddr(std::uint32_t V0, std::uint32_t SAddr,
                     std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  std::uint32_t Data = V0;
-  asm volatile(MN_SCRATCH_STORE_B8 " %0, off, %1" : : "v"(Data), "s"(DS));
+  asm volatile(MN_SCRATCH_STORE_B8 " %0, off, %1" : : "v"(V0), "s"(DS));
 }
 
 __attribute__((device, used)) void scratchStoreB8St(std::uint32_t V0,
                                                     std::int32_t InstOffset) {
   const std::uint32_t S =
       static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  std::uint32_t Data = V0;
-  asm volatile(MN_SCRATCH_STORE_B8 " %0, off, %1" : : "v"(Data), "s"(S));
+  asm volatile(MN_SCRATCH_STORE_B8 " %0, off, %1" : : "v"(V0), "s"(S));
 }
 
 __attribute__((device, used)) void scratchStoreB8Svs(std::uint32_t V0,
@@ -822,10 +805,9 @@ __attribute__((device, used)) void scratchStoreB8Svs(std::uint32_t V0,
                                                      std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  std::uint32_t Data = V0;
   asm volatile(MN_SCRATCH_STORE_B8 " %0, %1, %2"
                :
-               : "v"(Data), "v"(VAddr), "s"(DS));
+               : "v"(V0), "v"(VAddr), "s"(DS));
 }
 
 __attribute__((device, used)) void
@@ -833,8 +815,7 @@ scratchStoreB16Vaddr(std::uint32_t V0, std::uint32_t VAddr,
                      std::int32_t InstOffset) {
   const std::uint32_t DV =
       VAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  std::uint32_t Data = V0;
-  asm volatile(MN_SCRATCH_STORE_B16 " %0, %1, off" : : "v"(Data), "v"(DV));
+  asm volatile(MN_SCRATCH_STORE_B16 " %0, %1, off" : : "v"(V0), "v"(DV));
 }
 
 __attribute__((device, used)) void
@@ -842,16 +823,14 @@ scratchStoreB16Saddr(std::uint32_t V0, std::uint32_t SAddr,
                      std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  std::uint32_t Data = V0;
-  asm volatile(MN_SCRATCH_STORE_B16 " %0, off, %1" : : "v"(Data), "s"(DS));
+  asm volatile(MN_SCRATCH_STORE_B16 " %0, off, %1" : : "v"(V0), "s"(DS));
 }
 
 __attribute__((device, used)) void scratchStoreB16St(std::uint32_t V0,
                                                      std::int32_t InstOffset) {
   const std::uint32_t S =
       static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  std::uint32_t Data = V0;
-  asm volatile(MN_SCRATCH_STORE_B16 " %0, off, %1" : : "v"(Data), "s"(S));
+  asm volatile(MN_SCRATCH_STORE_B16 " %0, off, %1" : : "v"(V0), "s"(S));
 }
 
 __attribute__((device, used)) void scratchStoreB16Svs(std::uint32_t V0,
@@ -860,14 +839,13 @@ __attribute__((device, used)) void scratchStoreB16Svs(std::uint32_t V0,
                                                       std::int32_t InstOffset) {
   const std::uint32_t DS =
       SAddr + static_cast<std::uint32_t>(InstOffset) + instrumentationReserve();
-  std::uint32_t Data = V0;
   asm volatile(MN_SCRATCH_STORE_B16 " %0, %1, %2"
                :
-               : "v"(Data), "v"(VAddr), "s"(DS));
+               : "v"(V0), "v"(VAddr), "s"(DS));
 }
 
 __attribute__((device, used)) void
-flatLoadB32(llvm::MCRegister D0, std::uint64_t Addr, std::int32_t InstOffset) {
+flatLoadB32(llvm::MCRegister Dst, std::uint64_t Addr, std::int32_t InstOffset) {
   const std::uint64_t FlatAddr =
       Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
   std::uint32_t Result;
@@ -880,13 +858,11 @@ flatLoadB32(llvm::MCRegister D0, std::uint64_t Addr, std::int32_t InstOffset) {
   } else {
     asm volatile(MN_FLAT_LOAD_B32 " %0, %1" : "=v"(Result) : "v"(FlatAddr));
   }
-  luthier::writeReg<std::uint32_t>(D0, Result);
+  luthier::writeReg<std::uint32_t>(Dst, Result);
 }
 
-__attribute__((device, used)) void flatLoadB64(llvm::MCRegister D0,
-                                               llvm::MCRegister D1,
-                                               std::uint64_t Addr,
-                                               std::int32_t InstOffset) {
+__attribute__((device, used)) void
+flatLoadB64(llvm::MCRegister Dst, std::uint64_t Addr, std::int32_t InstOffset) {
   const std::uint64_t FlatAddr =
       Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
   v2u32 Result;
@@ -899,13 +875,11 @@ __attribute__((device, used)) void flatLoadB64(llvm::MCRegister D0,
   } else {
     asm volatile(MN_FLAT_LOAD_B64 " %0, %1" : "=v"(Result) : "v"(FlatAddr));
   }
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
+  luthier::writeReg<v2u32>(Dst, Result);
 }
 
 __attribute__((device, used)) void
-flatLoadB96(llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
-            std::uint64_t Addr, std::int32_t InstOffset) {
+flatLoadB96(llvm::MCRegister Dst, std::uint64_t Addr, std::int32_t InstOffset) {
   const std::uint64_t FlatAddr =
       Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
   v3u32 Result;
@@ -918,14 +892,12 @@ flatLoadB96(llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
   } else {
     asm volatile(MN_FLAT_LOAD_B96 " %0, %1" : "=v"(Result) : "v"(FlatAddr));
   }
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
-  luthier::writeReg<std::uint32_t>(D2, Result[2]);
+  luthier::writeReg<v3u32>(Dst, Result);
 }
 
-__attribute__((device, used)) void
-flatLoadB128(llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
-             llvm::MCRegister D3, std::uint64_t Addr, std::int32_t InstOffset) {
+__attribute__((device, used)) void flatLoadB128(llvm::MCRegister Dst,
+                                                std::uint64_t Addr,
+                                                std::int32_t InstOffset) {
   const std::uint64_t FlatAddr =
       Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
   v4u32 Result;
@@ -938,10 +910,7 @@ flatLoadB128(llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
   } else {
     asm volatile(MN_FLAT_LOAD_B128 " %0, %1" : "=v"(Result) : "v"(FlatAddr));
   }
-  luthier::writeReg<std::uint32_t>(D0, Result[0]);
-  luthier::writeReg<std::uint32_t>(D1, Result[1]);
-  luthier::writeReg<std::uint32_t>(D2, Result[2]);
-  luthier::writeReg<std::uint32_t>(D3, Result[3]);
+  luthier::writeReg<v4u32>(Dst, Result);
 }
 
 __attribute__((device, used)) void
@@ -960,13 +929,11 @@ flatStoreB32(std::uint32_t V0, std::uint64_t Addr, std::int32_t InstOffset) {
   }
 }
 
-__attribute__((device, used)) void flatStoreB64(std::uint32_t V0,
-                                                std::uint32_t V1,
-                                                std::uint64_t Addr,
+__attribute__((device, used)) void flatStoreB64(v2u32 Src, std::uint64_t Addr,
                                                 std::int32_t InstOffset) {
   const std::uint64_t FlatAddr =
       Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
-  v2u32 Data = {V0, V1};
+  const auto &Data = Src;
   if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
     const std::uint32_t Off =
         displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
@@ -978,12 +945,11 @@ __attribute__((device, used)) void flatStoreB64(std::uint32_t V0,
   }
 }
 
-__attribute__((device, used)) void
-flatStoreB96(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
-             std::uint64_t Addr, std::int32_t InstOffset) {
+__attribute__((device, used)) void flatStoreB96(v3u32 Src, std::uint64_t Addr,
+                                                std::int32_t InstOffset) {
   const std::uint64_t FlatAddr =
       Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
-  v3u32 Data = {V0, V1, V2};
+  const auto &Data = Src;
   if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
     const std::uint32_t Off =
         displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
@@ -995,12 +961,11 @@ flatStoreB96(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
   }
 }
 
-__attribute__((device, used)) void
-flatStoreB128(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
-              std::uint32_t V3, std::uint64_t Addr, std::int32_t InstOffset) {
+__attribute__((device, used)) void flatStoreB128(v4u32 Src, std::uint64_t Addr,
+                                                 std::int32_t InstOffset) {
   const std::uint64_t FlatAddr =
       Addr + static_cast<std::uint64_t>(static_cast<std::int64_t>(InstOffset));
-  v4u32 Data = {V0, V1, V2, V3};
+  const auto &Data = Src;
   if (__builtin_amdgcn_is_private(reinterpret_cast<const void *>(FlatAddr))) {
     const std::uint32_t Off =
         displacedPrivateOffsetOf(reinterpret_cast<const void *>(FlatAddr));
@@ -1107,7 +1072,7 @@ flatStoreB16(std::uint32_t Value, std::uint64_t Addr, std::int32_t InstOffset) {
 }
 
 __attribute__((device, used)) void
-bufferLoadB32Offset(llvm::MCRegister D0, __amdgpu_buffer_rsrc_t Rsrc,
+bufferLoadB32Offset(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
                     std::uint32_t RsrcLo, std::uint32_t RsrcHi,
                     std::uint32_t SOffset, std::int32_t InstOffset) {
   const int SOff =
@@ -1117,11 +1082,11 @@ bufferLoadB32Offset(llvm::MCRegister D0, __amdgpu_buffer_rsrc_t Rsrc,
   for (unsigned I = 0; I != static_cast<unsigned>(1); ++I)
     V[I] = __builtin_amdgcn_raw_buffer_load_b32(
         Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
-  luthier::writeReg<std::uint32_t>(D0, V[0]);
+  luthier::writeReg<std::uint32_t>(Dst, V[0]);
 }
 
 __attribute__((device, used)) void
-bufferLoadB32Offen(llvm::MCRegister D0, __amdgpu_buffer_rsrc_t Rsrc,
+bufferLoadB32Offen(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
                    std::uint32_t RsrcLo, std::uint32_t RsrcHi,
                    std::uint32_t VOffset, std::uint32_t SOffset,
                    std::int32_t InstOffset) {
@@ -1133,220 +1098,206 @@ bufferLoadB32Offen(llvm::MCRegister D0, __amdgpu_buffer_rsrc_t Rsrc,
   for (unsigned I = 0; I != static_cast<unsigned>(1); ++I)
     V[I] = __builtin_amdgcn_raw_buffer_load_b32(
         Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
-  luthier::writeReg<std::uint32_t>(D0, V[0]);
+  luthier::writeReg<std::uint32_t>(Dst, V[0]);
 }
 
 __attribute__((device, used)) void
-bufferLoadB64Offset(llvm::MCRegister D0, llvm::MCRegister D1,
-                    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,
-                    std::uint32_t RsrcHi, std::uint32_t SOffset,
-                    std::int32_t InstOffset) {
-  const int SOff =
-      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
-  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
-  std::uint32_t V[4] = {0, 0, 0, 0};
-  for (unsigned I = 0; I != static_cast<unsigned>(2); ++I)
-    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
-        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
-  luthier::writeReg<std::uint32_t>(D0, V[0]);
-  luthier::writeReg<std::uint32_t>(D1, V[1]);
-}
-
-__attribute__((device, used)) void
-bufferLoadB64Offen(llvm::MCRegister D0, llvm::MCRegister D1,
-                   __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,
-                   std::uint32_t RsrcHi, std::uint32_t VOffset,
-                   std::uint32_t SOffset, std::int32_t InstOffset) {
-  const int SOff =
-      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
-  const std::uint32_t LaneOffset =
-      VOffset + static_cast<std::uint32_t>(InstOffset);
-  std::uint32_t V[4] = {0, 0, 0, 0};
-  for (unsigned I = 0; I != static_cast<unsigned>(2); ++I)
-    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
-        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
-  luthier::writeReg<std::uint32_t>(D0, V[0]);
-  luthier::writeReg<std::uint32_t>(D1, V[1]);
-}
-
-__attribute__((device, used)) void
-bufferLoadB96Offset(llvm::MCRegister D0, llvm::MCRegister D1,
-                    llvm::MCRegister D2, __amdgpu_buffer_rsrc_t Rsrc,
+bufferLoadB64Offset(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
                     std::uint32_t RsrcLo, std::uint32_t RsrcHi,
                     std::uint32_t SOffset, std::int32_t InstOffset) {
   const int SOff =
       static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
   const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
-  std::uint32_t V[4] = {0, 0, 0, 0};
-  for (unsigned I = 0; I != static_cast<unsigned>(3); ++I)
+  v2u32 V;
+  for (unsigned I = 0; I != static_cast<unsigned>(2); ++I)
     V[I] = __builtin_amdgcn_raw_buffer_load_b32(
         Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
-  luthier::writeReg<std::uint32_t>(D0, V[0]);
-  luthier::writeReg<std::uint32_t>(D1, V[1]);
-  luthier::writeReg<std::uint32_t>(D2, V[2]);
+  luthier::writeReg<v2u32>(Dst, V);
 }
 
-__attribute__((device, used)) void bufferLoadB96Offen(
-    llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
-    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo, std::uint32_t RsrcHi,
-    std::uint32_t VOffset, std::uint32_t SOffset, std::int32_t InstOffset) {
+__attribute__((device, used)) void
+bufferLoadB64Offen(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
+                   std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                   std::uint32_t VOffset, std::uint32_t SOffset,
+                   std::int32_t InstOffset) {
   const int SOff =
       static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
   const std::uint32_t LaneOffset =
       VOffset + static_cast<std::uint32_t>(InstOffset);
-  std::uint32_t V[4] = {0, 0, 0, 0};
-  for (unsigned I = 0; I != static_cast<unsigned>(3); ++I)
+  v2u32 V;
+  for (unsigned I = 0; I != static_cast<unsigned>(2); ++I)
     V[I] = __builtin_amdgcn_raw_buffer_load_b32(
         Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
-  luthier::writeReg<std::uint32_t>(D0, V[0]);
-  luthier::writeReg<std::uint32_t>(D1, V[1]);
-  luthier::writeReg<std::uint32_t>(D2, V[2]);
-}
-
-__attribute__((device, used)) void bufferLoadB128Offset(
-    llvm::MCRegister D0, llvm::MCRegister D1, llvm::MCRegister D2,
-    llvm::MCRegister D3, __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,
-    std::uint32_t RsrcHi, std::uint32_t SOffset, std::int32_t InstOffset) {
-  const int SOff =
-      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
-  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
-  std::uint32_t V[4] = {0, 0, 0, 0};
-  for (unsigned I = 0; I != static_cast<unsigned>(4); ++I)
-    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
-        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
-  luthier::writeReg<std::uint32_t>(D0, V[0]);
-  luthier::writeReg<std::uint32_t>(D1, V[1]);
-  luthier::writeReg<std::uint32_t>(D2, V[2]);
-  luthier::writeReg<std::uint32_t>(D3, V[3]);
+  luthier::writeReg<v2u32>(Dst, V);
 }
 
 __attribute__((device, used)) void
-bufferLoadB128Offen(llvm::MCRegister D0, llvm::MCRegister D1,
-                    llvm::MCRegister D2, llvm::MCRegister D3,
-                    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo,
-                    std::uint32_t RsrcHi, std::uint32_t VOffset,
+bufferLoadB96Offset(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
+                    std::uint32_t RsrcLo, std::uint32_t RsrcHi,
                     std::uint32_t SOffset, std::int32_t InstOffset) {
   const int SOff =
       static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  v3u32 V;
+  for (unsigned I = 0; I != static_cast<unsigned>(3); ++I)
+    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
+        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+  luthier::writeReg<v3u32>(Dst, V);
+}
+
+__attribute__((device, used)) void
+bufferLoadB96Offen(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
+                   std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                   std::uint32_t VOffset, std::uint32_t SOffset,
+                   std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
   const std::uint32_t LaneOffset =
       VOffset + static_cast<std::uint32_t>(InstOffset);
-  std::uint32_t V[4] = {0, 0, 0, 0};
+  v3u32 V;
+  for (unsigned I = 0; I != static_cast<unsigned>(3); ++I)
+    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
+        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+  luthier::writeReg<v3u32>(Dst, V);
+}
+
+__attribute__((device, used)) void
+bufferLoadB128Offset(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
+                     std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                     std::uint32_t SOffset, std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
+  v4u32 V;
   for (unsigned I = 0; I != static_cast<unsigned>(4); ++I)
     V[I] = __builtin_amdgcn_raw_buffer_load_b32(
         Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
-  luthier::writeReg<std::uint32_t>(D0, V[0]);
-  luthier::writeReg<std::uint32_t>(D1, V[1]);
-  luthier::writeReg<std::uint32_t>(D2, V[2]);
-  luthier::writeReg<std::uint32_t>(D3, V[3]);
+  luthier::writeReg<v4u32>(Dst, V);
 }
 
 __attribute__((device, used)) void
-bufferStoreB32Offset(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
-                     std::uint32_t V3, __amdgpu_buffer_rsrc_t Rsrc,
+bufferLoadB128Offen(llvm::MCRegister Dst, __amdgpu_buffer_rsrc_t Rsrc,
+                    std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                    std::uint32_t VOffset, std::uint32_t SOffset,
+                    std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  v4u32 V;
+  for (unsigned I = 0; I != static_cast<unsigned>(4); ++I)
+    V[I] = __builtin_amdgcn_raw_buffer_load_b32(
+        Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+  luthier::writeReg<v4u32>(Dst, V);
+}
+
+__attribute__((device, used)) void
+bufferStoreB32Offset(v4u32 Src, __amdgpu_buffer_rsrc_t Rsrc,
                      std::uint32_t RsrcLo, std::uint32_t RsrcHi,
                      std::uint32_t SOffset, std::int32_t InstOffset) {
   const int SOff =
       static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
   const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
-  const std::uint32_t V[4] = {V0, V1, V2, V3};
+  const auto *V = reinterpret_cast<const std::uint32_t *>(&Src);
   for (unsigned I = 0; I != static_cast<unsigned>(1); ++I)
     __builtin_amdgcn_raw_buffer_store_b32(
         V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
 }
 
-__attribute__((device, used)) void bufferStoreB32Offen(
-    std::uint32_t V0, std::uint32_t V1, std::uint32_t V2, std::uint32_t V3,
-    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo, std::uint32_t RsrcHi,
-    std::uint32_t VOffset, std::uint32_t SOffset, std::int32_t InstOffset) {
+__attribute__((device, used)) void
+bufferStoreB32Offen(v4u32 Src, __amdgpu_buffer_rsrc_t Rsrc,
+                    std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                    std::uint32_t VOffset, std::uint32_t SOffset,
+                    std::int32_t InstOffset) {
   const int SOff =
       static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
   const std::uint32_t LaneOffset =
       VOffset + static_cast<std::uint32_t>(InstOffset);
-  const std::uint32_t V[4] = {V0, V1, V2, V3};
+  const auto *V = reinterpret_cast<const std::uint32_t *>(&Src);
   for (unsigned I = 0; I != static_cast<unsigned>(1); ++I)
     __builtin_amdgcn_raw_buffer_store_b32(
         V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
 }
 
 __attribute__((device, used)) void
-bufferStoreB64Offset(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
-                     std::uint32_t V3, __amdgpu_buffer_rsrc_t Rsrc,
+bufferStoreB64Offset(v2u32 Src, __amdgpu_buffer_rsrc_t Rsrc,
                      std::uint32_t RsrcLo, std::uint32_t RsrcHi,
                      std::uint32_t SOffset, std::int32_t InstOffset) {
   const int SOff =
       static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
   const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
-  const std::uint32_t V[4] = {V0, V1, V2, V3};
-  for (unsigned I = 0; I != static_cast<unsigned>(2); ++I)
-    __builtin_amdgcn_raw_buffer_store_b32(
-        V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
-}
-
-__attribute__((device, used)) void bufferStoreB64Offen(
-    std::uint32_t V0, std::uint32_t V1, std::uint32_t V2, std::uint32_t V3,
-    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo, std::uint32_t RsrcHi,
-    std::uint32_t VOffset, std::uint32_t SOffset, std::int32_t InstOffset) {
-  const int SOff =
-      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
-  const std::uint32_t LaneOffset =
-      VOffset + static_cast<std::uint32_t>(InstOffset);
-  const std::uint32_t V[4] = {V0, V1, V2, V3};
+  const auto *V = reinterpret_cast<const std::uint32_t *>(&Src);
   for (unsigned I = 0; I != static_cast<unsigned>(2); ++I)
     __builtin_amdgcn_raw_buffer_store_b32(
         V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
 }
 
 __attribute__((device, used)) void
-bufferStoreB96Offset(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
-                     std::uint32_t V3, __amdgpu_buffer_rsrc_t Rsrc,
+bufferStoreB64Offen(v2u32 Src, __amdgpu_buffer_rsrc_t Rsrc,
+                    std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                    std::uint32_t VOffset, std::uint32_t SOffset,
+                    std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  const auto *V = reinterpret_cast<const std::uint32_t *>(&Src);
+  for (unsigned I = 0; I != static_cast<unsigned>(2); ++I)
+    __builtin_amdgcn_raw_buffer_store_b32(
+        V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+}
+
+__attribute__((device, used)) void
+bufferStoreB96Offset(v3u32 Src, __amdgpu_buffer_rsrc_t Rsrc,
                      std::uint32_t RsrcLo, std::uint32_t RsrcHi,
                      std::uint32_t SOffset, std::int32_t InstOffset) {
   const int SOff =
       static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
   const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
-  const std::uint32_t V[4] = {V0, V1, V2, V3};
-  for (unsigned I = 0; I != static_cast<unsigned>(3); ++I)
-    __builtin_amdgcn_raw_buffer_store_b32(
-        V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
-}
-
-__attribute__((device, used)) void bufferStoreB96Offen(
-    std::uint32_t V0, std::uint32_t V1, std::uint32_t V2, std::uint32_t V3,
-    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo, std::uint32_t RsrcHi,
-    std::uint32_t VOffset, std::uint32_t SOffset, std::int32_t InstOffset) {
-  const int SOff =
-      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
-  const std::uint32_t LaneOffset =
-      VOffset + static_cast<std::uint32_t>(InstOffset);
-  const std::uint32_t V[4] = {V0, V1, V2, V3};
+  const auto *V = reinterpret_cast<const std::uint32_t *>(&Src);
   for (unsigned I = 0; I != static_cast<unsigned>(3); ++I)
     __builtin_amdgcn_raw_buffer_store_b32(
         V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
 }
 
 __attribute__((device, used)) void
-bufferStoreB128Offset(std::uint32_t V0, std::uint32_t V1, std::uint32_t V2,
-                      std::uint32_t V3, __amdgpu_buffer_rsrc_t Rsrc,
+bufferStoreB96Offen(v3u32 Src, __amdgpu_buffer_rsrc_t Rsrc,
+                    std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                    std::uint32_t VOffset, std::uint32_t SOffset,
+                    std::int32_t InstOffset) {
+  const int SOff =
+      static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
+  const std::uint32_t LaneOffset =
+      VOffset + static_cast<std::uint32_t>(InstOffset);
+  const auto *V = reinterpret_cast<const std::uint32_t *>(&Src);
+  for (unsigned I = 0; I != static_cast<unsigned>(3); ++I)
+    __builtin_amdgcn_raw_buffer_store_b32(
+        V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
+}
+
+__attribute__((device, used)) void
+bufferStoreB128Offset(v4u32 Src, __amdgpu_buffer_rsrc_t Rsrc,
                       std::uint32_t RsrcLo, std::uint32_t RsrcHi,
                       std::uint32_t SOffset, std::int32_t InstOffset) {
   const int SOff =
       static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
   const std::uint32_t LaneOffset = static_cast<std::uint32_t>(InstOffset);
-  const std::uint32_t V[4] = {V0, V1, V2, V3};
+  const auto *V = reinterpret_cast<const std::uint32_t *>(&Src);
   for (unsigned I = 0; I != static_cast<unsigned>(4); ++I)
     __builtin_amdgcn_raw_buffer_store_b32(
         V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
 }
 
-__attribute__((device, used)) void bufferStoreB128Offen(
-    std::uint32_t V0, std::uint32_t V1, std::uint32_t V2, std::uint32_t V3,
-    __amdgpu_buffer_rsrc_t Rsrc, std::uint32_t RsrcLo, std::uint32_t RsrcHi,
-    std::uint32_t VOffset, std::uint32_t SOffset, std::int32_t InstOffset) {
+__attribute__((device, used)) void
+bufferStoreB128Offen(v4u32 Src, __amdgpu_buffer_rsrc_t Rsrc,
+                     std::uint32_t RsrcLo, std::uint32_t RsrcHi,
+                     std::uint32_t VOffset, std::uint32_t SOffset,
+                     std::int32_t InstOffset) {
   const int SOff =
       static_cast<int>(displacedBufferSOffset(RsrcLo, RsrcHi, SOffset));
   const std::uint32_t LaneOffset =
       VOffset + static_cast<std::uint32_t>(InstOffset);
-  const std::uint32_t V[4] = {V0, V1, V2, V3};
+  const auto *V = reinterpret_cast<const std::uint32_t *>(&Src);
   for (unsigned I = 0; I != static_cast<unsigned>(4); ++I)
     __builtin_amdgcn_raw_buffer_store_b32(
         V[I], Rsrc, static_cast<int>(LaneOffset + 4 * I), SOff, 0);
@@ -1635,6 +1586,9 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
 
   llvm::Type *I32 = llvm::Type::getInt32Ty(Ctx);
   llvm::Type *I64 = llvm::Type::getInt64Ty(Ctx);
+  llvm::Type *V2I32 = llvm::FixedVectorType::get(I32, 2);
+  llvm::Type *V3I32 = llvm::FixedVectorType::get(I32, 3);
+  llvm::Type *V4I32 = llvm::FixedVectorType::get(I32, 4);
   llvm::Type *RsrcTy = llvm::PointerType::get(Ctx, 8);
   auto constI32 = [&](uint64_t V) -> PayloadArg {
     return llvm::ConstantInt::get(I32, V);
@@ -1709,26 +1663,30 @@ RebaseAppScratchAccessesPass::run(Prototype &P, PrototypeAnalysisManager &PAM) {
 
     llvm::SmallVector<PayloadArg, 10> Args;
 
-    auto loadData = [&](unsigned N) {
-      for (unsigned I = 0; I < N; ++I)
-        Args.push_back(constI32(channel(I, N).id()));
+    auto vecTy = [&](unsigned N) -> llvm::Type * {
+      switch (N) {
+      case 1:
+        return I32;
+      case 2:
+        return V2I32;
+      case 3:
+        return V3I32;
+      case 4:
+        return V4I32;
+      default:
+        llvm_unreachable("bad width");
+      }
     };
+    auto loadData = [&](unsigned N) { Args.push_back(constI32(DataReg.id())); };
     auto storeData = [&](unsigned N) {
-      for (unsigned I = 0; I < N; ++I)
-        Args.push_back(PayloadArg{RegArg{channel(I, N), I32}});
+      Args.push_back(PayloadArg{RegArg{DataReg, vecTy(N)}});
     };
     auto subLoadData = [&]() { Args.push_back(constI32(DataReg.id())); };
     auto subStoreData = [&]() {
       Args.push_back(PayloadArg{RegArg{DataReg, I32}});
     };
     auto bufferStoreData = [&](unsigned N) {
-      for (unsigned I = 0; I < 4; ++I) {
-        if (I >= N) {
-          Args.push_back(constI32(0));
-          continue;
-        }
-        Args.push_back(PayloadArg{RegArg{channel(I, N), I32}});
-      }
+      Args.push_back(PayloadArg{RegArg{DataReg, vecTy(N)}});
     };
 
     auto scratchVaddr = [&]() {
